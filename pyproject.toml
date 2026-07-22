@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coloryourmodel"
+version = "0.1.0"
+description = "智能分块上色工具：为 3D 打印白模 STL 提供自动网格分割与彩色 3MF 导出"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "ColorYourModel Contributors"}
+]
+keywords = ["3d-printing", "stl", "3mf", "mesh-segmentation", "coloring"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Manufacturing",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "trimesh>=4.0.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "lib3mf>=2.2.0",
+    "pyvista>=0.43.0",
+    "PyQt6>=6.5.0",
+    "pyqtgraph>=0.13.0",
+    "loguru>=0.7.0",
+    "click>=8.1.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+coloryourmodel = "src.ui.main_window:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
