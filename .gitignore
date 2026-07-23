@@ -1,20 +1,16 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg-info/
-*.egg
-dist/
-build/
-.eggs/
-*.whl
+# Dependencies
+node_modules/
 
-# Virtual environments
-.venv/
-venv/
-env/
-ENV/
+# Build output
+dist/
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Logs
+*.log
+segment_debug.log
 
 # IDE
 .vscode/
@@ -35,9 +31,6 @@ Desktop.ini
 *.ply
 !examples/*.stl
 !examples/*.3mf
-
-# Logs
-*.log
 
 # Distribution / packaging
 *.tar.gz
