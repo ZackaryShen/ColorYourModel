@@ -37,7 +37,7 @@ interface AppStore {
 
   // Actions
   setMeshData: (data: MeshData) => void;
-  updateSegmentLabels: (labels: number[], segments: Segment[]) => void;
+  updateSegmentLabels: (labels: number[], segments: Segment[], faceColors?: number[]) => void;
   setActiveTool: (tool: PaintTool) => void;
   setBrushRadius: (r: number) => void;
   setBrushStrength: (s: number) => void;
@@ -93,11 +93,19 @@ export const useAppStore = create<AppStore>((set) => ({
       statusMessage: `已加载 ${data.faceCount.toLocaleString()} 个面`,
     }),
 
-  updateSegmentLabels: (labels, segments) =>
+  updateSegmentLabels: (labels, segments, faceColors) =>
     set((state) => ({
-      meshData: state.meshData
-        ? { ...state.meshData, segmentLabels: labels }
-        : null,
+      meshData:
+        state.meshData
+          ? {
+              ...state.meshData,
+              segmentLabels: labels,
+              // Apply updated face colors when provided (length must match).
+              ...(faceColors && faceColors.length === state.meshData.faceColors.length
+                ? { faceColors }
+                : {}),
+            }
+          : null,
       segments: segments.map((s) => ({
         id: s.id,
         name: s.name,

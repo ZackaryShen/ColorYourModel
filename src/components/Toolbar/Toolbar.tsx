@@ -15,6 +15,7 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.Eyedropper, icon: "💧", i18nKey: "tool.eyedropper" },
   { tool: PaintTool.Eraser, icon: "🧹", i18nKey: "tool.eraser" },
   { tool: PaintTool.Segment, icon: "✂️", i18nKey: "tool.segment" },
+  { tool: PaintTool.Lasso, icon: "📍", i18nKey: "tool.lasso" },
 ];
 
 export function Toolbar() {
@@ -28,7 +29,7 @@ export function Toolbar() {
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
-  const { loadModel, autoSegment, export3mf } = useTauriCommand();
+  const { loadModel, autoSegment, autoSegmentSmart, export3mf } = useTauriCommand();
 
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {
@@ -94,6 +95,10 @@ export function Toolbar() {
     await autoSegment(30.0);
   };
 
+  const handleSmartSegment = async () => {
+    await autoSegmentSmart(0);
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.section}>
@@ -142,6 +147,14 @@ export function Toolbar() {
       <div style={styles.divider} />
 
       <div style={styles.section}>
+        <button
+          onClick={handleSmartSegment}
+          disabled={!isLoaded}
+          style={styles.button}
+          title={t("toolbar.smartSegment")}
+        >
+          🧩
+        </button>
         <button
           onClick={handleSegment}
           disabled={!isLoaded}

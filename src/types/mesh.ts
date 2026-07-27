@@ -33,6 +33,19 @@ export enum PaintTool {
   Eyedropper = "picker",
   Eraser = "eraser",
   Segment = "segment",
+  Lasso = "lasso",
+}
+
+export interface SegmentResult {
+  segments: Segment[];
+  segmentLabels: number[];
+  faceColors: number[];
+}
+
+export interface ManualPointResult {
+  vertexIndex: number;
+  faceId: number;
+  snapped: [number, number, number];
 }
 
 export interface ColorEntry {

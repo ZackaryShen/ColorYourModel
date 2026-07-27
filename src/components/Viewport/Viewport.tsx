@@ -308,6 +308,58 @@ function SegmentOutline({ meshData, selectedSegment }: {
   );
 }
 
+// ─── Lasso Overlay (manual region selection) ────────────────────
+function LassoOverlay({ points, preview, closing, dotSize }: {
+  points: THREE.Vector3[];
+  preview: THREE.Vector3 | null;
+  closing: boolean;
+  dotSize: number;
+}) {
+  if (points.length === 0 && !preview) return null;
+
+  // Polyline segments: consecutive clicked points + rubber band to cursor.
+  const segPos: number[] = [];
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i], b = points[i + 1];
+    segPos.push(a.x, a.y, a.z, b.x, b.y, b.z);
+  }
+  if (preview && points.length > 0) {
+    const last = points[points.length - 1];
+    segPos.push(last.x, last.y, last.z, preview.x, preview.y, preview.z);
+  }
+
+  const dotPos: number[] = [];
+  for (const p of points) dotPos.push(p.x, p.y, p.z);
+
+  return (
+    <group>
+      {segPos.length > 0 && (
+        <lineSegments>
+          <bufferGeometry>
+            <bufferAttribute attach="attributes-position" args={[new Float32Array(segPos), 3]} />
+          </bufferGeometry>
+          <lineBasicMaterial color={closing ? 0xffff00 : 0x4a9eff} linewidth={2} depthTest={false} />
+        </lineSegments>
+      )}
+      {dotPos.length > 0 && (
+        <>
+          <points>
+            <bufferGeometry>
+              <bufferAttribute attach="attributes-position" args={[new Float32Array(dotPos), 3]} />
+            </bufferGeometry>
+            <pointsMaterial color={0x4a9eff} size={dotSize} sizeAttenuation depthTest={false} />
+          </points>
+          {/* Start point highlight — turns yellow when cursor is near to close */}
+          <mesh position={points[0]}>
+            <sphereGeometry args={[dotSize * 0.9, 12, 12]} />
+            <meshBasicMaterial color={closing ? 0xffff00 : 0x00ff88} depthTest={false} />
+          </mesh>
+        </>
+      )}
+    </group>
+  );
+}
+
 // ─── Main Mesh Display ────────────────────────────────────────────
 function MeshDisplay() {
   const meshData = useAppStore((s) => s.meshData);
@@ -316,9 +368,11 @@ function MeshDisplay() {
   const activeTool = useAppStore((s) => s.activeTool);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const currentColor = useAppStore((s) => s.currentColor);
+  const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const { buildGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
-  const { paintSegmentFace, finalizeSegment } = useTauriCommand();
+  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion } = useTauriCommand();
+  const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
   const isPainting = useRef(false);
   // Segment paint state: track current label + painted faces for dedup
@@ -333,6 +387,27 @@ function MeshDisplay() {
     activeTool === "smart" || activeTool === "eraser";
   const isSegmentTool = activeTool === "segment";
 
+  // Lasso (manual region) state
+  const isLassoTool = activeTool === "lasso";
+  const [lassoPoints, setLassoPoints] = useState<THREE.Vector3[]>([]);
+  const [lassoPreview, setLassoPreview] = useState<THREE.Vector3 | null>(null);
+  const [lassoClosing, setLassoClosing] = useState(false);
+  const lassoPointsRef = useRef<THREE.Vector3[]>([]);
+  const lassoStartVertexRef = useRef<number | null>(null);
+
+  const closeThreshold = useMemo(() => {
+    const b = meshData?.bbox;
+    if (!b) return 1.0;
+    const dx = b.max[0] - b.min[0], dy = b.max[1] - b.min[1], dz = b.max[2] - b.min[2];
+    return Math.max(0.01, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.012);
+  }, [meshData?.bbox]);
+  const dotSize = useMemo(() => {
+    const b = meshData?.bbox;
+    if (!b) return 1.0;
+    const dx = b.max[0] - b.min[0], dy = b.max[1] - b.min[1], dz = b.max[2] - b.min[2];
+    return Math.max(0.3, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.008);
+  }, [meshData?.bbox]);
+
   // Set canvas cursor based on active tool
   useEffect(() => {
     const canvas = gl.domElement;
@@ -340,13 +415,15 @@ function MeshDisplay() {
       canvas.style.cursor = "crosshair";
     } else if (isSegmentTool) {
       canvas.style.cursor = "cell";
+    } else if (isLassoTool) {
+      canvas.style.cursor = "crosshair";
     } else if (activeTool === "fill" || activeTool === "picker") {
       canvas.style.cursor = "pointer";
     } else {
       canvas.style.cursor = "default";
     }
     return () => { canvas.style.cursor = "default"; };
-  }, [gl, isBrushTool, isSegmentTool, segmentView, activeTool]);
+  }, [gl, isBrushTool, isSegmentTool, isLassoTool, segmentView, activeTool]);
 
   const geometry = useMemo(() => {
     log.info("MeshDisplay", "Building geometry", { segmentView });
@@ -361,6 +438,53 @@ function MeshDisplay() {
     return geo;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buildGeometry, segmentView, selectedSegment, meshData?.segmentLabels]);
+
+  // Raycast to surface, convert world hit → model-local coords.
+  // Group is rotated -PI/2 about X, so worldToLocal yields local = (x, -z, y).
+  const getLocalHit = useCallback(
+    (clientX: number, clientY: number): THREE.Vector3 | null => {
+      if (!meshRef.current || !geometry) return null;
+      const rect = gl.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObject(meshRef.current, false);
+      if (hits.length === 0) return null;
+      return meshRef.current.worldToLocal(hits[0].point.clone());
+    },
+    [gl, camera, raycaster, meshRef, geometry]
+  );
+
+  // Handle a lasso click: snap to vertex, append, or close the loop.
+  const handleLassoClick = useCallback(
+    async (local: THREE.Vector3) => {
+      const res = await manualRegionAddPoint([local.x, local.y, local.z]);
+      if (!res) return;
+      const snapped = new THREE.Vector3(res.snapped[0], res.snapped[1], res.snapped[2]);
+      const prev = lassoPointsRef.current;
+      // Closure: clicked the start vertex again with >= 2 points already placed.
+      if (prev.length >= 2 && res.vertexIndex === lassoStartVertexRef.current) {
+        const pts = prev.map((p) => [p.x, p.y, p.z] as [number, number, number]);
+        lassoPointsRef.current = [];
+        setLassoPoints([]);
+        lassoStartVertexRef.current = null;
+        setLassoPreview(null);
+        setLassoClosing(false);
+        await finalizeManualRegion(pts);
+        return;
+      }
+      if (prev.length === 0) lassoStartVertexRef.current = res.vertexIndex;
+      const next = [...prev, snapped];
+      lassoPointsRef.current = next;
+      setLassoPoints(next);
+      setStatusMessage(
+        `套索：已选 ${next.length} 个点` + (next.length >= 2 ? "（点击起点闭合）" : "")
+      );
+    },
+    [manualRegionAddPoint, finalizeManualRegion, setStatusMessage]
+  );
 
   const handleFacePicked = useCallback(
     async (faceId: number) => {
@@ -438,6 +562,12 @@ function MeshDisplay() {
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
       if (_spaceHeld) return; // Space → pan, skip paint
+      if (isLassoTool) {
+        disableRotate();
+        const local = getLocalHit(e.clientX, e.clientY);
+        if (local) handleLassoClick(local);
+        return;
+      }
       isPainting.current = true;
       disableRotate();
       pick(e.clientX, e.clientY);
@@ -448,6 +578,24 @@ function MeshDisplay() {
         // Fill and eyedropper tools only pick once per click (no drag)
         if (activeTool === "fill" || activeTool === "picker") return;
         pick(e.clientX, e.clientY);
+        return;
+      }
+
+      // Lasso: show rubber-band preview; highlight when cursor nears the start.
+      if (isLassoTool) {
+        const local = getLocalHit(e.clientX, e.clientY);
+        if (!local) {
+          setLassoPreview(null);
+          setLassoClosing(false);
+          return;
+        }
+        setLassoPreview(local);
+        const start = lassoPointsRef.current[0];
+        if (start && lassoPointsRef.current.length >= 2) {
+          setLassoClosing(local.distanceTo(start) < closeThreshold);
+        } else {
+          setLassoClosing(false);
+        }
         return;
       }
 
@@ -501,6 +649,8 @@ function MeshDisplay() {
           currentSegLabelRef.current = null;
           segPaintedFacesRef.current.clear();
         }
+      } else if (isLassoTool) {
+        enableRotate();
       }
     };
 
@@ -514,6 +664,10 @@ function MeshDisplay() {
           currentSegLabelRef.current = null;
           segPaintedFacesRef.current.clear();
         }
+      }
+      if (isLassoTool) {
+        setLassoPreview(null);
+        setLassoClosing(false);
       }
       setHoverInfo(null);
     };
@@ -529,7 +683,29 @@ function MeshDisplay() {
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointerleave", onPointerLeave);
     };
-  }, [gl.domElement, pick, activeTool, isBrushTool, segmentView, geometry, raycaster, camera]);
+  }, [gl.domElement, pick, activeTool, isBrushTool, isSegmentTool, isLassoTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold]);
+
+  // Show lasso usage hint when the tool is selected.
+  useEffect(() => {
+    if (isLassoTool) setStatusMessage(t("lasso.hint"));
+  }, [isLassoTool, setStatusMessage, t]);
+
+  // Esc cancels the in-progress lasso.
+  useEffect(() => {
+    if (!isLassoTool) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && lassoPointsRef.current.length > 0) {
+        lassoPointsRef.current = [];
+        setLassoPoints([]);
+        lassoStartVertexRef.current = null;
+        setLassoPreview(null);
+        setLassoClosing(false);
+        setStatusMessage(t("lasso.cancelled"));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isLassoTool, setStatusMessage, t]);
 
   if (!geometry) return null;
 
@@ -549,6 +725,15 @@ function MeshDisplay() {
       {/* Segment boundary outline */}
       {selectedSegment !== null && meshData && meshData.segmentLabels.length > 0 && (
         <SegmentOutline meshData={meshData} selectedSegment={selectedSegment} />
+      )}
+      {/* Lasso overlay (manual region selection) */}
+      {(lassoPoints.length > 0 || lassoPreview) && (
+        <LassoOverlay
+          points={lassoPoints}
+          preview={lassoPreview}
+          closing={lassoClosing}
+          dotSize={dotSize}
+        />
       )}
     </group>
   );

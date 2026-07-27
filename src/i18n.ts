@@ -12,6 +12,10 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolbar.import": { zh: "导入 STL 文件", en: "Import STL file" },
   "toolbar.export": { zh: "导出涂装模型为 3MF", en: "Export painted model as 3MF" },
   "toolbar.reSegment": { zh: "重新自动分区（阈值: 30°）", en: "Re-run auto segmentation (threshold: 30°)" },
+  "toolbar.smartSegment": { zh: "智能分区（SDF 形态直径）", en: "Smart segment (SDF shape diameter)" },
+  "lasso.hint": { zh: "套索模式：点击顶点选点，回到起点闭合区域（Esc 取消）", en: "Lasso: click vertices; click the start point to close (Esc to cancel)" },
+  "lasso.need3": { zh: "至少需要 3 个点才能闭合区域", en: "Need at least 3 points to close a region" },
+  "lasso.cancelled": { zh: "已取消当前套索", en: "Lasso cancelled" },
   "toolbar.importComplete": { zh: "导入完成", en: "Import complete" },
   "toolbar.importFailed": { zh: "导入失败", en: "Import failed" },
   "toolbar.startImport": { zh: "开始导入…", en: "Starting import…" },
@@ -24,6 +28,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "tool.eyedropper": { zh: "💧 吸管 — 从模型表面拾取颜色", en: "💧 Eyedropper — pick color from model surface" },
   "tool.eraser": { zh: "🧹 橡皮 — 擦除颜色，恢复为白色", en: "🧹 Eraser — restore to original white" },
   "tool.segment": { zh: "✂️ 分区画笔 — 拖拽涂选面，松开鼠标创建分区", en: "✂️ Segment Brush — drag to paint faces, release to create region" },
+  "tool.lasso": { zh: "📍 选点套索 — 依次点选顶点围合区域，点击起点闭合", en: "📍 Lasso — click vertices to outline a region; click the start point to close" },
 
   // BrushSettings
   "brush.title": { zh: "画笔设置", en: "Brush Settings" },
