@@ -35,6 +35,7 @@ pub struct MeshModel {
 
     // Spatial acceleration
     pub face_kdtree: kiddo::KdTree<f32, 3>,
+    pub vertex_kdtree: kiddo::KdTree<f32, 3>,
     pub face_adjacency: UnGraph<u32, ()>,
 
     // Metadata
@@ -66,6 +67,7 @@ impl MeshModel {
             segment_labels: Vec::new(),
             segments: HashMap::new(),
             face_kdtree: kiddo::KdTree::new(),
+            vertex_kdtree: kiddo::KdTree::new(),
             face_adjacency: UnGraph::default(),
             bbox: BoundingBox {
                 min: [0.0, 0.0, 0.0],
@@ -114,6 +116,36 @@ impl MeshModel {
         }
     }
 
+    /// Build KD-Tree from raw vertices (for nearest-vertex snapping in manual seg)
+    pub fn build_vertex_kdtree(&mut self) {
+        self.vertex_kdtree = kiddo::KdTree::new();
+        for (i, v) in self.vertices.iter().enumerate() {
+            self.vertex_kdtree.add(v, i as u64);
+        }
+    }
+
+    /// Nearest vertex to a point. Returns (vertex_index, squared_distance).
+    /// Used by manual segmentation to snap clicked points to the mesh surface.
+    pub fn nearest_vertex(&self, point: &[f32; 3]) -> Option<(u32, f32)> {
+        if self.vertices.is_empty() {
+            return None;
+        }
+        // kiddo 4 `nearest_one` returns NearestNeighbour directly (not Option).
+        let nn = self.vertex_kdtree.nearest_one::<kiddo::SquaredEuclidean>(point);
+        Some((nn.item as u32, nn.distance))
+    }
+
+    /// First face that contains the given vertex (for vertex→face mapping in
+    /// geodesic path computation). Scans faces once; cheap for typical meshes.
+    pub fn face_of_vertex(&self, vertex: u32) -> Option<u32> {
+        for (fi, face) in self.faces.iter().enumerate() {
+            if face[0] == vertex || face[1] == vertex || face[2] == vertex {
+                return Some(fi as u32);
+            }
+        }
+        None
+    }
+
     /// Build face adjacency graph using edge sharing
     pub fn build_adjacency(&mut self) {
         let mut edge_to_face: HashMap<(u32, u32), Vec<u32>> = HashMap::new();
@@ -140,16 +172,25 @@ impl MeshModel {
 
         let mut edge_count = 0u32;
         let mut non_manifold = 0u32;
+        // REFUTE P1 fix: connect EVERY pair of faces sharing an edge, including
+        // non-manifold edges (faces.len() > 2). A surface graph that drops
+        // non-manifold edges breaks geodesic paths and bounded flood-fill used by
+        // manual closed-loop segmentation. Pairwise-connect all sharers.
         for faces in edge_to_face.values() {
-            if faces.len() == 2 {
-                self.face_adjacency.add_edge(
-                    node_indices[faces[0] as usize],
-                    node_indices[faces[1] as usize],
-                    (),
-                );
-                edge_count += 1;
-            } else if faces.len() > 2 {
-                non_manifold += 1;
+            if faces.len() >= 2 {
+                for i in 0..faces.len() {
+                    for j in (i + 1)..faces.len() {
+                        self.face_adjacency.add_edge(
+                            node_indices[faces[i] as usize],
+                            node_indices[faces[j] as usize],
+                            (),
+                        );
+                        edge_count += 1;
+                    }
+                }
+                if faces.len() > 2 {
+                    non_manifold += 1;
+                }
             }
         }
 

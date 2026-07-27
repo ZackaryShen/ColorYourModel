@@ -7,19 +7,27 @@ use crate::commands::mesh::AppState;
 use crate::mesh::loader::ProgressFn;
 use crate::mesh::model::Segment;
 use crate::segment::dihedral::segment_by_dihedral_angle;
+use crate::segment::manual::{finalize_manual_region as backend_finalize_manual_region, snap_point_to_vertex, MANUAL_SEGMENT_OFFSET};
+use crate::segment::sdf::segment_by_sdf;
 
-/// Result of auto-segmentation: segment metadata + per-face labels
+/// Flatten per-face `[[r,g,b,a]; N]` into a flat `Vec<u8>` matching `MeshDataDto.faceColors`.
+fn flatten_face_colors(colors: &[[u8; 4]]) -> Vec<u8> {
+    colors.iter().flat_map(|c| c.iter().copied()).collect()
+}
+
+/// Result of auto-segmentation: segment metadata + per-face labels + face colors.
+/// `face_colors` is returned so the frontend can repaint newly-touched faces
+/// (and preserve existing paint on re-segment) without a full reload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SegmentResult {
     pub segments: Vec<Segment>,
     pub segment_labels: Vec<u32>,
+    pub face_colors: Vec<u8>,
 }
 
-/// Manual segment label offset — separates manual labels from auto-segment labels.
-/// Auto-segment uses labels 0..N; manual labels start at 100000.
-/// This prevents conflicts when auto_segment is re-run after manual segmentation.
-const MANUAL_SEGMENT_OFFSET: u32 = 100_000;
+/// Manual segment label offset — imported from segment::manual so it stays
+/// the single source of truth (auto_segment_* also reuse it).
 
 #[tauri::command]
 pub fn auto_segment(
@@ -54,6 +62,7 @@ pub fn auto_segment(
     Ok(SegmentResult {
         segments,
         segment_labels: mesh.segment_labels.clone(),
+        face_colors: flatten_face_colors(&mesh.face_colors),
     })
 }
 
@@ -191,5 +200,100 @@ pub fn finalize_segment(
     Ok(FinalizeSegmentResult {
         segments,
         segment_labels: mesh.segment_labels.clone(),
+    })
+}
+
+/// Result of snapping a clicked 3D point to the nearest mesh vertex.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManualPointResult {
+    pub vertex_index: u32,
+    pub face_id: u32,
+    pub snapped: [f32; 3],
+}
+
+/// Snap a clicked 3D point (model-local coordinates) to the nearest mesh vertex.
+/// Frontend sends the point after inverse-transforming the world-space hit
+/// (group rotation -PI/2 X → local = (x, -z, y)). Used by the lasso manual
+/// segmentation tool for exact point selection + closure.
+#[tauri::command]
+pub fn manual_region_add_point(
+    point: [f32; 3],
+    state: State<AppState>,
+) -> Result<ManualPointResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+
+    let (vi, snapped) = snap_point_to_vertex(mesh, &point)
+        .ok_or_else(|| "No vertex found near point".to_string())?;
+    // Anchor face: the first face containing this vertex
+    let face_id = mesh
+        .face_of_vertex(vi)
+        .ok_or_else(|| format!("vertex {} has no incident face", vi))?;
+
+    Ok(ManualPointResult {
+        vertex_index: vi,
+        face_id,
+        snapped,
+    })
+}
+
+/// Finalize a manual region from an ordered list of clicked 3D points.
+/// Closes the loop (last point connects back to first), builds the enclosed
+/// region via geodesic surface paths + bounded flood fill, and assigns a fresh
+/// manual segment label. See segment::manual::finalize_manual_region.
+#[tauri::command]
+pub fn finalize_manual_region(
+    points: Vec<[f32; 3]>,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<SegmentResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+
+    let (_label, region) = backend_finalize_manual_region(mesh, &points)?;
+
+    // Emit completion
+    let _ = app.emit(
+        "segment-progress",
+        serde_json::json!({ "progress": 1.0, "stage": format!("Manual region: {} faces", region.len()) }),
+    );
+
+    Ok(SegmentResult {
+        segments: mesh.segments.values().cloned().collect(),
+        segment_labels: mesh.segment_labels.clone(),
+        face_colors: flatten_face_colors(&mesh.face_colors),
+    })
+}
+
+/// Smart auto-segmentation via Shape Diameter Function (Tier 0).
+/// Produces semantic "parts" (thin vs thick) instead of the dihedral
+/// normal-only clusters. `k = 0` auto-estimates cluster count from SDF peaks.
+#[tauri::command]
+pub fn auto_segment_smart(
+    k: u32,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<SegmentResult, String> {
+    log::info!("[cmd:auto_segment_smart] k={}", k);
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+
+    let _ = app.emit(
+        "segment-progress",
+        serde_json::json!({ "progress": 0.1, "stage": "Computing SDF..." }),
+    );
+    let segments = segment_by_sdf(mesh, k);
+
+    let _ = app.emit(
+        "segment-progress",
+        serde_json::json!({ "progress": 1.0, "stage": format!("Found {} parts", segments.len()) }),
+    );
+    log::info!("[cmd:auto_segment_smart] done: {} parts", segments.len());
+
+    Ok(SegmentResult {
+        segments,
+        segment_labels: mesh.segment_labels.clone(),
+        face_colors: flatten_face_colors(&mesh.face_colors),
     })
 }

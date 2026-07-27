@@ -76,6 +76,7 @@ pub fn load_stl(path: &Path, on_progress: &ProgressFn) -> Result<MeshModel, Stri
 
     on_progress(0.65, "Building spatial index (KD-Tree)...");
     model.build_kdtree();
+    model.build_vertex_kdtree();
 
     on_progress(0.75, "Building adjacency graph...");
     model.build_adjacency();
