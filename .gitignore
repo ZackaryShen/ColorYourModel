@@ -36,3 +36,6 @@ Desktop.ini
 *.tar.gz
 *.zip
 !releases/*.zip
+
+# Local agent memory (project-specific, not for version control)
+.workbuddy/
