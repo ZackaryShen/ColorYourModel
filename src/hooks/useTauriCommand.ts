@@ -95,6 +95,27 @@ export function useTauriCommand() {
   };
 
   /**
+   * Undo the last finalized manual (lasso) region.
+   * Backend restores affected faces to their pre-finalize state and returns the
+   * updated segment metadata + face colors for repaint.
+   */
+  const manualRegionUndo = async (): Promise<SegmentResult | null> => {
+    try {
+      const result = await invoke<SegmentResult>("manual_region_undo");
+      updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
+      setStatusMessage("已撤销上一个手动分区");
+      log.info("useTauriCommand", "manualRegionUndo complete", {
+        segments: result.segments.length,
+      });
+      return result;
+    } catch (e) {
+      log.error("useTauriCommand", "manualRegionUndo failed", { error: String(e) });
+      setStatusMessage(`撤销失败：${e}`);
+      return null;
+    }
+  };
+
+  /**
    * Smart auto-segmentation via Shape Diameter Function (semantic parts).
    * `k = 0` auto-estimates cluster count from SDF peaks.
    */
@@ -185,5 +206,6 @@ export function useTauriCommand() {
     finalizeSegment,
     manualRegionAddPoint,
     finalizeManualRegion,
+    manualRegionUndo,
   };
 }

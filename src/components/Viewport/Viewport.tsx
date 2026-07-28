@@ -308,12 +308,36 @@ function SegmentOutline({ meshData, selectedSegment }: {
   );
 }
 
+// ─── Nearest local vertex (snap preview, frontend-only) ────────
+/// Snap a model-local point to the nearest mesh vertex using the loaded
+/// vertex array. Equivalent to the backend `nearest_vertex` (Euclidean kd-tree
+/// lookup) but computed locally for zero-latency hover preview. Returns the
+/// vertex position in LOCAL coords (same space as `meshData.vertices`).
+function nearestVertexLocal(vertices: number[], p: THREE.Vector3): THREE.Vector3 | null {
+  if (!vertices || vertices.length < 3) return null;
+  let best = -1;
+  let bestSq = Infinity;
+  for (let i = 0; i < vertices.length; i += 3) {
+    const dx = vertices[i] - p.x;
+    const dy = vertices[i + 1] - p.y;
+    const dz = vertices[i + 2] - p.z;
+    const sq = dx * dx + dy * dy + dz * dz;
+    if (sq < bestSq) {
+      bestSq = sq;
+      best = i / 3;
+    }
+  }
+  if (best < 0) return null;
+  return new THREE.Vector3(vertices[best * 3], vertices[best * 3 + 1], vertices[best * 3 + 2]);
+}
+
 // ─── Lasso Overlay (manual region selection) ────────────────────
-function LassoOverlay({ points, preview, closing, dotSize }: {
+function LassoOverlay({ points, preview, closing, dotSize, snap }: {
   points: THREE.Vector3[];
   preview: THREE.Vector3 | null;
   closing: boolean;
   dotSize: number;
+  snap?: THREE.Vector3 | null;
 }) {
   if (points.length === 0 && !preview) return null;
 
@@ -356,6 +380,13 @@ function LassoOverlay({ points, preview, closing, dotSize }: {
           </mesh>
         </>
       )}
+      {/* Snap preview: the nearest vertex where the next click will land */}
+      {snap && (
+        <mesh position={snap}>
+          <sphereGeometry args={[dotSize * 1.15, 14, 14]} />
+          <meshBasicMaterial color={0x00ffff} depthTest={false} />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -371,7 +402,7 @@ function MeshDisplay() {
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const { buildGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
-  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion } = useTauriCommand();
+  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, manualRegionUndo } = useTauriCommand();
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
   const isPainting = useRef(false);
@@ -392,6 +423,8 @@ function MeshDisplay() {
   const [lassoPoints, setLassoPoints] = useState<THREE.Vector3[]>([]);
   const [lassoPreview, setLassoPreview] = useState<THREE.Vector3 | null>(null);
   const [lassoClosing, setLassoClosing] = useState(false);
+  const [lassoSnap, setLassoSnap] = useState<THREE.Vector3 | null>(null);
+  const lassoSnapRef = useRef<THREE.Vector3 | null>(null);
   const lassoPointsRef = useRef<THREE.Vector3[]>([]);
   const lassoStartVertexRef = useRef<number | null>(null);
 
@@ -587,6 +620,8 @@ function MeshDisplay() {
         if (!local) {
           setLassoPreview(null);
           setLassoClosing(false);
+          setLassoSnap(null);
+          lassoSnapRef.current = null;
           return;
         }
         setLassoPreview(local);
@@ -595,6 +630,17 @@ function MeshDisplay() {
           setLassoClosing(local.distanceTo(start) < closeThreshold);
         } else {
           setLassoClosing(false);
+        }
+        // Snap preview: nearest local vertex to the cursor (where the next
+        // click will land). Cheap brute-force over vertices; only re-render
+        // when the snapped vertex actually changes.
+        const verts = meshData?.vertices;
+        if (verts) {
+          const sv = nearestVertexLocal(verts, local);
+          if (sv && (!lassoSnapRef.current || sv.distanceTo(lassoSnapRef.current) > 1e-6)) {
+            lassoSnapRef.current = sv.clone();
+            setLassoSnap(sv);
+          }
         }
         return;
       }
@@ -668,6 +714,8 @@ function MeshDisplay() {
       if (isLassoTool) {
         setLassoPreview(null);
         setLassoClosing(false);
+        setLassoSnap(null);
+        lassoSnapRef.current = null;
       }
       setHoverInfo(null);
     };
@@ -690,22 +738,59 @@ function MeshDisplay() {
     if (isLassoTool) setStatusMessage(t("lasso.hint"));
   }, [isLassoTool, setStatusMessage, t]);
 
-  // Esc cancels the in-progress lasso.
+  // Lasso keyboard:
+  //   Esc          → clear the whole in-progress loop
+  //   Backspace    → remove the last selected point (finer than Esc)
+  //   Ctrl/Cmd+Z   → undo: pop last point if a loop is active, otherwise
+  //                  revert the last finalized manual region (backend)
   useEffect(() => {
     if (!isLassoTool) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && lassoPointsRef.current.length > 0) {
+      const hasLoop = lassoPointsRef.current.length > 0;
+      const clearAll = () => {
         lassoPointsRef.current = [];
         setLassoPoints([]);
         lassoStartVertexRef.current = null;
         setLassoPreview(null);
         setLassoClosing(false);
-        setStatusMessage(t("lasso.cancelled"));
+        setLassoSnap(null);
+        lassoSnapRef.current = null;
+      };
+      const popPoint = () => {
+        if (!hasLoop) return;
+        const next = lassoPointsRef.current.slice(0, -1);
+        lassoPointsRef.current = next;
+        setLassoPoints(next);
+        if (next.length === 0) lassoStartVertexRef.current = null;
+        setLassoClosing(false);
+        setStatusMessage(
+          t("lasso.undoPoint") + (next.length > 0 ? `（剩 ${next.length} 个点）` : "")
+        );
+      };
+      if (e.key === "Escape") {
+        if (hasLoop) {
+          clearAll();
+          setStatusMessage(t("lasso.cancelled"));
+        }
+        return;
+      }
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        popPoint();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        if (hasLoop) {
+          popPoint();
+        } else {
+          manualRegionUndo();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isLassoTool, setStatusMessage, t]);
+  }, [isLassoTool, setStatusMessage, t, manualRegionUndo]);
 
   if (!geometry) return null;
 
@@ -727,12 +812,13 @@ function MeshDisplay() {
         <SegmentOutline meshData={meshData} selectedSegment={selectedSegment} />
       )}
       {/* Lasso overlay (manual region selection) */}
-      {(lassoPoints.length > 0 || lassoPreview) && (
+      {(lassoPoints.length > 0 || lassoPreview || lassoSnap) && (
         <LassoOverlay
           points={lassoPoints}
           preview={lassoPreview}
           closing={lassoClosing}
           dotSize={dotSize}
+          snap={lassoSnap}
         />
       )}
     </group>
