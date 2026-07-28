@@ -331,6 +331,40 @@ function nearestVertexLocal(vertices: number[], p: THREE.Vector3): THREE.Vector3
   return new THREE.Vector3(vertices[best * 3], vertices[best * 3 + 1], vertices[best * 3 + 2]);
 }
 
+/// Snap to the nearest vertex of the specific triangle that was hit by the raycast.
+/// This is far more accurate than a global nearest-vertex search on complex organic
+/// models because the snapped vertex is guaranteed to be on (or adjacent to) the
+/// actual surface patch under the cursor — no "around the corner" false matches.
+function snapToHitFaceVertex(
+  vertices: number[],
+  faces: number[],
+  hit: LocalHit,
+): THREE.Vector3 | null {
+  if (!vertices || !faces || faces.length < 3 || hit.faceIndex < 0) return null;
+  // Get the 3 vertex indices of the hit triangle
+  const i0 = faces[hit.faceIndex * 3];
+  const i1 = faces[hit.faceIndex * 3 + 1];
+  const i2 = faces[hit.faceIndex * 3 + 2];
+  const v0 = new THREE.Vector3(vertices[i0 * 3], vertices[i0 * 3 + 1], vertices[i0 * 3 + 2]);
+  const v1 = new THREE.Vector3(vertices[i1 * 3], vertices[i1 * 3 + 1], vertices[i1 * 3 + 2]);
+  const v2 = new THREE.Vector3(vertices[i2 * 3], vertices[i2 * 3 + 1], vertices[i2 * 3 + 2]);
+  // Return the vertex closest to the hit point
+  const d0 = hit.point.distanceToSquared(v0);
+  const d1 = hit.point.distanceToSquared(v1);
+  const d2 = hit.point.distanceToSquared(v2);
+  if (d0 <= d1 && d0 <= d2) return v0;
+  if (d1 <= d2) return v1;
+  return v2;
+}
+
+/// Result of a raycast hit on the mesh surface in model-local coordinates.
+interface LocalHit {
+  /** Hit point in model-local coords (same space as meshData.vertices) */
+  point: THREE.Vector3;
+  /** Index of the intersected triangle (faceIndex * 3 = first index in geometry.index) */
+  faceIndex: number;
+}
+
 // ─── Lasso Overlay (manual region selection) ────────────────────
 function LassoOverlay({ points, preview, closing, dotSize, snap }: {
   points: THREE.Vector3[];
@@ -383,7 +417,7 @@ function LassoOverlay({ points, preview, closing, dotSize, snap }: {
       {/* Snap preview: the nearest vertex where the next click will land */}
       {snap && (
         <mesh position={snap}>
-          <sphereGeometry args={[dotSize * 1.15, 14, 14]} />
+          <sphereGeometry args={[dotSize * 1.05, 14, 14]} />
           <meshBasicMaterial color={0x00ffff} depthTest={false} />
         </mesh>
       )}
@@ -438,7 +472,7 @@ function MeshDisplay() {
     const b = meshData?.bbox;
     if (!b) return 1.0;
     const dx = b.max[0] - b.min[0], dy = b.max[1] - b.min[1], dz = b.max[2] - b.min[2];
-    return Math.max(0.3, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.008);
+    return Math.max(0.05, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0015);
   }, [meshData?.bbox]);
 
   // Set canvas cursor based on active tool
@@ -475,7 +509,7 @@ function MeshDisplay() {
   // Raycast to surface, convert world hit → model-local coords.
   // Group is rotated -PI/2 about X, so worldToLocal yields local = (x, -z, y).
   const getLocalHit = useCallback(
-    (clientX: number, clientY: number): THREE.Vector3 | null => {
+    (clientX: number, clientY: number): LocalHit | null => {
       if (!meshRef.current || !geometry) return null;
       const rect = gl.domElement.getBoundingClientRect();
       const mouse = new THREE.Vector2(
@@ -485,14 +519,19 @@ function MeshDisplay() {
       raycaster.setFromCamera(mouse, camera);
       const hits = raycaster.intersectObject(meshRef.current, false);
       if (hits.length === 0) return null;
-      return meshRef.current.worldToLocal(hits[0].point.clone());
+      const h = hits[0];
+      return {
+        point: meshRef.current.worldToLocal(h.point.clone()),
+        faceIndex: h.faceIndex ?? -1,
+      };
     },
     [gl, camera, raycaster, meshRef, geometry]
   );
 
   // Handle a lasso click: snap to vertex, append, or close the loop.
   const handleLassoClick = useCallback(
-    async (local: THREE.Vector3) => {
+    async (hit: LocalHit) => {
+      const local = hit.point;
       const res = await manualRegionAddPoint([local.x, local.y, local.z]);
       if (!res) return;
       const snapped = new THREE.Vector3(res.snapped[0], res.snapped[1], res.snapped[2]);
@@ -614,29 +653,30 @@ function MeshDisplay() {
         return;
       }
 
-      // Lasso: show rubber-band preview; highlight when cursor nears the start.
+      // Lasso: show rubber-band preview; snap to nearest vertex of hit face.
       if (isLassoTool) {
-        const local = getLocalHit(e.clientX, e.clientY);
-        if (!local) {
+        const hit = getLocalHit(e.clientX, e.clientY);
+        if (!hit) {
           setLassoPreview(null);
           setLassoClosing(false);
           setLassoSnap(null);
           lassoSnapRef.current = null;
           return;
         }
-        setLassoPreview(local);
+        setLassoPreview(hit.point);
         const start = lassoPointsRef.current[0];
         if (start && lassoPointsRef.current.length >= 2) {
-          setLassoClosing(local.distanceTo(start) < closeThreshold);
+          setLassoClosing(hit.point.distanceTo(start) < closeThreshold);
         } else {
           setLassoClosing(false);
         }
-        // Snap preview: nearest local vertex to the cursor (where the next
-        // click will land). Cheap brute-force over vertices; only re-render
-        // when the snapped vertex actually changes.
+        // Snap preview: nearest vertex of the HIT TRIANGLE (not global search).
+        // This guarantees the snap point is on the surface under the cursor,
+        // eliminating "around the corner" false matches on organic models.
         const verts = meshData?.vertices;
-        if (verts) {
-          const sv = nearestVertexLocal(verts, local);
+        const faces = meshData?.faces;
+        if (verts && faces) {
+          const sv = snapToHitFaceVertex(verts, faces, hit);
           if (sv && (!lassoSnapRef.current || sv.distanceTo(lassoSnapRef.current) > 1e-6)) {
             lassoSnapRef.current = sv.clone();
             setLassoSnap(sv);
