@@ -386,8 +386,10 @@ function LassoOverlay({ points, preview, closing, dotSize, snap }: {
     segPos.push(last.x, last.y, last.z, preview.x, preview.y, preview.z);
   }
 
-  const dotPos: number[] = [];
-  for (const p of points) dotPos.push(p.x, p.y, p.z);
+  // All markers use the same sphere shape for visual consistency.
+  // Confirmed = solid blue spheres; start point = green (yellow when closing);
+  // snap preview = semi-transparent cyan (clearly "not yet placed").
+  const r = dotSize;
 
   return (
     <group>
@@ -399,26 +401,21 @@ function LassoOverlay({ points, preview, closing, dotSize, snap }: {
           <lineBasicMaterial color={closing ? 0xffff00 : 0x4a9eff} linewidth={2} depthTest={false} />
         </lineSegments>
       )}
-      {dotPos.length > 0 && (
-        <>
-          <points>
-            <bufferGeometry>
-              <bufferAttribute attach="attributes-position" args={[new Float32Array(dotPos), 3]} />
-            </bufferGeometry>
-            <pointsMaterial color={0x4a9eff} size={dotSize} sizeAttenuation depthTest={false} />
-          </points>
-          {/* Start point highlight — turns yellow when cursor is near to close */}
-          <mesh position={points[0]}>
-            <sphereGeometry args={[dotSize * 0.9, 12, 12]} />
-            <meshBasicMaterial color={closing ? 0xffff00 : 0x00ff88} depthTest={false} />
-          </mesh>
-        </>
-      )}
-      {/* Snap preview: the nearest vertex where the next click will land */}
+      {/* Confirmed selected points — uniform small spheres */}
+      {points.map((p, idx) => (
+        <mesh key={idx} position={p}>
+          <sphereGeometry args={[r, 10, 10]} />
+          <meshBasicMaterial
+            color={idx === 0 ? (closing ? 0xffff00 : 0x00ff88) : 0x4a9eff}
+            depthTest={false}
+          />
+        </mesh>
+      ))}
+      {/* Snap preview — semi-transparent cyan, clearly "not yet confirmed" */}
       {snap && (
         <mesh position={snap}>
-          <sphereGeometry args={[dotSize * 1.05, 14, 14]} />
-          <meshBasicMaterial color={0x00ffff} depthTest={false} />
+          <sphereGeometry args={[r * 1.1, 10, 10]} />
+          <meshBasicMaterial color={0x00ffff} transparent opacity={0.5} depthTest={false} />
         </mesh>
       )}
     </group>
@@ -472,7 +469,7 @@ function MeshDisplay() {
     const b = meshData?.bbox;
     if (!b) return 1.0;
     const dx = b.max[0] - b.min[0], dy = b.max[1] - b.min[1], dz = b.max[2] - b.min[2];
-    return Math.max(0.05, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0015);
+    return Math.max(0.03, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0008);
   }, [meshData?.bbox]);
 
   // Set canvas cursor based on active tool
