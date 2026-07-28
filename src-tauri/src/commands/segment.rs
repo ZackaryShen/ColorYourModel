@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use tauri::{Emitter, State};
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +5,10 @@ use crate::commands::mesh::AppState;
 use crate::mesh::loader::ProgressFn;
 use crate::mesh::model::Segment;
 use crate::segment::dihedral::segment_by_dihedral_angle;
-use crate::segment::manual::{finalize_manual_region as backend_finalize_manual_region, snap_point_to_vertex, MANUAL_SEGMENT_OFFSET};
+use crate::segment::manual::{
+    finalize_manual_region as backend_finalize_manual_region, undo_last_manual_region,
+    snap_point_to_vertex, MANUAL_SEGMENT_OFFSET,
+};
 use crate::segment::sdf::segment_by_sdf;
 
 /// Flatten per-face `[[r,g,b,a]; N]` into a flat `Vec<u8>` matching `MeshDataDto.faceColors`.
@@ -50,6 +51,9 @@ pub fn auto_segment(
     });
 
     let segments = segment_by_dihedral_angle(mesh, angle_threshold, &*progress_cb);
+    // Auto segmentation rewrites all labels; drop stale manual-region history
+    // so undo cannot restore pre-auto labels onto the new result.
+    mesh.manual_region_history.clear();
 
     // Emit completion
     let _ = app.emit(
@@ -149,51 +153,14 @@ pub fn finalize_segment(
         return Err(format!("Invalid manual segment label: {}", segment_label));
     }
 
-    // Count faces per label
-    let mut label_counts: HashMap<u32, u32> = HashMap::new();
-    for &label in &mesh.segment_labels {
-        *label_counts.entry(label).or_insert(0) += 1;
-    }
-
-    // Generate color for this segment
-    let color_seed = segment_label.wrapping_mul(2654435761) >> 24;
-    let seg_color: [u8; 4] = [
-        ((color_seed * 73) % 200 + 55) as u8,
-        ((color_seed * 151) % 200 + 55) as u8,
-        ((color_seed * 223) % 200 + 55) as u8,
-        255,
-    ];
-
-    // Build full segment list
-    let mut segments: Vec<Segment> = label_counts
-        .iter()
-        .map(|(&label, &count)| Segment {
-            id: label,
-            name: format!(
-                "Region {}",
-                if label >= MANUAL_SEGMENT_OFFSET {
-                    label - MANUAL_SEGMENT_OFFSET + 1
-                } else {
-                    label + 1
-                }
-            ),
-            color: if label >= MANUAL_SEGMENT_OFFSET {
-                Some(seg_color)
-            } else {
-                None
-            },
-            face_count: count,
-        })
-        .collect();
+    // Rebuild full segment metadata from current labels (single source of truth).
+    mesh.rebuild_segments();
+    let mut segments: Vec<Segment> = mesh.segments.values().cloned().collect();
     segments.sort_by_key(|s| s.id);
 
-    // Update mesh.segments as HashMap<u32, Segment>
-    mesh.segments = segments.iter().map(|s| (s.id, s.clone())).collect();
-
     log::info!(
-        "[cmd:finalize_segment] label={}, faces={}, total_segments={}",
+        "[cmd:finalize_segment] label={}, total_segments={}",
         segment_label,
-        label_counts.get(&segment_label).unwrap_or(&0),
         segments.len()
     );
 
@@ -266,6 +233,31 @@ pub fn finalize_manual_region(
     })
 }
 
+/// Undo the last finalized manual (lasso) region.
+///
+/// Restores affected faces to their pre-finalize state (which may itself be an
+/// earlier manual region) and returns the updated segment metadata so the
+/// frontend can repaint. Returns an error when there is nothing to undo.
+#[tauri::command]
+pub fn manual_region_undo(state: State<AppState>) -> Result<SegmentResult, String> {
+    log::info!("[cmd:manual_region_undo] invoked");
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+
+    match undo_last_manual_region(mesh) {
+        Some(label) => {
+            mesh.rebuild_segments();
+            log::info!("[cmd:manual_region_undo] reverted label={}", label);
+            Ok(SegmentResult {
+                segments: mesh.segments.values().cloned().collect(),
+                segment_labels: mesh.segment_labels.clone(),
+                face_colors: flatten_face_colors(&mesh.face_colors),
+            })
+        }
+        None => Err("No manual region to undo".into()),
+    }
+}
+
 /// Smart auto-segmentation via Shape Diameter Function (Tier 0).
 /// Produces semantic "parts" (thin vs thick) instead of the dihedral
 /// normal-only clusters. `k = 0` auto-estimates cluster count from SDF peaks.
@@ -284,6 +276,8 @@ pub fn auto_segment_smart(
         serde_json::json!({ "progress": 0.1, "stage": "Computing SDF..." }),
     );
     let segments = segment_by_sdf(mesh, k);
+    // Auto segmentation rewrites all labels; drop stale manual-region history.
+    mesh.manual_region_history.clear();
 
     let _ = app.emit(
         "segment-progress",

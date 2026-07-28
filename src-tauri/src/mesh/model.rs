@@ -19,6 +19,23 @@ pub struct Segment {
     pub face_count: u32,
 }
 
+/// One finalized manual (lasso) region, recorded for undo.
+///
+/// `faces` stores, per affected face, its pre-finalize `(segment_label,
+/// face_color)` so that undo restores the exact prior state. Because the prior
+/// state may itself be an earlier manual region, LIFO undo of overlapping
+/// regions stays consistent.
+pub struct ManualRegionSnapshot {
+    pub label: u32,
+    pub faces: Vec<(u32, u32, [u8; 4])>, // (face_id, prev_label, prev_color)
+}
+
+/// Label offset separating manual segments from auto-segment labels.
+/// Auto-segment uses labels 0..N; manual labels start at 100_000 so that
+/// re-running auto_segment after manual work never collides.
+/// Defined here (with `Segment`) and re-exported by `segment::manual`.
+pub const MANUAL_SEGMENT_OFFSET: u32 = 100_000;
+
 /// Main mesh data structure holding geometry, colors, segmentation, and spatial indices
 pub struct MeshModel {
     // Geometry
@@ -32,6 +49,9 @@ pub struct MeshModel {
     // Segmentation
     pub segment_labels: Vec<u32>,
     pub segments: HashMap<u32, Segment>,
+
+    // Manual-region (lasso) undo history — LIFO, populated by finalize_manual_region
+    pub manual_region_history: Vec<ManualRegionSnapshot>,
 
     // Spatial acceleration
     pub face_kdtree: kiddo::KdTree<f32, 3>,
@@ -66,6 +86,7 @@ impl MeshModel {
             face_colors: Vec::new(),
             segment_labels: Vec::new(),
             segments: HashMap::new(),
+            manual_region_history: Vec::new(),
             face_kdtree: kiddo::KdTree::new(),
             vertex_kdtree: kiddo::KdTree::new(),
             face_adjacency: UnGraph::default(),
@@ -249,6 +270,48 @@ impl MeshModel {
     /// Initialize default white colors for all faces
     pub fn init_default_colors(&mut self) {
         self.face_colors = vec![[255, 255, 255, 255]; self.faces.len()];
+    }
+
+    /// Rebuild `self.segments` (segment metadata) from current per-face labels.
+    ///
+    /// Single source of truth for segment naming/coloring, used by the
+    /// segmentation commands and by manual-region undo so the metadata always
+    /// reflects `segment_labels`.
+    pub fn rebuild_segments(&mut self) {
+        let mut label_counts: HashMap<u32, u32> = HashMap::new();
+        for &label in &self.segment_labels {
+            *label_counts.entry(label).or_insert(0) += 1;
+        }
+        let mut segments: Vec<Segment> = label_counts
+            .iter()
+            .map(|(&label, &count)| {
+                let color_seed = label.wrapping_mul(2654435761) >> 24;
+                Segment {
+                    id: label,
+                    name: format!(
+                        "Region {}",
+                        if label >= MANUAL_SEGMENT_OFFSET {
+                            label - MANUAL_SEGMENT_OFFSET + 1
+                        } else {
+                            label + 1
+                        }
+                    ),
+                    color: if label >= MANUAL_SEGMENT_OFFSET {
+                        Some([
+                            ((color_seed * 73) % 200 + 55) as u8,
+                            ((color_seed * 151) % 200 + 55) as u8,
+                            ((color_seed * 223) % 200 + 55) as u8,
+                            255,
+                        ])
+                    } else {
+                        None
+                    },
+                    face_count: count,
+                }
+            })
+            .collect();
+        segments.sort_by_key(|s| s.id);
+        self.segments = segments.iter().map(|s| (s.id, s.clone())).collect();
     }
 
     /// Convert to DTO for IPC transfer

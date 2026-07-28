@@ -4,7 +4,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use petgraph::visit::EdgeRef;
 
 use crate::mesh::kdtree::distance;
-use crate::mesh::model::MeshModel;
+use crate::mesh::model::{MeshModel, ManualRegionSnapshot};
 
 /// f32 wrapper implementing Ord (NaN treated as equal) so it can be used as a
 /// BinaryHeap key for Dijkstra. Plain f32 is not Ord, which makes
@@ -31,7 +31,8 @@ impl Ord for F32Ord {
 /// Label offset separating manual segments from auto-segment labels.
 /// Auto-segment uses labels 0..N; manual labels start at 100_000 so that
 /// re-running auto_segment after manual work never collides.
-pub const MANUAL_SEGMENT_OFFSET: u32 = 100_000;
+/// Re-exported from `mesh::model` (the single definition).
+pub use crate::mesh::model::MANUAL_SEGMENT_OFFSET;
 
 /// Snap a clicked 3D point to the nearest mesh vertex.
 /// Returns (vertex_index, snapped_position). This guarantees that when the user
@@ -237,10 +238,20 @@ pub fn finalize_manual_region(
         ((color_seed * 223) % 200 + 55) as u8,
         255,
     ];
+    // Record pre-finalize state for undo (faces may belong to an earlier region).
+    let mut snapshot = ManualRegionSnapshot {
+        label,
+        faces: Vec::with_capacity(region.len()),
+    };
+    for &f in &region {
+        let fi = f as usize;
+        snapshot.faces.push((f, mesh.segment_labels[fi], mesh.face_colors[fi]));
+    }
     for &f in &region {
         mesh.segment_labels[f as usize] = label;
         mesh.face_colors[f as usize] = color;
     }
+    mesh.manual_region_history.push(snapshot);
 
     log::info!(
         "[manual] region finalized: label={}, faces={}",
@@ -248,6 +259,22 @@ pub fn finalize_manual_region(
         region.len()
     );
     Ok((label, region))
+}
+
+/// Undo the most recently finalized manual (lasso) region.
+///
+/// Pops the LIFO `manual_region_history`, restores each affected face to its
+/// recorded prior `(segment_label, face_color)`, then rebuilds segment
+/// metadata from the restored labels. Returns `Some(label)` of the reverted
+/// region, or `None` when history is empty.
+pub fn undo_last_manual_region(mesh: &mut MeshModel) -> Option<u32> {
+    let snapshot = mesh.manual_region_history.pop()?;
+    for (face, prev_label, prev_color) in snapshot.faces {
+        mesh.segment_labels[face as usize] = prev_label;
+        mesh.face_colors[face as usize] = prev_color;
+    }
+    mesh.rebuild_segments();
+    Some(snapshot.label)
 }
 
 #[cfg(test)]
@@ -325,5 +352,56 @@ mod tests {
         let mut m = unit_cube();
         let r = finalize_manual_region(&mut m, &[[0.0, 0.0, 1.0], [1.0, 0.0, 1.0]]);
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn undo_restores_previous_state() {
+        let mut m = unit_cube();
+        let pts = [
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ];
+
+        // First finalize: faces go from default (label 0 / white) to L1.
+        let (l1, region1) = finalize_manual_region(&mut m, &pts).unwrap();
+        assert!(l1 >= MANUAL_SEGMENT_OFFSET);
+        let color_l1 = m.face_colors[region1[0] as usize];
+        for &f in &region1 {
+            assert_eq!(m.segment_labels[f as usize], l1);
+        }
+        assert_eq!(m.manual_region_history.len(), 1);
+
+        // Second finalize over the SAME faces → L2; prev state was L1.
+        let (l2, _region2) = finalize_manual_region(&mut m, &pts).unwrap();
+        assert_ne!(l1, l2);
+        let color_l2 = m.face_colors[region1[0] as usize];
+        for &f in &region1 {
+            assert_eq!(m.segment_labels[f as usize], l2);
+        }
+
+        // Undo once → back to L1 (layered restore), colors match L1 exactly.
+        let undone = undo_last_manual_region(&mut m).unwrap();
+        assert_eq!(undone, l2);
+        for &f in &region1 {
+            assert_eq!(m.segment_labels[f as usize], l1);
+            assert_eq!(m.face_colors[f as usize], color_l1);
+        }
+        assert!(m.segments.get(&l2).is_none());
+        assert!(m.segments.get(&l1).is_some());
+
+        // Undo again → back to default (label 0, white).
+        let undone2 = undo_last_manual_region(&mut m).unwrap();
+        assert_eq!(undone2, l1);
+        for &f in &region1 {
+            assert_eq!(m.segment_labels[f as usize], 0);
+            assert_eq!(m.face_colors[f as usize], [255, 255, 255, 255]);
+        }
+
+        // History drained; no manual segment remains.
+        assert!(m.manual_region_history.is_empty());
+        assert!(m.segments.get(&l1).is_none());
+        assert!(m.segments.get(&l2).is_none());
     }
 }
