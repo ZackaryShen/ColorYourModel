@@ -697,7 +697,9 @@ function MeshDisplay() {
       const hits = raycaster.intersectObject(meshRef.current, false);
       if (hits.length > 0) {
         const hit = hits[0];
-        const pos = hit.point.clone();
+        // Convert world hit point → geometry-local so it aligns with the mesh
+        // inside the rotated <group> where BrushCursor is rendered.
+        const pos = meshRef.current.worldToLocal(hit.point.clone());
         // Compute face normal from geometry
         const geo = meshRef.current.geometry;
         const idx = geo.index;
