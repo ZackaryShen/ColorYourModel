@@ -1003,6 +1003,12 @@ function MeshDisplay() {
     [meshData?.segments]
   );
 
+  // Singleton empty set to avoid reallocating on every render when there are no
+  // segments yet (e.g. between loadModel and autoSegment). Declared BEFORE
+  // giantSegmentIds because the latter's factory references it — moving it
+  // after would cause a Temporal Dead Zone crash (iteration 24 hotfix).
+  const emptySet = useMemo(() => new Set<number>(), []);
+
   // Giant segments whose hover would paint the entire model teal (iteration 23,
   // REFUTE B1/B2). Phase4 merge_small_regions_fast can roll 10k+ regions into
   // ~27 giants (avg 55k faces each). Hovering any of these floods the overlay —
@@ -1028,10 +1034,6 @@ function MeshDisplay() {
     const threshold = total * WHOLE_SEGMENT_MAX_SHARE;
     return new Set(segs.filter((s) => (s.faceCount ?? 0) > threshold && (s.id ?? 0) < MANUAL_SEGMENT_OFFSET).map((s) => s.id));
   }, [meshData?.segments, meshData?.faceCount]);
-
-  // Singleton empty set to avoid reallocating on every render when there are no
-  // segments yet (e.g. between loadModel and autoSegment).
-  const emptySet = useMemo(() => new Set<number>(), []);
 
   // Raycast to surface, convert world hit → model-local coords.
   // Group is rotated -PI/2 about X, so worldToLocal yields local = (x, -z, y).
