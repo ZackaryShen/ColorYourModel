@@ -829,12 +829,6 @@ function MeshDisplay() {
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
   const isPainting = useRef(false);
-  // Cooldown ref to prevent SegmentHighlight overlay from re-rendering
-  // immediately after a Fill operation. Without this, pointermove re-sets
-  // hoveredSegment on the very next frame → overlay darkens the fresh fill
-  // again, making it look black (iteration 26: iteration 25's one-shot
-  // setHoveredSegment(null) only cleared it for a single frame).
-  const fillJustCompletedRef = useRef(false);
   // Segment paint state: track current label + painted faces for dedup
   const currentSegLabelRef = useRef<number | null>(null);
   const segPaintedFacesRef = useRef<Set<number>>(new Set());
@@ -1169,14 +1163,10 @@ function MeshDisplay() {
         const result = await paintFace(faceId, opts);
         if (result) {
           updateFaceColors(result.updatedFaces, result.updatedColors);
-          // Prevent SegmentHighlight overlay from re-rendering on the next
-          // pointermove frame (iteration 26: iteration 25's one-shot
-          // setHoveredSegment(null) was immediately undone by raycast).
-          fillJustCompletedRef.current = true;
-          setTimeout(() => { fillJustCompletedRef.current = false; }, 300);
           const first5 = result.updatedFaces.slice(0, 5).join(",");
+          const state = useAppStore.getState();
           setLastPaintDebug(
-            `🖌 ${activeTool} face=${faceId} color=${JSON.stringify(useAppStore.getState().currentColor)} → ${result.updatedFaces.length} faces [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
+            `🖌 ${activeTool} face=${faceId} color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} → ${result.updatedFaces.length} faces [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
           );
         }
       }
@@ -1706,7 +1696,7 @@ function MeshDisplay() {
       {/* Paint view: highlight ONLY the segment under the cursor (near
           highlight). The just-created partition does NOT stay highlighted here —
           it lights up when you hover near it, which is the requested behavior. */}
-      {!segmentView && hoveredSegment !== null && meshData && edgeMap && facesBySeg && !fillJustCompletedRef.current && (
+      {!segmentView && hoveredSegment !== null && meshData && edgeMap && facesBySeg && (
         <>
           <SegmentHighlight meshData={meshData} selectedSegment={hoveredSegment} facesBySeg={facesBySeg} />
           <SegmentOutline meshData={meshData} selectedSegment={hoveredSegment} edgeMap={edgeMap} facesBySeg={facesBySeg} />

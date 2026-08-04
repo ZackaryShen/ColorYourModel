@@ -17,6 +17,10 @@ export function ColorPanel() {
 
   const hexColor = `#${currentColor[0].toString(16).padStart(2, "0")}${currentColor[1].toString(16).padStart(2, "0")}${currentColor[2].toString(16).padStart(2, "0")}`;
 
+  // Compute perceived brightness for UI contrast (ITU-R BT.709 luma)
+  const luma = (0.2126 * currentColor[0] + 0.7152 * currentColor[1] + 0.0722 * currentColor[2]) / 255;
+  const isDark = luma < 0.25;
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>{t("color.title")}</div>
@@ -25,8 +29,20 @@ export function ColorPanel() {
           style={{
             ...styles.preview,
             backgroundColor: hexColor,
+            borderColor: isDark ? "var(--accent, #4a9eff)" : "var(--border, #555555)",
+            borderWidth: isDark ? 2 : 1,
+            boxShadow: isDark ? "0 0 0 1px var(--bg-panel, #2d2d2d) inset" : "none",
           }}
+          title={`RGB(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`}
         />
+        <span style={{
+          fontSize: 11,
+          fontFamily: "monospace",
+          color: "var(--text-2, #aaaaaa)",
+          minWidth: 62,
+        }}>
+          {hexColor.toUpperCase()}
+        </span>
         <input
           type="color"
           value={hexColor}
