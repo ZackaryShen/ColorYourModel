@@ -3,16 +3,31 @@ import { useAppStore } from "../store/appStore";
 import { PaintResult, PaintTool } from "../types/mesh";
 import { log } from "../utils/logger";
 
+/** A clicked partition covering more than this share of the model is treated as
+ *  "the whole model", so filling it would be indistinguishable from flooding
+ *  everything. Above the threshold the fill degrades to a local, bounded blob
+ *  (iteration 18, Issue 1).
+ *
+ * Manual regions (lasso/segment brush) use a slightly more permissive 0.95
+ *  because the user explicitly drew them and expects Fill to cover the entire
+ *  drawn area (iteration 22 M6 guard: prevent one-click half-model flood while
+ *  still allowing large intentional regions). */
+const WHOLE_SEGMENT_MAX_SHARE = 0.8;
+const MANUAL_REGION_MAX_SHARE = 0.95;
+
+/// Labels >= this value are manually-created regions (lasso / freehand).
+/// These should ALWAYS be filled as whole partitions — the user explicitly
+/// drew them and expects fill to cover the entire region (iteration 21 fix).
+const MANUAL_SEGMENT_OFFSET = 100_000;
+
 export function usePaintTool() {
   const activeTool = useAppStore((s) => s.activeTool);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
   const brushFalloff = useAppStore((s) => s.brushFalloff);
   const currentColor = useAppStore((s) => s.currentColor);
-  const segmentView = useAppStore((s) => s.segmentView);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
-  const setSegmentView = useAppStore((s) => s.setSegmentView);
 
   const fillSegment = async (
     faceId: number
@@ -32,36 +47,92 @@ export function usePaintTool() {
         color: currentColor,
       });
       log.debug("usePaintTool", "fillSegment result", { faces: result.updatedFaces.length });
-      // Switch to paint view so user can see the fill result
-      setSegmentView(false);
-      setStatusMessage(`Filled segment ${segmentId} (${result.updatedFaces.length} faces)`);
+      // NOTE: we deliberately do NOT switch views here. The user clicked a
+      // partition to fill it in the CURRENT view (iteration 7, problem 3c3) —
+      // switching to paint view mid-click was the confusing part. The fill
+      // result is repainted in-place and the segment stays selected/highlighted.
+      setStatusMessage(`已填充分区 ${segmentId}（${result.updatedFaces.length} 个面）`);
       return result;
     } catch (e) {
       log.error("usePaintTool", "fillSegment failed", { segmentId, error: String(e) });
-      setStatusMessage(`Segment fill error: ${e}`);
+      setStatusMessage(`分区填充失败：${e}`);
       return null;
     }
   };
 
   const paintFace = async (
-    faceId: number
+    faceId: number,
+    opts?: { wholeRegion?: boolean }
   ): Promise<PaintResult | null> => {
-    // In segment view mode, fill the entire segment instead of normal paint
-    if (segmentView) {
-      return fillSegment(faceId);
-    }
-
     log.debug("usePaintTool", `paintFace(${faceId})`, { tool: activeTool, color: currentColor });
     try {
       let result: PaintResult;
 
       switch (activeTool) {
-        case PaintTool.Fill:
+        case PaintTool.Fill: {
+          // "智能区分" fill (iteration 18, Issue 1 — user-confirmed behaviour):
+          //   • model split into several REAL partitions and the clicked one is
+          //     not the whole model → fill that WHOLE partition;
+          //   • unsegmented, single-partition, or the clicked partition covers
+          //     (almost) the entire model → fall back to a LOCAL bounded fill of
+          //     radius `brushRadius`.
+          //
+          //   • MANUAL region (label >= MANUAL_SEGMENT_OFFSET, i.e. lasso/
+          //     freehand) → ALWAYS fill the whole partition, regardless of
+          //     share or realSegs count (iteration 21 fix: user explicitly drew
+          //     this region and expects fill to cover it entirely).
+          //
+          // The old guard (`segments.some(s => s.id === label)`) was always true
+          // because `auto_segment` emits a label-0 partition covering everything
+          // left over, so one click flooded the ENTIRE model (REFUTE M1). The
+          // reliable discriminator is the clicked partition's FACE SHARE, which
+          // maps directly onto the complaint "因为它是一个大分区".
+          const md = useAppStore.getState().meshData;
+          const label = md?.segmentLabels?.[faceId];
+          const segs = md?.segments ?? [];
+          const seg = label !== undefined ? segs.find((s) => s.id === label) : undefined;
+          const total = md?.faceCount ?? 0;
+
+          // `faceCount` comes from the backend DTO; fall back to an O(F) count
+          // only when it is missing/zero so a stale DTO cannot mis-route.
+          let segFaces = seg?.faceCount ?? 0;
+          if (seg && segFaces <= 0 && md) {
+            segFaces = 0;
+            for (let i = 0; i < md.segmentLabels.length; i++) {
+              if (md.segmentLabels[i] === seg.id) segFaces++;
+            }
+          }
+          const share = seg && total > 0 ? segFaces / total : 1;
+          const realSegs = segs.filter((s) => (s.faceCount ?? 0) > 0);
+          const isManualRegion = (label ?? 0) >= MANUAL_SEGMENT_OFFSET;
+
+          const fillWholeSegment =
+            !opts?.wholeRegion && !!seg && (
+              isManualRegion
+                ? share <= MANUAL_REGION_MAX_SHARE  // allow large intentional regions
+                : (realSegs.length > 1 && share <= WHOLE_SEGMENT_MAX_SHARE)
+            );
+
+          log.info("usePaintTool", "fill routing", {
+            faceId, label, segFaces, total,
+            share: +share.toFixed(3),
+            realSegs: realSegs.length,
+            isManualRegion,
+            mode: opts?.wholeRegion ? "whole-region" : fillWholeSegment ? "segment" : "local",
+          });
+
+          if (fillWholeSegment) {
+            return fillSegment(faceId);
+          }
+          // radius 0 → explicit whole-connected-region flood (Shift+click), the
+          // deliberate escape hatch kept for M3; otherwise a bounded local blob.
           result = await invoke<PaintResult>("fill_paint", {
             faceId,
             color: currentColor,
+            radius: opts?.wholeRegion ? 0 : brushRadius,
           });
           break;
+        }
 
         case PaintTool.Brush:
           result = await invoke<PaintResult>("brush_paint", {
