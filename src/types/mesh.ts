@@ -26,6 +26,7 @@ export interface PaintResult {
 }
 
 export enum PaintTool {
+  View = "view",
   Fill = "fill",
   Brush = "brush",
   Spray = "spray",
@@ -46,6 +47,15 @@ export interface ManualPointResult {
   vertexIndex: number;
   faceId: number;
   snapped: [number, number, number];
+}
+
+/// Immutable snapshot of per-face paint state for undo/redo.
+/// `faceColors` is RGBA bytes (4 per face); `segmentLabels` is one u32 per face.
+/// Stored as typed arrays to keep memory flat; serialized to plain number[]
+/// arrays when sent back to the backend.
+export interface PaintSnapshot {
+  faceColors: Uint8Array;
+  segmentLabels: Uint32Array;
 }
 
 export interface ColorEntry {
