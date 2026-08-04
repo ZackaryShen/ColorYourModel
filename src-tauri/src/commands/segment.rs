@@ -7,7 +7,7 @@ use crate::mesh::model::Segment;
 use crate::segment::dihedral::segment_by_dihedral_angle;
 use crate::segment::manual::{
     finalize_manual_region as backend_finalize_manual_region, undo_last_manual_region,
-    snap_point_to_vertex, MANUAL_SEGMENT_OFFSET,
+    snap_point_to_vertex_on_face, MANUAL_SEGMENT_OFFSET,
 };
 use crate::segment::sdf::segment_by_sdf;
 
@@ -180,18 +180,20 @@ pub struct ManualPointResult {
 }
 
 /// Snap a clicked 3D point (model-local coordinates) to the nearest mesh vertex.
-/// Frontend sends the point after inverse-transforming the world-space hit
-/// (group rotation -PI/2 X → local = (x, -z, y)). Used by the lasso manual
-/// segmentation tool for exact point selection + closure.
+/// `face_index` is the triangle hit by the raycaster; it lets the backend snap
+/// to the SAME-SIDE vertex (front shell) instead of a global nearest that could
+/// land on a back-face vertex through a thin mesh — see
+/// `segment::manual::snap_point_to_vertex_on_face`.
 #[tauri::command]
 pub fn manual_region_add_point(
     point: [f32; 3],
+    face_index: u32,
     state: State<AppState>,
 ) -> Result<ManualPointResult, String> {
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let (vi, snapped) = snap_point_to_vertex(mesh, &point)
+    let (vi, snapped) = snap_point_to_vertex_on_face(mesh, &point, face_index)
         .ok_or_else(|| "No vertex found near point".to_string())?;
     // Anchor face: the first face containing this vertex
     let face_id = mesh
@@ -212,13 +214,14 @@ pub fn manual_region_add_point(
 #[tauri::command]
 pub fn finalize_manual_region(
     points: Vec<[f32; 3]>,
+    face_indices: Vec<u32>,
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<SegmentResult, String> {
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let (_label, region) = backend_finalize_manual_region(mesh, &points)?;
+    let (_label, region) = backend_finalize_manual_region(mesh, &points, &face_indices)?;
 
     // Emit completion
     let _ = app.emit(
@@ -256,6 +259,56 @@ pub fn manual_region_undo(state: State<AppState>) -> Result<SegmentResult, Strin
         }
         None => Err("No manual region to undo".into()),
     }
+}
+
+/// Restore a previously snapshotted paint state (full per-face colors + labels).
+///
+/// Frontend undo/redo of painting ships the pre-stroke snapshot (faceColors +
+/// segmentLabels) captured before a stroke. We validate lengths against the
+/// live mesh, restore both arrays via `MeshModel::restore_paint_state` (which
+/// also rebuilds segment metadata so a reverted just-created region disappears),
+/// and return the updated result for a single repaint.
+#[tauri::command]
+pub fn restore_face_colors(
+    state: State<AppState>,
+    face_colors: Vec<u8>,
+    segment_labels: Vec<u32>,
+) -> Result<SegmentResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+
+    if face_colors.len() != mesh.face_colors.len() * 4 {
+        return Err(format!(
+            "face_colors length {} != expected {}",
+            face_colors.len(),
+            mesh.face_colors.len() * 4
+        ));
+    }
+    if segment_labels.len() != mesh.segment_labels.len() {
+        return Err(format!(
+            "segment_labels length {} != expected {}",
+            segment_labels.len(),
+            mesh.segment_labels.len()
+        ));
+    }
+
+    // Reassemble [u8;4] from the flattened Vec<u8>.
+    let mut restored: Vec<[u8; 4]> = Vec::with_capacity(face_colors.len() / 4);
+    for chunk in face_colors.chunks_exact(4) {
+        restored.push([chunk[0], chunk[1], chunk[2], chunk[3]]);
+    }
+    mesh.restore_paint_state(&restored, &segment_labels);
+
+    log::info!(
+        "[cmd:restore_face_colors] restored, segments={}",
+        mesh.segments.len()
+    );
+
+    Ok(SegmentResult {
+        segments: mesh.segments.values().cloned().collect(),
+        segment_labels: mesh.segment_labels.clone(),
+        face_colors: flatten_face_colors(&mesh.face_colors),
+    })
 }
 
 /// Smart auto-segmentation via Shape Diameter Function (Tier 0).

@@ -36,6 +36,37 @@ pub struct ManualRegionSnapshot {
 /// Defined here (with `Segment`) and re-exported by `segment::manual`.
 pub const MANUAL_SEGMENT_OFFSET: u32 = 100_000;
 
+/// Neutral mid grey applied to faces that have never been painted, and restored
+/// by the eraser.
+///
+/// Iteration 21: this used to be pure white. Once the 3D canvas started
+/// following the UI theme (`--bg-canvas` becomes #eef1f5 in light mode) a white
+/// model became unreadable on the light canvas.
+///
+/// Contrast audit across all four canvas/shading combinations (WCAG relative
+/// luminance; shaded values are computed in LINEAR space and re-encoded to sRGB,
+/// which is what three.js actually does — skipping that step understates the
+/// lit-surface brightness by ~40%):
+///
+/// | combination            | white #ffffff | grey #8a8a8a |
+/// |------------------------|---------------|--------------|
+/// | flat  + dark  #2a2a2a  | 14.35:1       | 4.16:1       |
+/// | flat  + light #eef1f5  |  1.06:1  BAD  | 3.05:1       |
+/// | shaded+ light lit face |  1.06:1  BAD  | 3.05:1       |
+/// | shaded+ light shadow   |  2.05:1       | 6.09:1       |
+/// | shaded+ dark  shadow   |  6.18:1       | 2.08:1       |
+///
+/// White fails twice (1.06:1 — the lit side of the model literally disappears
+/// into the light canvas). Grey's worst case is 2.08:1 on a fully back-lit face
+/// in dark mode, which is an intentionally dark region anyway, and in practice
+/// the −5,−5,−5 fill light lifts most of those faces above the ambient floor.
+/// Grey is therefore the better global compromise.
+///
+/// NOTE: this value is also what lands in an exported 3MF for untouched faces.
+/// No code path treats "is white" as "is unpainted", so changing it is safe
+/// (verified by grep over the whole backend, iteration 21).
+pub const DEFAULT_FACE_COLOR: [u8; 4] = [138, 138, 138, 255];
+
 /// Main mesh data structure holding geometry, colors, segmentation, and spatial indices
 pub struct MeshModel {
     // Geometry
@@ -126,6 +157,27 @@ impl MeshModel {
             (v0[1] + v1[1] + v2[1]) / 3.0,
             (v0[2] + v1[2] + v2[2]) / 3.0,
         ]
+    }
+
+    /// Unit normal of a face (right-hand rule over its 3 vertices).
+    /// Returns `[0,0,0]` for degenerate triangles so callers can skip them.
+    pub fn face_normal(&self, face_idx: u32) -> [f32; 3] {
+        let face = &self.faces[face_idx as usize];
+        let v0 = self.vertices[face[0] as usize];
+        let v1 = self.vertices[face[1] as usize];
+        let v2 = self.vertices[face[2] as usize];
+        let a = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+        let b = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+        let n = [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ];
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if len < 1e-12 {
+            return [0.0, 0.0, 0.0];
+        }
+        [n[0] / len, n[1] / len, n[2] / len]
     }
 
     /// Build KD-Tree from face centers
@@ -267,9 +319,9 @@ impl MeshModel {
         self.bbox = BoundingBox { min, max };
     }
 
-    /// Initialize default white colors for all faces
+    /// Initialize every face to `DEFAULT_FACE_COLOR` (neutral mid grey).
     pub fn init_default_colors(&mut self) {
-        self.face_colors = vec![[255, 255, 255, 255]; self.faces.len()];
+        self.face_colors = vec![DEFAULT_FACE_COLOR; self.faces.len()];
     }
 
     /// Rebuild `self.segments` (segment metadata) from current per-face labels.
@@ -312,6 +364,25 @@ impl MeshModel {
             .collect();
         segments.sort_by_key(|s| s.id);
         self.segments = segments.iter().map(|s| (s.id, s.clone())).collect();
+    }
+
+    /// Restore a previously snapshotted paint state (full per-face colors +
+    /// labels) and rebuild segment metadata. Lengths must match `faces.len()`.
+    ///
+    /// Single entry point for paint undo/redo: the frontend ships a snapshot
+    /// taken before a stroke; calling this reverts `face_colors` / `segment_labels`
+    /// and lets `rebuild_segments` drop any segment that the reverted stroke had
+    /// just created (its faces fall to 0 → not in `label_counts`).
+    pub fn restore_paint_state(
+        &mut self,
+        face_colors: &[[u8; 4]],
+        segment_labels: &[u32],
+    ) {
+        assert_eq!(face_colors.len(), self.faces.len());
+        assert_eq!(segment_labels.len(), self.faces.len());
+        self.face_colors = face_colors.to_vec();
+        self.segment_labels = segment_labels.to_vec();
+        self.rebuild_segments();
     }
 
     /// Convert to DTO for IPC transfer

@@ -4,6 +4,7 @@ use tauri::State;
 use crate::commands::mesh::AppState;
 use crate::mesh::face_colors::mix_color;
 use crate::mesh::kdtree::distance;
+use crate::mesh::model::DEFAULT_FACE_COLOR;
 use crate::paint::brush::{brush_hit, falloff_strength};
 use crate::paint::fill::{fill_region, fill_segment};
 use crate::paint::smart_snap::smart_brush_hit;
@@ -34,6 +35,16 @@ pub fn brush_paint(
         center_face, radius, color
     );
 
+    // [DIAG-B] Log vertex indices for cross-check with frontend [DIAG-A]
+    if (center_face as usize) < mesh.faces.len() {
+        let f = &mesh.faces[center_face as usize];
+        log::info!("[DIAG-B] center_face={} verts=[{},{},{}] face_colors_len={}",
+            center_face, f[0], f[1], f[2], mesh.face_colors.len());
+    } else {
+        log::error!("[DIAG-B] center_face={} OUT OF RANGE (faces.len={})",
+            center_face, mesh.faces.len());
+    }
+
     let hits = brush_hit(mesh, center_face, radius);
     let center = mesh.face_center(center_face);
     let mut updated_faces = Vec::new();
@@ -58,14 +69,42 @@ pub fn brush_paint(
 pub fn fill_paint(
     face_id: u32,
     color: [u8; 4],
+    radius: f32,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    log::info!("[cmd:fill_paint] face_id={}, color={:?}", face_id, color);
+    log::info!(
+        "[cmd:fill_paint] face_id={}, color={:?}, radius={:.2}",
+        face_id, color, radius
+    );
 
-    let faces = fill_region(mesh, face_id, color);
+    // radius > 0 → LOCAL fill: a bounded blob of faces within `radius` of the
+    // clicked face center (kdtree query, O(k), no flood-fill). This is the
+    // "智能区分" local-fill path: a single/whole-model partition or unsegmented
+    // model no longer floods the ENTIRE model (iteration 18, Issue 1). radius == 0
+    // (legacy / backwards-compat) → whole connected-component flood_fill.
+    let faces = if radius > 0.0 {
+        let center = mesh.face_center(face_id);
+        let cand = mesh.faces_within_radius(&center, radius);
+        let mut local = Vec::new();
+        for fid in cand {
+            if distance(&center, &mesh.face_center(fid)) < radius {
+                local.push(fid);
+            }
+        }
+        // Commit to the authoritative backend paint state. `fill_region` does
+        // this internally; the local branch must do it explicitly, otherwise the
+        // fill would exist only on the GPU and in the frontend store — and 3MF
+        // export / undo-restore would silently lose it.
+        for &fid in &local {
+            mesh.face_colors[fid as usize] = color;
+        }
+        local
+    } else {
+        fill_region(mesh, face_id, color)
+    };
     let colors = vec![color; faces.len()];
 
     Ok(PaintResult {
@@ -144,14 +183,16 @@ pub fn erase_paint(
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     let hits = brush_hit(mesh, center_face, radius);
-    let white = [255u8, 255, 255, 255];
+    // Iteration 21: the eraser restores DEFAULT_FACE_COLOR, not literal white,
+    // so erased faces match never-painted ones on both canvas themes.
+    let default_color = DEFAULT_FACE_COLOR;
     let mut updated_faces = Vec::new();
     let mut updated_colors = Vec::new();
 
     for fid in hits {
-        mesh.face_colors[fid as usize] = white;
+        mesh.face_colors[fid as usize] = default_color;
         updated_faces.push(fid);
-        updated_colors.push(white);
+        updated_colors.push(default_color);
     }
 
     Ok(PaintResult {
