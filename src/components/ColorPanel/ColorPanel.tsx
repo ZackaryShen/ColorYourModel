@@ -50,10 +50,11 @@ export function ColorPanel() {
               onClick={() =>
                 setCurrentColor([entry.color[0], entry.color[1], entry.color[2], 255])
               }
+              className="cym-btn"
               style={{
                 ...styles.swatch,
                 backgroundColor: hex,
-                border: isActive ? "2px solid #4a9eff" : "1px solid #555",
+                border: isActive ? "2px solid var(--accent, #4a9eff)" : "1px solid var(--border, #555555)",
               }}
             />
           );
@@ -66,17 +67,17 @@ export function ColorPanel() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     padding: 10,
-    background: "#2d2d2d",
+    background: "var(--bg-panel, #2d2d2d)",
     borderRadius: 8,
   },
   header: {
-    color: "#ddd",
+    color: "var(--text-1, #dddddd)",
     fontSize: 14,
     fontWeight: 600,
     marginBottom: 8,
   },
   subheader: {
-    color: "#aaa",
+    color: "var(--text-2, #aaaaaa)",
     fontSize: 12,
     marginTop: 8,
     marginBottom: 4,
@@ -90,7 +91,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 32,
     height: 32,
     borderRadius: 6,
-    border: "1px solid #555",
+    border: "1px solid var(--border, #555555)",
   },
   colorInput: {
     width: 40,

@@ -5,6 +5,37 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ColorYourModel</title>
+    <!-- B2 (iteration 21): resolve the theme BEFORE first paint.
+         React writes <html data-theme> from a useEffect, which only runs after
+         the first paint. With a dark-only 3D canvas that produced a barely
+         visible border flash; now that --bg-canvas follows the theme it would
+         flash the ENTIRE window. Reading storage here removes the FOUC.
+         Precedence: cym-prefs (zustand persist) → cym-theme (legacy key) →
+         OS preference → dark. Any failure degrades to dark, which is also the
+         bare :root fallback in theme.css. -->
+    <script>
+      (function () {
+        var t = null;
+        try {
+          var raw = localStorage.getItem("cym-prefs");
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            var s = parsed && parsed.state;
+            if (s && (s.theme === "light" || s.theme === "dark")) t = s.theme;
+          }
+          if (!t) {
+            var legacy = localStorage.getItem("cym-theme");
+            if (legacy === "light" || legacy === "dark") t = legacy;
+          }
+          if (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+            t = "light";
+          }
+        } catch (e) {
+          /* storage or JSON unavailable — fall through to dark */
+        }
+        document.documentElement.setAttribute("data-theme", t || "dark");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

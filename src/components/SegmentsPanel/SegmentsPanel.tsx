@@ -55,17 +55,17 @@ export function SegmentsPanel() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     padding: 10,
-    background: "#2d2d2d",
+    background: "var(--bg-panel, #2d2d2d)",
     borderRadius: 8,
   },
   header: {
-    color: "#ddd",
+    color: "var(--text-1, #dddddd)",
     fontSize: 14,
     fontWeight: 600,
     marginBottom: 8,
   },
   empty: {
-    color: "#888",
+    color: "var(--text-3, #888888)",
     fontSize: 12,
     fontStyle: "italic",
   },
@@ -83,11 +83,11 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "4px 8px",
     borderRadius: 4,
     cursor: "pointer",
-    color: "#ccc",
+    color: "var(--text-1, #cccccc)",
     fontSize: 13,
   },
   itemActive: {
-    background: "#3a5a7a",
+    background: "var(--bg-active, #3a5a7a)",
   },
   colorDot: {
     width: 10,
@@ -99,7 +99,7 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
   },
   itemCount: {
-    color: "#888",
+    color: "var(--text-3, #888888)",
     fontSize: 11,
   },
 };

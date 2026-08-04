@@ -8,6 +8,7 @@ import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 
 const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
+  { tool: PaintTool.View, icon: "🖐️", i18nKey: "tool.view" },
   { tool: PaintTool.Fill, icon: "🪣", i18nKey: "tool.fill" },
   { tool: PaintTool.Brush, icon: "🖌️", i18nKey: "tool.brush" },
   { tool: PaintTool.Spray, icon: "💨", i18nKey: "tool.spray" },
@@ -102,12 +103,13 @@ export function Toolbar() {
   return (
     <div style={styles.container}>
       <div style={styles.section}>
-        <button onClick={handleImport} disabled={isLoading} style={styles.button} title={t("toolbar.import")}>
+        <button onClick={handleImport} disabled={isLoading} className="cym-btn" style={styles.button} title={t("toolbar.import")}>
           {isLoading ? "..." : "📂"}
         </button>
         <button
           onClick={handleExport}
           disabled={!isLoaded}
+          className="cym-btn"
           style={styles.button}
           title={t("toolbar.export")}
         >
@@ -132,6 +134,7 @@ export function Toolbar() {
             <button
               key={item.tool}
               onClick={() => setActiveTool(item.tool)}
+              className="cym-btn"
               style={{
                 ...styles.toolButton,
                 ...(activeTool === item.tool ? styles.toolActive : {}),
@@ -150,6 +153,7 @@ export function Toolbar() {
         <button
           onClick={handleSmartSegment}
           disabled={!isLoaded}
+          className="cym-btn"
           style={styles.button}
           title={t("toolbar.smartSegment")}
         >
@@ -158,6 +162,7 @@ export function Toolbar() {
         <button
           onClick={handleSegment}
           disabled={!isLoaded}
+          className="cym-btn"
           style={styles.button}
           title={t("toolbar.reSegment")}
         >
@@ -174,7 +179,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 4,
     padding: 8,
-    background: "#2d2d2d",
+    background: "var(--bg-panel, #2d2d2d)",
     borderRadius: 8,
     minWidth: 56,
     alignItems: "center",
@@ -188,8 +193,8 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "6px 8px",
     border: "none",
     borderRadius: 6,
-    background: "#444",
-    color: "#eee",
+    background: "var(--bg-hover, #444444)",
+    color: "var(--text-1, #eeeeee)",
     cursor: "pointer",
     fontSize: 13,
     whiteSpace: "nowrap" as const,
@@ -199,8 +204,8 @@ const styles: Record<string, React.CSSProperties> = {
     height: 40,
     border: "2px solid transparent",
     borderRadius: 8,
-    background: "#3a3a3a",
-    color: "#eee",
+    background: "var(--bg-elevated, #3a3a3a)",
+    color: "var(--text-1, #eeeeee)",
     cursor: "pointer",
     fontSize: 18,
     display: "flex",
@@ -208,13 +213,13 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
   },
   toolActive: {
-    borderColor: "#4a9eff",
-    background: "#3a5a7a",
+    borderColor: "var(--accent, #4a9eff)",
+    background: "var(--bg-active, #3a5a7a)",
   },
   divider: {
     width: "80%",
     height: 1,
-    background: "#555",
+    background: "var(--border, #555555)",
     margin: "4px 0",
   },
 };

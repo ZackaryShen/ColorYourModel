@@ -22,12 +22,13 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolbar.startImport": { zh: "开始导入…", en: "Starting import…" },
 
   // Toolbar — tool tooltips (differentiated descriptions)
+  "tool.view": { zh: "🖐️ 查看/导航 — 左键旋转、右键平移、中键缩放；选工具后按住 Alt 也可旋转", en: "🖐️ View / Navigate — left rotate, right pan, middle zoom; hold Alt to rotate while a tool is active" },
   "tool.fill": { zh: "🪣 填充 — 点击任意面，一键填满整个分区", en: "🪣 Fill — click any face to fill entire connected region" },
   "tool.brush": { zh: "🖌️ 画笔 — 平滑连续涂色，边缘渐变过渡", en: "🖌️ Brush — smooth continuous paint with edge falloff" },
   "tool.spray": { zh: "💨 喷罐 — 随机散点喷涂，模拟真实喷漆颗粒感", en: "💨 Spray — random scatter dots, simulates real spray-can texture" },
   "tool.smart": { zh: "🎯 智能笔 — 自动识别分区边界，不会涂出区域", en: "🎯 Smart — segment-aware, stays within region boundary" },
   "tool.eyedropper": { zh: "💧 吸管 — 从模型表面拾取颜色", en: "💧 Eyedropper — pick color from model surface" },
-  "tool.eraser": { zh: "🧹 橡皮 — 擦除颜色，恢复为白色", en: "🧹 Eraser — restore to original white" },
+  "tool.eraser": { zh: "🧹 橡皮 — 擦除颜色，恢复为默认底色", en: "🧹 Eraser — restore the default base color" },
   "tool.segment": { zh: "✂️ 分区画笔 — 拖拽涂选面，松开鼠标创建分区", en: "✂️ Segment Brush — drag to paint faces, release to create region" },
   "tool.lasso": { zh: "📍 选点套索 — 依次点选顶点围合区域，点击起点闭合", en: "📍 Lasso — click vertices to outline a region; click the start point to close" },
 
@@ -39,6 +40,9 @@ const dict: Record<string, Record<Lang, string>> = {
   "brush.smooth": { zh: "平滑", en: "Smooth" },
   "brush.linear": { zh: "线性", en: "Linear" },
   "brush.step": { zh: "阶梯", en: "Step" },
+  "shading.mode": { zh: "着色模式", en: "Shading Mode" },
+  "shading.flat": { zh: "🎯 平整色（精确）", en: "🎯 Flat (exact color)" },
+  "shading.shaded": { zh: "💡 有光影（有形体）", en: "💡 Shaded (3D shape)" },
 
   // ColorPanel
   "color.title": { zh: "颜色", en: "Color" },
@@ -49,9 +53,9 @@ const dict: Record<string, Record<Lang, string>> = {
   "segments.empty": { zh: "暂无分区，请先导入模型", en: "No segments yet. Import a model first." },
 
   // Viewport — ControlsHelp
-  "controls.leftPaint": { zh: "🖱️ 左键: 涂色", en: "🖱️ Left: Paint" },
-  "controls.rightRotate": { zh: "🔄 右键+拖: 旋转", en: "🔄 Right+Drag: Rotate" },
-  "controls.middlePan": { zh: "✋ 中键+拖 / Space+左键: 平移", en: "✋ Middle+Drag / Space+Left: Pan" },
+  "controls.leftPaint": { zh: "🖱️ 左键: 旋转(查看) / Alt+左键: 旋转", en: "🖱️ Left: Rotate (View) / Alt+Left: Rotate" },
+  "controls.rightRotate": { zh: "🔄 右键+拖: 平移", en: "🔄 Right+Drag: Pan" },
+  "controls.middlePan": { zh: "✋ 中键+拖: 缩放", en: "✋ Middle+Drag: Zoom" },
   "controls.scrollZoom": { zh: "🔍 滚轮: 缩放", en: "🔍 Scroll: Zoom" },
 
   // Viewport — SegmentToggle
@@ -67,12 +71,17 @@ const dict: Record<string, Record<Lang, string>> = {
   // StatusBar
   "status.tool": { zh: "工具", en: "Tool" },
   "status.faces": { zh: "面数", en: "Faces" },
-  "status.tip": { zh: "右键: 旋转 | 中键: 平移 | 滚轮: 缩放", en: "Right-click: Rotate | Middle: Pan | Scroll: Zoom" },
+  "status.tip": { zh: "左键: 旋转(查看) | 右键: 平移 | 中键: 缩放 | 滚轮: 缩放 | Alt+左键: 旋转", en: "Left: Rotate (View) | Right: Pan | Middle: Zoom | Scroll: Zoom | Alt+Left: Rotate" },
   "status.ready": { zh: "就绪", en: "Ready" },
   "status.loaded": { zh: "已加载 {0} 个面", en: "Loaded {0} faces" },
 
   // Language
   "lang.switch": { zh: "EN", en: "中" },
+
+  // Theme (iteration 20)
+  "theme.toggle": { zh: "切换深浅色", en: "Toggle theme" },
+  "theme.dark": { zh: "🌙 深色", en: "🌙 Dark" },
+  "theme.light": { zh: "☀️ 浅色", en: "☀️ Light" },
 };
 
 // ─── Hook: returns translation function ──────────────────────────
