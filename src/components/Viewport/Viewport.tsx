@@ -1162,11 +1162,11 @@ function MeshDisplay() {
       } else {
         const result = await paintFace(faceId, opts);
         if (result) {
-          updateFaceColors(result.updatedFaces, result.updatedColors);
+          const gpu = updateFaceColors(result.updatedFaces, result.updatedColors);
           const first5 = result.updatedFaces.slice(0, 5).join(",");
           const state = useAppStore.getState();
           setLastPaintDebug(
-            `🖌 ${activeTool} face=${faceId} color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} → ${result.updatedFaces.length} faces [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
+            `🖌 ${activeTool} face=${faceId} color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} gpu=${gpu} → ${result.updatedFaces.length} faces [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
           );
         }
       }
@@ -1847,10 +1847,9 @@ const debugStyles: Record<string, React.CSSProperties> = {
     fontFamily: "ui-monospace, Menlo, Consolas, monospace",
     zIndex: 6,
     pointerEvents: "none",
-    maxWidth: 380,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
+    maxWidth: 520,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-all",
   },
 };
 

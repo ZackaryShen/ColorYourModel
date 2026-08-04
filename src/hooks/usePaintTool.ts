@@ -51,7 +51,14 @@ export function usePaintTool() {
       // partition to fill it in the CURRENT view (iteration 7, problem 3c3) —
       // switching to paint view mid-click was the confusing part. The fill
       // result is repainted in-place and the segment stays selected/highlighted.
-      setStatusMessage(`已填充分区 ${segmentId}（${result.updatedFaces.length} 个面）`);
+      // Show the actual fill color (hex) in the status bar (iteration 28): the
+      // dominant cause of "fill turns black" is a black currentColor (AMS
+      // palette #2 / persisted from a previous session), which the user often
+      // doesn't notice is selected. Making it explicit on every fill removes
+      // the ambiguity without a warning toast (black is a legitimate AMS color).
+      const c = useAppStore.getState().currentColor;
+      const hex = `#${c[0].toString(16).padStart(2, "0")}${c[1].toString(16).padStart(2, "0")}${c[2].toString(16).padStart(2, "0")}`.toUpperCase();
+      setStatusMessage(`已填充分区 ${segmentId}（${result.updatedFaces.length} 个面）颜色 ${hex}`);
       return result;
     } catch (e) {
       log.error("usePaintTool", "fillSegment failed", { segmentId, error: String(e) });

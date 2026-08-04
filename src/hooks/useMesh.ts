@@ -222,6 +222,21 @@ export function useMesh() {
         colorAttr.addUpdateRange(vMin * 3, (vMax - vMin + 1) * 3);
       }
       colorAttr.needsUpdate = true;
+
+      // Iteration 28 diagnostic: read back the GPU buffer at the FIRST updated
+      // face to confirm the write actually landed. Pure black on screen with a
+      // non-black readback would mean the data is correct but something in the
+      // render/tonemapping path hides it; a black readback means the color
+      // source itself was ~0 (i.e. currentColor was black). This is the only
+      // information that can disambiguate the two without devtools.
+      if (updatedFaces.length > 0) {
+        const f0 = updatedFaces[0];
+        const r0 = colorAttr.array[f0 * 9];
+        const g0 = colorAttr.array[f0 * 9 + 1];
+        const b0 = colorAttr.array[f0 * 9 + 2];
+        return `#${Math.round(r0 * 255).toString(16).padStart(2, "0")}${Math.round(g0 * 255).toString(16).padStart(2, "0")}${Math.round(b0 * 255).toString(16).padStart(2, "0")}`.toUpperCase();
+      }
+      return null;
     },
     []
   );
