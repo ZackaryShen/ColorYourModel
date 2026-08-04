@@ -690,7 +690,10 @@ function nearestVertexLocalOnFace(
     }
   }
 
-  const cosThresh = Math.cos((50 * Math.PI) / 180);
+  // Same-side normal threshold for lasso vertex snap (must match
+  // backend manual.rs snap_point_to_vertex_on_face).  60° (was 50°) —
+  // covers cube-corner case arccos(1/√3)≈54.74° with margin.
+  const SNAP_COS_THRESH = Math.cos((60 * Math.PI) / 180);
   const fnx = faceNormal.x, fny = faceNormal.y, fnz = faceNormal.z;
 
   // Pick nearest same-side from a candidate list → (pos, sqDist) or null
@@ -698,7 +701,7 @@ function nearestVertexLocalOnFace(
     let best: THREE.Vector3 | null = null; let bestSq = Infinity;
     for (const vi of cands) {
       const nx = vertexNormals[vi*3], ny = vertexNormals[vi*3+1], nz = vertexNormals[vi*3+2];
-      if (nx*fnx + ny*fny + nz*fnz < cosThresh) continue;
+      if (nx*fnx + ny*fny + nz*fnz < SNAP_COS_THRESH) continue;
       const dx = vertices[vi*3] - p.x, dy = vertices[vi*3+1] - p.y, dz = vertices[vi*3+2] - p.z;
       const sq = dx*dx + dy*dy + dz*dz;
       if (sq < bestSq) { bestSq = sq; best = new THREE.Vector3(vertices[vi*3], vertices[vi*3+1], vertices[vi*3+2]); }
@@ -826,6 +829,12 @@ function MeshDisplay() {
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
   const isPainting = useRef(false);
+  // Cooldown ref to prevent SegmentHighlight overlay from re-rendering
+  // immediately after a Fill operation. Without this, pointermove re-sets
+  // hoveredSegment on the very next frame → overlay darkens the fresh fill
+  // again, making it look black (iteration 26: iteration 25's one-shot
+  // setHoveredSegment(null) only cleared it for a single frame).
+  const fillJustCompletedRef = useRef(false);
   // Segment paint state: track current label + painted faces for dedup
   const currentSegLabelRef = useRef<number | null>(null);
   const segPaintedFacesRef = useRef<Set<number>>(new Set());
@@ -1160,20 +1169,19 @@ function MeshDisplay() {
         const result = await paintFace(faceId, opts);
         if (result) {
           updateFaceColors(result.updatedFaces, result.updatedColors);
-          // Clear hover immediately after Fill to prevent SegmentHighlight
-          // overlay (depthTest=false + DoubleSide + opacity=0.35) from
-          // darkening the just-filled area — the cursor is still over the
-          // face so hoveredSegment would re-match and render the overlay on
-          // top of the fresh color, making it look black (iteration 25).
-          setHoveredSegment(null);
+          // Prevent SegmentHighlight overlay from re-rendering on the next
+          // pointermove frame (iteration 26: iteration 25's one-shot
+          // setHoveredSegment(null) was immediately undone by raycast).
+          fillJustCompletedRef.current = true;
+          setTimeout(() => { fillJustCompletedRef.current = false; }, 300);
           const first5 = result.updatedFaces.slice(0, 5).join(",");
           setLastPaintDebug(
-            `🖌 ${activeTool} face=${faceId} → 涂色 ${result.updatedFaces.length} 个面 [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
+            `🖌 ${activeTool} face=${faceId} color=${JSON.stringify(useAppStore.getState().currentColor)} → ${result.updatedFaces.length} faces [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
           );
         }
       }
     },
-    [paintFace, paintSegmentFace, updateFaceColors, isSegmentTool, activeTool, setLastPaintDebug, setHoveredSegment]
+    [paintFace, paintSegmentFace, updateFaceColors, isSegmentTool, activeTool, setLastPaintDebug]
   );
 
   const pick = useFacePicker(meshRef, handleFacePicked);
@@ -1698,7 +1706,7 @@ function MeshDisplay() {
       {/* Paint view: highlight ONLY the segment under the cursor (near
           highlight). The just-created partition does NOT stay highlighted here —
           it lights up when you hover near it, which is the requested behavior. */}
-      {!segmentView && hoveredSegment !== null && meshData && edgeMap && facesBySeg && (
+      {!segmentView && hoveredSegment !== null && meshData && edgeMap && facesBySeg && !fillJustCompletedRef.current && (
         <>
           <SegmentHighlight meshData={meshData} selectedSegment={hoveredSegment} facesBySeg={facesBySeg} />
           <SegmentOutline meshData={meshData} selectedSegment={hoveredSegment} edgeMap={edgeMap} facesBySeg={facesBySeg} />

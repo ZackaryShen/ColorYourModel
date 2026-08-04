@@ -83,7 +83,13 @@ pub fn snap_point_to_vertex_on_face(
         .max(sq_dist(&mesh.vertices[hit_face[2] as usize], &mesh.vertices[hit_face[0] as usize]))
         * k * k;
 
-    let cos_thresh = (50.0f32).to_radians().cos();
+    // Same-side normal threshold: 60° (was 50° in iteration <26).
+    // arccos(1/√3) ≈ 54.74° is the vertex-normal / face-normal angle at
+    // a cube corner (3 orthogonal faces).  50° rejected these legitimate
+    // ridge/feature vertices, causing "yellow dot" (unpickable) near sharp
+    // edges.  60° covers the cube-corner case with ~5° margin while still
+    // excluding >60° extreme folds that would snap across thin walls.
+    let cos_thresh = (60.0f32).to_radians().cos();
     let p = *point;
 
     // ── Build candidate sets ──────────────────────────────────────
