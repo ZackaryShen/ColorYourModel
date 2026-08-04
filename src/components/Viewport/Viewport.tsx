@@ -1160,6 +1160,12 @@ function MeshDisplay() {
         const result = await paintFace(faceId, opts);
         if (result) {
           updateFaceColors(result.updatedFaces, result.updatedColors);
+          // Clear hover immediately after Fill to prevent SegmentHighlight
+          // overlay (depthTest=false + DoubleSide + opacity=0.35) from
+          // darkening the just-filled area — the cursor is still over the
+          // face so hoveredSegment would re-match and render the overlay on
+          // top of the fresh color, making it look black (iteration 25).
+          setHoveredSegment(null);
           const first5 = result.updatedFaces.slice(0, 5).join(",");
           setLastPaintDebug(
             `🖌 ${activeTool} face=${faceId} → 涂色 ${result.updatedFaces.length} 个面 [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
@@ -1167,7 +1173,7 @@ function MeshDisplay() {
         }
       }
     },
-    [paintFace, paintSegmentFace, updateFaceColors, isSegmentTool, activeTool, setLastPaintDebug]
+    [paintFace, paintSegmentFace, updateFaceColors, isSegmentTool, activeTool, setLastPaintDebug, setHoveredSegment]
   );
 
   const pick = useFacePicker(meshRef, handleFacePicked);
