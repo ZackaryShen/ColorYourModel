@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useAppStore } from "../../store/appStore";
 import { useMesh } from "../../hooks/useMesh";
-import { usePaintTool } from "../../hooks/usePaintTool";
+import { usePaintTool, WHOLE_SEGMENT_MAX_SHARE, MANUAL_SEGMENT_OFFSET } from "../../hooks/usePaintTool";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
@@ -966,11 +966,20 @@ function MeshDisplay() {
   // non-null, so a brief null window (until the effect runs, post-paint) is
   // harmless.
   const [edgeMap, setEdgeMap] = useState<{ map: Map<number, number[]>; vmax: number } | null>(null);
-  const [facesBySeg, setFacesBySeg] = useState<Map<number, number[]> | null>(null);
   const [vertexData, setVertexData] = useState<{
     vertexFaces: Map<number, number[]>;
     vertexNormals: Float32Array;
   } | null>(null);
+
+  // facesBySeg as synchronous derived value (iteration 23, REFUTE B11). Was
+  // useState + useEffect which lagged one commit behind meshData — causing
+  // SegmentHighlight to flash off/on when a new region was finalized (the
+  // effect hadn't run yet so facesBySeg.get(newLabel) returned undefined).
+  // useMemo eliminates that frame delay.
+  const facesBySeg = useMemo((): Map<number, number[]> | null => {
+    if (!meshData) return null;
+    return buildFacesBySegment(meshData);
+  }, [meshData?.faces, meshData?.segmentLabels]);
 
   // edgeMap + vertexData depend only on geometry (faces/vertices), NOT labels —
   // they stay stable across selection / label toggles and only rebuild on a new
@@ -985,16 +994,6 @@ function MeshDisplay() {
     setVertexData(buildVertexData(meshData));
   }, [meshData?.faces, meshData?.vertices]);
 
-  // facesBySeg depends on geometry + labels; it rebuilds only when a region is
-  // finalized (label change), never on plain selection toggles.
-  useEffect(() => {
-    if (!meshData) {
-      setFacesBySeg(null);
-      return;
-    }
-    setFacesBySeg(buildFacesBySegment(meshData));
-  }, [meshData?.faces, meshData?.segmentLabels]);
-
   // Set of valid segment ids (membership test). Used to decide whether the face
   // under the cursor / clicked for Fill belongs to a real partition. CRITICAL:
   // auto_segment compresses labels to 0..K, so label 0 is a REAL segment — the
@@ -1003,6 +1002,36 @@ function MeshDisplay() {
     () => new Set((meshData?.segments ?? []).map((s) => s.id)),
     [meshData?.segments]
   );
+
+  // Giant segments whose hover would paint the entire model teal (iteration 23,
+  // REFUTE B1/B2). Phase4 merge_small_regions_fast can roll 10k+ regions into
+  // ~27 giants (avg 55k faces each). Hovering any of these floods the overlay —
+  // visually identical to "the whole model is highlighted". Fill already guards
+  // against this (usePaintTool: realSegs.length > 1 && share <= 0.8); we mirror
+  // that guard here so hover and fill agree on what counts as "actionable".
+  //
+  // A segment is "giant" when:
+  //   - it occupies > WHOLE_SEGMENT_MAX_SHARE (80 %) of total faces, OR
+  //   - there is only 1 auto segment (everything merged into one blob).
+  // Manual regions (label >= MANUAL_SEGMENT_OFFSET) are never silenced — the user
+  // explicitly drew them and expects immediate feedback.
+  const giantSegmentIds = useMemo((): Set<number> => {
+    const segs = meshData?.segments;
+    if (!segs || segs.length === 0) return emptySet;
+    const total = meshData?.faceCount ?? 0;
+    if (total <= 0) return emptySet;
+    const autoSegs = segs.filter((s) => (s.id ?? 0) < MANUAL_SEGMENT_OFFSET);
+    if (autoSegs.length <= 1) {
+      // Single auto-segment case: silence it regardless of share.
+      return new Set(autoSegs.map((s) => s.id));
+    }
+    const threshold = total * WHOLE_SEGMENT_MAX_SHARE;
+    return new Set(segs.filter((s) => (s.faceCount ?? 0) > threshold && (s.id ?? 0) < MANUAL_SEGMENT_OFFSET).map((s) => s.id));
+  }, [meshData?.segments, meshData?.faceCount]);
+
+  // Singleton empty set to avoid reallocating on every render when there are no
+  // segments yet (e.g. between loadModel and autoSegment).
+  const emptySet = useMemo(() => new Set<number>(), []);
 
   // Raycast to surface, convert world hit → model-local coords.
   // Group is rotated -PI/2 about X, so worldToLocal yields local = (x, -z, y).
@@ -1320,7 +1349,14 @@ function MeshDisplay() {
         setLassoPreview(hit.point);
         const start = lassoPointsRef.current[0];
         if (start && lassoPointsRef.current.length >= 2) {
-          setLassoClosing(hit.point.distanceTo(start) < closeThreshold);
+          // Closing detection uses the snapped point (iteration 23, REFUTE
+          // B18) so the yellow "ready to close" preview agrees with the actual
+          // commit behaviour. Previously the preview checked raw hit.point while
+          // the commit checked the backend-snapped vertex — on coarse meshes
+          // the two could disagree by half a face, causing "shows close but
+          // doesn't" or vice versa.
+          const checkPoint = lassoSnapRef.current ?? hit.point;
+          setLassoClosing(checkPoint.distanceTo(start) < closeThreshold);
         } else {
           setLassoClosing(false);
         }
@@ -1369,11 +1405,19 @@ function MeshDisplay() {
           applyCameraButtons();
         }
 
-        // (a) Partition hover — always report when not drawing/lasso
+        // (a) Partition hover — silence giant segments (iteration 23, REFUTE
+        //     B1/B2). Phase4 merge_small_regions_fast can produce ~27 regions
+        //     averaging 55k faces each; highlighting one floods the entire model
+        //     teal. Fill already guards this case (share > 0.8 || too few auto
+        //     segments); we mirror the guard so hover and fill agree. Manual
+        //     regions (label >= MANUAL_SEGMENT_OFFSET) are never silenced — the
+        //     user drew them explicitly and expects immediate feedback.
         let nextHover: number | null = null;
         if (hits.length > 0 && hits[0].faceIndex != null) {
           const lbl = meshData.segmentLabels[hits[0].faceIndex];
-          if (lbl !== undefined && segmentIds.has(lbl)) nextHover = lbl;
+          if (lbl !== undefined && segmentIds.has(lbl) && !giantSegmentIds.has(lbl)) {
+            nextHover = lbl;
+          }
         }
         if (useAppStore.getState().hoveredSegment !== nextHover) {
           setHoveredSegment(nextHover);

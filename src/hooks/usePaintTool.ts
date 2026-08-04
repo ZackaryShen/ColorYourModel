@@ -12,13 +12,13 @@ import { log } from "../utils/logger";
  *  because the user explicitly drew them and expects Fill to cover the entire
  *  drawn area (iteration 22 M6 guard: prevent one-click half-model flood while
  *  still allowing large intentional regions). */
-const WHOLE_SEGMENT_MAX_SHARE = 0.8;
-const MANUAL_REGION_MAX_SHARE = 0.95;
+export const WHOLE_SEGMENT_MAX_SHARE = 0.8;
+export const MANUAL_REGION_MAX_SHARE = 0.95;
 
 /// Labels >= this value are manually-created regions (lasso / freehand).
 /// These should ALWAYS be filled as whole partitions — the user explicitly
 /// drew them and expects fill to cover the entire region (iteration 21 fix).
-const MANUAL_SEGMENT_OFFSET = 100_000;
+export const MANUAL_SEGMENT_OFFSET = 100_000;
 
 export function usePaintTool() {
   const activeTool = useAppStore((s) => s.activeTool);

@@ -79,10 +79,13 @@ export function useMesh() {
     }
     paintColorRef.current = arr;
     return arr;
-  }, [meshData]);
+  }, [meshData?.faceColors, meshData?.faceCount]);
 
   const segmentColorArray = useMemo(() => {
-    if (!meshData) return null;
+    // Gate: paint view never reads this buffer (iteration 23, REFUTE B12).
+    // Skipping the 54MB Float32Array + 1.5M-face loop when unnecessary
+    // eliminates the dominant allocation spike on region finalize / undo.
+    if (!meshData || !segmentView) return null;
     const faceCount = meshData.faceCount;
     const labels = meshData.segmentLabels;
     const hasLabels = labels && labels.length === faceCount;
@@ -120,7 +123,7 @@ export function useMesh() {
       }
     }
     return arr;
-  }, [meshData, selectedSegment]);
+  }, [meshData, selectedSegment, segmentView]);
 
   // Per-face colors. The rendered geometry is NON-INDEXED: each face owns its
   // own 3 consecutive vertices, so the per-vertex color attribute laid out as
