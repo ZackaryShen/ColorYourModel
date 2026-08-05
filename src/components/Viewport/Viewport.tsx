@@ -1209,12 +1209,23 @@ function MeshDisplay() {
   // flight (iteration 18, M3).
   const dragPendingFaceRef = useRef<{ faceId: number; wholeRegion: boolean; hoveredSegment?: number | null } | null>(null);
   const paintDrainingRef = useRef(false);
+  // Last non-null hoveredSegment from pointermove (iter29 v5: the pointermove
+  // handler clears hoveredSegment to null when the cursor drifts onto a giant
+  // segment like seg=0 — but the user still sees the stale yellow highlight
+  // from React's pending render. Without this ref, enqueuePaint snapshots
+  // null and falls back to seg=0(click).)
+  const lastValidHoveredSegmentRef = useRef<number | null>(null);
   const enqueuePaint = useCallback((faceId: number, wholeRegion = false) => {
     // Snapshot hoveredSegment AT ENQUEUE TIME (click/pointerdown), not at async
     // execution time. onPointerUp fires synchronously and clears it before the
     // async IIFE runs — causing a race condition where handleFacePicked always
     // reads null (iter29 v1-v3 all failed due to this race).
-    dragPendingFaceRef.current = { faceId, wholeRegion, hoveredSegment: useAppStore.getState().hoveredSegment };
+    // Fall back to lastValidHoveredSegmentRef when store is null (iter29 v5:
+    // pointermove clears hoveredSegment when cursor drifts onto a giant segment
+    // like seg=0, but user still sees stale yellow highlight from pending React
+    // render — they click expecting that highlight to be the target).
+    const snap = useAppStore.getState().hoveredSegment;
+    dragPendingFaceRef.current = { faceId, wholeRegion, hoveredSegment: snap ?? lastValidHoveredSegmentRef.current };
     if (paintDrainingRef.current) return; // busy → drop intermediate (covered by radius)
     paintDrainingRef.current = true;
     (async () => {
@@ -1439,6 +1450,12 @@ function MeshDisplay() {
             nextHover = lbl;
           }
         }
+        // Track last valid (non-null) hovered segment for fill click targeting
+        // (iter29 v5): pointermove clears hoveredSegment on giant segments, but
+        // user may click while seeing stale highlight from pending render.
+        if (nextHover != null) {
+          lastValidHoveredSegmentRef.current = nextHover;
+        }
         if (useAppStore.getState().hoveredSegment !== nextHover) {
           setHoveredSegment(nextHover);
         }
@@ -1511,6 +1528,7 @@ function MeshDisplay() {
       hoverInfoRef.current = null;
       fillHoverFaceRef.current = null;
       setHoveredSegment(null);
+      lastValidHoveredSegmentRef.current = null; // iter29 v5: clear on model leave
       overModelRef.current = false; // iteration 22: reset so OrbitControls can rotate
       applyCameraButtons();
     };
