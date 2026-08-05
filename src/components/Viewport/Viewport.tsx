@@ -1181,7 +1181,7 @@ function MeshDisplay() {
         }
       }
     },
-    [paintFace, paintSegmentFace, updateFaceColors, isSegmentTool, activeTool, setLastPaintDebug, facesBySeg]
+    [paintFace, paintSegmentFace, updateFaceColors, isSegmentTool, activeTool, setLastPaintDebug, facesBySeg, hoveredSegment]
   );
 
   const pick = useFacePicker(meshRef, handleFacePicked);
