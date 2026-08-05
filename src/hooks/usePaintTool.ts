@@ -89,13 +89,21 @@ export function usePaintTool() {
           //     share or realSegs count (iteration 21 fix: user explicitly drew
           //     this region and expects fill to cover it entirely).
           //
+          //   • **Hover-target preference** (iteration 29 fix): At segment
+          //     boundaries the click raycast often hits a neighboring seg=0
+          //     face while the hover highlights the intended manual segment.
+          //     Prefer `hoveredSegment` from store (what the user SEES as
+          //     yellow highlight) over the clicked face's own label. Only
+          //     fall back to clicked-face label when no hover exists.
+          //
           // The old guard (`segments.some(s => s.id === label)`) was always true
           // because `auto_segment` emits a label-0 partition covering everything
           // left over, so one click flooded the ENTIRE model (REFUTE M1). The
           // reliable discriminator is the clicked partition's FACE SHARE, which
           // maps directly onto the complaint "因为它是一个大分区".
           const md = useAppStore.getState().meshData;
-          const label = md?.segmentLabels?.[faceId];
+          const hovered = useAppStore.getState().hoveredSegment;
+          const label = (hovered != null) ? hovered : (md?.segmentLabels?.[faceId] ?? undefined);
           const segs = md?.segments ?? [];
           const seg = label !== undefined ? segs.find((s) => s.id === label) : undefined;
           const total = md?.faceCount ?? 0;
@@ -121,7 +129,8 @@ export function usePaintTool() {
             );
 
           log.info("usePaintTool", "fill routing", {
-            faceId, label, segFaces, total,
+            faceId, label, labelSrc: (hovered != null) ? "hover" : "click",
+            segFaces, total,
             share: +share.toFixed(3),
             realSegs: realSegs.length,
             isManualRegion,

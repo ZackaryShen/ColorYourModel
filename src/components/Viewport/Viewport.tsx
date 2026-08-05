@@ -1166,13 +1166,17 @@ function MeshDisplay() {
           const first5 = result.updatedFaces.slice(0, 5).join(",");
           const state = useAppStore.getState();
           // Diagnostic: compare highlight face count vs actual fill face count.
-          // If they differ, we have a real overflow bug (iter 29).
+          // Show both clicked-face label and hovered-segment target (iter 29 fix:
+          // fill now prefers hoveredSegment over clicked-face label at boundaries).
           const md = state.meshData;
-          const lbl = md?.segmentLabels?.[faceId];
-          const highlightFaces = lbl !== undefined && facesBySeg ? (facesBySeg.get(lbl) ?? []).length : -1;
+          const clickedLbl = md?.segmentLabels?.[faceId];
+          const hoverLbl = state.hoveredSegment;
+          const targetLbl = (hoverLbl != null) ? hoverLbl : clickedLbl;
+          const highlightFaces = targetLbl !== undefined && facesBySeg ? (facesBySeg.get(targetLbl) ?? []).length : -1;
           const match = highlightFaces >= 0 && highlightFaces === result.updatedFaces.length ? "✓" : (highlightFaces >= 0 ? "⚠️ MISMATCH" : "?");
+          const src = (hoverLbl != null && hoverLbl !== clickedLbl) ? "🎯hover" : "click";
           setLastPaintDebug(
-            `🖌 ${activeTool} face=${faceId} seg=${lbl ?? "?"} color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} gpu=${gpu} → ${result.updatedFaces.length} filled / ${highlightFaces} highlighted ${match} [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
+            `🖌 ${activeTool} face=${faceId} seg=${targetLbl ?? "?"}(${src}) color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} gpu=${gpu} → ${result.updatedFaces.length} filled / ${highlightFaces} highlighted ${match} [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
           );
         }
       }
