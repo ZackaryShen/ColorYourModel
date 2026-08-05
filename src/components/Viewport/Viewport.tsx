@@ -1143,7 +1143,7 @@ function MeshDisplay() {
   );
 
   const handleFacePicked = useCallback(
-    async (faceId: number, opts?: { wholeRegion?: boolean }) => {
+    async (faceId: number, opts?: { wholeRegion?: boolean; hoveredSegment?: number | null }) => {
       if (isSegmentTool) {
         // Segment paint brush: skip already-painted faces in this drag
         if (segPaintedFacesRef.current.has(faceId)) return;
@@ -1160,7 +1160,7 @@ function MeshDisplay() {
           );
         }
       } else {
-        const result = await paintFace(faceId, { ...opts, hoveredSegment });
+        const result = await paintFace(faceId, opts); // opts already has snapshotted hoveredSegment from enqueuePaint
         if (result) {
           const gpu = updateFaceColors(result.updatedFaces, result.updatedColors);
           const first5 = result.updatedFaces.slice(0, 5).join(",");
@@ -1170,7 +1170,7 @@ function MeshDisplay() {
           // fill now prefers hoveredSegment over clicked-face label at boundaries).
           const md = state.meshData;
           const clickedLbl = md?.segmentLabels?.[faceId];
-          const hoverLbl = hoveredSegment;
+          const hoverLbl = opts?.hoveredSegment; // snapshotted at enqueue time (click), not closure
           const targetLbl = (hoverLbl != null) ? hoverLbl : clickedLbl;
           const highlightFaces = targetLbl !== undefined && facesBySeg ? (facesBySeg.get(targetLbl) ?? []).length : -1;
           const match = highlightFaces >= 0 && highlightFaces === result.updatedFaces.length ? "✓" : (highlightFaces >= 0 ? "⚠️ MISMATCH" : "?");
@@ -1207,10 +1207,14 @@ function MeshDisplay() {
   // The queued item carries the modifier state captured at event time, so a
   // Shift+click whole-region fill is not lost while an earlier paint is in
   // flight (iteration 18, M3).
-  const dragPendingFaceRef = useRef<{ faceId: number; wholeRegion: boolean } | null>(null);
+  const dragPendingFaceRef = useRef<{ faceId: number; wholeRegion: boolean; hoveredSegment?: number | null } | null>(null);
   const paintDrainingRef = useRef(false);
   const enqueuePaint = useCallback((faceId: number, wholeRegion = false) => {
-    dragPendingFaceRef.current = { faceId, wholeRegion }; // keep freshest cursor face
+    // Snapshot hoveredSegment AT ENQUEUE TIME (click/pointerdown), not at async
+    // execution time. onPointerUp fires synchronously and clears it before the
+    // async IIFE runs — causing a race condition where handleFacePicked always
+    // reads null (iter29 v1-v3 all failed due to this race).
+    dragPendingFaceRef.current = { faceId, wholeRegion, hoveredSegment: useAppStore.getState().hoveredSegment };
     if (paintDrainingRef.current) return; // busy → drop intermediate (covered by radius)
     paintDrainingRef.current = true;
     (async () => {
@@ -1218,7 +1222,7 @@ function MeshDisplay() {
       while (dragPendingFaceRef.current != null) {
         const job = dragPendingFaceRef.current;
         dragPendingFaceRef.current = null;
-        try { await fn(job.faceId, { wholeRegion: job.wholeRegion }); }
+        try { await fn(job.faceId, { wholeRegion: job.wholeRegion, hoveredSegment: job.hoveredSegment }); }
         catch { /* ignore single-face failures */ }
       }
       paintDrainingRef.current = false;
