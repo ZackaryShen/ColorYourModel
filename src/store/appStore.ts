@@ -54,6 +54,9 @@ interface AppStore {
   // In-app debug HUD (visible paint/pick diagnostics — replaces the F12 console
   // which is unavailable in Tauri release builds, iteration 14).
   lastPaintDebug: string | null;
+  // Live hover-state probe (iteration 30): updated on EVERY pointermove so the
+  // user can watch hoveredSegment change in real time inside a release build.
+  hoverProbe: string | null;
 
   // Actions
   setMeshData: (data: MeshData) => void;
@@ -93,6 +96,7 @@ interface AppStore {
   setImportProgress: (progress: number, stage: string) => void;
   setLanguage: (lang: Lang) => void;
   setLastPaintDebug: (s: string | null) => void;
+  setHoverProbe: (s: string | null) => void;
 }
 
 // ── Preference persistence (iteration 21) ─────────────────────────────────
@@ -251,6 +255,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   importStage: "",
 
   lastPaintDebug: null,
+  hoverProbe: null,
 
   setMeshData: (data) =>
     set({
@@ -404,6 +409,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),
   setLanguage: (lang) => set({ language: lang }),
   setLastPaintDebug: (s) => set({ lastPaintDebug: s }),
+  setHoverProbe: (s) => set({ hoverProbe: s }),
 });
 
 export const useAppStore = create<AppStore>()(

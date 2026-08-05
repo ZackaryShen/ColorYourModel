@@ -822,6 +822,7 @@ function MeshDisplay() {
   const currentColor = useAppStore((s) => s.currentColor);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setLastPaintDebug = useAppStore((s) => s.setLastPaintDebug);
+  const setHoverProbe = useAppStore((s) => s.setHoverProbe);
   const { buildGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
   const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, manualRegionUndo, undoPaint, redoPaint } = useTauriCommand();
@@ -1161,6 +1162,8 @@ function MeshDisplay() {
         }
       } else {
         const result = await paintFace(faceId, opts); // opts already has snapshotted hoveredSegment from enqueuePaint
+        // iter30 PROBE: confirm what hoveredSegment actually arrived here (post-async).
+        setHoverProbe(`[FILL-RX] opts.hover=${opts?.hoveredSegment ?? "null"} → passed to paintFace`);
         if (result) {
           const gpu = updateFaceColors(result.updatedFaces, result.updatedColors);
           const first5 = result.updatedFaces.slice(0, 5).join(",");
@@ -1232,6 +1235,12 @@ function MeshDisplay() {
     // render — they click expecting that highlight to be the target).
     const snap = useAppStore.getState().hoveredSegment;
     dragPendingFaceRef.current = { faceId, wholeRegion, hoveredSegment: snap ?? lastValidHoveredSegmentRef.current };
+    // iter30 PROBE: at click time, capture exactly what we snapshot.
+    // snap = store hoveredSegment; ref = lastValidHoveredSegmentRef; final = what we pass down.
+    setHoverProbe(
+      `[CLICK] face=${faceId} snap(store)=${snap ?? "null"} ref=${lastValidHoveredSegmentRef.current ?? "null"} ` +
+      `→ final=${dragPendingFaceRef.current.hoveredSegment ?? "null"}`
+    );
     if (paintDrainingRef.current) return; // busy → drop intermediate (covered by radius)
     paintDrainingRef.current = true;
     (async () => {
@@ -1484,6 +1493,26 @@ function MeshDisplay() {
         }
         if (useAppStore.getState().hoveredSegment !== nextHover) {
           setHoveredSegment(nextHover);
+        }
+
+        // iter30 PROBE: live hover-state trace, visible in release build HUD.
+        // Shows exactly what each pointermove does to hoveredSegment so we stop
+        // guessing. Key fields:
+        //   store  = hoveredSegment read from store at frame start (prevHover)
+        //   ray    = faceIndex hit by raycast this frame
+        //   seg    = meshData.segmentLabels[ray] (segment under cursor)
+        //   next   = value written to store this frame
+        //   blk    = auto-seg was blocked from overwriting a manual seg (sticky)
+        {
+          const rayFace = hits.length > 0 ? hits[0].faceIndex : -1;
+          const segUnder = rayFace != null && rayFace >= 0 && meshData ? (meshData.segmentLabels?.[rayFace] ?? undefined) : undefined;
+          const blocked = prevIsManual && segUnder !== undefined && segUnder < MANUAL_SEGMENT_OFFSET;
+          setHoverProbe(
+            `[HOVER] store=${prevHover ?? "null"} ray=${rayFace} seg=${segUnder ?? "?"} ` +
+            `inSeg=${segUnder !== undefined && segmentIds.has(segUnder)} ` +
+            `giant=${segUnder !== undefined && giantSegmentIds.has(segUnder)} ` +
+            `next=${nextHover ?? "null"} ${blocked ? "BLOCKED(auto→manual)" : ""}`
+          );
         }
 
         // (c) Fill tool face highlight (面片高亮). Mark the exact face under the
@@ -1887,8 +1916,14 @@ const progressStyles: Record<string, React.CSSProperties> = {
 /// cursor (iteration 14).
 function DebugHud() {
   const debug = useAppStore((s) => s.lastPaintDebug);
-  if (!debug) return null;
-  return <div style={debugStyles.box}>{debug}</div>;
+  const probe = useAppStore((s) => s.hoverProbe);
+  if (!debug && !probe) return null;
+  return (
+    <div style={debugStyles.box}>
+      {probe && <div style={debugStyles.probe}>{probe}</div>}
+      {debug && <div>{debug}</div>}
+    </div>
+  );
 }
 
 const debugStyles: Record<string, React.CSSProperties> = {
@@ -1908,6 +1943,12 @@ const debugStyles: Record<string, React.CSSProperties> = {
     maxWidth: 520,
     whiteSpace: "pre-wrap",
     wordBreak: "break-all",
+  },
+  probe: {
+    color: "var(--debug-probe, #ffd479)",
+    borderBottom: "1px dashed rgba(255,212,121,0.4)",
+    paddingBottom: 2,
+    marginBottom: 2,
   },
 };
 
