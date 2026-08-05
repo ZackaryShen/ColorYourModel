@@ -1165,13 +1165,19 @@ function MeshDisplay() {
           const gpu = updateFaceColors(result.updatedFaces, result.updatedColors);
           const first5 = result.updatedFaces.slice(0, 5).join(",");
           const state = useAppStore.getState();
+          // Diagnostic: compare highlight face count vs actual fill face count.
+          // If they differ, we have a real overflow bug (iter 29).
+          const md = state.meshData;
+          const lbl = md?.segmentLabels?.[faceId];
+          const highlightFaces = lbl !== undefined && facesBySeg ? (facesBySeg.get(lbl) ?? []).length : -1;
+          const match = highlightFaces >= 0 && highlightFaces === result.updatedFaces.length ? "✓" : (highlightFaces >= 0 ? "⚠️ MISMATCH" : "?");
           setLastPaintDebug(
-            `🖌 ${activeTool} face=${faceId} color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} gpu=${gpu} → ${result.updatedFaces.length} faces [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
+            `🖌 ${activeTool} face=${faceId} seg=${lbl ?? "?"} color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} gpu=${gpu} → ${result.updatedFaces.length} filled / ${highlightFaces} highlighted ${match} [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
           );
         }
       }
     },
-    [paintFace, paintSegmentFace, updateFaceColors, isSegmentTool, activeTool, setLastPaintDebug]
+    [paintFace, paintSegmentFace, updateFaceColors, isSegmentTool, activeTool, setLastPaintDebug, facesBySeg]
   );
 
   const pick = useFacePicker(meshRef, handleFacePicked);
