@@ -1443,16 +1443,22 @@ function MeshDisplay() {
         //     segments); we mirror the guard so hover and fill agree. Manual
         //     regions (label >= MANUAL_SEGMENT_OFFSET) are never silenced — the
         //     user drew them explicitly and expects immediate feedback.
-        let nextHover: number | null = null;
+        //
+        //     CRITICAL (iter29 v6): do NOT clear to null on giant segments!
+        //     Keep the previous hoveredSegment so Fill click can read it.
+        //     The SegmentHighlight overlay already won't render for giant segments
+        //     (giantSegmentIds guard in JSX), so visual feedback is correct even
+        //     with a stale non-null store value.
+        const prevHover = useAppStore.getState().hoveredSegment;
+        let nextHover: number | null = prevHover; // keep previous, don't default to null
         if (hits.length > 0 && hits[0].faceIndex != null) {
           const lbl = meshData.segmentLabels[hits[0].faceIndex];
           if (lbl !== undefined && segmentIds.has(lbl) && !giantSegmentIds.has(lbl)) {
             nextHover = lbl;
           }
+          // giant segment or unknown label → keep prevHover (don't clear to null)
         }
         // Track last valid (non-null) hovered segment for fill click targeting
-        // (iter29 v5): pointermove clears hoveredSegment on giant segments, but
-        // user may click while seeing stale highlight from pending render.
         if (nextHover != null) {
           lastValidHoveredSegmentRef.current = nextHover;
         }
@@ -1728,7 +1734,7 @@ function MeshDisplay() {
       {/* Paint view: highlight ONLY the segment under the cursor (near
           highlight). The just-created partition does NOT stay highlighted here —
           it lights up when you hover near it, which is the requested behavior. */}
-      {!segmentView && hoveredSegment !== null && meshData && edgeMap && facesBySeg && (
+      {!segmentView && hoveredSegment !== null && meshData && edgeMap && facesBySeg && !giantSegmentIds.has(hoveredSegment) && (
         <>
           <SegmentHighlight meshData={meshData} selectedSegment={hoveredSegment} facesBySeg={facesBySeg} />
           <SegmentOutline meshData={meshData} selectedSegment={hoveredSegment} edgeMap={edgeMap} facesBySeg={facesBySeg} />
