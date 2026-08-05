@@ -1168,6 +1168,11 @@ function MeshDisplay() {
           // Diagnostic: compare highlight face count vs actual fill face count.
           // Show both clicked-face label and hovered-segment target (iter 29 fix:
           // fill now prefers hoveredSegment over clicked-face label at boundaries).
+          //
+          // iter30 v7 (REFUTE B4): disambiguate hover=null vs hover=0 — six rounds
+          // of fixes assumed (i) "hover was cleared to null" but never ruled out
+          // (ii) "hover was legitimately set to 0 by a seg-0 crumb overwrite".
+          // The `hover=` field now shows UNDEF/0/actual-id to distinguish these.
           const md = state.meshData;
           const clickedLbl = md?.segmentLabels?.[faceId];
           const hoverLbl = opts?.hoveredSegment; // snapshotted at enqueue time (click), not closure
@@ -1175,13 +1180,14 @@ function MeshDisplay() {
           const highlightFaces = targetLbl !== undefined && facesBySeg ? (facesBySeg.get(targetLbl) ?? []).length : -1;
           const match = highlightFaces >= 0 && highlightFaces === result.updatedFaces.length ? "✓" : (highlightFaces >= 0 ? "⚠️ MISMATCH" : "?");
           const src = (hoverLbl != null && hoverLbl !== clickedLbl) ? "🎯hover" : "click";
+          const hoverDisplay = hoverLbl === undefined ? "UNDEF" : String(hoverLbl);
           setLastPaintDebug(
-            `🖌 ${activeTool} face=${faceId} seg=${targetLbl ?? "?"}(${src}) color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} gpu=${gpu} → ${result.updatedFaces.length} filled / ${highlightFaces} highlighted ${match} [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
+            `🖌 ${activeTool} face=${faceId} hover=${hoverDisplay} click=${clickedLbl ?? "?"} seg=${targetLbl ?? "?"}(${src}) color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} gpu=${gpu} → ${result.updatedFaces.length} filled / ${highlightFaces} highlighted ${match} [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
           );
         }
       }
     },
-    [paintFace, paintSegmentFace, updateFaceColors, isSegmentTool, activeTool, setLastPaintDebug, facesBySeg, hoveredSegment]
+    [paintFace, paintSegmentFace, updateFaceColors, isSegmentTool, activeTool, setLastPaintDebug, facesBySeg]
   );
 
   const pick = useFacePicker(meshRef, handleFacePicked);
@@ -1446,15 +1452,29 @@ function MeshDisplay() {
         //
         //     CRITICAL (iter29 v6): do NOT clear to null on giant segments!
         //     Keep the previous hoveredSegment so Fill click can read it.
-        //     The SegmentHighlight overlay already won't render for giant segments
-        //     (giantSegmentIds guard in JSX), so visual feedback is correct even
-        //     with a stale non-null store value.
+        //
+        //     CRITICAL (iter30 v7): once hoveredSegment holds a MANUAL segment
+        //     (label >= MANUAL_SEGMENT_OFFSET), do NOT let auto segments
+        //     (label < MANUAL_SEGMENT_OFFSET) overwrite it. After the user
+        //     draws a large manual region, seg=0 shrinks to a handful of
+        //     "crumb" faces that are no longer "giant" (< 80 % share).
+        //     Hovering over those crumbs would overwrite the valid manual
+        //     segment with 0, causing Fill to target the wrong partition.
+        //     v6's sticky only prevented clearing to null — it did NOT
+        //     prevent overwriting by another legitimate (but unwanted)
+        //     segment label (REFUTE B5, the actual root cause of v1–v6).
         const prevHover = useAppStore.getState().hoveredSegment;
+        const prevIsManual = prevHover != null && prevHover >= MANUAL_SEGMENT_OFFSET;
         let nextHover: number | null = prevHover; // keep previous, don't default to null
         if (hits.length > 0 && hits[0].faceIndex != null) {
           const lbl = meshData.segmentLabels[hits[0].faceIndex];
           if (lbl !== undefined && segmentIds.has(lbl) && !giantSegmentIds.has(lbl)) {
-            nextHover = lbl;
+            // Auto segment cannot displace a manual segment that is already
+            // being hovered. This prevents seg=0 "crumbs" from stealing
+            // focus at manual-region boundaries.
+            if (!(prevIsManual && lbl < MANUAL_SEGMENT_OFFSET)) {
+              nextHover = lbl;
+            }
           }
           // giant segment or unknown label → keep prevHover (don't clear to null)
         }
