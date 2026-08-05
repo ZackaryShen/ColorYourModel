@@ -30,11 +30,12 @@ export function usePaintTool() {
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
 
   const fillSegment = async (
-    faceId: number
+    faceId: number,
+    overrideSegmentId?: number
   ): Promise<PaintResult | null> => {
     const meshData = useAppStore.getState().meshData;
     if (!meshData || !meshData.segmentLabels.length) return null;
-    const segmentId = meshData.segmentLabels[faceId];
+    const segmentId = overrideSegmentId ?? meshData.segmentLabels[faceId];
     if (segmentId === undefined) return null;
 
     // Select this segment visually
@@ -69,7 +70,7 @@ export function usePaintTool() {
 
   const paintFace = async (
     faceId: number,
-    opts?: { wholeRegion?: boolean }
+    opts?: { wholeRegion?: boolean; hoveredSegment?: number | null }
   ): Promise<PaintResult | null> => {
     log.debug("usePaintTool", `paintFace(${faceId})`, { tool: activeTool, color: currentColor });
     try {
@@ -92,8 +93,8 @@ export function usePaintTool() {
           //   • **Hover-target preference** (iteration 29 fix): At segment
           //     boundaries the click raycast often hits a neighboring seg=0
           //     face while the hover highlights the intended manual segment.
-          //     Prefer `hoveredSegment` from store (what the user SEES as
-          //     yellow highlight) over the clicked face's own label. Only
+          //     Prefer the caller-supplied hoveredSegment (what the user SEES
+          //     as yellow highlight) over the clicked face's own label. Only
           //     fall back to clicked-face label when no hover exists.
           //
           // The old guard (`segments.some(s => s.id === label)`) was always true
@@ -102,7 +103,7 @@ export function usePaintTool() {
           // reliable discriminator is the clicked partition's FACE SHARE, which
           // maps directly onto the complaint "因为它是一个大分区".
           const md = useAppStore.getState().meshData;
-          const hovered = useAppStore.getState().hoveredSegment;
+          const hovered = opts?.hoveredSegment ?? null;
           const label = (hovered != null) ? hovered : (md?.segmentLabels?.[faceId] ?? undefined);
           const segs = md?.segments ?? [];
           const seg = label !== undefined ? segs.find((s) => s.id === label) : undefined;
@@ -138,7 +139,7 @@ export function usePaintTool() {
           });
 
           if (fillWholeSegment) {
-            return fillSegment(faceId);
+            return fillSegment(faceId, label);
           }
           // radius 0 → explicit whole-connected-region flood (Shift+click), the
           // deliberate escape hatch kept for M3; otherwise a bounded local blob.
