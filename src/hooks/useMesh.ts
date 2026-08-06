@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useAppStore } from "../store/appStore";
 import { log } from "../utils/logger";
@@ -49,7 +49,11 @@ export function useMesh() {
     geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(meshData.faces), 1));
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
-    geometryRef.current = geometry;
+    // NOTE: `geometryRef` is deliberately NOT written here. It is contracted to
+    // hold the geometry that is actually RENDERED — the non-indexed expansion
+    // built in `buildGeometry` — and `updateFaceColors` bails out on anything
+    // without a `color` attribute, which this indexed base geometry never has.
+    // Writing it from a useMemo was also a render-phase side effect (P1-8).
     return geometry;
     // Deps are the STABLE sub-references (vertices/faces/bbox), NOT the whole
     // `meshData` object. `updateSegmentLabels` spreads `meshData` (keeping these
@@ -77,9 +81,17 @@ export function useMesh() {
         arr[i * 9 + v * 3 + 2] = b;
       }
     }
-    paintColorRef.current = arr;
     return arr;
   }, [meshData?.faceColors, meshData?.faceCount]);
+
+  // Publish the memoized buffer to the ref AFTER commit, not during render
+  // (P1-8). `useLayoutEffect` — not `useEffect` — because the only reader,
+  // `updateFaceColors`, runs from pointer handlers: a layout effect closes the
+  // window before the browser can dispatch one, so no stroke can ever patch a
+  // superseded buffer.
+  useLayoutEffect(() => {
+    paintColorRef.current = paintColorArray;
+  }, [paintColorArray]);
 
   const segmentColorArray = useMemo(() => {
     // Gate: paint view never reads this buffer (iteration 23, REFUTE B12).
