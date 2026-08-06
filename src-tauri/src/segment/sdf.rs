@@ -595,6 +595,21 @@ mod tests {
         assert_eq!(segs.len(), 1, "explicit k=1 must yield 1 segment");
     }
 
+    /// Most frequent label in a slice, so a test can ask "which region did this
+    /// known group of faces land in?" without depending on label numbering.
+    /// Ties break on the lower label to keep failure messages reproducible.
+    fn majority(labels: &[u32]) -> u32 {
+        let mut counts: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+        for &l in labels {
+            *counts.entry(l).or_insert(0) += 1;
+        }
+        counts
+            .into_iter()
+            .max_by_key(|&(l, c)| (c, std::cmp::Reverse(l)))
+            .map(|(l, _)| l)
+            .expect("majority() called on an empty slice")
+    }
+
     #[test]
     fn segment_by_sdf_block_with_plate() {
         let mut m = block_with_plate();
@@ -602,19 +617,30 @@ mod tests {
         assert_eq!(segs.len(), 2, "block+plate must be 2 parts (not over-merged)");
         // Connected fixture exercises the concavity merge: SDF reads the thin
         // plate (caps + rim, ~0.27) vs the thick block (~1.75); the concave z=2
-        // junction is kept separate. One plate-bottom triangle reads thick
-        // (normal-flip at the shared face — a known SDF limitation) and joins
-        // the block, giving regions of 11 (plate rest) / 13 (block + 1 tri).
-        let mut counts: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
-        for &l in &m.segment_labels {
-            *counts.entry(l).or_insert(0) += 1;
-        }
-        let sizes: Vec<usize> = counts.values().cloned().collect();
-        assert_eq!(sizes.len(), 2, "expected exactly 2 regions, got {:?}", sizes);
+        // junction is kept separate. The fixture emits block = tris 0..11 and
+        // plate = tris 12..23, so the ground truth is a clean 12/12 split on
+        // that boundary. Assert the semantics — which faces end up together —
+        // instead of a size histogram: the old 11/13 assertion had frozen a
+        // defect (one shared z=2 triangle sits on a normal flip and can read
+        // thick) into the expected value, so the test failed once the split
+        // became correct. One stray triangle is still tolerated because that
+        // normal-flip misread is platform/float dependent, not a regression.
+        let block = &m.segment_labels[0..12];
+        let plate = &m.segment_labels[12..24];
+        let block_label = majority(block);
+        let plate_label = majority(plate);
+        assert_ne!(
+            block_label, plate_label,
+            "block and plate collapsed into one region: {:?}",
+            m.segment_labels
+        );
+        let strays = block.iter().filter(|&&l| l != block_label).count()
+            + plate.iter().filter(|&&l| l != plate_label).count();
         assert!(
-            sizes.contains(&11) && sizes.contains(&13),
-            "expected regions 11/13 (plate rest vs block + 1 misread tri), got {:?}",
-            sizes
+            strays <= 1,
+            "expected a clean block/plate split (at most 1 stray tri), got {} strays: {:?}",
+            strays,
+            m.segment_labels
         );
     }
 }
