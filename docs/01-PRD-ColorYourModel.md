@@ -8,6 +8,8 @@
 | 状态 | 需求基线已冻结，Fill 范围缺陷阻塞验收 |
 
 > **文档来源**：本 PRD 由代码现状（32 次提交、18 个 IPC 命令）、30 轮对抗式迭代记录、v0.1.0 发布说明反向提炼而成，用于校正已严重脱节的 README/CHANGELOG。凡与 README 冲突处，**以本文档为准**。
+>
+> **核对状态**：2026-08-06 经独立 agent 逐条对照源码证伪。**12 项功能断言全部找到实现证据，无虚构**；持久化 8 键与 `partialize`（appStore.ts:425-434）逐字一致；经验依据类常量（`#8a8a8a`、non-indexed、54.74° 下界、`MANUAL_SEGMENT_OFFSET`、0.8/0.95 阈值、18 个 IPC、13 项后端单测）全部命中。仅 FR-PRF-01 措辞过严，已收紧。
 
 ---
 
@@ -132,7 +134,7 @@
 
 | ID | 类型 | 需求描述 |
 |---|---|---|
-| FR-PRF-01 | Ubiquitous | 系统**应**支持 dark / light 双主题，全部颜色经 CSS 变量下发，源码中不得残留硬编码色值。 |
+| FR-PRF-01 | Ubiquitous | 系统**应**支持 dark / light 双主题，全部颜色经 CSS 变量下发，**不得存在脱离 CSS 变量的裸色值**（`var(--x, #fallback)` 形式的兜底值合规，如 `App.tsx:54-55`、`BrushSettings.tsx:94-122`）。 |
 | FR-PRF-02 | Event-driven | **当**应用启动时，系统**应**在首帧前应用已保存主题（内联脚本），不得出现 FOUC 闪白。 |
 | FR-PRF-03 | Ubiquitous | 系统**应**持久化 8 项偏好：`theme, language, shadingMode, brushRadius, brushStrength, brushFalloff, currentColor, snapEnabled`。 |
 | FR-PRF-04 | Unwanted | **若**读出的偏好越界或损坏，**则**系统**应**逐项校验并回退默认值，不得因脏数据启动失败。 |
