@@ -13,6 +13,8 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolbar.export": { zh: "导出涂装模型为 3MF", en: "Export painted model as 3MF" },
   "toolbar.reSegment": { zh: "重新自动分区（阈值: 30°）", en: "Re-run auto segmentation (threshold: 30°)" },
   "toolbar.smartSegment": { zh: "智能分区（SDF 形态直径）", en: "Smart segment (SDF shape diameter)" },
+  "toolbar.undo": { zh: "撤销（Ctrl+Z）", en: "Undo (Ctrl+Z)" },
+  "toolbar.redo": { zh: "重做（Ctrl+Y）", en: "Redo (Ctrl+Y)" },
   "lasso.hint": { zh: "套索：点击顶点选点，回到起点闭合（青色=吸附落点）。Backspace 删点，Ctrl+Z 撤销，Esc 取消", en: "Lasso: click vertices; click start to close (cyan = snap target). Backspace removes a point, Ctrl+Z undoes, Esc cancels" },
   "lasso.need3": { zh: "至少需要 3 个点才能闭合区域", en: "Need at least 3 points to close a region" },
   "lasso.cancelled": { zh: "已取消当前套索", en: "Lasso cancelled" },

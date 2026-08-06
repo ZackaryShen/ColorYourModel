@@ -1,6 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { MeshData, PaintTool, PaintSnapshot, Segment } from "../types/mesh";
+import { MeshData, PaintTool, Segment } from "../types/mesh";
 import type { Lang } from "../i18n";
 
 interface AppStore {
@@ -38,9 +38,11 @@ interface AppStore {
   // Transient toast (e.g. "添加分区成功"). Auto-cleared by the Toast component.
   toast: string | null;
 
-  // History (paint undo/redo)
-  undoStack: PaintSnapshot[];
-  redoStack: PaintSnapshot[];
+  // History (backend-owned undo/redo). `canUndo`/`canRedo` drive the toolbar
+  // buttons; `markHistoryDirty` is an optimistic hint after a paint stroke;
+  // `resetHistory` clears both flags on model (re)load.
+  canUndo: boolean;
+  canRedo: boolean;
 
   // i18n
   language: Lang;
@@ -82,15 +84,10 @@ interface AppStore {
   setSnapEnabled: (enabled: boolean) => void;
   setSegmentView: (enabled: boolean) => void;
   setToast: (msg: string | null) => void;
-  pushUndo: (snapshot: PaintSnapshot) => void;
-  popUndo: () => PaintSnapshot | null;
-  pushRedo: (snapshot: PaintSnapshot) => void;
-  popRedo: () => PaintSnapshot | null;
-  // Atomic undo/redo of paint strokes. undoPaint pops the last pre-stroke
-  // snapshot and pushes the CURRENT state to redo; redoPaint does the inverse
-  // WITHOUT clearing the undo stack (redo may have further steps ahead).
-  undoPaint: () => PaintSnapshot | null;
-  redoPaint: () => PaintSnapshot | null;
+  // History flags + actions (frontend owns no timeline; see useHistory bridge).
+  setHistoryFlags: (canUndo: boolean, canRedo: boolean) => void;
+  markHistoryDirty: () => void;
+  resetHistory: () => void;
   setStatusMessage: (msg: string) => void;
   setLoading: (loading: boolean) => void;
   setImportProgress: (progress: number, stage: string) => void;
@@ -240,8 +237,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   segmentView: false,
   toast: null,
 
-  undoStack: [],
-  redoStack: [],
+  canUndo: false,
+  canRedo: false,
 
   language: "zh",
 
@@ -261,6 +258,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
     set({
       meshData: data,
       isLoaded: true,
+      canUndo: false,
+      canRedo: false,
       segments: data.segments.map((s) => ({
         id: s.id,
         name: s.name,
@@ -338,72 +337,11 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   setSegmentView: (enabled) => set({ segmentView: enabled }),
   setToast: (msg) => set({ toast: msg }),
-  pushUndo: (snapshot) =>
-    set((state) => ({
-      undoStack: [...state.undoStack.slice(-19), snapshot],
-      redoStack: [],
-    })),
-  popUndo: () => {
-    let popped: PaintSnapshot | null = null;
-    set((state) => {
-      if (state.undoStack.length === 0) return {};
-      const idx = state.undoStack.length - 1;
-      popped = state.undoStack[idx];
-      return { undoStack: state.undoStack.slice(0, idx) };
-    });
-    return popped;
-  },
-  pushRedo: (snapshot) =>
-    set((state) => ({
-      redoStack: [...state.redoStack.slice(-19), snapshot],
-    })),
-  popRedo: () => {
-    let popped: PaintSnapshot | null = null;
-    set((state) => {
-      if (state.redoStack.length === 0) return {};
-      const idx = state.redoStack.length - 1;
-      popped = state.redoStack[idx];
-      return { redoStack: state.redoStack.slice(0, idx) };
-    });
-    return popped;
-  },
-  undoPaint: () => {
-    let result: PaintSnapshot | null = null;
-    set((state) => {
-      if (state.undoStack.length === 0 || !state.meshData) return {};
-      const idx = state.undoStack.length - 1;
-      const prev = state.undoStack[idx];
-      const current: PaintSnapshot = {
-        faceColors: Uint8Array.from(state.meshData.faceColors),
-        segmentLabels: Uint32Array.from(state.meshData.segmentLabels),
-      };
-      result = prev;
-      return {
-        undoStack: state.undoStack.slice(0, idx),
-        redoStack: [...state.redoStack, current],
-      };
-    });
-    return result;
-  },
-  redoPaint: () => {
-    let result: PaintSnapshot | null = null;
-    set((state) => {
-      if (state.redoStack.length === 0 || !state.meshData) return {};
-      const idx = state.redoStack.length - 1;
-      const next = state.redoStack[idx];
-      const current: PaintSnapshot = {
-        faceColors: Uint8Array.from(state.meshData.faceColors),
-        segmentLabels: Uint32Array.from(state.meshData.segmentLabels),
-      };
-      result = next;
-      return {
-        redoStack: state.redoStack.slice(0, idx),
-        // Do NOT clear undo: redo may have more steps ahead.
-        undoStack: [...state.undoStack, current],
-      };
-    });
-    return result;
-  },
+  setHistoryFlags: (canUndo, canRedo) => set({ canUndo, canRedo }),
+  // Optimistic: a successful paint stroke always creates a history entry, so undo
+  // becomes available; meanwhile it invalidates any redo branch on the backend.
+  markHistoryDirty: () => set({ canUndo: true, canRedo: false }),
+  resetHistory: () => set({ canUndo: false, canRedo: false }),
   setStatusMessage: (msg) => set({ statusMessage: msg }),
   setLoading: (loading) => set({ isLoading: loading }),
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),
@@ -418,8 +356,8 @@ export const useAppStore = create<AppStore>()(
     version: 1,
     storage: createJSONStorage<PersistedPrefs>(pickStorage),
     // Whitelist — anything not listed here is intentionally session-scoped.
-    // Excluded on purpose: meshData / isLoaded / segments / undoStack /
-    // redoStack (large + stale on reload), activeTool / selectedSegment /
+    // Excluded on purpose: meshData / isLoaded / segments / canUndo / canRedo
+    // (runtime history flags, not durable prefs), activeTool / selectedSegment /
     // hoveredSegment / segmentView / toast / statusMessage / isLoading /
     // importProgress / importStage / lastPaintDebug (transient UI state).
     partialize: (s) => ({

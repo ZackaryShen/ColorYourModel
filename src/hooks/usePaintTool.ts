@@ -84,7 +84,7 @@ export function usePaintTool() {
 
   const paintFace = async (
     faceId: number,
-    opts?: { wholeRegion?: boolean; hoveredSegment?: number | null }
+    opts?: { wholeRegion?: boolean; hoveredSegment?: number | null; strokeId?: number | null }
   ): Promise<PaintOutcome | null> => {
     log.debug("usePaintTool", `paintFace(${faceId})`, { tool: activeTool, color: currentColor });
     try {
@@ -176,6 +176,7 @@ export function usePaintTool() {
             strength: brushStrength,
             falloffMode: brushFalloff,
             color: currentColor,
+            strokeId: opts?.strokeId ?? null,
           });
           break;
 
@@ -186,6 +187,7 @@ export function usePaintTool() {
             strength: brushStrength,
             color: currentColor,
             density: 50,
+            strokeId: opts?.strokeId ?? null,
           });
           break;
 
@@ -196,6 +198,7 @@ export function usePaintTool() {
             strength: brushStrength,
             falloffMode: brushFalloff,
             color: currentColor,
+            strokeId: opts?.strokeId ?? null,
           });
           break;
 
@@ -203,6 +206,7 @@ export function usePaintTool() {
           result = await invoke<PaintResult>("erase_paint", {
             centerFace: faceId,
             radius: brushRadius,
+            strokeId: opts?.strokeId ?? null,
           });
           break;
 

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, SegmentResult } from "../types/mesh";
+import { MeshData, ManualPointResult, SegmentResult, HistoryResult, HistoryState } from "../types/mesh";
 import { log } from "../utils/logger";
 
 export function useTauriCommand() {
@@ -118,27 +118,6 @@ export function useTauriCommand() {
   };
 
   /**
-   * Undo the last finalized manual (lasso) region.
-   * Backend restores affected faces to their pre-finalize state and returns the
-   * updated segment metadata + face colors for repaint.
-   */
-  const manualRegionUndo = async (): Promise<SegmentResult | null> => {
-    try {
-      const result = await invoke<SegmentResult>("manual_region_undo");
-      updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
-      setStatusMessage("已撤销上一个手动分区");
-      log.info("useTauriCommand", "manualRegionUndo complete", {
-        segments: result.segments.length,
-      });
-      return result;
-    } catch (e) {
-      log.error("useTauriCommand", "manualRegionUndo failed", { error: String(e) });
-      setStatusMessage(`撤销失败：${e}`);
-      return null;
-    }
-  };
-
-  /**
    * Smart auto-segmentation via Shape Diameter Function (semantic parts).
    * `k = 0` auto-estimates cluster count from SDF peaks.
    */
@@ -175,65 +154,53 @@ export function useTauriCommand() {
   };
 
   /**
-   * Restore a previously-snapshotted paint state (undo/redo of painting).
-   * Sends the pre-stroke face colors + segment labels back to the backend,
-   * which restores both arrays and rebuilds segment metadata (so a reverted
-   * just-created region disappears automatically). Frontend repaints from the
-   * returned result.
+   * Step the unified backend history one entry back. Returns the patch to apply,
+   * or null on IPC failure. `applyHistoryResult` (MeshDisplay) renders it.
    */
-  const restoreFaceColors = async (
-    faceColors: Uint8Array,
-    segmentLabels: Uint32Array
-  ): Promise<SegmentResult | null> => {
+  const undo = async (): Promise<HistoryResult | null> => {
     try {
-      const result = await invoke<SegmentResult>("restore_face_colors", {
-        faceColors: Array.from(faceColors),
-        segmentLabels: Array.from(segmentLabels),
-      });
-      updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
-      return result;
+      return await invoke<HistoryResult>("undo");
     } catch (e) {
-      log.error("useTauriCommand", "restoreFaceColors failed", { error: String(e) });
-      setStatusMessage(`恢复失败：${e}`);
+      log.error("useTauriCommand", "undo failed", { error: String(e) });
       return null;
     }
   };
 
   /**
-   * Undo the last paint/segment stroke. Pops the pre-stroke snapshot from the
-   * store (which moves the current state to the redo stack) and restores it.
+   * Step the unified backend history one entry forward.
    */
-  const undoPaint = async () => {
-    const snapshot = useAppStore.getState().undoPaint();
-    if (!snapshot) {
-      setStatusMessage("无可撤销操作");
-      return;
+  const redo = async (): Promise<HistoryResult | null> => {
+    try {
+      return await invoke<HistoryResult>("redo");
+    } catch (e) {
+      log.error("useTauriCommand", "redo failed", { error: String(e) });
+      return null;
     }
-    await restoreFaceColors(snapshot.faceColors, snapshot.segmentLabels);
-    setStatusMessage("已撤销");
   };
 
   /**
-   * Redo the last undone paint/segment stroke.
+   * Read the backend stack state (depths, can_undo/can_redo) without mutating it.
+   * Useful to re-sync the toolbar after a model (re)load.
    */
-  const redoPaint = async () => {
-    const snapshot = useAppStore.getState().redoPaint();
-    if (!snapshot) {
-      setStatusMessage("无可重做操作");
-      return;
+  const historyState = async (): Promise<HistoryState | null> => {
+    try {
+      return await invoke<HistoryState>("history_state");
+    } catch (e) {
+      log.error("useTauriCommand", "history_state failed", { error: String(e) });
+      return null;
     }
-    await restoreFaceColors(snapshot.faceColors, snapshot.segmentLabels);
-    setStatusMessage("已重做");
   };
 
   /**
    * Paint a single face into a manual segment.
-   * Called per-face during segment brush drag.
+   * Called per-face during segment brush drag. `strokeId` groups the whole drag
+   * into one backend undo entry (segment brush is a drag, not a click).
    * Returns { faceId, color, segmentLabel } for incremental GPU color update.
    */
   const paintSegmentFace = async (
     faceId: number,
-    segmentLabel?: number
+    segmentLabel?: number,
+    strokeId?: number
   ): Promise<{ faceId: number; color: number[]; segmentLabel: number } | null> => {
     try {
       const result = await invoke<{
@@ -243,6 +210,7 @@ export function useTauriCommand() {
       }>("paint_segment_face", {
         faceId,
         segmentLabel: segmentLabel ?? null,
+        strokeId: strokeId ?? null,
       });
       return result;
     } catch (e) {
@@ -281,9 +249,8 @@ export function useTauriCommand() {
     finalizeSegment,
     manualRegionAddPoint,
     finalizeManualRegion,
-    manualRegionUndo,
-    restoreFaceColors,
-    undoPaint,
-    redoPaint,
+    undo,
+    redo,
+    historyState,
   };
 }

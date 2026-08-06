@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useAppStore } from "../../store/appStore";
 import { PaintTool } from "../../types/mesh";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
+import { useUndoRedo } from "../../hooks/useHistory";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 
@@ -30,7 +31,8 @@ export function Toolbar() {
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
-  const { loadModel, autoSegment, autoSegmentSmart, export3mf } = useTauriCommand();
+  const { loadModel, autoSegment, autoSegmentSmart, export3mf, undo, redo, historyState } = useTauriCommand();
+  const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
 
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {
@@ -145,6 +147,29 @@ export function Toolbar() {
             </button>
           );
         })}
+      </div>
+
+      <div style={styles.divider} />
+
+      <div style={styles.section}>
+        <button
+          onClick={doUndo}
+          disabled={!canUndo}
+          className="cym-btn"
+          style={styles.button}
+          title={t("toolbar.undo")}
+        >
+          ↶
+        </button>
+        <button
+          onClick={doRedo}
+          disabled={!canRedo}
+          className="cym-btn"
+          style={styles.button}
+          title={t("toolbar.redo")}
+        >
+          ↷
+        </button>
       </div>
 
       <div style={styles.divider} />

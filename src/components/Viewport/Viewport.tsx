@@ -6,6 +6,8 @@ import { useAppStore } from "../../store/appStore";
 import { useMesh } from "../../hooks/useMesh";
 import { usePaintTool, WHOLE_SEGMENT_MAX_SHARE, MANUAL_SEGMENT_OFFSET } from "../../hooks/usePaintTool";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
+import { useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
+import type { HistoryResult } from "../../types/mesh";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
@@ -825,8 +827,8 @@ function MeshDisplay() {
   const setHoverProbe = useAppStore((s) => s.setHoverProbe);
   const { buildGeometry, publishGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
-  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, manualRegionUndo, undoPaint, redoPaint } = useTauriCommand();
-  const pushUndo = useAppStore((s) => s.pushUndo);
+  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
+  const { undo: historyUndo, redo: historyRedo } = useUndoRedo({ undo, redo, historyState });
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
   const isPainting = useRef(false);
@@ -864,9 +866,6 @@ function MeshDisplay() {
   const isLassoTool = activeTool === "lasso";
   // View/Navigate mode: left button rotates the camera (no tool action).
   const isViewTool = activeTool === "view";
-  // Tools that mutate per-face paint state → snapshot for undo on stroke start.
-  // Eyedropper (picker) only reads, so it is deliberately excluded.
-  const modifiesFaces = isBrushTool || isSegmentTool || activeTool === "fill";
   const [lassoPoints, setLassoPoints] = useState<THREE.Vector3[]>([]);
   const [lassoPreview, setLassoPreview] = useState<THREE.Vector3 | null>(null);
   const [lassoClosing, setLassoClosing] = useState(false);
@@ -941,6 +940,42 @@ function MeshDisplay() {
   useLayoutEffect(() => {
     publishGeometry(geometry);
   }, [geometry, publishGeometry]);
+
+  // Apply a HistoryResult from the backend. The frontend owns no timeline — it
+  // only renders the patch the backend computed:
+  //   - full === false → incremental colour patch via useMesh.updateFaceColors
+  //     (writes the store buffer in place + uploads the touched GPU range).
+  //   - full === true  → replace the whole mesh-data object so the memoised
+  //     colour buffers + geometry rebuild and repaint (labels may have moved,
+  //     which the segment view memoises on object identity).
+  // Registered on a bridge so the Toolbar (which can't see this mesh instance)
+  // can drive undo/redo through the one real `updateFaceColors`.
+  const applyHistory = useCallback(
+    (result: HistoryResult | null) => {
+      if (!result) return;
+      const st = useAppStore.getState();
+      st.setHistoryFlags(result.canUndo, result.canRedo);
+      if (!result.applied) return;
+      if (result.full) {
+        if (result.segmentLabels && result.segments && result.faceColors) {
+          st.updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
+        }
+      } else {
+        const colors: number[][] = [];
+        for (let i = 0; i < result.faces.length; i++) {
+          const o = i * 4;
+          colors.push([result.colors[o], result.colors[o + 1], result.colors[o + 2], result.colors[o + 3]]);
+        }
+        updateFaceColors(result.faces, colors);
+      }
+    },
+    [updateFaceColors]
+  );
+
+  useEffect(() => {
+    setHistoryApplier(applyHistory);
+    return () => setHistoryApplier(null);
+  }, [applyHistory]);
 
   // Build the raycasting BVH for this geometry. Deferred to a macrotask (NOT in
   // the render-phase useMemo above) so the first paint + surface picking are
@@ -1177,14 +1212,18 @@ function MeshDisplay() {
   const handleFacePicked = useCallback(
     async (
       faceId: number,
-      opts?: { wholeRegion?: boolean; hoveredSegment?: number | null; renderedHover?: number | null }
+      opts?: { wholeRegion?: boolean; hoveredSegment?: number | null; renderedHover?: number | null; strokeId?: number | null }
     ) => {
       if (isSegmentTool) {
         // Segment paint brush: skip already-painted faces in this drag
         if (segPaintedFacesRef.current.has(faceId)) return;
         segPaintedFacesRef.current.add(faceId);
 
-        const result = await paintSegmentFace(faceId, currentSegLabelRef.current ?? undefined);
+        const result = await paintSegmentFace(
+          faceId,
+          currentSegLabelRef.current ?? undefined,
+          opts?.strokeId ?? undefined
+        );
         if (result) {
           // Track label for subsequent faces in this drag
           currentSegLabelRef.current = result.segmentLabel;
@@ -1193,6 +1232,7 @@ function MeshDisplay() {
           setLastPaintDebug(
             `✏️ 分区笔 face=${faceId} → label=${result.segmentLabel}`
           );
+          useAppStore.getState().markHistoryDirty();
         }
       } else {
         const result = await paintFace(faceId, opts); // opts already has snapshotted hoveredSegment from enqueuePaint
@@ -1238,6 +1278,7 @@ function MeshDisplay() {
             `→ ${result.updatedFaces.length} filled / ${highlightFaces} highlighted ${match} ` +
             `[${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
           );
+          useAppStore.getState().markHistoryDirty();
         }
       }
     },
@@ -1272,8 +1313,15 @@ function MeshDisplay() {
     wholeRegion: boolean;
     hoveredSegment?: number | null;
     renderedHover?: number | null;
+    strokeId?: number | null;
   } | null>(null);
   const paintDrainingRef = useRef(false);
+  // Backend coalesces consecutive paint calls that share a `stroke_id` into ONE
+  // undo entry. We mint a fresh id per drag (pointerdown) and reuse it for the
+  // whole drag, so a single brush stroke = one undo step. The id alone delimits
+  // the stroke, so a lost pointerup can never merge two drags.
+  const strokeCounterRef = useRef(0);
+  const activeStrokeIdRef = useRef<number | null>(null);
   // Last non-null hoveredSegment from pointermove (iter29 v5: the pointermove
   // handler clears hoveredSegment to null when the cursor drifts onto a giant
   // segment like seg=0 — but the user still sees the stale yellow highlight
@@ -1299,6 +1347,9 @@ function MeshDisplay() {
       // between the two is the defect under investigation, so collapsing them
       // into one field would hide the very signal the HUD exists to expose.
       renderedHover: renderedHighlightLabelRef.current,
+      // The stroke id minted at pointerdown; groups this whole drag into one
+      // backend undo entry (see strokeCounterRef above).
+      strokeId: activeStrokeIdRef.current,
     };
     // iter30 PROBE: at click time, capture exactly what we snapshot.
     // snap = store hoveredSegment; ref = lastValidHoveredSegmentRef; final = what we pass down.
@@ -1415,15 +1466,11 @@ function MeshDisplay() {
         // Empty space: do NOT paint, do NOT capture. OrbitControls rotates.
         return;
       }
-      // Snapshot current paint state for undo BEFORE the first face is mutated
-      // (one stroke = one undo unit).
-      const md = useAppStore.getState().meshData;
-      if (md && modifiesFaces) {
-        pushUndo({
-          faceColors: Uint8Array.from(md.faceColors),
-          segmentLabels: Uint32Array.from(md.segmentLabels),
-        });
-      }
+      // Mint a fresh stroke id so every drag maps to ONE backend undo entry
+      // (backend coalesces consecutive calls sharing the id; see mesh/history.rs).
+      // Pointerup is irrelevant — the id alone delimits the stroke, so a lost
+      // pointerup can't merge two drags into one undo unit.
+      activeStrokeIdRef.current = ++strokeCounterRef.current;
       isPainting.current = true;
       // Capture the pointer so pointerup fires on the canvas even when the
       // cursor is released OUTSIDE it.
@@ -1761,7 +1808,7 @@ function MeshDisplay() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isLassoTool, setStatusMessage, t, manualRegionUndo, finalizeLasso]);
+  }, [isLassoTool, setStatusMessage, t, finalizeLasso]);
 
   // Global undo/redo — covers paint strokes AND lasso regions, and works in any
   // tool (undo of a paint stroke while View tool is active, etc.):
@@ -1791,7 +1838,7 @@ function MeshDisplay() {
 
       if (isRedo) {
         if (lassoActive && hasLoop) return; // no per-point redo in lasso
-        redoPaint();
+        historyRedo();
         return;
       }
 
@@ -1808,15 +1855,17 @@ function MeshDisplay() {
             t("lasso.undoPoint") + (next.length > 0 ? `（剩 ${next.length} 个点）` : "")
           );
         } else {
-          manualRegionUndo();
+          // No lasso region open → backend undo (also reverts the last lasso
+          // region, since manual regions live on the same unified timeline).
+          historyUndo();
         }
       } else {
-        undoPaint();
+        historyUndo();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [redoPaint, undoPaint, manualRegionUndo, setStatusMessage, t]);
+  }, [historyUndo, historyRedo, setStatusMessage, t]);
 
   if (!geometry) return null;
 

@@ -49,13 +49,31 @@ export interface ManualPointResult {
   snapped: [number, number, number];
 }
 
-/// Immutable snapshot of per-face paint state for undo/redo.
-/// `faceColors` is RGBA bytes (4 per face); `segmentLabels` is one u32 per face.
-/// Stored as typed arrays to keep memory flat; serialized to plain number[]
-/// arrays when sent back to the backend.
-export interface PaintSnapshot {
-  faceColors: Uint8Array;
-  segmentLabels: Uint32Array;
+/// Result of an undo/redo step from the unified backend history.
+///
+/// Two shapes, selected by `full` (backend `HistoryResult`, camelCased):
+///   - `full === false` — colour-only patch: write `faces`+`colors` incrementally.
+///   - `full === true`  — replace `segments`/`segmentLabels`/`faceColors` wholesale.
+/// `canUndo`/`canRedo` let the toolbar converge even if a prior response dropped.
+export interface HistoryResult {
+  applied: boolean;
+  full: boolean;
+  faces: number[];
+  colors: number[];
+  segments: Segment[] | null;
+  segmentLabels: number[] | null;
+  faceColors: number[] | null;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+/// Stack state for enabling toolbar buttons on load / after a stroke.
+export interface HistoryState {
+  canUndo: boolean;
+  canRedo: boolean;
+  undoDepth: number;
+  redoDepth: number;
+  bytes: number;
 }
 
 export interface ColorEntry {
