@@ -6,7 +6,7 @@ use crate::mesh::face_colors::mix_color;
 use crate::mesh::kdtree::distance;
 use crate::mesh::model::DEFAULT_FACE_COLOR;
 use crate::paint::brush::{brush_hit, falloff_strength};
-use crate::paint::fill::{fill_region, fill_segment};
+use crate::paint::fill::{region_faces, segment_faces};
 use crate::paint::smart_snap::smart_brush_hit;
 use crate::paint::spray::spray_hit;
 
@@ -18,6 +18,25 @@ pub struct PaintResult {
     pub updated_colors: Vec<[u8; 4]>,
 }
 
+/// Turn a list of `(face, colour)` updates into the wire format, after
+/// committing them through the history-recording write path.
+///
+/// Every paint command ends this way. Going through one helper is what keeps
+/// "painted" and "undoable" from drifting apart: there is no way to write a
+/// colour here and forget to record it.
+fn commit(
+    mesh: &mut crate::mesh::model::MeshModel,
+    stroke_id: Option<u64>,
+    updates: Vec<(u32, [u8; 4])>,
+) -> PaintResult {
+    mesh.apply_paint(stroke_id, &updates);
+    let (updated_faces, updated_colors) = updates.into_iter().unzip();
+    PaintResult {
+        updated_faces,
+        updated_colors,
+    }
+}
+
 #[tauri::command]
 pub fn brush_paint(
     center_face: u32,
@@ -25,6 +44,7 @@ pub fn brush_paint(
     strength: f32,
     falloff_mode: String,
     color: [u8; 4],
+    stroke_id: Option<u64>,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
@@ -47,22 +67,20 @@ pub fn brush_paint(
 
     let hits = brush_hit(mesh, center_face, radius);
     let center = mesh.face_center(center_face);
-    let mut updated_faces = Vec::new();
-    let mut updated_colors = Vec::new();
 
-    for fid in hits {
-        let d = distance(&center, &mesh.face_center(fid));
-        let s = falloff_strength(d, radius, &falloff_mode) * strength;
-        let new_color = mix_color(&mesh.face_colors[fid as usize], &color, s);
-        mesh.face_colors[fid as usize] = new_color;
-        updated_faces.push(fid);
-        updated_colors.push(new_color);
-    }
+    // Colours are computed against the *current* buffer and written only after
+    // the whole batch is handed to `commit`, so a face blended twice inside one
+    // call cannot see a half-applied state.
+    let updates: Vec<(u32, [u8; 4])> = hits
+        .into_iter()
+        .map(|fid| {
+            let d = distance(&center, &mesh.face_center(fid));
+            let s = falloff_strength(d, radius, &falloff_mode) * strength;
+            (fid, mix_color(&mesh.face_colors[fid as usize], &color, s))
+        })
+        .collect();
 
-    Ok(PaintResult {
-        updated_faces,
-        updated_colors,
-    })
+    Ok(commit(mesh, stroke_id, updates))
 }
 
 #[tauri::command]
@@ -94,23 +112,15 @@ pub fn fill_paint(
                 local.push(fid);
             }
         }
-        // Commit to the authoritative backend paint state. `fill_region` does
-        // this internally; the local branch must do it explicitly, otherwise the
-        // fill would exist only on the GPU and in the frontend store — and 3MF
-        // export / undo-restore would silently lose it.
-        for &fid in &local {
-            mesh.face_colors[fid as usize] = color;
-        }
         local
     } else {
-        fill_region(mesh, face_id, color)
+        region_faces(mesh, face_id)
     };
-    let colors = vec![color; faces.len()];
 
-    Ok(PaintResult {
-        updated_faces: faces,
-        updated_colors: colors,
-    })
+    // A fill is a single click, never a drag, so it can never coalesce with
+    // anything: `None`.
+    let updates: Vec<(u32, [u8; 4])> = faces.into_iter().map(|fid| (fid, color)).collect();
+    Ok(commit(mesh, None, updates))
 }
 
 #[tauri::command]
@@ -122,13 +132,9 @@ pub fn fill_segment_paint(
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let faces = fill_segment(mesh, segment_id, color);
-    let colors = vec![color; faces.len()];
-
-    Ok(PaintResult {
-        updated_faces: faces,
-        updated_colors: colors,
-    })
+    let faces = segment_faces(mesh, segment_id);
+    let updates: Vec<(u32, [u8; 4])> = faces.into_iter().map(|fid| (fid, color)).collect();
+    Ok(commit(mesh, None, updates))
 }
 
 #[tauri::command]
@@ -138,18 +144,14 @@ pub fn spray_paint(
     strength: f32,
     color: [u8; 4],
     density: u32,
+    stroke_id: Option<u64>,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let results = spray_hit(mesh, center_face, radius, strength, &color, density);
-    let (faces, colors): (Vec<_>, Vec<_>) = results.into_iter().unzip();
-
-    Ok(PaintResult {
-        updated_faces: faces,
-        updated_colors: colors,
-    })
+    let updates = spray_hit(mesh, center_face, radius, strength, &color, density);
+    Ok(commit(mesh, stroke_id, updates))
 }
 
 #[tauri::command]
@@ -159,24 +161,21 @@ pub fn smart_brush_paint(
     strength: f32,
     falloff_mode: String,
     color: [u8; 4],
+    stroke_id: Option<u64>,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let results = smart_brush_hit(mesh, center_face, radius, strength, &falloff_mode, &color);
-    let (faces, colors): (Vec<_>, Vec<_>) = results.into_iter().unzip();
-
-    Ok(PaintResult {
-        updated_faces: faces,
-        updated_colors: colors,
-    })
+    let updates = smart_brush_hit(mesh, center_face, radius, strength, &falloff_mode, &color);
+    Ok(commit(mesh, stroke_id, updates))
 }
 
 #[tauri::command]
 pub fn erase_paint(
     center_face: u32,
     radius: f32,
+    stroke_id: Option<u64>,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
@@ -185,20 +184,12 @@ pub fn erase_paint(
     let hits = brush_hit(mesh, center_face, radius);
     // Iteration 21: the eraser restores DEFAULT_FACE_COLOR, not literal white,
     // so erased faces match never-painted ones on both canvas themes.
-    let default_color = DEFAULT_FACE_COLOR;
-    let mut updated_faces = Vec::new();
-    let mut updated_colors = Vec::new();
+    let updates: Vec<(u32, [u8; 4])> = hits
+        .into_iter()
+        .map(|fid| (fid, DEFAULT_FACE_COLOR))
+        .collect();
 
-    for fid in hits {
-        mesh.face_colors[fid as usize] = default_color;
-        updated_faces.push(fid);
-        updated_colors.push(default_color);
-    }
-
-    Ok(PaintResult {
-        updated_faces,
-        updated_colors,
-    })
+    Ok(commit(mesh, stroke_id, updates))
 }
 
 #[tauri::command]

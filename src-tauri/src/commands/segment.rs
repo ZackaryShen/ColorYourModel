@@ -51,9 +51,11 @@ pub fn auto_segment(
     });
 
     let segments = segment_by_dihedral_angle(mesh, angle_threshold, &*progress_cb);
-    // Auto segmentation rewrites all labels; drop stale manual-region history
-    // so undo cannot restore pre-auto labels onto the new result.
+    // Auto segmentation rewrites all labels; drop stale history so undo cannot
+    // restore pre-auto labels onto the new result. Both stacks, because both
+    // hold diffs recorded against the labels that were just replaced.
     mesh.manual_region_history.clear();
+    mesh.history.clear();
 
     // Emit completion
     let _ = app.emit(
@@ -91,6 +93,7 @@ pub fn paint_segment_face(
     state: State<AppState>,
     face_id: u32,
     segment_label: Option<u32>,
+    stroke_id: Option<u64>,
 ) -> Result<PaintSegmentFaceResult, String> {
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
@@ -118,9 +121,10 @@ pub fn paint_segment_face(
         255,
     ];
 
-    // Assign label + color to this face
-    mesh.segment_labels[face_id as usize] = label;
-    mesh.face_colors[face_id as usize] = color;
+    // Assign label + color to this face, recording both for undo. The drag
+    // fires this once per face, so `stroke_id` is what collapses a whole
+    // segment-brush gesture into one undo level.
+    mesh.apply_segment_paint(stroke_id, face_id, label, color);
 
     Ok(PaintSegmentFaceResult {
         face_id,
@@ -329,8 +333,9 @@ pub fn auto_segment_smart(
         serde_json::json!({ "progress": 0.1, "stage": "Computing SDF..." }),
     );
     let segments = segment_by_sdf(mesh, k);
-    // Auto segmentation rewrites all labels; drop stale manual-region history.
+    // Auto segmentation rewrites all labels; drop stale history (see auto_segment).
     mesh.manual_region_history.clear();
+    mesh.history.clear();
 
     let _ = app.emit(
         "segment-progress",

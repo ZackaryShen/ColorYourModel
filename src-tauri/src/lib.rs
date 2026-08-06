@@ -37,6 +37,12 @@ pub fn run() {
             commands::paint::smart_brush_paint,
             commands::paint::erase_paint,
             commands::paint::pick_color,
+            // Unified undo/redo. `manual_region_undo` and `restore_face_colors`
+            // above are the two paths these replace; they stay registered until
+            // the frontend switch (S2) so the app keeps working mid-migration.
+            commands::history::undo,
+            commands::history::redo,
+            commands::history::history_state,
             commands::export::export_3mf_command,
         ])
         .run(tauri::generate_context!())

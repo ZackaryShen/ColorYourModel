@@ -2,6 +2,8 @@ use petgraph::graph::UnGraph;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::mesh::history::{History, OpKind};
+
 /// Bounding box for a mesh
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BoundingBox {
@@ -82,7 +84,17 @@ pub struct MeshModel {
     pub segments: HashMap<u32, Segment>,
 
     // Manual-region (lasso) undo history — LIFO, populated by finalize_manual_region
+    //
+    // TRANSITIONAL (Gate 0b' step S1): superseded by `history` below, which now
+    // records lasso regions as well. Kept only so the pre-existing frontend
+    // `manual_region_undo` path keeps working until step S2 switches the UI over;
+    // `undo_last_manual_region` pops both stacks in lockstep so they cannot
+    // disagree in the meantime. Removed in S2.
     pub manual_region_history: Vec<ManualRegionSnapshot>,
+
+    // Unified undo/redo history covering every colour and label mutation.
+    // Single source of truth once S2 lands. See `mesh::history`.
+    pub history: History,
 
     // Spatial acceleration
     pub face_kdtree: kiddo::KdTree<f32, 3>,
@@ -118,6 +130,7 @@ impl MeshModel {
             segment_labels: Vec::new(),
             segments: HashMap::new(),
             manual_region_history: Vec::new(),
+            history: History::new(),
             face_kdtree: kiddo::KdTree::new(),
             vertex_kdtree: kiddo::KdTree::new(),
             face_adjacency: UnGraph::default(),
@@ -382,7 +395,51 @@ impl MeshModel {
         assert_eq!(segment_labels.len(), self.faces.len());
         self.face_colors = face_colors.to_vec();
         self.segment_labels = segment_labels.to_vec();
+        // Wholesale replacement invalidates every recorded diff: an entry holds
+        // "face 12 used to be red" against a buffer that no longer exists, and
+        // applying it would write red onto whatever the snapshot put there.
+        self.history.clear();
         self.rebuild_segments();
+    }
+
+    /// Overwrite face colours, recording the previous values so the change can
+    /// be undone.
+    ///
+    /// `updates` carries the *new* colour per face. Callers that derive the new
+    /// colour from the old one (the brush blends against it) may read
+    /// `face_colors` freely while building `updates`: nothing is written until
+    /// the whole batch is recorded, so every read sees the pre-operation state.
+    ///
+    /// `stroke_id` groups the hundreds of IPC calls a single drag produces into
+    /// one undo level. Pass `None` for one-shot operations.
+    pub fn apply_paint(&mut self, stroke_id: Option<u64>, updates: &[(u32, [u8; 4])]) {
+        let prev: Vec<(u32, [u8; 4])> = updates
+            .iter()
+            .map(|&(face, _)| (face, self.face_colors[face as usize]))
+            .collect();
+        self.history.record(OpKind::Paint, stroke_id, &prev, &[]);
+        for &(face, color) in updates {
+            self.face_colors[face as usize] = color;
+        }
+    }
+
+    /// Overwrite one face's colour and segment label together, recording both.
+    pub fn apply_segment_paint(
+        &mut self,
+        stroke_id: Option<u64>,
+        face: u32,
+        label: u32,
+        color: [u8; 4],
+    ) {
+        let i = face as usize;
+        self.history.record(
+            OpKind::SegmentPaint,
+            stroke_id,
+            &[(face, self.face_colors[i])],
+            &[(face, self.segment_labels[i])],
+        );
+        self.face_colors[i] = color;
+        self.segment_labels[i] = label;
     }
 
     /// Convert to DTO for IPC transfer

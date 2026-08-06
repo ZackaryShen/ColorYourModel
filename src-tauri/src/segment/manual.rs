@@ -3,6 +3,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use petgraph::visit::EdgeRef;
 
+use crate::mesh::history::OpKind;
 use crate::mesh::kdtree::distance;
 use crate::mesh::model::{MeshModel, ManualRegionSnapshot};
 
@@ -568,14 +569,25 @@ pub fn finalize_manual_region(
         255,
     ];
     // Record pre-finalize state for undo (faces may belong to an earlier region).
+    //
+    // TRANSITIONAL (Gate 0b' S1): both histories are written. `mesh.history` is
+    // the one that survives; `manual_region_history` stays only so the existing
+    // `manual_region_undo` command keeps working until S2 switches the UI over.
     let mut snapshot = ManualRegionSnapshot {
         label,
         faces: Vec::with_capacity(region.len()),
     };
+    let mut prev_colors = Vec::with_capacity(region.len());
+    let mut prev_labels = Vec::with_capacity(region.len());
     for &f in &region {
         let fi = f as usize;
         snapshot.faces.push((f, mesh.segment_labels[fi], mesh.face_colors[fi]));
+        prev_colors.push((f, mesh.face_colors[fi]));
+        prev_labels.push((f, mesh.segment_labels[fi]));
     }
+    // A lasso is a single confirmed gesture, never a coalescing drag: `None`.
+    mesh.history
+        .record(OpKind::ManualRegion, None, &prev_colors, &prev_labels);
     for &f in &region {
         mesh.segment_labels[f as usize] = label;
         mesh.face_colors[f as usize] = color;
@@ -601,12 +613,21 @@ pub fn finalize_manual_region(
 /// recorded prior `(segment_label, face_color)`, then rebuilds segment
 /// metadata from the restored labels. Returns `Some(label)` of the reverted
 /// region, or `None` when history is empty.
+///
+/// TRANSITIONAL (Gate 0b' S1): this is the *old* undo path. It mutates colours
+/// and labels without going through `mesh.history`, so it wipes that history
+/// afterwards rather than trying to stay in lockstep with it. Popping the two
+/// stacks together would only be correct while the lasso is the most recent
+/// operation — paint a stroke after the lasso and the lockstep pop would
+/// silently revert the stroke instead. S2 deletes this function and routes
+/// `Ctrl+Z` through `mesh.history` alone.
 pub fn undo_last_manual_region(mesh: &mut MeshModel) -> Option<u32> {
     let snapshot = mesh.manual_region_history.pop()?;
     for (face, prev_label, prev_color) in snapshot.faces {
         mesh.segment_labels[face as usize] = prev_label;
         mesh.face_colors[face as usize] = prev_color;
     }
+    mesh.history.clear();
     mesh.rebuild_segments();
     Some(snapshot.label)
 }
@@ -799,7 +820,6 @@ mod tests {
         // Second finalize over the SAME faces → L2; prev state was L1.
         let (l2, _region2) = finalize_manual_region(&mut m, &pts, &[]).unwrap();
         assert_ne!(l1, l2);
-        let color_l2 = m.face_colors[region1[0] as usize];
         for &f in &region1 {
             assert_eq!(m.segment_labels[f as usize], l2);
         }
@@ -829,6 +849,64 @@ mod tests {
         assert!(m.manual_region_history.is_empty());
         assert!(m.segments.get(&l1).is_none());
         assert!(m.segments.get(&l2).is_none());
+    }
+
+    /// A lasso must land in the unified history too, not only in the legacy
+    /// `manual_region_history`. Undoing it through `mesh.history` has to
+    /// restore labels *and* colours — the two are stored in one entry precisely
+    /// so they cannot come back out of step.
+    #[test]
+    fn finalize_records_into_the_unified_history() {
+        let mut m = unit_cube();
+        let pts = [
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ];
+        let before: Vec<[u8; 4]> = m.face_colors.clone();
+
+        let (label, region) = finalize_manual_region(&mut m, &pts, &[]).unwrap();
+        assert!(m.history.can_undo(), "lasso must be undoable via mesh.history");
+
+        let crate::mesh::model::MeshModel {
+            history,
+            face_colors,
+            segment_labels,
+            ..
+        } = &mut m;
+        let out = history.undo(face_colors, segment_labels).unwrap();
+        assert!(out.labels_changed);
+        assert_eq!(out.faces.len(), region.len());
+
+        for &f in &region {
+            assert_eq!(m.segment_labels[f as usize], 0, "label reverted");
+            assert_eq!(m.face_colors[f as usize], before[f as usize], "colour reverted");
+        }
+        assert_ne!(label, 0);
+        assert!(m.history.can_redo());
+    }
+
+    /// The legacy undo mutates the buffers behind the unified history's back,
+    /// so it must invalidate that history rather than leave entries describing
+    /// a state that no longer exists.
+    #[test]
+    fn legacy_undo_invalidates_the_unified_history() {
+        let mut m = unit_cube();
+        let pts = [
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ];
+        finalize_manual_region(&mut m, &pts, &[]).unwrap();
+        assert!(m.history.can_undo());
+
+        undo_last_manual_region(&mut m).unwrap();
+        assert!(
+            !m.history.can_undo() && !m.history.can_redo(),
+            "stale diffs must not survive an out-of-band restore"
+        );
     }
 
     #[test]

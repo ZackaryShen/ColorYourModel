@@ -8,9 +8,13 @@ use crate::paint::brush::{brush_hit, falloff_strength};
 /// surface orientations. See `smart_brush_hit` for why this matters.
 const SMART_NORMAL_MIN_DOT: f32 = 0.5;
 
-/// Smart brush: like regular brush but constrained to the same segment
+/// Smart brush: like regular brush but constrained to the same segment.
+///
+/// This is a PURE SELECTOR: it computes the target colours but never writes them.
+/// The command layer feeds the result into `MeshModel::apply_paint` so that every
+/// colour mutation passes through the single history-recording funnel.
 pub fn smart_brush_hit(
-    mesh: &mut MeshModel,
+    mesh: &MeshModel,
     center_face: u32,
     radius: f32,
     strength: f32,
@@ -56,7 +60,6 @@ pub fn smart_brush_hit(
         let d = distance(&center, &mesh.face_center(fid));
         let s = falloff_strength(d, radius, falloff_mode) * strength;
         let new_color = mix_color(&mesh.face_colors[fid as usize], color, s);
-        mesh.face_colors[fid as usize] = new_color;
         results.push((fid, new_color));
     }
 

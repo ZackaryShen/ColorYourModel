@@ -1,26 +1,24 @@
+//! Face selection for the fill tool.
+//!
+//! These used to select *and* write the colour. Writing moved out to
+//! `MeshModel::apply_paint` so that every colour mutation in the backend goes
+//! through one place and therefore lands in the undo history — a second write
+//! path is exactly how an operation ends up being unundoable.
+
 use crate::mesh::model::MeshModel;
 use crate::segment::flood_fill::flood_fill;
 
-/// Fill an entire segment or flood-fill region with a target color
-pub fn fill_region(mesh: &mut MeshModel, start_face: u32, color: [u8; 4]) -> Vec<u32> {
-    let faces = flood_fill(mesh, start_face);
-    for &fid in &faces {
-        mesh.face_colors[fid as usize] = color;
-    }
-    faces
+/// Faces reachable from `start_face` by flood fill (one connected region).
+pub fn region_faces(mesh: &MeshModel, start_face: u32) -> Vec<u32> {
+    flood_fill(mesh, start_face)
 }
 
-/// Fill all faces of a specific segment
-pub fn fill_segment(mesh: &mut MeshModel, segment_id: u32, color: [u8; 4]) -> Vec<u32> {
-    let faces: Vec<u32> = mesh
-        .segment_labels
+/// Faces belonging to a specific segment.
+pub fn segment_faces(mesh: &MeshModel, segment_id: u32) -> Vec<u32> {
+    mesh.segment_labels
         .iter()
         .enumerate()
         .filter(|(_, &label)| label == segment_id)
         .map(|(i, _)| i as u32)
-        .collect();
-    for &fid in &faces {
-        mesh.face_colors[fid as usize] = color;
-    }
-    faces
+        .collect()
 }
