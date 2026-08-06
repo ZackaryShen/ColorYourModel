@@ -20,6 +20,20 @@ export const MANUAL_REGION_MAX_SHARE = 0.95;
 /// drew them and expects fill to cover the entire region (iteration 21 fix).
 export const MANUAL_SEGMENT_OFFSET = 100_000;
 
+/** How a Fill click was actually routed. The HUD needs this reported rather
+ *  than re-derived: only the `segment` route claims to cover the highlighted
+ *  partition exactly, so comparing "faces filled" against "faces highlighted"
+ *  is meaningful for that route alone. Asserting equality on a local blob or a
+ *  connected-region flood manufactures a mismatch that is in fact by design —
+ *  part of what iterations 25-30 spent six rounds chasing. */
+export type FillRouting = "segment" | "whole-region" | "local" | "n/a";
+
+export type PaintOutcome = PaintResult & {
+  fillRouting: FillRouting;
+  /** Label the fill targeted, or null when the route is not label-based. */
+  fillTarget: number | null;
+};
+
 export function usePaintTool() {
   const activeTool = useAppStore((s) => s.activeTool);
   const brushRadius = useAppStore((s) => s.brushRadius);
@@ -32,7 +46,7 @@ export function usePaintTool() {
   const fillSegment = async (
     faceId: number,
     overrideSegmentId?: number
-  ): Promise<PaintResult | null> => {
+  ): Promise<PaintOutcome | null> => {
     const meshData = useAppStore.getState().meshData;
     if (!meshData || !meshData.segmentLabels.length) return null;
     const segmentId = overrideSegmentId ?? meshData.segmentLabels[faceId];
@@ -60,7 +74,7 @@ export function usePaintTool() {
       const c = useAppStore.getState().currentColor;
       const hex = `#${c[0].toString(16).padStart(2, "0")}${c[1].toString(16).padStart(2, "0")}${c[2].toString(16).padStart(2, "0")}`.toUpperCase();
       setStatusMessage(`已填充分区 ${segmentId}（${result.updatedFaces.length} 个面）颜色 ${hex}`);
-      return result;
+      return { ...result, fillRouting: "segment", fillTarget: segmentId };
     } catch (e) {
       log.error("usePaintTool", "fillSegment failed", { segmentId, error: String(e) });
       setStatusMessage(`分区填充失败：${e}`);
@@ -71,10 +85,12 @@ export function usePaintTool() {
   const paintFace = async (
     faceId: number,
     opts?: { wholeRegion?: boolean; hoveredSegment?: number | null }
-  ): Promise<PaintResult | null> => {
+  ): Promise<PaintOutcome | null> => {
     log.debug("usePaintTool", `paintFace(${faceId})`, { tool: activeTool, color: currentColor });
     try {
       let result: PaintResult;
+      let fillRouting: FillRouting = "n/a";
+      let fillTarget: number | null = null;
 
       switch (activeTool) {
         case PaintTool.Fill: {
@@ -141,6 +157,8 @@ export function usePaintTool() {
           if (fillWholeSegment) {
             return fillSegment(faceId, label);
           }
+          fillRouting = opts?.wholeRegion ? "whole-region" : "local";
+          fillTarget = label ?? null;
           // radius 0 → explicit whole-connected-region flood (Shift+click), the
           // deliberate escape hatch kept for M3; otherwise a bounded local blob.
           result = await invoke<PaintResult>("fill_paint", {
@@ -205,7 +223,7 @@ export function usePaintTool() {
       log.debug("usePaintTool", "paintFace result", {
         faces: result.updatedFaces.length,
       });
-      return result;
+      return { ...result, fillRouting, fillTarget };
     } catch (e) {
       log.error("usePaintTool", "Paint command failed", { faceId, tool: activeTool, error: String(e) });
       setStatusMessage(`Paint error: ${e}`);

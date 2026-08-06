@@ -1,6 +1,6 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useAppStore } from "../../store/appStore";
 import { useMesh } from "../../hooks/useMesh";
@@ -1039,6 +1039,29 @@ function MeshDisplay() {
     return new Set(segs.filter((s) => (s.faceCount ?? 0) > threshold && (s.id ?? 0) < MANUAL_SEGMENT_OFFSET).map((s) => s.id));
   }, [meshData?.segments, meshData?.faceCount]);
 
+  // ── Gate 0a: single source of truth for "what is highlighted on screen" ──
+  //
+  // Iterations 25-30 produced six pieces of "decisive evidence" that turned out
+  // to be unusable, because the HUD counted `facesBySeg.get(fillTarget)` while
+  // the screen highlighted `hoveredSegment` filtered through `giantSegmentIds`.
+  // Those are different quantities, so the HUD could report a mismatch when the
+  // screen agreed, and agreement when it did not. Every consumer — the JSX below
+  // and the HUD alike — now reads this one value, which makes that class of
+  // divergence unrepresentable rather than merely unlikely.
+  const renderedHighlightLabel = useMemo<number | null>(() => {
+    if (segmentView) return selectedSegment;
+    if (hoveredSegment === null) return null;
+    if (giantSegmentIds.has(hoveredSegment)) return null;
+    return hoveredSegment;
+  }, [segmentView, selectedSegment, hoveredSegment, giantSegmentIds]);
+
+  // Published after commit, never during render (P1-8). `enqueuePaint` reads it
+  // synchronously from a pointer handler, so a layout effect is early enough.
+  const renderedHighlightLabelRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    renderedHighlightLabelRef.current = renderedHighlightLabel;
+  }, [renderedHighlightLabel]);
+
   // Raycast to surface, convert world hit → model-local coords.
   // Group is rotated -PI/2 about X, so worldToLocal yields local = (x, -z, y).
   const getLocalHit = useCallback(
@@ -1144,7 +1167,10 @@ function MeshDisplay() {
   );
 
   const handleFacePicked = useCallback(
-    async (faceId: number, opts?: { wholeRegion?: boolean; hoveredSegment?: number | null }) => {
+    async (
+      faceId: number,
+      opts?: { wholeRegion?: boolean; hoveredSegment?: number | null; renderedHover?: number | null }
+    ) => {
       if (isSegmentTool) {
         // Segment paint brush: skip already-painted faces in this drag
         if (segPaintedFacesRef.current.has(faceId)) return;
@@ -1179,13 +1205,30 @@ function MeshDisplay() {
           const md = state.meshData;
           const clickedLbl = md?.segmentLabels?.[faceId];
           const hoverLbl = opts?.hoveredSegment; // snapshotted at enqueue time (click), not closure
-          const targetLbl = (hoverLbl != null) ? hoverLbl : clickedLbl;
-          const highlightFaces = targetLbl !== undefined && facesBySeg ? (facesBySeg.get(targetLbl) ?? []).length : -1;
-          const match = highlightFaces >= 0 && highlightFaces === result.updatedFaces.length ? "✓" : (highlightFaces >= 0 ? "⚠️ MISMATCH" : "?");
+
+          // Gate 0a. `renderedHover` is the label the SCREEN was highlighting at
+          // click time, snapshotted from the same memo the highlight JSX reads —
+          // so `highlighted` below is now literally the face set the user saw
+          // lit up, not a third quantity derived from the fill target. The
+          // routing comes back from paintFace rather than being recomputed here;
+          // re-deriving it would reintroduce exactly the divergence this fixes.
+          const renderedLbl = opts?.renderedHover === undefined ? null : opts.renderedHover;
+          const highlightFaces =
+            renderedLbl !== null && facesBySeg ? (facesBySeg.get(renderedLbl) ?? []).length : 0;
+          const match =
+            result.fillRouting !== "segment"
+              ? `(route=${result.fillRouting}, equality not expected)`
+              : highlightFaces === result.updatedFaces.length
+                ? "✓"
+                : "⚠️ MISMATCH";
           const src = (hoverLbl != null && hoverLbl !== clickedLbl) ? "🎯hover" : "click";
           const hoverDisplay = hoverLbl === undefined ? "UNDEF" : String(hoverLbl);
           setLastPaintDebug(
-            `🖌 ${activeTool} face=${faceId} hover=${hoverDisplay} click=${clickedLbl ?? "?"} seg=${targetLbl ?? "?"}(${src}) color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} gpu=${gpu} → ${result.updatedFaces.length} filled / ${highlightFaces} highlighted ${match} [${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
+            `🖌 ${activeTool} face=${faceId} hover=${hoverDisplay}(${src}) click=${clickedLbl ?? "?"} ` +
+            `rendered=${renderedLbl ?? "none"} fillTarget=${result.fillTarget ?? "?"} route=${result.fillRouting} ` +
+            `color=${JSON.stringify(state.currentColor)} shade=${state.shadingMode} gpu=${gpu} ` +
+            `→ ${result.updatedFaces.length} filled / ${highlightFaces} highlighted ${match} ` +
+            `[${first5}${result.updatedFaces.length > 5 ? "…" : ""}]`
           );
         }
       }
@@ -1216,7 +1259,12 @@ function MeshDisplay() {
   // The queued item carries the modifier state captured at event time, so a
   // Shift+click whole-region fill is not lost while an earlier paint is in
   // flight (iteration 18, M3).
-  const dragPendingFaceRef = useRef<{ faceId: number; wholeRegion: boolean; hoveredSegment?: number | null } | null>(null);
+  const dragPendingFaceRef = useRef<{
+    faceId: number;
+    wholeRegion: boolean;
+    hoveredSegment?: number | null;
+    renderedHover?: number | null;
+  } | null>(null);
   const paintDrainingRef = useRef(false);
   // Last non-null hoveredSegment from pointermove (iter29 v5: the pointermove
   // handler clears hoveredSegment to null when the cursor drifts onto a giant
@@ -1234,7 +1282,16 @@ function MeshDisplay() {
     // like seg=0, but user still sees stale yellow highlight from pending React
     // render — they click expecting that highlight to be the target).
     const snap = useAppStore.getState().hoveredSegment;
-    dragPendingFaceRef.current = { faceId, wholeRegion, hoveredSegment: snap ?? lastValidHoveredSegmentRef.current };
+    dragPendingFaceRef.current = {
+      faceId,
+      wholeRegion,
+      hoveredSegment: snap ?? lastValidHoveredSegmentRef.current,
+      // Gate 0a: what the screen was ACTUALLY highlighting when the click
+      // landed. Kept separate from `hoveredSegment` on purpose — the gap
+      // between the two is the defect under investigation, so collapsing them
+      // into one field would hide the very signal the HUD exists to expose.
+      renderedHover: renderedHighlightLabelRef.current,
+    };
     // iter30 PROBE: at click time, capture exactly what we snapshot.
     // snap = store hoveredSegment; ref = lastValidHoveredSegmentRef; final = what we pass down.
     setHoverProbe(
@@ -1248,7 +1305,13 @@ function MeshDisplay() {
       while (dragPendingFaceRef.current != null) {
         const job = dragPendingFaceRef.current;
         dragPendingFaceRef.current = null;
-        try { await fn(job.faceId, { wholeRegion: job.wholeRegion, hoveredSegment: job.hoveredSegment }); }
+        try {
+          await fn(job.faceId, {
+            wholeRegion: job.wholeRegion,
+            hoveredSegment: job.hoveredSegment,
+            renderedHover: job.renderedHover,
+          });
+        }
         catch { /* ignore single-face failures */ }
       }
       paintDrainingRef.current = false;
@@ -1783,10 +1846,10 @@ function MeshDisplay() {
       {/* Paint view: highlight ONLY the segment under the cursor (near
           highlight). The just-created partition does NOT stay highlighted here —
           it lights up when you hover near it, which is the requested behavior. */}
-      {!segmentView && hoveredSegment !== null && meshData && edgeMap && facesBySeg && !giantSegmentIds.has(hoveredSegment) && (
+      {!segmentView && renderedHighlightLabel !== null && meshData && edgeMap && facesBySeg && (
         <>
-          <SegmentHighlight meshData={meshData} selectedSegment={hoveredSegment} facesBySeg={facesBySeg} />
-          <SegmentOutline meshData={meshData} selectedSegment={hoveredSegment} edgeMap={edgeMap} facesBySeg={facesBySeg} />
+          <SegmentHighlight meshData={meshData} selectedSegment={renderedHighlightLabel} facesBySeg={facesBySeg} />
+          <SegmentOutline meshData={meshData} selectedSegment={renderedHighlightLabel} edgeMap={edgeMap} facesBySeg={facesBySeg} />
         </>
       )}
       {/* Segment view: always highlight the selected segment (fill + outline);
@@ -1794,10 +1857,10 @@ function MeshDisplay() {
           outline so the user can see what they are about to operate on. */}
       {segmentView && meshData && edgeMap && facesBySeg && (
         <>
-          {selectedSegment !== null && (
+          {renderedHighlightLabel !== null && (
             <>
-              <SegmentHighlight meshData={meshData} selectedSegment={selectedSegment} facesBySeg={facesBySeg} />
-              <SegmentOutline meshData={meshData} selectedSegment={selectedSegment} edgeMap={edgeMap} facesBySeg={facesBySeg} />
+              <SegmentHighlight meshData={meshData} selectedSegment={renderedHighlightLabel} facesBySeg={facesBySeg} />
+              <SegmentOutline meshData={meshData} selectedSegment={renderedHighlightLabel} edgeMap={edgeMap} facesBySeg={facesBySeg} />
             </>
           )}
           {hoveredSegment !== null && hoveredSegment !== selectedSegment && (
