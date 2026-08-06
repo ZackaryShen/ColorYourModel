@@ -176,9 +176,21 @@ export function useMesh() {
       (colorAttr.array as Float32Array).set(src);
     }
     colorAttr.needsUpdate = true;
-    geometryRef.current = geometry;
+    // NOTE (P1-8): deliberately does NOT publish `geometryRef` here. Callers
+    // invoke `buildGeometry` from a render-phase `useMemo`, so writing the ref
+    // here would still be a render-phase side effect — one indirection deeper
+    // than the two removed in 550289e, and therefore easy to miss. The caller
+    // publishes via `publishGeometry` in a layout effect instead.
     return geometry;
   }, [baseGeometry, meshData, segmentView, segmentColorArray, paintColorArray]);
+
+  // Commit-phase publisher for `geometryRef`. Mirrors the `paintColorRef`
+  // treatment above: a layout effect closes the window before the browser can
+  // dispatch a pointer event, so `updateFaceColors` can never observe a
+  // geometry that was rendered but never committed.
+  const publishGeometry = useCallback((geometry: THREE.BufferGeometry | null) => {
+    geometryRef.current = geometry;
+  }, []);
 
   const updateFaceColors = useCallback(
     (updatedFaces: number[], updatedColors: number[][]) => {
@@ -253,5 +265,5 @@ export function useMesh() {
     []
   );
 
-  return { buildGeometry, updateFaceColors, geometryRef };
+  return { buildGeometry, publishGeometry, updateFaceColors, geometryRef };
 }

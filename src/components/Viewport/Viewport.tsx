@@ -823,7 +823,7 @@ function MeshDisplay() {
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setLastPaintDebug = useAppStore((s) => s.setLastPaintDebug);
   const setHoverProbe = useAppStore((s) => s.setHoverProbe);
-  const { buildGeometry, updateFaceColors } = useMesh();
+  const { buildGeometry, publishGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
   const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, manualRegionUndo, undoPaint, redoPaint } = useTauriCommand();
   const pushUndo = useAppStore((s) => s.pushUndo);
@@ -933,6 +933,14 @@ function MeshDisplay() {
     }
     return geo;
   }, [buildGeometry]);
+
+  // P1-8: publish the geometry ref AFTER commit. `buildGeometry` runs inside
+  // the memo above, so publishing from within it would be a render-phase side
+  // effect that StrictMode double-invokes and a discarded concurrent render
+  // could leave behind.
+  useLayoutEffect(() => {
+    publishGeometry(geometry);
+  }, [geometry, publishGeometry]);
 
   // Build the raycasting BVH for this geometry. Deferred to a macrotask (NOT in
   // the render-phase useMemo above) so the first paint + surface picking are
