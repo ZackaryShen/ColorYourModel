@@ -21,17 +21,6 @@ pub struct Segment {
     pub face_count: u32,
 }
 
-/// One finalized manual (lasso) region, recorded for undo.
-///
-/// `faces` stores, per affected face, its pre-finalize `(segment_label,
-/// face_color)` so that undo restores the exact prior state. Because the prior
-/// state may itself be an earlier manual region, LIFO undo of overlapping
-/// regions stays consistent.
-pub struct ManualRegionSnapshot {
-    pub label: u32,
-    pub faces: Vec<(u32, u32, [u8; 4])>, // (face_id, prev_label, prev_color)
-}
-
 /// Label offset separating manual segments from auto-segment labels.
 /// Auto-segment uses labels 0..N; manual labels start at 100_000 so that
 /// re-running auto_segment after manual work never collides.
@@ -83,17 +72,9 @@ pub struct MeshModel {
     pub segment_labels: Vec<u32>,
     pub segments: HashMap<u32, Segment>,
 
-    // Manual-region (lasso) undo history — LIFO, populated by finalize_manual_region
-    //
-    // TRANSITIONAL (Gate 0b' step S1): superseded by `history` below, which now
-    // records lasso regions as well. Kept only so the pre-existing frontend
-    // `manual_region_undo` path keeps working until step S2 switches the UI over;
-    // `undo_last_manual_region` pops both stacks in lockstep so they cannot
-    // disagree in the meantime. Removed in S2.
-    pub manual_region_history: Vec<ManualRegionSnapshot>,
-
-    // Unified undo/redo history covering every colour and label mutation.
-    // Single source of truth once S2 lands. See `mesh::history`.
+    // Unified undo/redo history covering every colour and label mutation:
+    // brush strokes, fills, the eraser, and lasso regions all record here.
+    // Sole source of truth for Ctrl+Z since S2. See `mesh::history`.
     pub history: History,
 
     // Spatial acceleration
@@ -129,7 +110,6 @@ impl MeshModel {
             face_colors: Vec::new(),
             segment_labels: Vec::new(),
             segments: HashMap::new(),
-            manual_region_history: Vec::new(),
             history: History::new(),
             face_kdtree: kiddo::KdTree::new(),
             vertex_kdtree: kiddo::KdTree::new(),
@@ -379,27 +359,17 @@ impl MeshModel {
         self.segments = segments.iter().map(|s| (s.id, s.clone())).collect();
     }
 
-    /// Restore a previously snapshotted paint state (full per-face colors +
-    /// labels) and rebuild segment metadata. Lengths must match `faces.len()`.
+    /// Segment metadata as a list ordered by id.
     ///
-    /// Single entry point for paint undo/redo: the frontend ships a snapshot
-    /// taken before a stroke; calling this reverts `face_colors` / `segment_labels`
-    /// and lets `rebuild_segments` drop any segment that the reverted stroke had
-    /// just created (its faces fall to 0 → not in `label_counts`).
-    pub fn restore_paint_state(
-        &mut self,
-        face_colors: &[[u8; 4]],
-        segment_labels: &[u32],
-    ) {
-        assert_eq!(face_colors.len(), self.faces.len());
-        assert_eq!(segment_labels.len(), self.faces.len());
-        self.face_colors = face_colors.to_vec();
-        self.segment_labels = segment_labels.to_vec();
-        // Wholesale replacement invalidates every recorded diff: an entry holds
-        // "face 12 used to be red" against a buffer that no longer exists, and
-        // applying it would write red onto whatever the snapshot put there.
-        self.history.clear();
-        self.rebuild_segments();
+    /// `segments` is a `HashMap`, so iterating it yields a different order on
+    /// every call. Anything that crosses IPC must go through here: the frontend
+    /// renders the region list straight from this vector and keys React rows by
+    /// index in places, so an unstable order makes the panel reshuffle itself
+    /// after every undo/redo even when nothing changed.
+    pub fn sorted_segments(&self) -> Vec<Segment> {
+        let mut segments: Vec<Segment> = self.segments.values().cloned().collect();
+        segments.sort_by_key(|s| s.id);
+        segments
     }
 
     /// Overwrite face colours, recording the previous values so the change can
@@ -451,7 +421,7 @@ impl MeshModel {
             .iter()
             .flat_map(|c| c.iter().copied())
             .collect();
-        let segments: Vec<Segment> = self.segments.values().cloned().collect();
+        let segments = self.sorted_segments();
 
         MeshDataDto {
             vertices,

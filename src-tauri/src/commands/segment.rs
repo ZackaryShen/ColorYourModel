@@ -6,8 +6,8 @@ use crate::mesh::loader::ProgressFn;
 use crate::mesh::model::Segment;
 use crate::segment::dihedral::segment_by_dihedral_angle;
 use crate::segment::manual::{
-    finalize_manual_region as backend_finalize_manual_region, undo_last_manual_region,
-    snap_point_to_vertex_on_face, MANUAL_SEGMENT_OFFSET,
+    finalize_manual_region as backend_finalize_manual_region, snap_point_to_vertex_on_face,
+    MANUAL_SEGMENT_OFFSET,
 };
 use crate::segment::sdf::segment_by_sdf;
 
@@ -52,9 +52,8 @@ pub fn auto_segment(
 
     let segments = segment_by_dihedral_angle(mesh, angle_threshold, &*progress_cb);
     // Auto segmentation rewrites all labels; drop stale history so undo cannot
-    // restore pre-auto labels onto the new result. Both stacks, because both
-    // hold diffs recorded against the labels that were just replaced.
-    mesh.manual_region_history.clear();
+    // restore pre-auto labels onto the new result — every recorded diff was
+    // taken against the labels that were just replaced.
     mesh.history.clear();
 
     // Emit completion
@@ -159,8 +158,7 @@ pub fn finalize_segment(
 
     // Rebuild full segment metadata from current labels (single source of truth).
     mesh.rebuild_segments();
-    let mut segments: Vec<Segment> = mesh.segments.values().cloned().collect();
-    segments.sort_by_key(|s| s.id);
+    let segments: Vec<Segment> = mesh.sorted_segments();
 
     log::info!(
         "[cmd:finalize_segment] label={}, total_segments={}",
@@ -234,86 +232,12 @@ pub fn finalize_manual_region(
     );
 
     Ok(SegmentResult {
-        segments: mesh.segments.values().cloned().collect(),
+        segments: mesh.sorted_segments(),
         segment_labels: mesh.segment_labels.clone(),
         face_colors: flatten_face_colors(&mesh.face_colors),
     })
 }
 
-/// Undo the last finalized manual (lasso) region.
-///
-/// Restores affected faces to their pre-finalize state (which may itself be an
-/// earlier manual region) and returns the updated segment metadata so the
-/// frontend can repaint. Returns an error when there is nothing to undo.
-#[tauri::command]
-pub fn manual_region_undo(state: State<AppState>) -> Result<SegmentResult, String> {
-    log::info!("[cmd:manual_region_undo] invoked");
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
-
-    match undo_last_manual_region(mesh) {
-        Some(label) => {
-            mesh.rebuild_segments();
-            log::info!("[cmd:manual_region_undo] reverted label={}", label);
-            Ok(SegmentResult {
-                segments: mesh.segments.values().cloned().collect(),
-                segment_labels: mesh.segment_labels.clone(),
-                face_colors: flatten_face_colors(&mesh.face_colors),
-            })
-        }
-        None => Err("No manual region to undo".into()),
-    }
-}
-
-/// Restore a previously snapshotted paint state (full per-face colors + labels).
-///
-/// Frontend undo/redo of painting ships the pre-stroke snapshot (faceColors +
-/// segmentLabels) captured before a stroke. We validate lengths against the
-/// live mesh, restore both arrays via `MeshModel::restore_paint_state` (which
-/// also rebuilds segment metadata so a reverted just-created region disappears),
-/// and return the updated result for a single repaint.
-#[tauri::command]
-pub fn restore_face_colors(
-    state: State<AppState>,
-    face_colors: Vec<u8>,
-    segment_labels: Vec<u32>,
-) -> Result<SegmentResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
-
-    if face_colors.len() != mesh.face_colors.len() * 4 {
-        return Err(format!(
-            "face_colors length {} != expected {}",
-            face_colors.len(),
-            mesh.face_colors.len() * 4
-        ));
-    }
-    if segment_labels.len() != mesh.segment_labels.len() {
-        return Err(format!(
-            "segment_labels length {} != expected {}",
-            segment_labels.len(),
-            mesh.segment_labels.len()
-        ));
-    }
-
-    // Reassemble [u8;4] from the flattened Vec<u8>.
-    let mut restored: Vec<[u8; 4]> = Vec::with_capacity(face_colors.len() / 4);
-    for chunk in face_colors.chunks_exact(4) {
-        restored.push([chunk[0], chunk[1], chunk[2], chunk[3]]);
-    }
-    mesh.restore_paint_state(&restored, &segment_labels);
-
-    log::info!(
-        "[cmd:restore_face_colors] restored, segments={}",
-        mesh.segments.len()
-    );
-
-    Ok(SegmentResult {
-        segments: mesh.segments.values().cloned().collect(),
-        segment_labels: mesh.segment_labels.clone(),
-        face_colors: flatten_face_colors(&mesh.face_colors),
-    })
-}
 
 /// Smart auto-segmentation via Shape Diameter Function (Tier 0).
 /// Produces semantic "parts" (thin vs thick) instead of the dihedral
@@ -334,7 +258,6 @@ pub fn auto_segment_smart(
     );
     let segments = segment_by_sdf(mesh, k);
     // Auto segmentation rewrites all labels; drop stale history (see auto_segment).
-    mesh.manual_region_history.clear();
     mesh.history.clear();
 
     let _ = app.emit(

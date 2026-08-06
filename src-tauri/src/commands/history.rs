@@ -1,9 +1,9 @@
 //! `undo` / `redo` commands over the unified backend history.
 //!
-//! These replace three separate frontend-driven mechanisms (a full-snapshot
-//! stack in the store, `restore_face_colors`, and `manual_region_undo`). The
-//! frontend no longer owns any part of the timeline; it sends a keystroke and
-//! receives a patch.
+//! These replaced three separate frontend-driven mechanisms (a full-snapshot
+//! stack in the store, a `restore_face_colors` command and a `manual_region_undo`
+//! command), all removed in S2. The frontend no longer owns any part of the
+//! timeline; it sends a keystroke and receives a patch.
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -143,7 +143,7 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
         } else {
             flatten(&outcome.colors)
         },
-        segments: full.then(|| mesh.segments.values().cloned().collect()),
+        segments: full.then(|| mesh.sorted_segments()),
         segment_labels: full.then(|| mesh.segment_labels.clone()),
         face_colors: full.then(|| flatten(&mesh.face_colors)),
         can_undo: mesh.history.can_undo(),

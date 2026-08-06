@@ -28,8 +28,6 @@ pub fn run() {
             commands::segment::finalize_segment,
             commands::segment::manual_region_add_point,
             commands::segment::finalize_manual_region,
-            commands::segment::manual_region_undo,
-            commands::segment::restore_face_colors,
             commands::paint::brush_paint,
             commands::paint::fill_paint,
             commands::paint::fill_segment_paint,
@@ -37,9 +35,9 @@ pub fn run() {
             commands::paint::smart_brush_paint,
             commands::paint::erase_paint,
             commands::paint::pick_color,
-            // Unified undo/redo. `manual_region_undo` and `restore_face_colors`
-            // above are the two paths these replace; they stay registered until
-            // the frontend switch (S2) so the app keeps working mid-migration.
+            // Unified undo/redo — the single timeline covering paint, fill,
+            // eraser and lasso. Replaced the former `manual_region_undo` and
+            // `restore_face_colors` commands, both deleted in S2.
             commands::history::undo,
             commands::history::redo,
             commands::history::history_state,

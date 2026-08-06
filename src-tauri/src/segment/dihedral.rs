@@ -265,7 +265,7 @@ pub fn segment_by_dihedral_angle(
     seg_log(&format!("=== segment DONE: {} final regions ===", seg_count));
     on_progress(0.95, &format!("找到 {} 个区域", seg_count));
 
-    mesh.segments.values().cloned().collect()
+    mesh.sorted_segments()
 }
 
 // ─── Phase 3: Normal-consistency merge ──────────────────────────
