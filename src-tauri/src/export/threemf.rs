@@ -16,7 +16,11 @@
 //! together or the colours fall back to whatever preset the user has loaded.
 
 use super::paint_color::{encode_paint_color, MAX_EXTRUDER_SLOT};
-use super::project_config::build_project_settings_config;
+use super::project_config::{
+    build_filament_profile_config, build_machine_profile_config, build_process_profile_config,
+    build_project_settings_config, filament_preset_path, MACHINE_PRESET_PATH,
+    PROCESS_PRESET_PATH,
+};
 use super::quantize::quantize_face_colors;
 use crate::mesh::model::MeshModel;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
@@ -50,6 +54,8 @@ pub fn export_3mf(mesh: &MeshModel, output_path: &Path) -> Result<(), String> {
 
     let model_xml = build_model_xml(mesh, &quantized.face_slots)?;
     let project_config = build_project_settings_config(&quantized.palette);
+    let machine_config = build_machine_profile_config();
+    let process_config = build_process_profile_config();
     let content_types = build_content_types();
     let rels = build_rels();
 
@@ -60,13 +66,30 @@ pub fn export_3mf(mesh: &MeshModel, output_path: &Path) -> Result<(), String> {
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
-    for (path, body) in [
-        (MODEL_PATH, model_xml.as_str()),
-        (PROJECT_CONFIG_PATH, project_config.as_str()),
-        ("[Content_Types].xml", content_types.as_str()),
-        ("_rels/.rels", rels.as_str()),
-    ] {
-        zip.start_file(path, options)
+    // The set of `.config` files is fixed: project + 1 machine + 1 process +
+    // one filament preset per extruder slot. OrcaSlicer's content-type
+    // registration does not list `.config` (`_add_content_types_file_to_archive`
+    // in bbs_3mf.cpp), and the reader locates these by path prefix, so we
+    // don't need to touch `[Content_Types].xml` either.
+    let mut entries: Vec<(String, String)> = vec![
+        (MODEL_PATH.to_string(), model_xml),
+        (PROJECT_CONFIG_PATH.to_string(), project_config),
+        (MACHINE_PRESET_PATH.to_string(), machine_config),
+        (PROCESS_PRESET_PATH.to_string(), process_config),
+        ("[Content_Types].xml".to_string(), content_types),
+        ("_rels/.rels".to_string(), rels),
+    ];
+    for (i, rgb) in quantized.palette.iter().enumerate() {
+        let slot = (i + 1) as u8;
+        let slot_rgb = [rgb[0], rgb[1], rgb[2]];
+        entries.push((
+            filament_preset_path(slot),
+            build_filament_profile_config(slot, slot_rgb),
+        ));
+    }
+
+    for (path, body) in &entries {
+        zip.start_file(path.as_str(), options)
             .map_err(|e| format!("Failed to create {} entry: {}", path, e))?;
         std::io::Write::write_all(&mut zip, body.as_bytes())
             .map_err(|e| format!("Failed to write {}: {}", path, e))?;
@@ -301,8 +324,13 @@ mod tests {
         for expected in [
             MODEL_PATH,
             PROJECT_CONFIG_PATH,
+            MACHINE_PRESET_PATH,
+            PROCESS_PRESET_PATH,
             "[Content_Types].xml",
             "_rels/.rels",
+            // Two palette entries, two filament preset files.
+            "Metadata/filament_settings_1.config",
+            "Metadata/filament_settings_2.config",
         ] {
             assert!(
                 names.iter().any(|n| n == expected),
@@ -311,13 +339,17 @@ mod tests {
             );
         }
 
-        // The slot palette and the filament list have to agree, otherwise the
-        // slicer clamps slots it considers out of range.
-        let mut config = archive.by_name(PROJECT_CONFIG_PATH).unwrap();
+        // The embedded machine preset MUST carry `printer_settings_id`, because
+        // bbs_3mf.cpp:2596 returns early otherwise and the preset is silently
+        // dropped. Same invariant for `print_settings_id` and
+        // `filament_settings_id`.
+        let mut f = archive
+            .by_name(MACHINE_PRESET_PATH)
+            .expect("machine preset must be present");
         let mut body = String::new();
-        std::io::Read::read_to_string(&mut config, &mut body).unwrap();
+        std::io::Read::read_to_string(&mut f, &mut body).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert_eq!(parsed["filament_colour"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["printer_settings_id"], "Generic Printer");
 
         let _ = std::fs::remove_file(&path);
     }
