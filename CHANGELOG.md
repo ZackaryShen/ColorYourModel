@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Added — 3MF 导出预设库 (2026-08-07, `2e4e070`)
+
+- **导出对话框**：导出前可选 厂商/机型 → 喷嘴直径 → 工艺 → 每槽耗材 → 目标切片器（Snapmaker Orca / OrcaSlicer），级联过滤 + 调色板槽位预览
+- **预设库**：`tools/extract_orca_presets.py` 从 OrcaSlicer vendor 树萃取（vendor 索引白名单 + inherits 链解析），编译期嵌入 `snapmaker_u1.json`（4 喷嘴变体 / 30 工艺 / 113 耗材）
+- **机器识别**：selected 导出嵌入完整 `machine_settings_1.config`（含 gcode 宏/运动参数），使 OrcaSlicer 下拉框直接显示 `Snapmaker U1 (0.4 nozzle)`，无需用户预装 vendor profile
+- **上次选择持久化**：导出配置存 zustand persist（`lastExportSelection`，值域校验）
+- 后端新增 IPC：`list_export_presets`、`export_palette_preview`；`export_3mf_command` 支持可选 `selection`
+
 ### Added — v0.2 功能增强
 
 #### 手动分区画笔 (Round 7-8)
