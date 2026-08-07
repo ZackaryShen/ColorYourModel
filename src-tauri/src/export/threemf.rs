@@ -16,10 +16,11 @@
 //! together or the colours fall back to whatever preset the user has loaded.
 
 use super::paint_color::{encode_paint_color, MAX_EXTRUDER_SLOT};
+use super::presets::{ExportSelection, ResolvedSelection};
 use super::project_config::{
     build_filament_profile_config, build_machine_profile_config, build_process_profile_config,
-    build_project_settings_config, filament_preset_path, MACHINE_PRESET_PATH,
-    PROCESS_PRESET_PATH,
+    build_project_settings_config, build_selected_machine_config, build_selected_process_config,
+    filament_preset_path, MACHINE_PRESET_PATH, PROCESS_PRESET_PATH,
 };
 use super::quantize::quantize_face_colors;
 use crate::mesh::model::MeshModel;
@@ -41,7 +42,16 @@ const PROJECT_CONFIG_PATH: &str = "Metadata/project_settings.config";
 
 /// Export mesh with per-face colours to a 3MF file readable by OrcaSlicer and
 /// Snapmaker Orca.
-pub fn export_3mf(mesh: &MeshModel, output_path: &Path) -> Result<(), String> {
+///
+/// `selection` is the machine / process / filament combination the user picked
+/// in the export dialog. `None` falls back to the built-in generic profile,
+/// which keeps old exports working but does not make the slicer recognise the
+/// machine (see `presets.rs`).
+pub fn export_3mf(
+    mesh: &MeshModel,
+    output_path: &Path,
+    selection: Option<&ExportSelection>,
+) -> Result<(), String> {
     let quantized = quantize_face_colors(&mesh.face_colors, MAX_EXTRUDER_SLOT as usize);
 
     if quantized.face_slots.len() != mesh.faces.len() {
@@ -52,10 +62,20 @@ pub fn export_3mf(mesh: &MeshModel, output_path: &Path) -> Result<(), String> {
         ));
     }
 
+    // Resolve the user's pick against the preset library. A dangling name is
+    // an error the dialog should have prevented; failing here is better than
+    // silently writing a file that opens with the wrong machine.
+    let resolved: Option<ResolvedSelection<'_>> = match selection {
+        Some(sel) => Some(
+            sel.resolve(quantized.palette.len())
+                .map_err(|e| format!("export selection: {}", e))?,
+        ),
+        None => None,
+    };
+
     let model_xml = build_model_xml(mesh, &quantized.face_slots)?;
-    let project_config = build_project_settings_config(&quantized.palette);
-    let machine_config = build_machine_profile_config();
-    let process_config = build_process_profile_config();
+    let project_config =
+        build_project_settings_config(&quantized.palette, resolved.as_ref());
     let content_types = build_content_types();
     let rels = build_rels();
 
@@ -66,26 +86,40 @@ pub fn export_3mf(mesh: &MeshModel, output_path: &Path) -> Result<(), String> {
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
-    // The set of `.config` files is fixed: project + 1 machine + 1 process +
-    // one filament preset per extruder slot. OrcaSlicer's content-type
-    // registration does not list `.config` (`_add_content_types_file_to_archive`
-    // in bbs_3mf.cpp), and the reader locates these by path prefix, so we
-    // don't need to touch `[Content_Types].xml` either.
     let mut entries: Vec<(String, String)> = vec![
         (MODEL_PATH.to_string(), model_xml),
         (PROJECT_CONFIG_PATH.to_string(), project_config),
-        (MACHINE_PRESET_PATH.to_string(), machine_config),
-        (PROCESS_PRESET_PATH.to_string(), process_config),
         ("[Content_Types].xml".to_string(), content_types),
         ("_rels/.rels".to_string(), rels),
     ];
-    for (i, rgb) in quantized.palette.iter().enumerate() {
-        let slot = (i + 1) as u8;
-        let slot_rgb = [rgb[0], rgb[1], rgb[2]];
-        entries.push((
-            filament_preset_path(slot),
-            build_filament_profile_config(slot, slot_rgb),
-        ));
+
+    match &resolved {
+        // Selected path: the machine + process presets are embedded so Orca's
+        // dropdown can show the full vendor name ("Snapmaker U1 (0.4 nozzle)")
+        // even when the vendor profile is not installed. Filament presets are
+        // deliberately NOT embedded — the project file's N-length arrays carry
+        // everything the spool card needs, and Orca itself writes zero
+        // filament files for "stock filament, custom colours" (REFUTE-7).
+        Some(sel) => {
+            entries.push((MACHINE_PRESET_PATH.to_string(), build_selected_machine_config(sel)));
+            entries.push((PROCESS_PRESET_PATH.to_string(), build_selected_process_config(sel)));
+        }
+        // Generic path: keep the original 1 + N layout (machine + process +
+        // one filament preset per slot).
+        None => {
+            let machine_config = build_machine_profile_config();
+            let process_config = build_process_profile_config();
+            entries.push((MACHINE_PRESET_PATH.to_string(), machine_config));
+            entries.push((PROCESS_PRESET_PATH.to_string(), process_config));
+            for (i, rgb) in quantized.palette.iter().enumerate() {
+                let slot = (i + 1) as u8;
+                let slot_rgb = [rgb[0], rgb[1], rgb[2]];
+                entries.push((
+                    filament_preset_path(slot),
+                    build_filament_profile_config(slot, slot_rgb),
+                ));
+            }
+        }
     }
 
     for (path, body) in &entries {
@@ -316,7 +350,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("roundtrip.3mf");
 
-        export_3mf(&mesh, &path).expect("export must succeed");
+        export_3mf(&mesh, &path, None).expect("export must succeed");
 
         let file = std::fs::File::open(&path).unwrap();
         let mut archive = zip::ZipArchive::new(file).expect("output must be a valid zip");
@@ -350,6 +384,63 @@ mod tests {
         std::io::Read::read_to_string(&mut f, &mut body).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(parsed["printer_settings_id"], "Generic Printer");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_selected_export_embeds_the_vendor_machine_and_process_presets() {
+        let mesh = two_face_mesh(vec![[255, 0, 0, 255], [0, 0, 255, 255]]);
+        let dir = std::env::temp_dir().join("cym-3mf-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("roundtrip-selected.3mf");
+
+        let sel = crate::export::presets::ExportSelection {
+            machine_id: "snapmaker_u1".into(),
+            nozzle_diameter: "0.4".into(),
+            process_name: "0.20 Standard @Snapmaker U1 (0.4 nozzle)".into(),
+            filament_names: vec!["Generic PLA".into()],
+            target_slicer: "orcaslicer".into(),
+        };
+
+        export_3mf(&mesh, &path, Some(&sel)).expect("selected export must succeed");
+
+        let file = std::fs::File::open(&path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).expect("output must be a valid zip");
+        let names: Vec<String> = archive.file_names().map(|s| s.to_string()).collect();
+
+        // Selected path: machine + process embedded, NO per-slot filament
+        // files (REFUTE-7 — the project file's arrays feed the spool card).
+        for expected in [MACHINE_PRESET_PATH, PROCESS_PRESET_PATH] {
+            assert!(names.iter().any(|n| n == expected), "{} missing", expected);
+        }
+        assert!(
+            !names.iter().any(|n| n.contains("filament_settings_")),
+            "selected path must not embed filament preset files"
+        );
+
+        let mut body = String::new();
+        {
+            let mut f = archive
+                .by_name(MACHINE_PRESET_PATH)
+                .expect("machine preset must be present");
+            std::io::Read::read_to_string(&mut f, &mut body).unwrap();
+        }
+        let machine: serde_json::Value = serde_json::from_str(&body).unwrap();
+        // The name Orca's dropdown shows; must equal the project file's ID.
+        assert_eq!(machine["printer_settings_id"], "Snapmaker U1 (0.4 nozzle)");
+        assert_eq!(machine["printer_model"], "Snapmaker U1");
+        assert!(machine.get("machine_start_gcode").is_some());
+
+        let mut body = String::new();
+        {
+            let mut f = archive
+                .by_name(PROJECT_CONFIG_PATH)
+                .expect("project config must be present");
+            std::io::Read::read_to_string(&mut f, &mut body).unwrap();
+        }
+        let project: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(project["printer_settings_id"], "Snapmaker U1 (0.4 nozzle)");
 
         let _ = std::fs::remove_file(&path);
     }
@@ -399,7 +490,14 @@ mod tests {
         mesh.face_colors = (0..12).map(|i| palette[i / 2]).collect();
 
         let path = std::path::Path::new("../examples/paint_color_sample.3mf");
-        export_3mf(&mesh, path).expect("sample export must succeed");
+        let sel = crate::export::presets::ExportSelection {
+            machine_id: "snapmaker_u1".into(),
+            nozzle_diameter: "0.4".into(),
+            process_name: "0.20 Standard @Snapmaker U1 (0.4 nozzle)".into(),
+            filament_names: vec!["Generic PLA".into()],
+            target_slicer: "orcaslicer".into(),
+        };
+        export_3mf(&mesh, path, Some(&sel)).expect("sample export must succeed");
         println!("wrote sample to {}", path.display());
     }
 }

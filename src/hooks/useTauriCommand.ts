@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
 import { MeshData, ManualPointResult, SegmentResult, HistoryResult, HistoryState } from "../types/mesh";
+import type { ExportSelection } from "../types/export";
 import { log } from "../utils/logger";
 
 export function useTauriCommand() {
@@ -139,11 +140,11 @@ export function useTauriCommand() {
     }
   };
 
-  const export3mf = async (path: string) => {
-    log.info("useTauriCommand", `export3mf("${path}")`);
+  const export3mf = async (path: string, selection?: ExportSelection) => {
+    log.info("useTauriCommand", `export3mf("${path}")`, { selection });
     try {
       setStatusMessage("Exporting...");
-      await invoke("export_3mf_command", { path });
+      await invoke("export_3mf_command", { path, selection: selection ?? null });
       log.info("useTauriCommand", "export3mf complete");
       setStatusMessage("Export complete");
     } catch (e) {

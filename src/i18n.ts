@@ -84,6 +84,20 @@ const dict: Record<string, Record<Lang, string>> = {
   "theme.toggle": { zh: "切换深浅色", en: "Toggle theme" },
   "theme.dark": { zh: "🌙 深色", en: "🌙 Dark" },
   "theme.light": { zh: "☀️ 浅色", en: "☀️ Light" },
+
+  // Export dialog (preset library)
+  "export.title": { zh: "导出为 3MF", en: "Export as 3MF" },
+  "export.machine": { zh: "厂商 / 机型", en: "Vendor / Machine" },
+  "export.nozzle": { zh: "喷嘴直径", en: "Nozzle diameter" },
+  "export.process": { zh: "工艺（打印参数）", en: "Process (print profile)" },
+  "export.filament": { zh: "耗材（每槽位）", en: "Filament (per slot)" },
+  "export.slots": { zh: " 个槽位", en: " slots" },
+  "export.target": { zh: "目标切片器", en: "Target slicer" },
+  "export.targetSnapmaker": { zh: "Snapmaker Orca", en: "Snapmaker Orca" },
+  "export.targetOrca": { zh: "OrcaSlicer（通用）", en: "OrcaSlicer (generic)" },
+  "export.cancel": { zh: "取消", en: "Cancel" },
+  "export.confirm": { zh: "选择保存位置并导出", en: "Choose location & export" },
+  "export.exporting": { zh: "导出中…", en: "Exporting…" },
 };
 
 // ─── Hook: returns translation function ──────────────────────────

@@ -1,12 +1,13 @@
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { PaintTool } from "../../types/mesh";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo } from "../../hooks/useHistory";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
+import { ExportDialog } from "../ExportDialog/ExportDialog";
 
 const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.View, icon: "🖐️", i18nKey: "tool.view" },
@@ -31,8 +32,9 @@ export function Toolbar() {
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
-  const { loadModel, autoSegment, autoSegmentSmart, export3mf, undo, redo, historyState } = useTauriCommand();
+  const { loadModel, autoSegment, autoSegmentSmart, undo, redo, historyState } = useTauriCommand();
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {
@@ -84,14 +86,8 @@ export function Toolbar() {
     }
   };
 
-  const handleExport = async () => {
-    const selected = await save({
-      filters: [{ name: "3MF", extensions: ["3mf"] }],
-      defaultPath: "model.3mf",
-    });
-    if (selected) {
-      await export3mf(selected);
-    }
+  const handleExport = () => {
+    setExportDialogOpen(true);
   };
 
   const handleSegment = async () => {
@@ -104,6 +100,7 @@ export function Toolbar() {
 
   return (
     <div style={styles.container}>
+      {exportDialogOpen && <ExportDialog onClose={() => setExportDialogOpen(false)} />}
       <div style={styles.section}>
         <button onClick={handleImport} disabled={isLoading} className="cym-btn" style={styles.button} title={t("toolbar.import")}>
           {isLoading ? "..." : "📂"}

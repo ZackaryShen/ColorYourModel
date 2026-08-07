@@ -1,6 +1,7 @@
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { MeshData, PaintTool, Segment } from "../types/mesh";
+import type { PersistedExportSelection } from "../types/export";
 import type { Lang } from "../i18n";
 
 interface AppStore {
@@ -60,6 +61,9 @@ interface AppStore {
   // user can watch hoveredSegment change in real time inside a release build.
   hoverProbe: string | null;
 
+  // Last export dialog selection (persisted so re-exports don't re-pick).
+  lastExportSelection: PersistedExportSelection | null;
+
   // Actions
   setMeshData: (data: MeshData) => void;
   updateSegmentLabels: (labels: number[], segments: Segment[], faceColors?: number[]) => void;
@@ -94,6 +98,7 @@ interface AppStore {
   setLanguage: (lang: Lang) => void;
   setLastPaintDebug: (s: string | null) => void;
   setHoverProbe: (s: string | null) => void;
+  setLastExportSelection: (s: PersistedExportSelection | null) => void;
 }
 
 // ── Preference persistence (iteration 21) ─────────────────────────────────
@@ -134,6 +139,7 @@ interface PersistedPrefs {
   brushFalloff: "linear" | "smooth" | "step";
   currentColor: [number, number, number, number];
   snapEnabled: boolean;
+  lastExportSelection: PersistedExportSelection | null;
 }
 
 /** Initial theme when no persisted payload exists: legacy key → OS preference
@@ -214,6 +220,33 @@ function mergePrefs(persisted: unknown, current: AppStore): AppStore {
     const c = p.currentColor.map((v) => clamp(Math.round(v), 0, 255));
     next.currentColor = [c[0], c[1], c[2], c[3]];
   }
+  // Value-range validation for the persisted export selection. A hand-edited
+  // payload must never produce a dialog stuck on an unknown machine id, so
+  // only structurally sound selections survive rehydration; anything else is
+  // dropped and the dialog starts from defaults.
+  if (p.lastExportSelection && typeof p.lastExportSelection === "object") {
+    const s = p.lastExportSelection;
+    if (
+      typeof s.machineId === "string" &&
+      s.machineId.length > 0 &&
+      typeof s.nozzleDiameter === "string" &&
+      s.nozzleDiameter.length > 0 &&
+      typeof s.processName === "string" &&
+      s.processName.length > 0 &&
+      Array.isArray(s.filamentNames) &&
+      s.filamentNames.every((f) => typeof f === "string") &&
+      typeof s.targetSlicer === "string" &&
+      (s.targetSlicer === "snapmaker_orca" || s.targetSlicer === "orcaslicer")
+    ) {
+      next.lastExportSelection = {
+        machineId: s.machineId,
+        nozzleDiameter: s.nozzleDiameter,
+        processName: s.processName,
+        filamentNames: s.filamentNames.slice(0, 8),
+        targetSlicer: s.targetSlicer,
+      };
+    }
+  }
   return next;
 }
 
@@ -253,6 +286,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
 
   lastPaintDebug: null,
   hoverProbe: null,
+  lastExportSelection: null,
 
   setMeshData: (data) =>
     set({
@@ -348,6 +382,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setLanguage: (lang) => set({ language: lang }),
   setLastPaintDebug: (s) => set({ lastPaintDebug: s }),
   setHoverProbe: (s) => set({ hoverProbe: s }),
+  setLastExportSelection: (s) => set({ lastExportSelection: s }),
 });
 
 export const useAppStore = create<AppStore>()(
@@ -369,6 +404,7 @@ export const useAppStore = create<AppStore>()(
       brushFalloff: s.brushFalloff,
       currentColor: s.currentColor,
       snapEnabled: s.snapEnabled,
+      lastExportSelection: s.lastExportSelection,
     }),
     merge: mergePrefs,
   })
