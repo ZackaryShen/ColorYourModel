@@ -1059,9 +1059,16 @@ function MeshDisplay() {
   // Giant segments whose hover would paint the entire model teal (iteration 23,
   // REFUTE B1/B2). Phase4 merge_small_regions_fast can roll 10k+ regions into
   // ~27 giants (avg 55k faces each). Hovering any of these floods the overlay —
-  // visually identical to "the whole model is highlighted". Fill already guards
-  // against this (usePaintTool: realSegs.length > 1 && share <= 0.8); we mirror
-  // that guard here so hover and fill agree on what counts as "actionable".
+  // visually identical to "the whole model is highlighted".
+  //
+  // D2 (2026-08-06) made FILL always target the whole partition regardless of
+  // share, so this hover suppression is now the ONLY remaining "giant" gate and
+  // it is a pure PERFORMANCE guard: rebuilding the highlight geometry for a
+  // partition covering the whole model is the 54M-push path (docs/06 §2.2),
+  // which is why it stays until Gate 0d replaces the highlight with a shader.
+  // Note the asymmetry this creates: hovering a giant shows no highlight (or a
+  // single-face outline) while clicking it fills the whole partition — that is
+  // the D2-mandated behaviour, not a regression.
   //
   // A segment is "giant" when:
   //   - it occupies > WHOLE_SEGMENT_MAX_SHARE (80 %) of total faces, OR

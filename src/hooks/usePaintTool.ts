@@ -3,17 +3,17 @@ import { useAppStore } from "../store/appStore";
 import { PaintResult, PaintTool } from "../types/mesh";
 import { log } from "../utils/logger";
 
-/** A clicked partition covering more than this share of the model is treated as
- *  "the whole model", so filling it would be indistinguishable from flooding
- *  everything. Above the threshold the fill degrades to a local, bounded blob
- *  (iteration 18, Issue 1).
- *
- * Manual regions (lasso/segment brush) use a slightly more permissive 0.95
- *  because the user explicitly drew them and expects Fill to cover the entire
- *  drawn area (iteration 22 M6 guard: prevent one-click half-model flood while
- *  still allowing large intentional regions). */
+/**
+ * D2 (product ruling, 2026-08-06): a large partition (>80% share) is filled
+ * WHOLE, never degraded. The share thresholds that used to demote such clicks
+ * to a local brush-radius blob are deleted (docs/06 §2.1 item 3). What remains
+ * here is only what OTHER consumers need:
+ *   - `WHOLE_SEGMENT_MAX_SHARE`: still consulted by Viewport's giantSegmentIds
+ *     to suppress hover highlight on background partitions (Gate 0d backlog —
+ *     removing it would flood the highlight overlay; see docs/06 §2.2).
+ *   - `MANUAL_SEGMENT_OFFSET`: label >= this is a manual region.
+ */
 export const WHOLE_SEGMENT_MAX_SHARE = 0.8;
-export const MANUAL_REGION_MAX_SHARE = 0.95;
 
 /// Labels >= this value are manually-created regions (lasso / freehand).
 /// These should ALWAYS be filled as whole partitions — the user explicitly
@@ -113,44 +113,29 @@ export function usePaintTool() {
           //     as yellow highlight) over the clicked face's own label. Only
           //     fall back to clicked-face label when no hover exists.
           //
-          // The old guard (`segments.some(s => s.id === label)`) was always true
-          // because `auto_segment` emits a label-0 partition covering everything
-          // left over, so one click flooded the ENTIRE model (REFUTE M1). The
-          // reliable discriminator is the clicked partition's FACE SHARE, which
-          // maps directly onto the complaint "因为它是一个大分区".
+          //   • **D2 (product ruling, 2026-08-06)**: a large partition (>80 %
+          //     share) is filled WHOLE, never degraded. The share thresholds
+          //     and the `realSegs.length > 1` gate that used to demote such
+          //     clicks to a local brush-radius blob were deleted (docs/06 §2.1
+          //     item 3). The old guard made "the whole model is one partition"
+          //     indistinguishable from "I clicked the background": hover
+          //     highlighted the partition but the fill only painted a blob of
+          //     `brushRadius`, which read as "Fill uses the brush diameter".
+          //     `!!seg` is kept deliberately — with an EMPTY segments list
+          //     (autoSegment failed or was skipped) there is no partition to
+          //     fill, and routing to fillSegment would flood the entire model
+          //     through label 0 (REFUTE, autoSegment-failure path).
           const md = useAppStore.getState().meshData;
           const hovered = opts?.hoveredSegment ?? null;
           const label = (hovered != null) ? hovered : (md?.segmentLabels?.[faceId] ?? undefined);
           const segs = md?.segments ?? [];
           const seg = label !== undefined ? segs.find((s) => s.id === label) : undefined;
-          const total = md?.faceCount ?? 0;
 
-          // `faceCount` comes from the backend DTO; fall back to an O(F) count
-          // only when it is missing/zero so a stale DTO cannot mis-route.
-          let segFaces = seg?.faceCount ?? 0;
-          if (seg && segFaces <= 0 && md) {
-            segFaces = 0;
-            for (let i = 0; i < md.segmentLabels.length; i++) {
-              if (md.segmentLabels[i] === seg.id) segFaces++;
-            }
-          }
-          const share = seg && total > 0 ? segFaces / total : 1;
-          const realSegs = segs.filter((s) => (s.faceCount ?? 0) > 0);
-          const isManualRegion = (label ?? 0) >= MANUAL_SEGMENT_OFFSET;
-
-          const fillWholeSegment =
-            !opts?.wholeRegion && !!seg && (
-              isManualRegion
-                ? share <= MANUAL_REGION_MAX_SHARE  // allow large intentional regions
-                : (realSegs.length > 1 && share <= WHOLE_SEGMENT_MAX_SHARE)
-            );
+          // D2: any existing partition is fillable whole, regardless of share.
+          const fillWholeSegment = !opts?.wholeRegion && !!seg && label !== undefined;
 
           log.info("usePaintTool", "fill routing", {
             faceId, label, labelSrc: (hovered != null) ? "hover" : "click",
-            segFaces, total,
-            share: +share.toFixed(3),
-            realSegs: realSegs.length,
-            isManualRegion,
             mode: opts?.wholeRegion ? "whole-region" : fillWholeSegment ? "segment" : "local",
           });
 

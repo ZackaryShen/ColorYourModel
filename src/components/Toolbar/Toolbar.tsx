@@ -75,12 +75,23 @@ export function Toolbar() {
 
     try {
       await loadModel(selected);
+    } catch (e) {
+      log.error("Toolbar", "Import failed", { error: String(e) });
+      setStatusMessage(`${t("toolbar.importFailed")}: ${e}`);
+      return;
+    }
+
+    // Auto-segmentation failure must not be swallowed: the model IS loaded and
+    // usable, but with an empty segment list Fill has no partition to target
+    // and silently degrades to the brush (REFUTE, docs/06 §2.1 item 3). Say so
+    // explicitly instead of letting the user discover "Fill = brush" later.
+    try {
       await autoSegment(30.0);
       setImportProgress(1, t("toolbar.importComplete"));
       setStatusMessage(t("toolbar.importComplete"));
     } catch (e) {
-      log.error("Toolbar", "Import failed", { error: String(e) });
-      setStatusMessage(`${t("toolbar.importFailed")}: ${e}`);
+      log.error("Toolbar", "Auto-segment failed", { error: String(e) });
+      setStatusMessage(`${t("toolbar.segmentFailed")}: ${e}`);
     } finally {
       setLoading(false);
     }
