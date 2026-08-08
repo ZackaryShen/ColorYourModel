@@ -176,6 +176,33 @@ export function useMesh() {
       (colorAttr.array as Float32Array).set(src);
     }
     colorAttr.needsUpdate = true;
+
+    // Per-vertex segment label for the shader-based hover/selection highlight
+    // (option B). The rendered geometry is non-indexed: face f owns vertices
+    // 3f, 3f+1, 3f+2, so all three share `segmentLabels[f]`. Rebuilt only when
+    // the labels array identity changes (auto-segment / manual partition), NOT
+    // on every view toggle, keeping the O(F) write off the interactive hot
+    // path. The sentinel -2 means "no segment" and never matches the shader's
+    // `uHighlightLabel` (which is -1 when nothing is highlighted).
+    const labels = meshData.segmentLabels;
+    const hasLabels = !!labels && labels.length === faceCount;
+    let segLabelAttr = geometry.getAttribute("aSegLabel") as THREE.Float32BufferAttribute | undefined;
+    if (!segLabelAttr || segLabelAttr.count !== faceCount * 3) {
+      segLabelAttr = new THREE.Float32BufferAttribute(new Float32Array(faceCount * 3), 1);
+      geometry.setAttribute("aSegLabel", segLabelAttr);
+    }
+    if (geometry.userData.segLabelId !== labels) {
+      const labArr = segLabelAttr.array as Float32Array;
+      for (let f = 0; f < faceCount; f++) {
+        const lab = hasLabels ? labels[f] : -2;
+        labArr[f * 3] = lab;
+        labArr[f * 3 + 1] = lab;
+        labArr[f * 3 + 2] = lab;
+      }
+      segLabelAttr.needsUpdate = true;
+      geometry.userData.segLabelId = labels;
+    }
+
     // NOTE (P1-8): deliberately does NOT publish `geometryRef` here. Callers
     // invoke `buildGeometry` from a render-phase `useMemo`, so writing the ref
     // here would still be a render-phase side effect — one indirection deeper

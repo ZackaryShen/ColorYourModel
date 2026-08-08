@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import * as THREE from "three";
 import { useAppStore } from "../../store/appStore";
 import { useMesh } from "../../hooks/useMesh";
-import { usePaintTool, WHOLE_SEGMENT_MAX_SHARE, MANUAL_SEGMENT_OFFSET } from "../../hooks/usePaintTool";
+import { usePaintTool, MANUAL_SEGMENT_OFFSET } from "../../hooks/usePaintTool";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
 import type { HistoryResult } from "../../types/mesh";
@@ -388,49 +388,6 @@ function BrushCursorImperative({ hoverInfoRef, brushRadius, color }: {
   );
 }
 
-// ─── Fill Face Highlight (hovered face outline for the fill tool) ──
-/// When the fill tool is active, the face under the cursor is marked with a
-/// bright triangle OUTLINE so the user sees exactly which face a click will
-/// target — the requested "面片高亮". Drawn as an OUTLINE (not a solid fill):
-/// fill actually floods a whole partition or connected region, so a solid
-/// highlight would LIE about the scope (REFUTE M2). The outline reads as
-/// "the face you are pointing at", which is honest.
-/// Geometry is created ONCE (stable reference, passed via `geometry={}`, never
-/// through JSX `args`) so R3F never reconstructs it and wipes our in-place
-/// vertex writes (REFUTE B2). `frustumCulled={false}` stops the zero-initialized
-/// bounding sphere from culling the mesh out of view (REFUTE B1).
-function FillFaceHighlight({ faceRef }: { faceRef: React.MutableRefObject<THREE.Vector3[] | null> }) {
-  const overlay = useOverlayColors();
-  const objRef = useRef<THREE.LineLoop>(null);
-  const geometry = useMemo(() => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(9), 3));
-    return g;
-  }, []);
-
-  useFrame(() => {
-    const obj = objRef.current;
-    if (!obj) return;
-    const tri = faceRef.current;
-    if (!tri || tri.length !== 3) {
-      obj.visible = false;
-      return;
-    }
-    obj.visible = true;
-    const pos = geometry.getAttribute("position") as THREE.BufferAttribute;
-    pos.setXYZ(0, tri[0].x, tri[0].y, tri[0].z);
-    pos.setXYZ(1, tri[1].x, tri[1].y, tri[1].z);
-    pos.setXYZ(2, tri[2].x, tri[2].y, tri[2].z);
-    pos.needsUpdate = true;
-  });
-
-  return (
-    <lineLoop ref={objRef} geometry={geometry} frustumCulled={false} renderOrder={4}>
-      <lineBasicMaterial color={overlay.highlight} depthTest={false} transparent opacity={0.95} />
-    </lineLoop>
-  );
-}
-
 // ─── Adjacency helpers (perf: precompute once per meshData) ─────
 interface MeshDataLike {
   vertices: number[];
@@ -581,50 +538,6 @@ function SegmentOutline({ meshData, selectedSegment, edgeMap, facesBySeg }: {
     <lineSegments geometry={geometry}>
       <lineBasicMaterial color={overlay.outline} linewidth={2} depthTest={false} />
     </lineSegments>
-  );
-}
-
-// ─── Segment Highlight (filled translucent overlay for selected segment) ─
-function SegmentHighlight({ meshData, selectedSegment, facesBySeg }: {
-  meshData: { faces: number[]; segmentLabels: number[]; vertices: number[] };
-  selectedSegment: number;
-  facesBySeg: Map<number, number[]>;
-}) {
-  const overlay = useOverlayColors();
-  const geometry = useMemo(() => {
-    const faces = meshData.faces;
-    const verts = meshData.vertices;
-    // Only the selected segment's faces — O(selected faces), not all faces.
-    const selectedFaces = facesBySeg.get(selectedSegment);
-    if (!selectedFaces || selectedFaces.length === 0) return null;
-    const pos: number[] = [];
-    for (const f of selectedFaces) {
-      const a = faces[f * 3], b = faces[f * 3 + 1], c = faces[f * 3 + 2];
-      pos.push(
-        verts[a * 3], verts[a * 3 + 1], verts[a * 3 + 2],
-        verts[b * 3], verts[b * 3 + 1], verts[b * 3 + 2],
-        verts[c * 3], verts[c * 3 + 1], verts[c * 3 + 2]
-      );
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(pos), 3));
-    g.computeVertexNormals();
-    return g;
-  }, [meshData.faces, meshData.vertices, selectedSegment, facesBySeg]);
-
-  if (!geometry) return null;
-
-  return (
-    <mesh geometry={geometry} renderOrder={2}>
-      <meshBasicMaterial
-        color={overlay.cursor}
-        transparent
-        opacity={0.35}
-        depthTest={false}
-        depthWrite={false}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
   );
 }
 
@@ -847,10 +760,6 @@ function MeshDisplay() {
   // reads this ref each frame at GPU rate, zero GC pressure from state cycles.
   const hoverInfoRef = useRef<HoverInfo | null>(null);
 
-  // Fill tool: 3 model-local vertices of the face under the cursor, written by
-  // the hover raycast and read by FillFaceHighlight (面片高亮, iteration 17).
-  const fillHoverFaceRef = useRef<THREE.Vector3[] | null>(null);
-
   // Tools that show brush cursor
   const isBrushTool = activeTool === "brush" || activeTool === "spray" ||
     activeTool === "smart" || activeTool === "eraser";
@@ -858,8 +767,8 @@ function MeshDisplay() {
   // Tools whose action is bounded by `brushRadius` and therefore need the radius
   // ring preview + Ctrl+wheel resize.
   // NOTE: Fill tool intentionally excluded — fill is a click-to-flood operation
-  // (whole partition or connected region); its visual feedback is the
-  // FillFaceHighlight triangle outline, not a radius ring (iteration 21).
+  // (whole partition or connected region); its visual feedback is the shader
+  // whole-segment highlight (option B), not a radius ring (iteration 21).
   const isRadiusTool = isBrushTool;
 
   // Lasso (manual region) state
@@ -913,12 +822,6 @@ function MeshDisplay() {
     }
     return () => { canvas.style.cursor = "default"; };
   }, [gl, isBrushTool, isSegmentTool, isLassoTool, segmentView, activeTool]);
-
-  // Clear the fill face-highlight when leaving the fill tool so a stale
-  // triangle never lingers after a tool switch (iteration 17, REFUTE M1/P7).
-  useEffect(() => {
-    if (activeTool !== "fill") fillHoverFaceRef.current = null;
-  }, [activeTool]);
 
   const geometry = useMemo(() => {
     log.info("MeshDisplay", "Building geometry", { segmentView });
@@ -1008,10 +911,9 @@ function MeshDisplay() {
   // Precompute adjacency / segment maps ONCE per relevant meshData slice, but
   // DEFERRED to effects so the FIRST paint + surface picking are never blocked
   // by these O(V+F) scans — the source of the multi-second "import lag before
-  // I can pick" complaint (iteration 9, problem 2). SegmentOutline /
-  // SegmentHighlight and the lasso same-side snap all guard on these being
-  // non-null, so a brief null window (until the effect runs, post-paint) is
-  // harmless.
+  // I can pick" complaint (iteration 9, problem 2). SegmentOutline and the lasso
+  // same-side snap all guard on these being non-null, so a brief null window
+  // (until the effect runs, post-paint) is harmless.
   const [edgeMap, setEdgeMap] = useState<{ map: Map<number, number[]>; vmax: number } | null>(null);
   const [vertexData, setVertexData] = useState<{
     vertexFaces: Map<number, number[]>;
@@ -1019,9 +921,9 @@ function MeshDisplay() {
   } | null>(null);
 
   // facesBySeg as synchronous derived value (iteration 23, REFUTE B11). Was
-  // useState + useEffect which lagged one commit behind meshData — causing
-  // SegmentHighlight to flash off/on when a new region was finalized (the
-  // effect hadn't run yet so facesBySeg.get(newLabel) returned undefined).
+  // useState + useEffect which lagged one commit behind meshData — causing the
+  // highlight/JSX to flash off/on when a new region was finalized (the effect
+  // hadn't run yet so facesBySeg.get(newLabel) returned undefined).
   // useMemo eliminates that frame delay.
   const facesBySeg = useMemo((): Map<number, number[]> | null => {
     if (!meshData) return null;
@@ -1050,60 +952,22 @@ function MeshDisplay() {
     [meshData?.segments]
   );
 
-  // Singleton empty set to avoid reallocating on every render when there are no
-  // segments yet (e.g. between loadModel and autoSegment). Declared BEFORE
-  // giantSegmentIds because the latter's factory references it — moving it
-  // after would cause a Temporal Dead Zone crash (iteration 24 hotfix).
-  const emptySet = useMemo(() => new Set<number>(), []);
-
-  // Giant segments whose hover would paint the entire model teal (iteration 23,
-  // REFUTE B1/B2). Phase4 merge_small_regions_fast can roll 10k+ regions into
-  // ~27 giants (avg 55k faces each). Hovering any of these floods the overlay —
-  // visually identical to "the whole model is highlighted".
-  //
-  // D2 (2026-08-06) made FILL always target the whole partition regardless of
-  // share, so this hover suppression is now the ONLY remaining "giant" gate and
-  // it is a pure PERFORMANCE guard: rebuilding the highlight geometry for a
-  // partition covering the whole model is the 54M-push path (docs/06 §2.2),
-  // which is why it stays until Gate 0d replaces the highlight with a shader.
-  // Note the asymmetry this creates: hovering a giant shows no highlight (or a
-  // single-face outline) while clicking it fills the whole partition — that is
-  // the D2-mandated behaviour, not a regression.
-  //
-  // A segment is "giant" when:
-  //   - it occupies > WHOLE_SEGMENT_MAX_SHARE (80 %) of total faces, OR
-  //   - there is only 1 auto segment (everything merged into one blob).
-  // Manual regions (label >= MANUAL_SEGMENT_OFFSET) are never silenced — the user
-  // explicitly drew them and expects immediate feedback.
-  const giantSegmentIds = useMemo((): Set<number> => {
-    const segs = meshData?.segments;
-    if (!segs || segs.length === 0) return emptySet;
-    const total = meshData?.faceCount ?? 0;
-    if (total <= 0) return emptySet;
-    const autoSegs = segs.filter((s) => (s.id ?? 0) < MANUAL_SEGMENT_OFFSET);
-    if (autoSegs.length <= 1) {
-      // Single auto-segment case: silence it regardless of share.
-      return new Set(autoSegs.map((s) => s.id));
-    }
-    const threshold = total * WHOLE_SEGMENT_MAX_SHARE;
-    return new Set(segs.filter((s) => (s.faceCount ?? 0) > threshold && (s.id ?? 0) < MANUAL_SEGMENT_OFFSET).map((s) => s.id));
-  }, [meshData?.segments, meshData?.faceCount]);
-
   // ── Gate 0a: single source of truth for "what is highlighted on screen" ──
   //
-  // Iterations 25-30 produced six pieces of "decisive evidence" that turned out
-  // to be unusable, because the HUD counted `facesBySeg.get(fillTarget)` while
-  // the screen highlighted `hoveredSegment` filtered through `giantSegmentIds`.
-  // Those are different quantities, so the HUD could report a mismatch when the
-  // screen agreed, and agreement when it did not. Every consumer — the JSX below
-  // and the HUD alike — now reads this one value, which makes that class of
-  // divergence unrepresentable rather than merely unlikely.
+  // With option B the highlight is a shader uniform (`uHighlightLabel`), so any
+  // partition — including a whole-model "giant" — highlights in O(1) with no
+  // geometry rebuild. The old `giantSegmentIds` performance guard is gone: we no
+  // longer need to suppress hover on large partitions, so the highlight now
+  // always agrees with what Fill will actually flood (the user's reported
+  // contradiction — hover showed a single triangle yet Fill covered the whole
+  // model — is resolved because both now describe the same whole segment).
+  // Every consumer — the shader uniform and the HUD alike — reads this one
+  // value, keeping that class of divergence unrepresentable.
   const renderedHighlightLabel = useMemo<number | null>(() => {
     if (segmentView) return selectedSegment;
     if (hoveredSegment === null) return null;
-    if (giantSegmentIds.has(hoveredSegment)) return null;
     return hoveredSegment;
-  }, [segmentView, selectedSegment, hoveredSegment, giantSegmentIds]);
+  }, [segmentView, selectedSegment, hoveredSegment]);
 
   // Published after commit, never during render (P1-8). `enqueuePaint` reads it
   // synchronously from a pointer handler, so a layout effect is early enough.
@@ -1111,6 +975,61 @@ function MeshDisplay() {
   useLayoutEffect(() => {
     renderedHighlightLabelRef.current = renderedHighlightLabel;
   }, [renderedHighlightLabel]);
+
+  // ── Option B: GPU segment highlight via a shared material uniform ──────
+  // The rendered geometry carries a per-vertex `aSegLabel` attribute (set in
+  // useMesh.buildGeometry). We inject a tiny shader patch into BOTH the flat
+  // (basic) and shaded (lambert) materials: the fragment stage mixes the base
+  // colour toward `uHighlightColor` when `vSegLabel === uHighlightLabel`. The
+  // only per-frame cost is writing one float, so even a 1.5M-face partition
+  // highlights instantly — this is what retired the `giantSegmentIds` guard.
+  const highlightLabel = useRef({ value: -1 });
+  const highlightColor = useRef(new THREE.Color(0x00ffff));
+  const overlayColors = useOverlayColors();
+
+  // Type the callback to match three's expected `onBeforeCompile` signature so
+  // the assignment to `material.onBeforeCompile` type-checks.
+  const patchHighlightShader = useCallback<
+    NonNullable<THREE.Material["onBeforeCompile"]>
+  >((shader) => {
+    shader.uniforms.uHighlightLabel = highlightLabel.current;
+    shader.uniforms.uHighlightColor = { value: highlightColor.current };
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nattribute float aSegLabel;\nvarying float vSegLabel;"
+      )
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvSegLabel = aSegLabel;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nvarying float vSegLabel;"
+      )
+      .replace(
+        "#include <color_fragment>",
+        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }"
+      );
+  }, []);
+
+  const assignHighlightMaterial = useCallback(
+    (m: THREE.Material | null) => {
+      if (!m) return;
+      m.onBeforeCompile = patchHighlightShader;
+      m.needsUpdate = true;
+    },
+    [patchHighlightShader]
+  );
+
+  useEffect(() => {
+    highlightColor.current.set(overlayColors.cursor);
+  }, [overlayColors.cursor]);
+
+  // Push the current highlight target into the shader every frame. `-1` means
+  // "no highlight"; the `uHighlightLabel >= 0.0` guard in the shader makes the
+  // sentinel a no-op even where aSegLabel is the -2 "no segment" value.
+  useFrame(() => {
+    highlightLabel.current.value = renderedHighlightLabelRef.current ?? -1;
+  });
 
   // Raycast to surface, convert world hit → model-local coords.
   // Group is rotated -PI/2 about X, so worldToLocal yields local = (x, -z, y).
@@ -1602,7 +1521,7 @@ function MeshDisplay() {
         let nextHover: number | null = prevHover; // keep previous, don't default to null
         if (hits.length > 0 && hits[0].faceIndex != null) {
           const lbl = meshData.segmentLabels[hits[0].faceIndex];
-          if (lbl !== undefined && segmentIds.has(lbl) && !giantSegmentIds.has(lbl)) {
+          if (lbl !== undefined && segmentIds.has(lbl)) {
             // Auto segment cannot displace a manual segment that is already
             // being hovered. This prevents seg=0 "crumbs" from stealing
             // focus at manual-region boundaries.
@@ -1635,32 +1554,8 @@ function MeshDisplay() {
           setHoverProbe(
             `[HOVER] store=${prevHover ?? "null"} ray=${rayFace} seg=${segUnder ?? "?"} ` +
             `inSeg=${segUnder !== undefined && segmentIds.has(segUnder)} ` +
-            `giant=${segUnder !== undefined && giantSegmentIds.has(segUnder)} ` +
             `next=${nextHover ?? "null"} ${blocked ? "BLOCKED(auto→manual)" : ""}`
           );
-        }
-
-        // (c) Fill tool face highlight (面片高亮). Mark the exact face under the
-        //     cursor with a bright triangle OUTLINE (see FillFaceHighlight) so the
-        //     user sees the precise click target. Writes 3 model-local vertices
-        //     from the (non-indexed) rendered geometry; cleared on ANY miss so a
-        //     stale triangle never lingers when the cursor leaves the model
-        //     (iteration 17, REFUTE M1). The partition under the cursor is already
-        //     highlighted via hoveredSegment (SegmentHighlight/Outline) above.
-        if (activeTool === "fill") {
-          if (hits.length > 0 && hits[0].faceIndex != null && meshRef.current) {
-            const pa = meshRef.current.geometry.getAttribute("position");
-            const fi = hits[0].faceIndex;
-            if (!fillHoverFaceRef.current) {
-              fillHoverFaceRef.current = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
-            }
-            const tri = fillHoverFaceRef.current;
-            tri[0].set(pa.getX(fi * 3), pa.getY(fi * 3), pa.getZ(fi * 3));
-            tri[1].set(pa.getX(fi * 3 + 1), pa.getY(fi * 3 + 1), pa.getZ(fi * 3 + 1));
-            tri[2].set(pa.getX(fi * 3 + 2), pa.getY(fi * 3 + 2), pa.getZ(fi * 3 + 2));
-          } else {
-            fillHoverFaceRef.current = null;
-          }
         }
 
         // (b) Brush cursor — only for brush tools in paint view. Reuses the
@@ -1706,7 +1601,6 @@ function MeshDisplay() {
         lassoSnapRef.current = null;
       }
       hoverInfoRef.current = null;
-      fillHoverFaceRef.current = null;
       setHoveredSegment(null);
       lastValidHoveredSegmentRef.current = null; // iter29 v5: clear on model leave
       overModelRef.current = false; // iteration 22: reset so OrbitControls can rotate
@@ -1886,9 +1780,9 @@ function MeshDisplay() {
             enough 3D shape readability without PBR specular complexity;
             slight angle-dependent brightness remains. */}
         {shadingMode === "flat" ? (
-          <meshBasicMaterial vertexColors side={THREE.DoubleSide} />
+          <meshBasicMaterial vertexColors side={THREE.DoubleSide} ref={assignHighlightMaterial} />
         ) : (
-          <meshLambertMaterial vertexColors side={THREE.DoubleSide} />
+          <meshLambertMaterial vertexColors side={THREE.DoubleSide} ref={assignHighlightMaterial} />
         )}
       </mesh>
       {showWireframe && (
@@ -1901,18 +1795,14 @@ function MeshDisplay() {
       {isRadiusTool && !segmentView && (
         <BrushCursorImperative hoverInfoRef={hoverInfoRef} brushRadius={brushRadius} color={currentColor} />
       )}
-      {/* Fill tool: highlight the exact face under the cursor (面片高亮).
-          Drawn as an outline so it marks the click target without implying the
-          full fill scope (iteration 17). */}
-      {activeTool === "fill" && (
-        <FillFaceHighlight faceRef={fillHoverFaceRef} />
-      )}
       {/* Paint view: highlight ONLY the segment under the cursor (near
           highlight). The just-created partition does NOT stay highlighted here —
-          it lights up when you hover near it, which is the requested behavior. */}
+          it lights up when you hover near it, which is the requested behavior.
+          The highlight is now drawn by the shader (option B) on the main mesh, so
+          even a whole-model partition highlights instantly. SegmentOutline still
+          draws the crisp boundary. */}
       {!segmentView && renderedHighlightLabel !== null && meshData && edgeMap && facesBySeg && (
         <>
-          <SegmentHighlight meshData={meshData} selectedSegment={renderedHighlightLabel} facesBySeg={facesBySeg} />
           <SegmentOutline meshData={meshData} selectedSegment={renderedHighlightLabel} edgeMap={edgeMap} facesBySeg={facesBySeg} />
         </>
       )}
@@ -1923,7 +1813,6 @@ function MeshDisplay() {
         <>
           {renderedHighlightLabel !== null && (
             <>
-              <SegmentHighlight meshData={meshData} selectedSegment={renderedHighlightLabel} facesBySeg={facesBySeg} />
               <SegmentOutline meshData={meshData} selectedSegment={renderedHighlightLabel} edgeMap={edgeMap} facesBySeg={facesBySeg} />
             </>
           )}

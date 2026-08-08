@@ -6,15 +6,13 @@ import { log } from "../utils/logger";
 /**
  * D2 (product ruling, 2026-08-06): a large partition (>80% share) is filled
  * WHOLE, never degraded. The share thresholds that used to demote such clicks
- * to a local brush-radius blob are deleted (docs/06 §2.1 item 3). What remains
- * here is only what OTHER consumers need:
- *   - `WHOLE_SEGMENT_MAX_SHARE`: still consulted by Viewport's giantSegmentIds
- *     to suppress hover highlight on background partitions (Gate 0d backlog —
- *     removing it would flood the highlight overlay; see docs/06 §2.2).
- *   - `MANUAL_SEGMENT_OFFSET`: label >= this is a manual region.
+ * to a local brush-radius blob are deleted (docs/06 §2.1 item 3). Segment
+ * highlight is now shader-based (option B): a per-vertex `aSegLabel` attribute
+ * plus a `uHighlightLabel` uniform tint the hovered/selected partition on the
+ * GPU in O(1), so the old `giantSegmentIds` performance guard is gone — even a
+ * whole-model partition highlights instantly instead of rebuilding an overlay
+ * geometry (docs/06 §2.2).
  */
-export const WHOLE_SEGMENT_MAX_SHARE = 0.8;
-
 /// Labels >= this value are manually-created regions (lasso / freehand).
 /// These should ALWAYS be filled as whole partitions — the user explicitly
 /// drew them and expects fill to cover the entire region (iteration 21 fix).
