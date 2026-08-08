@@ -8,6 +8,12 @@ import { useUndoRedo } from "../../hooks/useHistory";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 import { ExportDialog } from "../ExportDialog/ExportDialog";
+import { IntelligentSegmentPanel } from "../IntelligentSegmentPanel";
+import {
+  buildAlgorithm,
+  DEFAULT_ALGORITHM_PARAMS,
+  type AlgorithmKind,
+} from "../../types/segment";
 
 const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.View, icon: "🖐️", i18nKey: "tool.view" },
@@ -32,9 +38,15 @@ export function Toolbar() {
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
-  const { loadModel, autoSegment, autoSegmentSmart, undo, redo, historyState } = useTauriCommand();
+  const { loadModel, autoSegmentV2, undo, redo, historyState } = useTauriCommand();
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [segmentPanelOpen, setSegmentPanelOpen] = useState(false);
+  // Persisted last segmentation choice: used both on import (so re-import
+  // auto-segments with the user's preferred algorithm instead of a hard-coded
+  // 30° dihedral) and when the panel is opened.
+  const lastAlgorithmParams = useAppStore((s) => s.lastAlgorithmParams);
+  const lastSegmentKind = useAppStore((s) => s.lastSegmentKind);
 
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {
@@ -86,7 +98,13 @@ export function Toolbar() {
     // and silently degrades to the brush (REFUTE, docs/06 §2.1 item 3). Say so
     // explicitly instead of letting the user discover "Fill = brush" later.
     try {
-      await autoSegment(30.0);
+      // Use the user's last chosen algorithm (persisted); default to a 30°
+      // dihedral which matches the previous hard-coded import behaviour. This
+      // removes the magic constant from the call site — the value now flows from
+      // the persisted prefs / DEFAULT_ALGORITHM_PARAMS instead of a literal.
+      const segKind: AlgorithmKind = lastSegmentKind ?? "dihedral";
+      const segParams = lastAlgorithmParams ?? DEFAULT_ALGORITHM_PARAMS;
+      await autoSegmentV2(buildAlgorithm(segKind, segParams));
       setImportProgress(1, t("toolbar.importComplete"));
       setStatusMessage(t("toolbar.importComplete"));
     } catch (e) {
@@ -101,17 +119,12 @@ export function Toolbar() {
     setExportDialogOpen(true);
   };
 
-  const handleSegment = async () => {
-    await autoSegment(30.0);
-  };
-
-  const handleSmartSegment = async () => {
-    await autoSegmentSmart(0);
-  };
-
   return (
     <div style={styles.container}>
       {exportDialogOpen && <ExportDialog onClose={() => setExportDialogOpen(false)} />}
+      {segmentPanelOpen && (
+        <IntelligentSegmentPanel onClose={() => setSegmentPanelOpen(false)} />
+      )}
       <div style={styles.section}>
         <button onClick={handleImport} disabled={isLoading} className="cym-btn" style={styles.button} title={t("toolbar.import")}>
           {isLoading ? "..." : "📂"}
@@ -184,22 +197,13 @@ export function Toolbar() {
 
       <div style={styles.section}>
         <button
-          onClick={handleSmartSegment}
+          onClick={() => setSegmentPanelOpen(true)}
           disabled={!isLoaded}
           className="cym-btn"
           style={styles.button}
-          title={t("toolbar.smartSegment")}
+          title={t("segmentPanel.toolbar")}
         >
-          🧩
-        </button>
-        <button
-          onClick={handleSegment}
-          disabled={!isLoaded}
-          className="cym-btn"
-          style={styles.button}
-          title={t("toolbar.reSegment")}
-        >
-          🔀
+          🤖
         </button>
       </div>
     </div>

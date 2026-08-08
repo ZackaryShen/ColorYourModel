@@ -3,6 +3,12 @@ import { persist, createJSONStorage, type StateStorage } from "zustand/middlewar
 import { MeshData, PaintTool, Segment } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
 import type { Lang } from "../i18n";
+import {
+  sanitizeAlgorithmParams,
+  isAlgorithmKind,
+  type AlgorithmParams,
+  type AlgorithmKind,
+} from "../types/segment";
 
 interface AppStore {
   // Mesh
@@ -64,6 +70,14 @@ interface AppStore {
   // Last export dialog selection (persisted so re-exports don't re-pick).
   lastExportSelection: PersistedExportSelection | null;
 
+  // Intelligent-segmentation parameters (persisted so the panel opens where the
+  // user left it, and so model import can auto-segment with the user's last
+  // choice instead of a hard-coded 30° dihedral). `lastAlgorithmParams` keeps a
+  // per-kind record so switching algorithms in the dialog and back does not lose
+  // tuned sliders; `lastSegmentKind` remembers which algorithm was last run.
+  lastAlgorithmParams: AlgorithmParams | null;
+  lastSegmentKind: AlgorithmKind | null;
+
   // Actions
   setMeshData: (data: MeshData) => void;
   updateSegmentLabels: (labels: number[], segments: Segment[], faceColors?: number[]) => void;
@@ -99,6 +113,8 @@ interface AppStore {
   setLastPaintDebug: (s: string | null) => void;
   setHoverProbe: (s: string | null) => void;
   setLastExportSelection: (s: PersistedExportSelection | null) => void;
+  setLastAlgorithmParams: (p: AlgorithmParams) => void;
+  setLastSegmentKind: (k: AlgorithmKind) => void;
 }
 
 // ── Preference persistence (iteration 21) ─────────────────────────────────
@@ -140,6 +156,9 @@ interface PersistedPrefs {
   currentColor: [number, number, number, number];
   snapEnabled: boolean;
   lastExportSelection: PersistedExportSelection | null;
+  // Intelligent-segmentation prefs (see the AppStore field comments above).
+  lastAlgorithmParams: AlgorithmParams | null;
+  lastSegmentKind: AlgorithmKind | null;
 }
 
 /** Initial theme when no persisted payload exists: legacy key → OS preference
@@ -247,6 +266,17 @@ function mergePrefs(persisted: unknown, current: AppStore): AppStore {
       };
     }
   }
+  // Intelligent-segmentation prefs: a corrupted payload must never produce NaN
+  // sliders or an unknown algorithm kind. sanitizeAlgorithmParams already clamps
+  // every field to its valid range and falls back to in-code defaults; an
+  // unknown lastSegmentKind is simply dropped so the panel falls back to its own
+  // default. Either way the stored value only ever degrades, never breaks.
+  if (p.lastAlgorithmParams && typeof p.lastAlgorithmParams === "object") {
+    next.lastAlgorithmParams = sanitizeAlgorithmParams(p.lastAlgorithmParams);
+  }
+  if (isAlgorithmKind(p.lastSegmentKind)) {
+    next.lastSegmentKind = p.lastSegmentKind;
+  }
   return next;
 }
 
@@ -287,6 +317,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   lastPaintDebug: null,
   hoverProbe: null,
   lastExportSelection: null,
+  lastAlgorithmParams: null,
+  lastSegmentKind: null,
 
   setMeshData: (data) =>
     set({
@@ -383,6 +415,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setLastPaintDebug: (s) => set({ lastPaintDebug: s }),
   setHoverProbe: (s) => set({ hoverProbe: s }),
   setLastExportSelection: (s) => set({ lastExportSelection: s }),
+  setLastAlgorithmParams: (p) => set({ lastAlgorithmParams: p }),
+  setLastSegmentKind: (k) => set({ lastSegmentKind: k }),
 });
 
 export const useAppStore = create<AppStore>()(
@@ -405,6 +439,8 @@ export const useAppStore = create<AppStore>()(
       currentColor: s.currentColor,
       snapEnabled: s.snapEnabled,
       lastExportSelection: s.lastExportSelection,
+      lastAlgorithmParams: s.lastAlgorithmParams,
+      lastSegmentKind: s.lastSegmentKind,
     }),
     merge: mergePrefs,
   })

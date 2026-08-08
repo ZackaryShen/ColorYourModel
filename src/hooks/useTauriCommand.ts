@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
 import { MeshData, ManualPointResult, SegmentResult, HistoryResult, HistoryState } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
+import type { SegmentationAlgorithm } from "../types/segment";
 import { log } from "../utils/logger";
 
 export function useTauriCommand() {
@@ -38,26 +39,33 @@ export function useTauriCommand() {
     }
   };
 
-  const autoSegment = async (angleThreshold: number = 30.0) => {
-    log.info("useTauriCommand", `autoSegment(${angleThreshold})`);
+  /**
+   * Unified multi-algorithm auto-segmentation entry point. The UI sends a single
+   * `algorithm` enum (dihedral | shapeDiameter | curvatureKMeans) assembled by
+   * `buildAlgorithm`; the backend dispatches via `run_segmentation`. Replaces the
+   * old per-algorithm `autoSegment` / `autoSegmentSmart` hooks (REFUTE: avoid N
+   * near-identical commands and the configuration drift that caused).
+   */
+  const autoSegmentV2 = async (algorithm: SegmentationAlgorithm) => {
+    log.info("useTauriCommand", `autoSegmentV2(${algorithm.type})`);
     try {
-      setStatusMessage("Segmenting...");
+      setStatusMessage("智能分区中…");
       const t0 = performance.now();
-      const result = await invoke<SegmentResult>("auto_segment", { angleThreshold });
+      const result = await invoke<SegmentResult>("auto_segment_v2", { algorithm });
       const dt = (performance.now() - t0).toFixed(1);
 
-      log.info("useTauriCommand", `autoSegment returned in ${dt}ms`, {
+      log.info("useTauriCommand", `autoSegmentV2 returned in ${dt}ms`, {
         segmentCount: result.segments.length,
         labelCount: result.segmentLabels.length,
       });
 
-      // Update both segment metadata AND per-face labels in meshData
+      // Update both segment metadata AND per-face labels in meshData.
       updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
-      setStatusMessage(`Segmented into ${result.segments.length} regions`);
+      setStatusMessage(`分区完成：${result.segments.length} 个区域`);
       return result.segments;
     } catch (e) {
-      log.error("useTauriCommand", "autoSegment failed", { error: String(e) });
-      setStatusMessage(`Segment failed: ${e}`);
+      log.error("useTauriCommand", "autoSegmentV2 failed", { error: String(e) });
+      setStatusMessage(`分区失败：${e}`);
       throw e;
     }
   };
@@ -119,26 +127,11 @@ export function useTauriCommand() {
   };
 
   /**
-   * Smart auto-segmentation via Shape Diameter Function (semantic parts).
-   * `k = 0` auto-estimates cluster count from SDF peaks.
+   * Smart auto-segmentation via Shape Diameter Function (semantic parts) is now
+   * served by `autoSegmentV2({ type: "shapeDiameter", k })`. This hook only kept
+   * the `auto_segment_smart` command alive; the command itself remains registered
+   * in lib.rs as a stable legacy entry point but is no longer wired to the UI.
    */
-  const autoSegmentSmart = async (k: number = 0) => {
-    log.info("useTauriCommand", `autoSegmentSmart(${k})`);
-    try {
-      setStatusMessage("智能分区中（SDF）...");
-      const result = await invoke<SegmentResult>("auto_segment_smart", { k });
-      updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
-      setStatusMessage(`智能分区完成：${result.segments.length} 个零件`);
-      log.info("useTauriCommand", "autoSegmentSmart done", {
-        segmentCount: result.segments.length,
-      });
-      return result.segments;
-    } catch (e) {
-      log.error("useTauriCommand", "autoSegmentSmart failed", { error: String(e) });
-      setStatusMessage(`智能分区失败：${e}`);
-      throw e;
-    }
-  };
 
   const export3mf = async (path: string, selection?: ExportSelection) => {
     log.info("useTauriCommand", `export3mf("${path}")`, { selection });
@@ -243,8 +236,7 @@ export function useTauriCommand() {
 
   return {
     loadModel,
-    autoSegment,
-    autoSegmentSmart,
+    autoSegmentV2,
     export3mf,
     paintSegmentFace,
     finalizeSegment,

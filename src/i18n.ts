@@ -99,6 +99,25 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.cancel": { zh: "取消", en: "Cancel" },
   "export.confirm": { zh: "选择保存位置并导出", en: "Choose location & export" },
   "export.exporting": { zh: "导出中…", en: "Exporting…" },
+
+  // Intelligent segmentation panel
+  "segmentPanel.toolbar": { zh: "🤖 智能分区", en: "🤖 Segment" },
+  "segmentPanel.title": { zh: "智能分区", en: "Intelligent Segmentation" },
+  "segmentPanel.algorithm": { zh: "算法", en: "Algorithm" },
+  "segmentPanel.algo.curvatureKMeans": { zh: "曲率 K-Means（特征感知）", en: "Curvature K-Means (feature-aware)" },
+  "segmentPanel.algo.shapeDiameter": { zh: "形态直径 SDF（语义零件）", en: "Shape Diameter SDF (semantic parts)" },
+  "segmentPanel.algo.dihedral": { zh: "二面角（法线夹角）", en: "Dihedral angle (normal angle)" },
+  "segmentPanel.angle": { zh: "二面角阈值 (°)", en: "Dihedral threshold (°)" },
+  "segmentPanel.clusters": { zh: "聚类数 k", en: "Clusters k" },
+  "segmentPanel.clustersAuto": { zh: "0 = 自动估计聚类数", en: "0 = auto-estimate cluster count" },
+  "segmentPanel.smoothing": { zh: "法线平滑迭代", en: "Normal smoothing iters" },
+  "segmentPanel.useSdf": { zh: "融合形态直径特征", en: "Blend shape-diameter feature" },
+  "segmentPanel.useSdfHint": { zh: "勾选后同时考虑厚度，更易区分粗/细零件", en: "Also considers thickness to separate thick/thin parts" },
+  "segmentPanel.crease": { zh: "棱角阈值 (°)", en: "Crease threshold (°)" },
+  "segmentPanel.creaseHint": { zh: "低于此角度的边界被溶解，零件更整块", en: "Smoother borders below this angle dissolve into whole parts" },
+  "segmentPanel.run": { zh: "运行分区", en: "Run segmentation" },
+  "segmentPanel.running": { zh: "分区中…", en: "Segmenting…" },
+  "segmentPanel.cancel": { zh: "取消", en: "Cancel" },
 };
 
 // ─── Hook: returns translation function ──────────────────────────
