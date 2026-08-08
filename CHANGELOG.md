@@ -14,6 +14,17 @@
 - **上次选择持久化**：导出配置存 zustand persist（`lastExportSelection`，值域校验）
 - 后端新增 IPC：`list_export_presets`、`export_palette_preview`；`export_3mf_command` 支持可选 `selection`
 
+### Changed — 着色器分区高亮（方案 B，2026-08-08, `eea2fd1` + `485aa7d` + `f192f98`）
+- **高亮改为 GPU 着色器方案 α**：删除 `SegmentHighlight`（重建几何叠加，是 giant 段卡死根因）与 `FillFaceHighlight`；主材质经 `onBeforeCompile` 注入 per-vertex `aSegLabel` + `uHighlightLabel`/`uHighlightColor` uniform，hover 切换从 O(F) 降到 O(1)，整模型 giant 段也能瞬时高亮
+- **性能优化**：引入条件性 `frameloop="demand"`（`IdleFrameloop`：静止 1.5s 切 demand，任意交互唤醒），删除 `preserveDrawingBuffer`，`aSegLabel` varying 加 `flat` 限定符
+- **高亮按工具门控**：仅 fill / picker / segment 工具计算并渲染分区高亮；brush / spray / view 等工具完全跳过，消除拖涂时每帧 React 整树重渲染的卡顿
+- **hover 解粘滞**（迭代 35）：替换原「手动段强制粘性」守卫，改为真实区域一律接管高亮、仅极小碎面允许手动段保持粘性，并加陈旧标签立即清除 —— 修复「手动分区后填充工具高亮卡死十几秒」
+
+### Fixed — STL 导入崩溃（2026-08-09, `69a17ea`）
+- 修复打开球面等「同一纬度环共享轴坐标」的 STL（如 `Sphere.stl`）时直接闪退
+- 根因：kiddo `KdTree` 在分裂轴上重合点超过默认 bucket（32）时 panic；修复按顶点/面 index 加 ~1e-4 确定性扰动（对几何与涂色半径无影响）
+- 新增回归测试 `kdtree_coincident_axis_no_panic`（UV 球 50×320，单环 640 个重合轴面）；`cargo test --lib` 全绿 67 passed
+
 ### Added — v0.2 功能增强
 
 #### 手动分区画笔 (Round 7-8)
