@@ -2,13 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useAppStore } from "../store/appStore";
 import { log } from "../utils/logger";
-
-// Segment color palette (matches SegmentsPanel SEGMENT_COLORS, as hex RGB)
-const SEGMENT_COLORS_RGB: [number, number, number][] = [
-  [231, 76, 60], [52, 152, 219], [46, 204, 113], [241, 196, 15], [155, 89, 182],
-  [230, 126, 34], [26, 188, 156], [233, 30, 99], [0, 188, 212], [139, 195, 74],
-  [255, 152, 0], [121, 85, 72], [96, 125, 139], [255, 87, 34], [103, 58, 183],
-];
+import { SEGMENT_COLORS_RGB } from "../utils/segmentPalette";
 
 /**
  * Hook for managing mesh geometry and Three.js BufferGeometry
