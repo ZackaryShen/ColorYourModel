@@ -502,6 +502,52 @@ impl MeshModel {
         ]
     }
 
+    /// Absorb one or more regions into `target`. Returns how many faces moved.
+    ///
+    /// **Labels only — merging never repaints.** The tempting alternative is to
+    /// flood the absorbed faces with the target's colour so the result "looks
+    /// merged", but `face_colors` is the buffer the 3MF exporter reads: that
+    /// version of merge would throw away the user's actual output to tidy up a
+    /// grouping. The segment view already draws the whole merged region in one
+    /// colour because it derives colour from the label, which is exactly the
+    /// feedback the operation needs.
+    ///
+    /// Names of the absorbed regions are left in `segment_names` on purpose,
+    /// matching the rule the rest of the table follows: undoing the merge
+    /// brings those labels back to the same faces, and the user would not
+    /// expect one undo to restore the region but not what they called it.
+    pub fn merge_segments(&mut self, target: u32, others: &[u32]) -> Result<usize, String> {
+        if !self.segments.contains_key(&target) {
+            return Err(format!("Segment {} does not exist", target));
+        }
+        let sources: std::collections::HashSet<u32> =
+            others.iter().copied().filter(|&l| l != target).collect();
+        if sources.is_empty() {
+            return Err("Merge needs at least one region other than the target".to_string());
+        }
+        if let Some(missing) = sources.iter().find(|l| !self.segments.contains_key(l)) {
+            return Err(format!("Segment {} does not exist", missing));
+        }
+
+        let prev_labels: Vec<(u32, u32)> = self
+            .segment_labels
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| sources.contains(l))
+            .map(|(i, &l)| (i as u32, l))
+            .collect();
+        if prev_labels.is_empty() {
+            return Ok(0);
+        }
+
+        self.history.record(OpKind::Merge, None, &[], &prev_labels);
+        for &(face, _) in &prev_labels {
+            self.segment_labels[face as usize] = target;
+        }
+        self.rebuild_segments();
+        Ok(prev_labels.len())
+    }
+
     /// Segment metadata as a list ordered by id.
     ///
     /// `segments` is a `HashMap`, so iterating it yields a different order on
@@ -724,5 +770,91 @@ mod tests {
         let stored = &m.segments[&0].name;
         assert_eq!(stored.chars().count(), MAX_SEGMENT_NAME_CHARS);
         assert!(long.starts_with(stored.as_str()));
+    }
+
+    #[test]
+    fn merging_moves_every_face_of_the_absorbed_regions() {
+        let mut m = labelled(&[0, 1, 1, 2, 3]);
+        m.face_colors = vec![DEFAULT_FACE_COLOR; 5];
+        m.rebuild_segments();
+
+        let moved = m.merge_segments(0, &[1, 2]).unwrap();
+
+        assert_eq!(moved, 3);
+        assert_eq!(m.segment_labels, vec![0, 0, 0, 0, 3]);
+        assert_eq!(m.segments[&0].face_count, 4);
+        assert!(!m.segments.contains_key(&1), "absorbed region is gone");
+        assert!(m.segments.contains_key(&3), "untouched region survives");
+    }
+
+    /// The exporter reads `face_colors`, so a merge that "tidied up" the colour
+    /// of the absorbed faces would be destroying the actual print output to fix
+    /// a grouping. Segment view already shows the merge, because it colours by
+    /// label.
+    #[test]
+    fn merging_leaves_the_paint_alone() {
+        let mut m = labelled(&[0, 1, 1]);
+        m.face_colors = vec![[10, 20, 30, 255], [200, 0, 0, 255], [0, 200, 0, 255]];
+        m.rebuild_segments();
+
+        m.merge_segments(0, &[1]).unwrap();
+
+        assert_eq!(
+            m.face_colors,
+            vec![[10, 20, 30, 255], [200, 0, 0, 255], [0, 200, 0, 255]]
+        );
+    }
+
+    #[test]
+    fn a_merge_can_be_undone() {
+        let mut m = labelled(&[0, 1, 1, 2]);
+        m.face_colors = vec![DEFAULT_FACE_COLOR; 4];
+        m.rebuild_segments();
+        m.merge_segments(0, &[1]).unwrap();
+
+        let MeshModel {
+            history,
+            face_colors,
+            segment_labels,
+            ..
+        } = &mut m;
+        let out = history.undo(face_colors, segment_labels).expect("undo");
+
+        assert!(out.labels_changed);
+        assert_eq!(m.segment_labels, vec![0, 1, 1, 2]);
+    }
+
+    /// Undo restores the labels, so the names they carry have to still be there
+    /// when they come back.
+    #[test]
+    fn undoing_a_merge_brings_the_name_back_with_the_region() {
+        let mut m = labelled(&[0, 1, 1]);
+        m.face_colors = vec![DEFAULT_FACE_COLOR; 3];
+        m.rebuild_segments();
+        m.rename_segment(1, "Spout").unwrap();
+        m.merge_segments(0, &[1]).unwrap();
+        assert!(!m.segments.contains_key(&1));
+
+        let MeshModel {
+            history,
+            face_colors,
+            segment_labels,
+            ..
+        } = &mut m;
+        history.undo(face_colors, segment_labels).expect("undo");
+        m.rebuild_segments();
+
+        assert_eq!(m.segments[&1].name, "Spout");
+    }
+
+    #[test]
+    fn merging_rejects_regions_that_do_not_exist() {
+        let mut m = labelled(&[0, 1]);
+        m.rebuild_segments();
+
+        assert!(m.merge_segments(9, &[1]).is_err(), "unknown target");
+        assert!(m.merge_segments(0, &[9]).is_err(), "unknown source");
+        assert!(m.merge_segments(0, &[0]).is_err(), "merging into itself");
+        assert_eq!(m.segment_labels, vec![0, 1], "a rejected merge changes nothing");
     }
 }

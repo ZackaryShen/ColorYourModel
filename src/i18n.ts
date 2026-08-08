@@ -54,7 +54,9 @@ const dict: Record<string, Record<Lang, string>> = {
   // SegmentsPanel
   "segments.title": { zh: "分区", en: "Regions" },
   "segments.empty": { zh: "暂无分区，请先导入模型", en: "No segments yet. Import a model first." },
-  "segments.renameHint": { zh: "双击重命名", en: "Double-click to rename" },
+  "segments.renameHint": { zh: "双击重命名，Ctrl+点击多选", en: "Double-click to rename, Ctrl-click to multi-select" },
+  "segments.mergeInto": { zh: "合并 {0} 个分区到「{1}」", en: "Merge {0} regions into \"{1}\"" },
+  "segments.merged": { zh: "已合并 {0} 个分区（{1} 个面）", en: "Merged {0} regions ({1} faces)" },
 
   // Viewport — ControlsHelp
   "controls.leftPaint": { zh: "🖱️ 左键: 旋转(查看) / Alt+左键: 旋转", en: "🖱️ Left: Rotate (View) / Alt+Left: Rotate" },

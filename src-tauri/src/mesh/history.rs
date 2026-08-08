@@ -43,8 +43,7 @@ use std::collections::{HashSet, VecDeque};
 ///
 /// Deliberately smaller than the four operation classes named in the Gate 0b'
 /// contract: "split" has no command of its own (it is a side effect of a lasso
-/// overwriting labels inside an existing region) and "merge" is not implemented
-/// yet. When merge lands it joins this enum and therefore the same timeline.
+/// overwriting labels inside an existing region).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpKind {
     /// Brush, spray, smart brush, fill or eraser. Colour only; labels untouched.
@@ -53,6 +52,10 @@ pub enum OpKind {
     SegmentPaint,
     /// Lasso region finalize. Colour and label.
     ManualRegion,
+    /// Absorbing one or more regions into another. **Label only** — merging
+    /// changes which region a face belongs to, not how it is painted, and the
+    /// paint is what the exporter actually reads.
+    Merge,
 }
 
 impl OpKind {
@@ -203,9 +206,18 @@ impl History {
     /// buffers.
     ///
     /// `prev_labels` must be index-aligned with `prev_colors` (same faces, same
-    /// order) whenever `kind.touches_labels()`, and empty otherwise. All three
-    /// call sites build both vectors in one pass, so this costs nothing and
-    /// avoids a second dedup set.
+    /// order) whenever `kind.touches_labels()`, and empty otherwise. The paint
+    /// and lasso call sites build both vectors in one pass, so this costs
+    /// nothing and avoids a second dedup set.
+    ///
+    /// A label-bearing operation may also pass **no** colours at all: a merge
+    /// re-labels faces without repainting them. Recording a run of unchanged
+    /// colours purely to satisfy the alignment rule would cost 8 bytes a face
+    /// to store values that are identical on both sides of the swap, so the
+    /// empty case is accepted and the entry carries labels only. That is safe
+    /// downstream because `HistoryOutcome::labels_changed` already forces the
+    /// command layer onto the full-payload path, where `faces`/`colors` are
+    /// ignored and the whole buffer is resent.
     pub fn record(
         &mut self,
         kind: OpKind,
@@ -215,13 +227,16 @@ impl History {
     ) {
         debug_assert!(
             if kind.touches_labels() {
-                prev_labels.len() == prev_colors.len()
+                prev_colors.is_empty() || prev_labels.len() == prev_colors.len()
             } else {
                 prev_labels.is_empty()
             },
             "prev_labels must be aligned with prev_colors for label-bearing ops"
         );
-        if prev_colors.is_empty() {
+        // "Touched nothing" is the only case that must not create an entry;
+        // this used to test `prev_colors` alone, which silently discarded any
+        // label-only operation and left it out of the timeline entirely.
+        if prev_colors.is_empty() && prev_labels.is_empty() {
             return;
         }
 
@@ -260,13 +275,23 @@ impl History {
         } = self;
         let entry = undo.back_mut().expect("entry pushed above");
         let before = entry.bytes();
-        let aligned = prev_labels.len() == prev_colors.len();
-        for (i, &(face, color)) in prev_colors.iter().enumerate() {
-            if open_faces.insert(face) {
-                entry.colors.push((face, color));
-                if aligned {
-                    debug_assert_eq!(prev_labels[i].0, face, "label/colour face mismatch");
-                    entry.labels.push(prev_labels[i]);
+        if prev_colors.is_empty() {
+            // Label-only (merge). Same first-sighting-wins dedup, driven by the
+            // only vector there is.
+            for &(face, label) in prev_labels {
+                if open_faces.insert(face) {
+                    entry.labels.push((face, label));
+                }
+            }
+        } else {
+            let aligned = prev_labels.len() == prev_colors.len();
+            for (i, &(face, color)) in prev_colors.iter().enumerate() {
+                if open_faces.insert(face) {
+                    entry.colors.push((face, color));
+                    if aligned {
+                        debug_assert_eq!(prev_labels[i].0, face, "label/colour face mismatch");
+                        entry.labels.push(prev_labels[i]);
+                    }
                 }
             }
         }
@@ -521,6 +546,34 @@ mod tests {
     fn recording_nothing_creates_no_entry() {
         let mut h = History::new();
         h.record(OpKind::Paint, Some(1), &[], &[]);
-        assert!(!h.can_undo());
+        h.record(OpKind::Merge, None, &[], &[]);
+        assert!(!h.can_undo(), "an operation that touched nothing is not an operation");
+    }
+
+    /// A merge re-labels faces without repainting them. `record` used to bail
+    /// out on the empty colour vector, so the entire operation stayed out of
+    /// the timeline: Ctrl+Z skipped straight past the merge to the brush stroke
+    /// before it, and the regions could not be separated again.
+    #[test]
+    fn a_label_only_operation_is_undoable() {
+        let (mut colors, mut labels) = buffers(4);
+        labels[2] = 100_001;
+        labels[3] = 100_001;
+        let mut h = History::new();
+
+        let prev: Vec<_> = [2u32, 3].iter().map(|&f| (f, labels[f as usize])).collect();
+        h.record(OpKind::Merge, None, &[], &prev);
+        labels[2] = 100_000;
+        labels[3] = 100_000;
+
+        assert!(h.can_undo(), "the merge must be on the timeline");
+        let out = h.undo(&mut colors, &mut labels).unwrap();
+        assert!(out.labels_changed, "must force the full-payload path");
+        assert!(out.faces.is_empty(), "no colour patch to send");
+        assert_eq!(labels, vec![0, 0, 100_001, 100_001]);
+
+        h.redo(&mut colors, &mut labels).unwrap();
+        assert_eq!(labels, vec![0, 0, 100_000, 100_000]);
+        assert_eq!(colors, vec![[0, 0, 0, 255]; 4], "a merge never repaints");
     }
 }

@@ -268,6 +268,45 @@ pub fn auto_segment_smart(
     })
 }
 
+/// What the frontend has to replace after a merge.
+///
+/// No `face_colors`: a merge moves labels and leaves the paint alone, so
+/// shipping the whole colour buffer back would be several megabytes of JSON
+/// describing a buffer that did not change.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeResult {
+    pub segments: Vec<Segment>,
+    pub segment_labels: Vec<u32>,
+    pub moved_faces: usize,
+}
+
+/// Absorb `source_ids` into `target_id`, so they become one region.
+///
+/// The target is chosen by the caller rather than inferred (largest region,
+/// lowest label, …): every inference rule is wrong for some selection, and the
+/// panel already knows which row the user anchored the selection on.
+#[tauri::command]
+pub fn merge_segments(
+    target_id: u32,
+    source_ids: Vec<u32>,
+    state: State<AppState>,
+) -> Result<MergeResult, String> {
+    log::info!(
+        "[cmd:merge_segments] target={} sources={:?}",
+        target_id,
+        source_ids
+    );
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let moved_faces = mesh.merge_segments(target_id, &source_ids)?;
+    Ok(MergeResult {
+        segments: mesh.sorted_segments(),
+        segment_labels: mesh.segment_labels.clone(),
+        moved_faces,
+    })
+}
+
 /// Give a region a user-facing name, or clear it back to "Region N".
 ///
 /// Returns the whole segment list rather than an acknowledgement: the panel

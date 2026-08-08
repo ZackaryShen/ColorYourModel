@@ -11,6 +11,7 @@ export function useTauriCommand() {
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
   const setSegmentMetadata = useAppStore((s) => s.setSegmentMetadata);
+  const markHistoryDirty = useAppStore((s) => s.markHistoryDirty);
   const setToast = useAppStore((s) => s.setToast);
 
   const loadModel = async (path: string) => {
@@ -105,6 +106,43 @@ export function useTauriCommand() {
       log.error("useTauriCommand", "renameSegment failed", { segmentId, error: String(e) });
       setStatusMessage(`重命名失败：${e}`);
       return false;
+    }
+  };
+
+  /**
+   * Absorb `sourceIds` into `targetId` so they become a single region.
+   *
+   * Labels move; paint does not. The response therefore carries no colour
+   * buffer, and the store is refreshed through `updateSegmentLabels` with the
+   * `faceColors` argument omitted — passing the old buffer back in would be
+   * megabytes of IPC describing something that did not change.
+   *
+   * Returns how many faces moved, or null if the merge was rejected.
+   */
+  const mergeSegments = async (
+    targetId: number,
+    sourceIds: number[]
+  ): Promise<number | null> => {
+    try {
+      const result = await invoke<{
+        segments: Segment[];
+        segmentLabels: number[];
+        movedFaces: number;
+      }>("merge_segments", { targetId, sourceIds });
+
+      updateSegmentLabels(result.segmentLabels, result.segments);
+      // The merge is on the backend timeline now, and it invalidated any redo
+      // branch. Nothing else tells the toolbar that.
+      markHistoryDirty();
+      return result.movedFaces;
+    } catch (e) {
+      log.error("useTauriCommand", "mergeSegments failed", {
+        targetId,
+        sourceIds,
+        error: String(e),
+      });
+      setStatusMessage(`合并失败：${e}`);
+      return null;
     }
   };
 
@@ -279,6 +317,7 @@ export function useTauriCommand() {
     paintSegmentFace,
     finalizeSegment,
     renameSegment,
+    mergeSegments,
     manualRegionAddPoint,
     finalizeManualRegion,
     undo,

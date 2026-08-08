@@ -9,7 +9,19 @@ export function SegmentsPanel() {
   const segments = useAppStore((s) => s.segments);
   const selectedSegment = useAppStore((s) => s.selectedSegment);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
-  const { renameSegment } = useTauriCommand();
+  const setStatusMessage = useAppStore((s) => s.setStatusMessage);
+  const { renameSegment, mergeSegments } = useTauriCommand();
+
+  // Ordered multi-selection for merging. `picked[0]` is the anchor and becomes
+  // the surviving region — the target is never inferred from size or label,
+  // because every such rule is wrong for some selection and silently produces
+  // a merge into a region the user did not point at.
+  //
+  // Kept local rather than in the store: `selectedSegment` drives the viewport
+  // highlight/dim path, and widening it to a set would put a second meaning on
+  // a value the render loop reads every frame.
+  const [picked, setPicked] = useState<number[]>([]);
+  const [merging, setMerging] = useState(false);
 
   // Which row is in edit mode, and the text being typed. Held here rather than
   // per-row so only one row can ever be open: two open editors would both
@@ -37,6 +49,44 @@ export function SegmentsPanel() {
       setEditingId(null);
     }
   }, [segments, editingId]);
+
+  // Same hazard for the merge selection: a merge, an undo or a re-run can
+  // dissolve a picked region, and sending its label to the backend afterwards
+  // fails the existence check — or worse, hits a label that has been reissued.
+  useEffect(() => {
+    setPicked((prev) => {
+      const live = prev.filter((id) => segments.some((s) => s.id === id));
+      return live.length === prev.length ? prev : live;
+    });
+  }, [segments]);
+
+  const target = picked.length >= 2 ? segments.find((s) => s.id === picked[0]) : undefined;
+
+  const toggle = (id: number, additive: boolean) => {
+    if (!additive) {
+      const single = picked.length === 1 && picked[0] === id;
+      setPicked(single ? [] : [id]);
+      setSelectedSegment(single ? null : id);
+      return;
+    }
+    // Computed from the render's own `picked` rather than inside a functional
+    // updater: React may invoke an updater twice, and `setSelectedSegment` is a
+    // side effect that must not ride along.
+    const next = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id];
+    setPicked(next);
+    setSelectedSegment(next[0] ?? null);
+  };
+
+  const runMerge = async () => {
+    if (!target || merging) return;
+    setMerging(true);
+    const moved = await mergeSegments(target.id, picked.slice(1));
+    setMerging(false);
+    if (moved === null) return;
+    setStatusMessage(t("segments.merged", picked.length, moved));
+    setPicked([target.id]);
+    setSelectedSegment(target.id);
+  };
 
   const beginEdit = (id: number, current: string) => {
     closingRef.current = false;
@@ -71,18 +121,20 @@ export function SegmentsPanel() {
       <div style={styles.list}>
         {segments.map((seg) => {
           const editing = editingId === seg.id;
+          const pickIndex = picked.indexOf(seg.id);
           return (
             <div
               key={seg.id}
-              onClick={() => {
+              onClick={(e) => {
                 if (editing) return;
-                setSelectedSegment(selectedSegment === seg.id ? null : seg.id);
+                toggle(seg.id, e.ctrlKey || e.metaKey);
               }}
               onDoubleClick={() => beginEdit(seg.id, seg.name)}
               title={t("segments.renameHint")}
               style={{
                 ...styles.item,
                 ...(selectedSegment === seg.id ? styles.itemActive : {}),
+                ...(pickIndex >= 0 ? styles.itemPicked : {}),
               }}
             >
               <div
@@ -124,6 +176,15 @@ export function SegmentsPanel() {
           );
         })}
       </div>
+      {target && (
+        <button
+          onClick={() => void runMerge()}
+          disabled={merging}
+          style={styles.mergeButton}
+        >
+          {t("segments.mergeInto", picked.length, target.name)}
+        </button>
+      )}
     </div>
   );
 }
@@ -165,6 +226,12 @@ const styles: Record<string, React.CSSProperties> = {
   itemActive: {
     background: "var(--bg-active, #3a5a7a)",
   },
+  // Distinct from `itemActive`: a row can be the viewport's selected segment,
+  // part of the merge selection, or both, and the two states have to stay
+  // readable when they overlap.
+  itemPicked: {
+    boxShadow: "inset 2px 0 0 var(--accent, #4a9eff)",
+  },
   colorDot: {
     width: 10,
     height: 10,
@@ -191,5 +258,16 @@ const styles: Record<string, React.CSSProperties> = {
   itemCount: {
     color: "var(--text-3, #888888)",
     fontSize: 11,
+  },
+  mergeButton: {
+    marginTop: 8,
+    width: "100%",
+    padding: "5px 8px",
+    borderRadius: 4,
+    border: "1px solid var(--accent, #4a9eff)",
+    background: "transparent",
+    color: "var(--accent, #4a9eff)",
+    fontSize: 12,
+    cursor: "pointer",
   },
 };
