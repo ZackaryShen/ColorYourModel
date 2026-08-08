@@ -553,21 +553,10 @@ pub fn finalize_manual_region(
         return Err("Enclosed region is empty (degenerate loop)".into());
     }
 
-    let max_label = mesh
-        .segment_labels
-        .iter()
-        .copied()
-        .max()
-        .unwrap_or(MANUAL_SEGMENT_OFFSET.wrapping_sub(1));
-    let label = std::cmp::max(MANUAL_SEGMENT_OFFSET, max_label + 1);
-
-    let color_seed = label.wrapping_mul(2654435761) >> 24;
-    let color: [u8; 4] = [
-        ((color_seed * 73) % 200 + 55) as u8,
-        ((color_seed * 151) % 200 + 55) as u8,
-        ((color_seed * 223) % 200 + 55) as u8,
-        255,
-    ];
+    // Never recycles a number, even if an earlier region was undone or fully
+    // painted over — see MeshModel::alloc_manual_label.
+    let label = mesh.alloc_manual_label();
+    let color = MeshModel::manual_label_color(label);
     // Record pre-finalize state for undo (faces may belong to an earlier region).
     // Colours and labels go into one entry so undo can never restore them out of
     // step, and because the prior state may itself be an earlier manual region

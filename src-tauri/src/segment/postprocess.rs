@@ -31,9 +31,19 @@ use petgraph::visit::EdgeRef;
 
 use crate::mesh::model::{MeshModel, Segment};
 
-/// Min region size as a fraction of total faces.
+/// Min region size as a fraction of total faces (0.2% of the model), so a
+/// 500-face model floors at 10 and a 500k-face model would want 1000.
 pub(crate) const MIN_REGION_FRACTION: f64 = 0.002;
 pub(crate) const MIN_REGION_FLOOR: u32 = 10;
+/// Ceiling on the derived minimum, so large models do not end up with absurd
+/// thresholds. E2E evidence (1.5M faces, 13k regions, avg 113 faces/region):
+///   cap=500 → every region merged into one (catastrophic)
+///   cap=30  → only genuinely degenerate fragments (<30 faces) get absorbed
+/// 30 is the point below which a region cannot form meaningful geometry.
+///
+/// (This provenance used to live on a duplicate set of the same three
+/// constants in `dihedral.rs`, which no code read; the numbers were kept and
+/// the dead copy removed.)
 pub(crate) const MIN_REGION_CAP: u32 = 30;
 /// Passes over the union-find, not merges: **each pass absorbs every
 /// under-sized root**, and raises the size bar when the region count is still

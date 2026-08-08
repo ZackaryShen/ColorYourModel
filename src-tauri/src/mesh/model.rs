@@ -72,6 +72,24 @@ pub struct MeshModel {
     pub segment_labels: Vec<u32>,
     pub segments: HashMap<u32, Segment>,
 
+    /// Monotonic high-water mark for manual-segment label allocation.
+    ///
+    /// Both allocation sites used to derive the next label from
+    /// `max(live labels) + 1`, which silently *recycles* numbers: a manual
+    /// region that gets fully painted over (or undone) stops appearing in
+    /// `segment_labels`, so the next allocation hands out the number it just
+    /// vacated. `mesh::history` already documents the consequence — "after a
+    /// manual region is undone the next one reuses the same label number, so a
+    /// stale `prev_label` would not even be detectably wrong".
+    ///
+    /// Recycling turns any per-label side table into a resurrection hazard: a
+    /// user-supplied name attached to label 100_001 would silently reattach
+    /// itself to a brand-new, unrelated region that happened to be issued the
+    /// same number. Handing out a fresh number every time costs nothing (u32
+    /// exhaustion is unreachable) and makes label identity mean what every
+    /// caller already assumes it means.
+    pub next_manual_label: u32,
+
     // Unified undo/redo history covering every colour and label mutation:
     // brush strokes, fills, the eraser, and lasso regions all record here.
     // Sole source of truth for Ctrl+Z since S2. See `mesh::history`.
@@ -110,6 +128,7 @@ impl MeshModel {
             face_colors: Vec::new(),
             segment_labels: Vec::new(),
             segments: HashMap::new(),
+            next_manual_label: MANUAL_SEGMENT_OFFSET,
             history: History::new(),
             face_kdtree: kiddo::KdTree::new(),
             vertex_kdtree: kiddo::KdTree::new(),
@@ -353,34 +372,68 @@ impl MeshModel {
         }
         let mut segments: Vec<Segment> = label_counts
             .iter()
-            .map(|(&label, &count)| {
-                let color_seed = label.wrapping_mul(2654435761) >> 24;
-                Segment {
-                    id: label,
-                    name: format!(
-                        "Region {}",
-                        if label >= MANUAL_SEGMENT_OFFSET {
-                            label - MANUAL_SEGMENT_OFFSET + 1
-                        } else {
-                            label + 1
-                        }
-                    ),
-                    color: if label >= MANUAL_SEGMENT_OFFSET {
-                        Some([
-                            ((color_seed * 73) % 200 + 55) as u8,
-                            ((color_seed * 151) % 200 + 55) as u8,
-                            ((color_seed * 223) % 200 + 55) as u8,
-                            255,
-                        ])
+            .map(|(&label, &count)| Segment {
+                id: label,
+                name: format!(
+                    "Region {}",
+                    if label >= MANUAL_SEGMENT_OFFSET {
+                        label - MANUAL_SEGMENT_OFFSET + 1
                     } else {
-                        None
-                    },
-                    face_count: count,
-                }
+                        label + 1
+                    }
+                ),
+                color: (label >= MANUAL_SEGMENT_OFFSET).then(|| Self::manual_label_color(label)),
+                face_count: count,
             })
             .collect();
         segments.sort_by_key(|s| s.id);
         self.segments = segments.iter().map(|s| (s.id, s.clone())).collect();
+    }
+
+    /// Reserve a manual-segment label that has never been issued for this mesh.
+    ///
+    /// Single allocation point for the manual namespace; `segment::manual` and
+    /// `commands::segment` each used to carry their own copy of
+    /// `max(MANUAL_SEGMENT_OFFSET, max_live_label + 1)`.
+    ///
+    /// The high-water mark alone is not sufficient: labels can also arrive from
+    /// outside this allocator (a loaded project, a future importer), so the
+    /// floor is taken against the live maximum as well. Whichever is larger
+    /// wins, and the mark then advances past it — so the result is unique both
+    /// against everything currently on the mesh and against everything this
+    /// mesh has ever handed out.
+    pub fn alloc_manual_label(&mut self) -> u32 {
+        let live_max = self
+            .segment_labels
+            .iter()
+            .copied()
+            .filter(|&l| l >= MANUAL_SEGMENT_OFFSET)
+            .max();
+        let floor = match live_max {
+            Some(m) => m.saturating_add(1),
+            None => MANUAL_SEGMENT_OFFSET,
+        };
+        let label = floor.max(self.next_manual_label);
+        self.next_manual_label = label.saturating_add(1);
+        label
+    }
+
+    /// Deterministic per-label colour for manual segments.
+    ///
+    /// Derived from the label so a region keeps its colour across rebuilds
+    /// without storing it. Three call sites (lasso finalize, segment brush,
+    /// metadata rebuild) previously inlined this same hash; they must agree,
+    /// because the brush writes it into `face_colors` while `rebuild_segments`
+    /// reports it as `Segment.color`, and a mismatch shows up as a region whose
+    /// swatch does not match the model.
+    pub fn manual_label_color(label: u32) -> [u8; 4] {
+        let seed = label.wrapping_mul(2654435761) >> 24;
+        [
+            ((seed * 73) % 200 + 55) as u8,
+            ((seed * 151) % 200 + 55) as u8,
+            ((seed * 223) % 200 + 55) as u8,
+            255,
+        ]
     }
 
     /// Segment metadata as a list ordered by id.
@@ -464,5 +517,82 @@ impl MeshModel {
             .face_kdtree
             .within_unsorted::<kiddo::SquaredEuclidean>(point, radius * radius);
         results.iter().map(|item| item.item as u32).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Label allocation only reads `segment_labels`, so a bare model with a
+    /// label buffer is a complete fixture — no geometry required.
+    fn labelled(labels: &[u32]) -> MeshModel {
+        let mut m = MeshModel::new();
+        m.segment_labels = labels.to_vec();
+        m
+    }
+
+    #[test]
+    fn first_manual_label_is_the_namespace_offset() {
+        let mut m = labelled(&[0, 0, 1, 1]);
+        assert_eq!(m.alloc_manual_label(), MANUAL_SEGMENT_OFFSET);
+    }
+
+    #[test]
+    fn manual_labels_are_handed_out_in_sequence() {
+        let mut m = labelled(&[0; 4]);
+        let a = m.alloc_manual_label();
+        m.segment_labels[0] = a;
+        let b = m.alloc_manual_label();
+        assert_eq!((a, b), (MANUAL_SEGMENT_OFFSET, MANUAL_SEGMENT_OFFSET + 1));
+    }
+
+    /// Regression: the allocator used to be `max(live labels) + 1`, so a region
+    /// that was undone or fully painted over released its number back into the
+    /// pool and the next region was issued the *same* label. Any per-label side
+    /// table (a user-supplied name, most obviously) would then reattach itself
+    /// to an unrelated region. Retiring a label must not make it reusable.
+    #[test]
+    fn a_retired_manual_label_is_never_issued_again() {
+        let mut m = labelled(&[0; 4]);
+        let first = m.alloc_manual_label();
+        m.segment_labels[0] = first;
+
+        // The region is painted over: `first` no longer appears anywhere.
+        m.segment_labels[0] = 0;
+        assert!(!m.segment_labels.contains(&first));
+
+        let second = m.alloc_manual_label();
+        assert_ne!(
+            second, first,
+            "allocator recycled a retired label ({first}) — side tables keyed by \
+             label would resurrect onto an unrelated region"
+        );
+    }
+
+    /// The high-water mark is not the only constraint: labels can be present
+    /// without this allocator having issued them (a loaded project, a future
+    /// importer). The live maximum has to be respected too, or the "fresh"
+    /// label would collide with an existing region.
+    #[test]
+    fn labels_from_outside_the_allocator_still_raise_the_floor() {
+        let mut m = labelled(&[0, MANUAL_SEGMENT_OFFSET + 40]);
+        assert_eq!(m.alloc_manual_label(), MANUAL_SEGMENT_OFFSET + 41);
+    }
+
+    /// The brush writes `manual_label_color` into `face_colors` while
+    /// `rebuild_segments` reports it as `Segment.color`; if the two ever
+    /// disagreed the region list swatch would not match the model.
+    #[test]
+    fn rebuilt_metadata_colour_matches_the_painted_colour() {
+        let label = MANUAL_SEGMENT_OFFSET + 7;
+        let mut m = labelled(&[0, label, label]);
+        m.rebuild_segments();
+
+        let seg = m.segments.get(&label).expect("manual segment present");
+        assert_eq!(seg.color, Some(MeshModel::manual_label_color(label)));
+        assert_eq!(seg.face_count, 2);
+        // Auto labels stay uncoloured: the renderer derives their colour itself.
+        assert_eq!(m.segments.get(&0).expect("auto segment").color, None);
     }
 }

@@ -103,23 +103,14 @@ pub fn paint_segment_face(
         return Err(format!("face_id {} out of range ({})", face_id, face_count));
     }
 
-    // Determine label
+    // Continue the stroke's existing segment, or reserve a fresh one on the
+    // first face of the drag. Allocation never recycles a retired number —
+    // see MeshModel::alloc_manual_label.
     let label = match segment_label {
         Some(l) if l >= MANUAL_SEGMENT_OFFSET => l,
-        _ => {
-            let max_existing = mesh.segment_labels.iter().copied().max().unwrap_or(0);
-            std::cmp::max(MANUAL_SEGMENT_OFFSET, max_existing + 1)
-        }
+        _ => mesh.alloc_manual_label(),
     };
-
-    // Generate color from label hash (deterministic per label)
-    let color_seed = label.wrapping_mul(2654435761) >> 24;
-    let color: [u8; 4] = [
-        ((color_seed * 73) % 200 + 55) as u8,
-        ((color_seed * 151) % 200 + 55) as u8,
-        ((color_seed * 223) % 200 + 55) as u8,
-        255,
-    ];
+    let color = crate::mesh::model::MeshModel::manual_label_color(label);
 
     // Assign label + color to this face, recording both for undo. The drag
     // fires this once per face, so `stroke_id` is what collapses a whole

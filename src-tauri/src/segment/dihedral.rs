@@ -25,16 +25,10 @@ fn chrono_now() -> String {
 }
 
 // ─── Constants ───────────────────────────────────────────────────
-/// Minimum region size as fraction of total faces (0.2% of model).
-/// Chosen so small models (500 faces) get min=10, large models (500k) get min=1000.
-const MIN_REGION_FRACTION: f64 = 0.002;
-const MIN_REGION_FLOOR: u32 = 10;
-/// Cap on min_faces to prevent large models from having absurdly high thresholds.
-/// E2E evidence (1.5M faces, 13k regions, avg 113 faces/region):
-///   cap=500 → all regions merged to 1 (catastrophic)
-///   cap=30  → only truly degenerate fragments (<30 faces) get merged
-/// Value 30 chosen: a region with <30 faces can't form meaningful geometry.
-const MIN_REGION_CAP: u32 = 30;
+// MIN_REGION_{FRACTION,FLOOR,CAP} used to be duplicated here as well. Nothing
+// in this module read them — the small-region rule lives in
+// `postprocess::min_region_faces` — so the copies were deleted and their E2E
+// provenance moved onto the surviving definitions.
 const MAX_MERGE_ITERATIONS: u32 = 10;
 
 /// Normal-consistency merge threshold: dot product ≥ this → regions are "same surface".
