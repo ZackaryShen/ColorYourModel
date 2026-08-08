@@ -961,6 +961,21 @@ function MeshDisplay() {
     [meshData?.segments]
   );
 
+  // id → faceCount map. Used by the hover gate (iteration 35) to tell a REAL
+  // region (any meaningful face count) apart from a tiny auto "crumb" left over
+  // after a large manual draw. Only crumbs may fail to steal focus from a manual
+  // hover; real regions always take over so moving onto another partition
+  // re-highlights it instead of freezing on the manual segment.
+  const segmentFaceCount = useMemo(
+    () => new Map((meshData?.segments ?? []).map((s) => [s.id, s.faceCount ?? 0])),
+    [meshData?.segments]
+  );
+
+  // A segment is a "crumb" (too small to deserve hover focus) when it holds fewer
+  // than this fraction of the model's total faces. Tiny leftovers of the old
+  // seg=0 after drawing a big manual region must not hijack the highlight.
+  const crumbFaceMax = Math.max(16, (meshData?.faceCount ?? 0) * 0.001);
+
   // ── Gate 0a: single source of truth for "what is highlighted on screen" ──
   //
   // With option B the highlight is a shader uniform (`uHighlightLabel`), so any
@@ -999,6 +1014,17 @@ function MeshDisplay() {
   useEffect(() => {
     if (!isHighlightTool && hoveredSegment !== null) setHoveredSegment(null);
   }, [isHighlightTool, hoveredSegment, setHoveredSegment]);
+
+  // Iteration 35: if the highlighted segment disappears from the current mesh
+  // (e.g. a background re-segment replaced its label, or undo/redo swapped the
+  // segment set), drop the stale highlight IMMEDIATELY instead of letting it
+  // linger on a label that no longer exists for many seconds. Previously the
+  // untouched hoveredSegment stayed frozen until some unrelated event rewrote it.
+  useEffect(() => {
+    if (isHighlightTool && hoveredSegment !== null && !segmentIds.has(hoveredSegment)) {
+      setHoveredSegment(null);
+    }
+  }, [segmentIds, isHighlightTool, hoveredSegment, setHoveredSegment]);
 
   // ── Option B: GPU segment highlight via a shared material uniform ──────
   // The rendered geometry carries a per-vertex `aSegLabel` attribute (set in
@@ -1520,28 +1546,19 @@ function MeshDisplay() {
         }
 
         // (a) Partition hover — ONLY runs when `isHighlightTool` (see gate above);
-        //     for brush/view/etc. this whole block is skipped. When it runs it
-        //     silences giant segments (iteration 23, REFUTE B1/B2): Phase4
-        //     merge_small_regions_fast can produce ~27 regions averaging 55k faces
-        //     each; highlighting one floods the entire model teal. Fill already
-        //     guards this case (share > 0.8 || too few auto segments); we mirror
-        //     the guard so hover and fill agree. Manual regions
-        //     (label >= MANUAL_SEGMENT_OFFSET) are never silenced — the user drew
-        //     them explicitly and expects immediate feedback.
+        //     for brush/view/etc. this whole block is skipped. Hover MUST follow
+        //     the cursor (iteration 35): whatever real region is under the pointer
+        //     becomes the highlight, so moving onto another partition re-highlights
+        //     it instead of freezing on a previously hovered segment. Giant
+        //     segments are highlighted in O(1) via the shader uniform (option B),
+        //     so there is no performance reason to silence them.
         //
-        //     CRITICAL (iter29 v6): do NOT clear to null on giant segments!
-        //     Keep the previous hoveredSegment so Fill click can read it.
-        //
-        //     CRITICAL (iter30 v7): once hoveredSegment holds a MANUAL segment
-        //     (label >= MANUAL_SEGMENT_OFFSET), do NOT let auto segments
-        //     (label < MANUAL_SEGMENT_OFFSET) overwrite it. After the user
-        //     draws a large manual region, seg=0 shrinks to a handful of
-        //     "crumb" faces that are no longer "giant" (< 80 % share).
-        //     Hovering over those crumbs would overwrite the valid manual
-        //     segment with 0, causing Fill to target the wrong partition.
-        //     v6's sticky only prevented clearing to null — it did NOT
-        //     prevent overwriting by another legitimate (but unwanted)
-        //     segment label (REFUTE B5, the actual root cause of v1–v6).
+        //     The ONLY exception is iter30 v7: a TINY auto "crumb" (a few faces of
+        //     the old seg=0 left after drawing a large manual region) must not
+        //     steal focus from the manual segment the user is clearly working in,
+        //     because hovering a 1-face crumb then clicking Fill would target the
+        //     wrong partition. A real region — even an auto one with meaningful
+        //     face count — always wins (see `isCrumb` test in the body below).
         // Only tools that target a partition compute/show the hover highlight
         // (option B). For brush/view/etc. this block is skipped entirely — no
         // segmentLabels lookup, no setHoveredSegment store churn, no per-move
@@ -1550,18 +1567,25 @@ function MeshDisplay() {
         if (isHighlightTool) {
         const prevHover = useAppStore.getState().hoveredSegment;
         const prevIsManual = prevHover != null && prevHover >= MANUAL_SEGMENT_OFFSET;
-        let nextHover: number | null = prevHover; // keep previous, don't default to null
+        // Default to null when the cursor is over no real segment (hit nothing, or
+        // the face under it has no partition). This lets the highlight clear when
+        // you move off the model instead of freezing on the last segment — the
+        // last-valid hover is still cached in lastValidHoveredSegmentRef for Fill
+        // click targeting (iteration 35; supersedes the old "keep prevHover" hack).
+        let nextHover: number | null = null;
         if (hits.length > 0 && hits[0].faceIndex != null) {
           const lbl = meshData.segmentLabels[hits[0].faceIndex];
           if (lbl !== undefined && segmentIds.has(lbl)) {
-            // Auto segment cannot displace a manual segment that is already
-            // being hovered. This prevents seg=0 "crumbs" from stealing
-            // focus at manual-region boundaries.
-            if (!(prevIsManual && lbl < MANUAL_SEGMENT_OFFSET)) {
-              nextHover = lbl;
-            }
+            // Hover MUST follow the cursor (iteration 35 fix): whatever real region
+            // is under the pointer becomes the highlight. The only exception is the
+            // iter30 v7 case — a TINY auto "crumb" (a few faces of the old seg=0
+            // left after a large manual draw) must not steal focus from a manual
+            // region the user is clearly working in. A real region, even an auto
+            // one, always wins, so moving onto another partition re-highlights it
+            // instead of freezing on the manual one.
+            const isCrumb = lbl < MANUAL_SEGMENT_OFFSET && (segmentFaceCount.get(lbl) ?? 0) < crumbFaceMax;
+            nextHover = prevIsManual && isCrumb ? prevHover : lbl;
           }
-          // giant segment or unknown label → keep prevHover (don't clear to null)
         }
         // Track last valid (non-null) hovered segment for fill click targeting
         if (nextHover != null) {
@@ -1582,7 +1606,7 @@ function MeshDisplay() {
         {
           const rayFace = hits.length > 0 ? hits[0].faceIndex : -1;
           const segUnder = rayFace != null && rayFace >= 0 && meshData ? (meshData.segmentLabels?.[rayFace] ?? undefined) : undefined;
-          const blocked = prevIsManual && segUnder !== undefined && segUnder < MANUAL_SEGMENT_OFFSET;
+          const blocked = prevIsManual && segUnder !== undefined && segUnder < MANUAL_SEGMENT_OFFSET && (segmentFaceCount.get(segUnder) ?? 0) < crumbFaceMax;
           setHoverProbe(
             `[HOVER] store=${prevHover ?? "null"} ray=${rayFace} seg=${segUnder ?? "?"} ` +
             `inSeg=${segUnder !== undefined && segmentIds.has(segUnder)} ` +
