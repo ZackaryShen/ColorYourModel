@@ -775,6 +775,15 @@ function MeshDisplay() {
   const isLassoTool = activeTool === "lasso";
   // View/Navigate mode: left button rotates the camera (no tool action).
   const isViewTool = activeTool === "view";
+  // Tools that TARGET a partition and therefore show the whole-segment highlight
+  // (option B shader) on hover — fill (shows what will be flooded), picker
+  // (eyedropper region), segment (manual partition under cursor). Everything
+  // else (view / brush / spray / smart / eraser / lasso) does NOT need the
+  // partition hover: gating it off means no segmentLabels lookup, no
+  // setHoveredSegment store churn, and the shader uniform stays at -1 (a no-op)
+  // on every frame — this is what removed the all-tools stutter the user hit.
+  const isHighlightTool =
+    activeTool === "fill" || activeTool === "picker" || activeTool === "segment";
   const [lassoPoints, setLassoPoints] = useState<THREE.Vector3[]>([]);
   const [lassoPreview, setLassoPreview] = useState<THREE.Vector3 | null>(null);
   const [lassoClosing, setLassoClosing] = useState(false);
@@ -965,9 +974,15 @@ function MeshDisplay() {
   // value, keeping that class of divergence unrepresentable.
   const renderedHighlightLabel = useMemo<number | null>(() => {
     if (segmentView) return selectedSegment;
+    // Only partition-targeting tools show the hover highlight (option B). For
+    // brush/view/etc. we never highlight — this is the single source of truth
+    // the shader reads, so gating here also prevents a stale hoveredSegment
+    // (left over from a previously-active highlight tool) from lingering on
+    // screen. Matches the pointermove gate above.
+    if (!isHighlightTool) return null;
     if (hoveredSegment === null) return null;
     return hoveredSegment;
-  }, [segmentView, selectedSegment, hoveredSegment]);
+  }, [segmentView, selectedSegment, hoveredSegment, isHighlightTool]);
 
   // Published after commit, never during render (P1-8). `enqueuePaint` reads it
   // synchronously from a pointer handler, so a layout effect is early enough.
@@ -975,6 +990,15 @@ function MeshDisplay() {
   useLayoutEffect(() => {
     renderedHighlightLabelRef.current = renderedHighlightLabel;
   }, [renderedHighlightLabel]);
+
+  // When the active tool is NOT a highlight tool, any hoveredSegment left over
+  // from a previous highlight tool is meaningless — clear it so the store stays
+  // clean and fill re-entry starts from a known state. The shader gate above
+  // already prevents drawing it; this just resets the source value. Runs when
+  // the tool class changes (and once on mount, harmlessly).
+  useEffect(() => {
+    if (!isHighlightTool && hoveredSegment !== null) setHoveredSegment(null);
+  }, [isHighlightTool, hoveredSegment, setHoveredSegment]);
 
   // ── Option B: GPU segment highlight via a shared material uniform ──────
   // The rendered geometry carries a per-vertex `aSegLabel` attribute (set in
@@ -1495,13 +1519,15 @@ function MeshDisplay() {
           applyCameraButtons();
         }
 
-        // (a) Partition hover — silence giant segments (iteration 23, REFUTE
-        //     B1/B2). Phase4 merge_small_regions_fast can produce ~27 regions
-        //     averaging 55k faces each; highlighting one floods the entire model
-        //     teal. Fill already guards this case (share > 0.8 || too few auto
-        //     segments); we mirror the guard so hover and fill agree. Manual
-        //     regions (label >= MANUAL_SEGMENT_OFFSET) are never silenced — the
-        //     user drew them explicitly and expects immediate feedback.
+        // (a) Partition hover — ONLY runs when `isHighlightTool` (see gate above);
+        //     for brush/view/etc. this whole block is skipped. When it runs it
+        //     silences giant segments (iteration 23, REFUTE B1/B2): Phase4
+        //     merge_small_regions_fast can produce ~27 regions averaging 55k faces
+        //     each; highlighting one floods the entire model teal. Fill already
+        //     guards this case (share > 0.8 || too few auto segments); we mirror
+        //     the guard so hover and fill agree. Manual regions
+        //     (label >= MANUAL_SEGMENT_OFFSET) are never silenced — the user drew
+        //     them explicitly and expects immediate feedback.
         //
         //     CRITICAL (iter29 v6): do NOT clear to null on giant segments!
         //     Keep the previous hoveredSegment so Fill click can read it.
@@ -1516,6 +1542,12 @@ function MeshDisplay() {
         //     v6's sticky only prevented clearing to null — it did NOT
         //     prevent overwriting by another legitimate (but unwanted)
         //     segment label (REFUTE B5, the actual root cause of v1–v6).
+        // Only tools that target a partition compute/show the hover highlight
+        // (option B). For brush/view/etc. this block is skipped entirely — no
+        // segmentLabels lookup, no setHoveredSegment store churn, no per-move
+        // setHoverProbe re-render. That store churn on EVERY pointermove was the
+        // all-tools stutter: gating it off lets brush drag stay at 60fps.
+        if (isHighlightTool) {
         const prevHover = useAppStore.getState().hoveredSegment;
         const prevIsManual = prevHover != null && prevHover >= MANUAL_SEGMENT_OFFSET;
         let nextHover: number | null = prevHover; // keep previous, don't default to null
@@ -1557,6 +1589,7 @@ function MeshDisplay() {
             `next=${nextHover ?? "null"} ${blocked ? "BLOCKED(auto→manual)" : ""}`
           );
         }
+        } // end isHighlightTool gate
 
         // (b) Brush cursor — only for brush tools in paint view. Reuses the
         // single raycast above (no second O(F) pass). During a paint drag the
@@ -1645,7 +1678,7 @@ function MeshDisplay() {
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, meshData, vertexData, segmentIds, setHoveredSegment]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, meshData, vertexData, segmentIds, setHoveredSegment]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {
