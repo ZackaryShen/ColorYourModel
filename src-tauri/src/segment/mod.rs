@@ -91,6 +91,20 @@ pub fn run_segmentation(
         Vec::new()
     };
 
+    // Region names are keyed by label, and a re-run renumbers the auto range
+    // from zero — the new region 3 has nothing to do with the old one, so a
+    // name left behind would reattach itself to an unrelated part of the model.
+    // Manual labels are never recycled and (when preserved) come back attached
+    // to the same faces, so their names survive. Purging *before* dispatch lets
+    // the rebuild inside the algorithm see the cleaned table; doing it after
+    // would leave the metadata it just produced carrying the stale names.
+    if preserve_manual {
+        mesh.segment_names
+            .retain(|&label, _| label >= MANUAL_SEGMENT_OFFSET);
+    } else {
+        mesh.segment_names.clear();
+    }
+
     let segments = dispatch(mesh, algo, on_progress);
 
     if manual.is_empty() {
@@ -215,6 +229,67 @@ mod preserve_manual_tests {
 
         assert_eq!(kept.segment_labels, wiped.segment_labels);
         assert_eq!(with.len(), without.len());
+    }
+
+    /// Names are keyed by label. A re-run renumbers the auto range from zero,
+    /// so "Left arm" on label 3 would reappear on whatever the algorithm calls
+    /// 3 next time — a different part of the model entirely. Manual labels are
+    /// never recycled and come back attached to the same faces, so their names
+    /// have to survive the same call that drops the auto ones.
+    #[test]
+    fn a_rerun_forgets_auto_names_and_keeps_manual_ones() {
+        let (mut mesh, label) = cube_with_manual_region();
+        mesh.rebuild_segments();
+        mesh.rename_segment(label, "Handle").unwrap();
+        let auto_label = *mesh
+            .segment_labels
+            .iter()
+            .find(|&&l| l < MANUAL_SEGMENT_OFFSET)
+            .expect("cube has auto faces");
+        mesh.rename_segment(auto_label, "Left arm").unwrap();
+
+        let cb = noop_progress();
+        let segments = run_segmentation(
+            &mut mesh,
+            &SegmentationAlgorithm::Dihedral {
+                angle_threshold: 30.0,
+            },
+            true,
+            &*cb,
+        );
+
+        assert_eq!(mesh.segment_names.get(&label).map(String::as_str), Some("Handle"));
+        assert!(
+            !mesh.segment_names.contains_key(&auto_label),
+            "an auto name outlived the renumbering that invalidated it"
+        );
+        assert!(
+            segments
+                .iter()
+                .all(|s| s.id >= MANUAL_SEGMENT_OFFSET || s.name.starts_with("Region ")),
+            "auto regions must come back with default names"
+        );
+    }
+
+    /// Wiping the manual regions has to wipe their names too, or the next
+    /// hand-drawn region inherits a name it never had.
+    #[test]
+    fn opting_out_also_drops_manual_names() {
+        let (mut mesh, label) = cube_with_manual_region();
+        mesh.rebuild_segments();
+        mesh.rename_segment(label, "Handle").unwrap();
+
+        let cb = noop_progress();
+        run_segmentation(
+            &mut mesh,
+            &SegmentationAlgorithm::Dihedral {
+                angle_threshold: 30.0,
+            },
+            false,
+            &*cb,
+        );
+
+        assert!(mesh.segment_names.is_empty());
     }
 }
 

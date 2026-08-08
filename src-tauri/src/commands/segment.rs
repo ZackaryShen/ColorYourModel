@@ -268,6 +268,33 @@ pub fn auto_segment_smart(
     })
 }
 
+/// Give a region a user-facing name, or clear it back to "Region N".
+///
+/// Returns the whole segment list rather than an acknowledgement: the panel
+/// renders straight off that vector, and handing back one patched row would
+/// mean the frontend has to splice it into two separate store slices
+/// (`meshData.segments` and the top-level `segments`) and keep them in sync.
+///
+/// Deliberately **not** recorded in the undo history. The history is a face
+/// diff — it stores `(face, colour)` and `(face, label)` pairs and replays them
+/// by swapping buffer entries — and a rename touches zero faces. Threading it
+/// through would mean a third payload shape on every entry plus a name-aware
+/// `HistoryOutcome`, all to undo an edit the user can reverse by typing. The
+/// separation is also what keeps an unrelated Ctrl+Z from silently reverting a
+/// name the user set five strokes ago.
+#[tauri::command]
+pub fn rename_segment(
+    segment_id: u32,
+    name: String,
+    state: State<AppState>,
+) -> Result<Vec<Segment>, String> {
+    log::info!("[cmd:rename_segment] id={} name={:?}", segment_id, name);
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    mesh.rename_segment(segment_id, &name)?;
+    Ok(mesh.sorted_segments())
+}
+
 /// Unified multi-algorithm auto-segmentation entry point. The UI sends a single
 /// `algorithm` enum (dihedral | shapeDiameter | curvatureKMeans) with its
 /// parameters; the backend dispatches via `run_segmentation`. One interface

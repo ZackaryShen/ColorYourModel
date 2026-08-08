@@ -97,6 +97,11 @@ interface AppStore {
   setTheme: (t: "dark" | "light") => void;
   setCurrentColor: (c: [number, number, number, number]) => void;
   setSegments: (segments: Segment[]) => void;
+  /** Replace segment *metadata* only, leaving `segmentLabels` untouched.
+   *  Rename is the first operation that changes what a region is called
+   *  without changing which faces belong to it, and `updateSegmentLabels`
+   *  would force the caller to hand back a labels array it never received. */
+  setSegmentMetadata: (segments: Segment[]) => void;
   setSelectedSegment: (id: number | null) => void;
   setHoveredSegment: (id: number | null) => void;
   setSnapEnabled: (enabled: boolean) => void;
@@ -219,6 +224,23 @@ function pickStorage(): StateStorage {
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
+/**
+ * Narrow backend segment metadata to the fields the store keeps.
+ *
+ * This projection existed verbatim in three places, which made it three chances
+ * to forget one when the Rust DTO grows a field — the copy is a *filter*, not a
+ * spread, so anything new is dropped in silence and only shows up as a value
+ * that is always undefined in the UI. One function means adding a field is one
+ * edit, and the omission is at least visible in a single place.
+ */
+const projectSegments = (segments: Segment[]): Segment[] =>
+  segments.map((s) => ({
+    id: s.id,
+    name: s.name,
+    color: s.color,
+    faceCount: s.faceCount,
+  }));
+
 /** M5: whitelist + range validation applied on every rehydrate. A corrupted or
  *  hand-edited payload can only ever degrade to the in-code defaults, never
  *  produce NaN sliders, unknown enum values or a broken color tuple. */
@@ -326,12 +348,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       isLoaded: true,
       canUndo: false,
       canRedo: false,
-      segments: data.segments.map((s) => ({
-        id: s.id,
-        name: s.name,
-        color: s.color,
-        faceCount: s.faceCount,
-      })),
+      segments: projectSegments(data.segments),
       statusMessage: `已加载 ${data.faceCount.toLocaleString()} 个面`,
     }),
 
@@ -347,12 +364,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
               // future consumer reading meshData can resolve segment info.
               // Previously only written to top-level state slice — always []
               // there (iteration 22 fix: B6 root cause of "Fill acts like brush").
-              segments: segments.map((s) => ({
-                id: s.id,
-                name: s.name,
-                color: s.color,
-                faceCount: s.faceCount,
-              })),
+              segments: projectSegments(segments),
               // Apply updated face colors when provided (length must match).
               ...(faceColors && faceColors.length === state.meshData.faceColors.length
                 ? { faceColors }
@@ -361,12 +373,20 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
           : null,
       // Top-level segments slice kept for SegmentsPanel / other UI consumers
       // that read it independently of meshData.
-      segments: segments.map((s) => ({
-        id: s.id,
-        name: s.name,
-        color: s.color,
-        faceCount: s.faceCount,
-      })),
+      segments: projectSegments(segments),
+    })),
+
+  // Metadata-only refresh. Both slices are written for the same reason
+  // `updateSegmentLabels` writes both: Fill routing and the hover highlight
+  // read `meshData.segments`, while the region panel reads the top-level one,
+  // and a rename that reached only one of them would show two different names
+  // for the same region depending on where you looked.
+  setSegmentMetadata: (segments) =>
+    set((state) => ({
+      meshData: state.meshData
+        ? { ...state.meshData, segments: projectSegments(segments) }
+        : null,
+      segments: projectSegments(segments),
     })),
 
   applyFaceColors: (updatedFaces, updatedColors) => {

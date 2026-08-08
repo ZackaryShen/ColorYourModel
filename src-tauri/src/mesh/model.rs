@@ -27,6 +27,12 @@ pub struct Segment {
 /// Defined here (with `Segment`) and re-exported by `segment::manual`.
 pub const MANUAL_SEGMENT_OFFSET: u32 = 100_000;
 
+/// Ceiling on a user-supplied region name, in characters (not bytes).
+///
+/// The panel row is one line; anything past this is already elided visually,
+/// and an unbounded string crosses IPC on every segment rebuild.
+pub const MAX_SEGMENT_NAME_CHARS: usize = 64;
+
 /// Neutral mid grey applied to faces that have never been painted, and restored
 /// by the eraser.
 ///
@@ -71,6 +77,25 @@ pub struct MeshModel {
     // Segmentation
     pub segment_labels: Vec<u32>,
     pub segments: HashMap<u32, Segment>,
+
+    /// User-supplied region names, keyed by segment label.
+    ///
+    /// `segments` is derived state — every label rewrite throws it away and
+    /// rebuilds it from `segment_labels` — so a name stored on `Segment` would
+    /// survive exactly until the next lasso stroke. It also would not survive
+    /// the trip through the frontend: `appStore` re-projects segments into
+    /// `{id, name, color, faceCount}` in three places, silently dropping any
+    /// field added to the DTO. Keeping names in their own label-keyed table on
+    /// the model is the only place both problems go away at once.
+    ///
+    /// Entries are deliberately **not** pruned when a label stops appearing in
+    /// `segment_labels`. Undoing a lasso region removes its label; redoing it
+    /// brings the same label back (labels are never recycled, see
+    /// `next_manual_label`), and the user expects their name to come back with
+    /// it. Auto labels are the exception and are purged by `run_segmentation` —
+    /// a re-run renumbers regions from scratch, so keeping "Left arm" on label 3
+    /// would reattach it to whatever the algorithm happens to call 3 next time.
+    pub segment_names: HashMap<u32, String>,
 
     /// Monotonic high-water mark for manual-segment label allocation.
     ///
@@ -128,6 +153,7 @@ impl MeshModel {
             face_colors: Vec::new(),
             segment_labels: Vec::new(),
             segments: HashMap::new(),
+            segment_names: HashMap::new(),
             next_manual_label: MANUAL_SEGMENT_OFFSET,
             history: History::new(),
             face_kdtree: kiddo::KdTree::new(),
@@ -374,20 +400,60 @@ impl MeshModel {
             .iter()
             .map(|(&label, &count)| Segment {
                 id: label,
-                name: format!(
-                    "Region {}",
-                    if label >= MANUAL_SEGMENT_OFFSET {
-                        label - MANUAL_SEGMENT_OFFSET + 1
-                    } else {
-                        label + 1
-                    }
-                ),
+                name: self
+                    .segment_names
+                    .get(&label)
+                    .cloned()
+                    .unwrap_or_else(|| Self::default_segment_name(label)),
                 color: (label >= MANUAL_SEGMENT_OFFSET).then(|| Self::manual_label_color(label)),
                 face_count: count,
             })
             .collect();
         segments.sort_by_key(|s| s.id);
         self.segments = segments.iter().map(|s| (s.id, s.clone())).collect();
+    }
+
+    /// The name a region carries until the user gives it one.
+    ///
+    /// Manual labels are numbered from their namespace offset rather than their
+    /// raw value, so the first hand-drawn region reads "Region 1" and not
+    /// "Region 100001".
+    pub fn default_segment_name(label: u32) -> String {
+        let ordinal = if label >= MANUAL_SEGMENT_OFFSET {
+            label - MANUAL_SEGMENT_OFFSET + 1
+        } else {
+            label + 1
+        };
+        format!("Region {}", ordinal)
+    }
+
+    /// Attach a user-supplied name to a region, or clear it back to the default.
+    ///
+    /// Rejects labels that are not currently on the mesh. A rename targeting a
+    /// region that an undo just dissolved is a frontend bug, and silently
+    /// creating an orphan entry would make it show up much later as a name
+    /// appearing on an unrelated region.
+    ///
+    /// An empty (or whitespace-only) name removes the override instead of
+    /// storing a blank row: a blank label in the panel is indistinguishable
+    /// from a rendering failure, and "clear it back to Region N" is what the
+    /// user means when they delete the text and press Enter.
+    pub fn rename_segment(&mut self, label: u32, name: &str) -> Result<(), String> {
+        if !self.segments.contains_key(&label) {
+            return Err(format!("Segment {} does not exist", label));
+        }
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            self.segment_names.remove(&label);
+        } else {
+            // Truncate on char boundaries — a byte slice would panic on the
+            // first multi-byte character, and region names are the one place a
+            // user is guaranteed to type CJK.
+            let capped: String = trimmed.chars().take(MAX_SEGMENT_NAME_CHARS).collect();
+            self.segment_names.insert(label, capped);
+        }
+        self.rebuild_segments();
+        Ok(())
     }
 
     /// Reserve a manual-segment label that has never been issued for this mesh.
@@ -594,5 +660,69 @@ mod tests {
         assert_eq!(seg.face_count, 2);
         // Auto labels stay uncoloured: the renderer derives their colour itself.
         assert_eq!(m.segments.get(&0).expect("auto segment").color, None);
+    }
+
+    #[test]
+    fn a_named_region_reports_its_name_instead_of_the_default() {
+        let mut m = labelled(&[0, 0, 1]);
+        m.rebuild_segments();
+        assert_eq!(m.segments[&1].name, "Region 2");
+
+        m.rename_segment(1, "Left arm").unwrap();
+        assert_eq!(m.segments[&1].name, "Left arm");
+        assert_eq!(m.segments[&0].name, "Region 1", "siblings keep the default");
+    }
+
+    /// The name has to outlive the metadata it is displayed on: every lasso
+    /// stroke throws `segments` away and rebuilds it from the labels.
+    #[test]
+    fn a_name_survives_a_metadata_rebuild() {
+        let label = MANUAL_SEGMENT_OFFSET;
+        let mut m = labelled(&[label, label, 0]);
+        m.rebuild_segments();
+        m.rename_segment(label, "Handle").unwrap();
+
+        // Something else repaints part of the mesh and the metadata is rebuilt.
+        m.segment_labels[2] = label;
+        m.rebuild_segments();
+
+        assert_eq!(m.segments[&label].name, "Handle");
+        assert_eq!(m.segments[&label].face_count, 3);
+    }
+
+    /// Blank input means "I want the default back", not "store an empty row".
+    #[test]
+    fn clearing_a_name_restores_the_default() {
+        let mut m = labelled(&[0, 0]);
+        m.rebuild_segments();
+        m.rename_segment(0, "Base").unwrap();
+        m.rename_segment(0, "   ").unwrap();
+
+        assert_eq!(m.segments[&0].name, "Region 1");
+        assert!(m.segment_names.is_empty(), "no blank override left behind");
+    }
+
+    /// Renaming a region that is not on the mesh is a caller bug. Accepting it
+    /// would park an orphan entry that resurfaces on a future region.
+    #[test]
+    fn renaming_a_region_that_does_not_exist_is_rejected() {
+        let mut m = labelled(&[0, 0]);
+        m.rebuild_segments();
+        assert!(m.rename_segment(42, "Ghost").is_err());
+        assert!(m.segment_names.is_empty());
+    }
+
+    /// The cap counts characters, not bytes — region names are exactly where a
+    /// user types CJK, and slicing a `String` by byte index would panic.
+    #[test]
+    fn an_overlong_name_is_capped_on_a_character_boundary() {
+        let mut m = labelled(&[0, 0]);
+        m.rebuild_segments();
+        let long = "左臂上部结构".repeat(40);
+        m.rename_segment(0, &long).unwrap();
+
+        let stored = &m.segments[&0].name;
+        assert_eq!(stored.chars().count(), MAX_SEGMENT_NAME_CHARS);
+        assert!(long.starts_with(stored.as_str()));
     }
 }

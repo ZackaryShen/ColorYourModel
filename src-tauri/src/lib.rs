@@ -29,6 +29,7 @@ pub fn run() {
             commands::segment::finalize_segment,
             commands::segment::manual_region_add_point,
             commands::segment::finalize_manual_region,
+            commands::segment::rename_segment,
             commands::paint::brush_paint,
             commands::paint::fill_paint,
             commands::paint::fill_segment_paint,

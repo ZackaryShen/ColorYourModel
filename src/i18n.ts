@@ -54,6 +54,7 @@ const dict: Record<string, Record<Lang, string>> = {
   // SegmentsPanel
   "segments.title": { zh: "分区", en: "Regions" },
   "segments.empty": { zh: "暂无分区，请先导入模型", en: "No segments yet. Import a model first." },
+  "segments.renameHint": { zh: "双击重命名", en: "Double-click to rename" },
 
   // Viewport — ControlsHelp
   "controls.leftPaint": { zh: "🖱️ 左键: 旋转(查看) / Alt+左键: 旋转", en: "🖱️ Left: Rotate (View) / Alt+Left: Rotate" },

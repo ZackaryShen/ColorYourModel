@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, SegmentResult, HistoryResult, HistoryState } from "../types/mesh";
+import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
 import type { SegmentationAlgorithm } from "../types/segment";
 import { log } from "../utils/logger";
@@ -10,6 +10,7 @@ export function useTauriCommand() {
   const updateSegmentLabels = useAppStore((s) => s.updateSegmentLabels);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
+  const setSegmentMetadata = useAppStore((s) => s.setSegmentMetadata);
   const setToast = useAppStore((s) => s.setToast);
 
   const loadModel = async (path: string) => {
@@ -81,6 +82,29 @@ export function useTauriCommand() {
       log.error("useTauriCommand", "autoSegmentV2 failed", { error: String(e) });
       setStatusMessage(`分区失败：${e}`);
       throw e;
+    }
+  };
+
+  /**
+   * Give a region a user-facing name. An empty string clears it back to the
+   * generated "Region N".
+   *
+   * The backend owns the name table and hands back the whole segment list, so
+   * the store is refreshed from the authoritative result rather than patched
+   * optimistically — a rejected rename (region no longer exists after an undo)
+   * must not leave the panel showing a name the backend never accepted.
+   *
+   * Returns whether it stuck, so the row can restore its previous text.
+   */
+  const renameSegment = async (segmentId: number, name: string): Promise<boolean> => {
+    try {
+      const segments = await invoke<Segment[]>("rename_segment", { segmentId, name });
+      setSegmentMetadata(segments);
+      return true;
+    } catch (e) {
+      log.error("useTauriCommand", "renameSegment failed", { segmentId, error: String(e) });
+      setStatusMessage(`重命名失败：${e}`);
+      return false;
     }
   };
 
@@ -254,6 +278,7 @@ export function useTauriCommand() {
     export3mf,
     paintSegmentFace,
     finalizeSegment,
+    renameSegment,
     manualRegionAddPoint,
     finalizeManualRegion,
     undo,
