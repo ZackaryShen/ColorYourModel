@@ -173,12 +173,36 @@ impl MeshModel {
         [n[0] / len, n[1] / len, n[2] / len]
     }
 
+    /// kiddo's KdTree panics ("Too many items with the same position on one
+    /// axis") whenever >BUCKET_SIZE points share an IDENTICAL coordinate on the
+    /// split axis. That is exactly the case for meshes with many near-coplanar
+    /// face centers / vertices — e.g. a UV sphere, where every triangle in a
+    /// latitude ring shares the same Z. load_stl built such a tree on Sphere.stl
+    /// and the app hard-crashed ("闪退") on import.
+    ///
+    /// We break exact ties by perturbing each inserted point with a tiny,
+    /// deterministic, index-derived offset. Magnitude (~1e-4) is ~1e-6 relative
+    /// to model-scale coordinates (≈1e2) and ~1e3× below any paint/spray radius,
+    /// so the brush radius queries are unaffected; it only makes points distinct
+    /// enough for kiddo to always find a split. Robust at ANY mesh resolution
+    /// (unlike bumping BUCKET_SIZE, which a denser sphere would still exceed).
+    fn kd_point(mut p: [f32; 3], salt: u64) -> [f32; 3] {
+        let h = salt.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let fx = (((h & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5) * 2.0e-4;
+        let fy = ((((h >> 16) & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5) * 2.0e-4;
+        let fz = ((((h >> 32) & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5) * 2.0e-4;
+        p[0] += fx;
+        p[1] += fy;
+        p[2] += fz;
+        p
+    }
+
     /// Build KD-Tree from face centers
     pub fn build_kdtree(&mut self) {
         self.face_kdtree = kiddo::KdTree::new();
         let centers = self.face_centers();
         for (i, center) in centers.iter().enumerate() {
-            self.face_kdtree.add(center, i as u64);
+            self.face_kdtree.add(&Self::kd_point(*center, i as u64), i as u64);
         }
     }
 
@@ -186,7 +210,7 @@ impl MeshModel {
     pub fn build_vertex_kdtree(&mut self) {
         self.vertex_kdtree = kiddo::KdTree::new();
         for (i, v) in self.vertices.iter().enumerate() {
-            self.vertex_kdtree.add(v, i as u64);
+            self.vertex_kdtree.add(&Self::kd_point(*v, i as u64), i as u64);
         }
     }
 
