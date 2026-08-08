@@ -57,6 +57,11 @@ const dict: Record<string, Record<Lang, string>> = {
   "segments.renameHint": { zh: "双击重命名，Ctrl+点击多选", en: "Double-click to rename, Ctrl-click to multi-select" },
   "segments.mergeInto": { zh: "合并 {0} 个分区到「{1}」", en: "Merge {0} regions into \"{1}\"" },
   "segments.merged": { zh: "已合并 {0} 个分区（{1} 个面）", en: "Merged {0} regions ({1} faces)" },
+  "segments.split": { zh: "拆分", en: "Split" },
+  "segments.splitHint": { zh: "沿内部棱角把一个分区拆成多个", en: "Split a region into pieces along its internal creases" },
+  "segments.splitThreshold": { zh: "棱角阈值 (°)", en: "Crease threshold (°)" },
+  "segments.splitAlongCreases": { zh: "按棱角拆分", en: "Split along creases" },
+  "segments.splitDone": { zh: "已拆分：{0} 个面移到新分区", en: "Split: {0} faces moved to a new region" },
 
   // Viewport — ControlsHelp
   "controls.leftPaint": { zh: "🖱️ 左键: 旋转(查看) / Alt+左键: 旋转", en: "🖱️ Left: Rotate (View) / Alt+Left: Rotate" },

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useT } from "../../i18n";
@@ -10,7 +10,7 @@ export function SegmentsPanel() {
   const selectedSegment = useAppStore((s) => s.selectedSegment);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const { renameSegment, mergeSegments } = useTauriCommand();
+  const { renameSegment, mergeSegments, splitSegment } = useTauriCommand();
 
   // Ordered multi-selection for merging. `picked[0]` is the anchor and becomes
   // the surviving region — the target is never inferred from size or label,
@@ -22,6 +22,14 @@ export function SegmentsPanel() {
   // a value the render loop reads every frame.
   const [picked, setPicked] = useState<number[]>([]);
   const [merging, setMerging] = useState(false);
+
+  // Which row has its split form open, and the crease threshold for it. Kept
+  // local like the edit/merge state: a split acts on one region the user points
+  // at, and widening the store selection would collide with the merge multi-select
+  // that already lives there.
+  const [splitFor, setSplitFor] = useState<number | null>(null);
+  const [splitThreshold, setSplitThreshold] = useState(30);
+  const [splitting, setSplitting] = useState(false);
 
   // Which row is in edit mode, and the text being typed. Held here rather than
   // per-row so only one row can ever be open: two open editors would both
@@ -60,6 +68,13 @@ export function SegmentsPanel() {
     });
   }, [segments]);
 
+  // The open split form must also close if its region vanishes underneath it.
+  useEffect(() => {
+    if (splitFor !== null && !segments.some((s) => s.id === splitFor)) {
+      setSplitFor(null);
+    }
+  }, [segments, splitFor]);
+
   const target = picked.length >= 2 ? segments.find((s) => s.id === picked[0]) : undefined;
 
   const toggle = (id: number, additive: boolean) => {
@@ -86,6 +101,19 @@ export function SegmentsPanel() {
     setStatusMessage(t("segments.merged", picked.length, moved));
     setPicked([target.id]);
     setSelectedSegment(target.id);
+  };
+
+  const runSplit = async (id: number) => {
+    if (splitting) return;
+    setSplitting(true);
+    const result = await splitSegment(id, { type: "crease", thresholdDeg: splitThreshold });
+    setSplitting(false);
+    setSplitFor(null);
+    if (!result) return;
+    setStatusMessage(t("segments.splitDone", result.movedFaces));
+    // The kept piece may have been re-labelled (an auto region is promoted to the
+    // manual namespace on split), so reselect it rather than the now-stale id.
+    setSelectedSegment(result.keptLabel);
   };
 
   const beginEdit = (id: number, current: string) => {
@@ -122,57 +150,95 @@ export function SegmentsPanel() {
         {segments.map((seg) => {
           const editing = editingId === seg.id;
           const pickIndex = picked.indexOf(seg.id);
+          const splitOpen = splitFor === seg.id && !editing;
           return (
-            <div
-              key={seg.id}
-              onClick={(e) => {
-                if (editing) return;
-                toggle(seg.id, e.ctrlKey || e.metaKey);
-              }}
-              onDoubleClick={() => beginEdit(seg.id, seg.name)}
-              title={t("segments.renameHint")}
-              style={{
-                ...styles.item,
-                ...(selectedSegment === seg.id ? styles.itemActive : {}),
-                ...(pickIndex >= 0 ? styles.itemPicked : {}),
-              }}
-            >
+            <Fragment key={seg.id}>
               <div
-                style={{
-                  ...styles.colorDot,
-                  // Keyed by label, matching what the segment view paints. The
-                  // list index would drift the moment a label is missing from
-                  // the 0..N run, which is the normal case.
-                  backgroundColor: segmentColorHex(seg.id),
+                onClick={(e) => {
+                  if (editing) return;
+                  toggle(seg.id, e.ctrlKey || e.metaKey);
                 }}
-              />
-              {editing ? (
-                <input
-                  ref={inputRef}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  onBlur={() => void commit(seg.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void commit(seg.id);
-                    } else if (e.key === "Escape") {
-                      e.preventDefault();
-                      cancel();
-                    }
-                    // Painting shortcuts live on window; a keystroke meant for
-                    // this field must not also switch tools.
-                    e.stopPropagation();
+                onDoubleClick={() => beginEdit(seg.id, seg.name)}
+                title={t("segments.renameHint")}
+                style={{
+                  ...styles.item,
+                  ...(selectedSegment === seg.id ? styles.itemActive : {}),
+                  ...(pickIndex >= 0 ? styles.itemPicked : {}),
+                }}
+              >
+                <div
+                  style={{
+                    ...styles.colorDot,
+                    // Keyed by label, matching what the segment view paints. The
+                    // list index would drift the moment a label is missing from
+                    // the 0..N run, which is the normal case.
+                    backgroundColor: segmentColorHex(seg.id),
                   }}
-                  maxLength={64}
-                  style={styles.itemInput}
                 />
-              ) : (
-                <span style={styles.itemName}>{seg.name}</span>
+                {editing ? (
+                  <input
+                    ref={inputRef}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onBlur={() => void commit(seg.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void commit(seg.id);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancel();
+                      }
+                      // Painting shortcuts live on window; a keystroke meant for
+                      // this field must not also switch tools.
+                      e.stopPropagation();
+                    }}
+                    maxLength={64}
+                    style={styles.itemInput}
+                  />
+                ) : (
+                  <span style={styles.itemName}>{seg.name}</span>
+                )}
+                <span style={styles.itemCount}>{seg.faceCount}</span>
+                {!editing && !splitOpen && (
+                  <button
+                    title={t("segments.splitHint")}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSplitFor(seg.id);
+                    }}
+                    style={styles.splitButton}
+                  >
+                    {t("segments.split")}
+                  </button>
+                )}
+              </div>
+              {splitOpen && (
+                <div style={styles.splitForm} onClick={(e) => e.stopPropagation()}>
+                  <span style={styles.splitFormLabel}>{t("segments.splitThreshold")}</span>
+                  <input
+                    type="range"
+                    min={5}
+                    max={90}
+                    value={splitThreshold}
+                    onChange={(e) => setSplitThreshold(Number(e.target.value))}
+                    style={{ width: 90 }}
+                  />
+                  <span style={styles.splitThreshVal}>{splitThreshold}°</span>
+                  <button
+                    onClick={() => void runSplit(seg.id)}
+                    disabled={splitting}
+                    style={styles.splitGo}
+                  >
+                    {t("segments.splitAlongCreases")}
+                  </button>
+                  <button onClick={() => setSplitFor(null)} style={styles.splitCancel}>
+                    ×
+                  </button>
+                </div>
               )}
-              <span style={styles.itemCount}>{seg.faceCount}</span>
-            </div>
+            </Fragment>
           );
         })}
       </div>
@@ -268,6 +334,59 @@ const styles: Record<string, React.CSSProperties> = {
     background: "transparent",
     color: "var(--accent, #4a9eff)",
     fontSize: 12,
+    cursor: "pointer",
+  },
+  // Per-row "Split" affordance. Sits to the right of the face count so the rename
+  // double-click and the merge Ctrl-click select stay on the main row body.
+  splitButton: {
+    flexShrink: 0,
+    marginLeft: 6,
+    padding: "1px 6px",
+    borderRadius: 3,
+    border: "1px solid var(--text-3, #888888)",
+    background: "transparent",
+    color: "var(--text-2, #bbbbbb)",
+    fontSize: 11,
+    cursor: "pointer",
+  },
+  // Sub-row shown under the target region while its split form is open. A separate
+  // row (not inline in the main row) keeps the name/flex layout from shifting.
+  splitForm: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 8px",
+    marginLeft: 18,
+    borderRadius: 4,
+    background: "var(--bg-input, #1e1e1e)",
+  },
+  splitFormLabel: {
+    color: "var(--text-3, #888888)",
+    fontSize: 11,
+  },
+  splitThreshVal: {
+    color: "var(--text-2, #bbbbbb)",
+    fontSize: 11,
+    minWidth: 28,
+    textAlign: "right",
+  },
+  splitGo: {
+    padding: "2px 8px",
+    borderRadius: 3,
+    border: "1px solid var(--accent, #4a9eff)",
+    background: "transparent",
+    color: "var(--accent, #4a9eff)",
+    fontSize: 11,
+    cursor: "pointer",
+  },
+  splitCancel: {
+    padding: "2px 7px",
+    borderRadius: 3,
+    border: "1px solid var(--text-3, #888888)",
+    background: "transparent",
+    color: "var(--text-2, #bbbbbb)",
+    fontSize: 12,
+    lineHeight: 1,
     cursor: "pointer",
   },
 };

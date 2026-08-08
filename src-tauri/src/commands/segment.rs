@@ -10,6 +10,7 @@ use crate::segment::manual::{
     MANUAL_SEGMENT_OFFSET,
 };
 use crate::segment::sdf::segment_by_sdf;
+use crate::segment::split::{split_segment as split_segment_impl, SplitMethod, SplitResult};
 use crate::segment::{run_segmentation, SegmentationAlgorithm};
 
 /// Flatten per-face `[[r,g,b,a]; N]` into a flat `Vec<u8>` matching `MeshDataDto.faceColors`.
@@ -305,6 +306,33 @@ pub fn merge_segments(
         segment_labels: mesh.segment_labels.clone(),
         moved_faces,
     })
+}
+
+/// Divide one region into sub-regions along its internal creases.
+///
+/// Mirrors `merge_segments`: it returns fresh `segments` + `segment_labels`
+/// (no `face_colors` — a split moves labels and leaves the paint alone, so
+/// shipping the colour buffer back would describe a buffer that did not change).
+/// `method` is the wire-tagged [`SplitMethod`]; today only `crease` is wired,
+/// `plane` returns an explicit "not implemented" error. History is label-only via
+/// `OpKind::Split`, so the split is undoable like a merge.
+#[tauri::command]
+pub fn split_segment(
+    label: u32,
+    method: SplitMethod,
+    state: State<AppState>,
+) -> Result<SplitResult, String> {
+    log::info!("[cmd:split_segment] label={} method={:?}", label, method);
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let result = split_segment_impl(mesh, label, &method)?;
+    log::info!(
+        "[cmd:split_segment] moved {} faces; kept_label={} new_label={}",
+        result.moved_faces,
+        result.kept_label,
+        result.new_label
+    );
+    Ok(result)
 }
 
 /// Give a region a user-facing name, or clear it back to "Region N".

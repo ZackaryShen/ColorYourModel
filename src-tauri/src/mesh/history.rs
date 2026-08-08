@@ -41,9 +41,10 @@ use std::collections::{HashSet, VecDeque};
 
 /// Which user action produced a history entry.
 ///
-/// Deliberately smaller than the four operation classes named in the Gate 0b'
-/// contract: "split" has no command of its own (it is a side effect of a lasso
-/// overwriting labels inside an existing region).
+/// The first four variants map onto the operation classes in the Gate 0b'
+/// contract. `Split` was added later as a dedicated command (`split_segment`):
+/// it partitions one existing region into several along its internal creases,
+/// rather than being a lasso side effect, so it needed its own history kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpKind {
     /// Brush, spray, smart brush, fill or eraser. Colour only; labels untouched.
@@ -56,6 +57,11 @@ pub enum OpKind {
     /// changes which region a face belongs to, not how it is painted, and the
     /// paint is what the exporter actually reads.
     Merge,
+    /// Partitioning one region into several along its internal creases. **Label
+    /// only**, for the same reason as `Merge`: the 3MF exporter reads
+    /// `face_colors`, so re-colouring the split-off faces would discard real
+    /// output. Each resulting connected piece becomes its own region.
+    Split,
 }
 
 impl OpKind {

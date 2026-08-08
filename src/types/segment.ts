@@ -17,6 +17,28 @@ export type SegmentationAlgorithm =
       creaseThresholdDeg: number;
     };
 
+import type { Segment } from "./mesh";
+
+/**
+ * How a region is split. Mirrors the Rust `SplitMethod` enum
+ * (src-tauri/src/segment/split.rs), serialized internally tagged with camelCased
+ * fields; pinned by `split_method_wire_format_is_stable` on the Rust side.
+ * `plane` is reserved for a future viewport cut gesture and is not yet accepted
+ * by the backend command.
+ */
+export type SplitMethod =
+  | { type: "plane"; point: [number, number, number]; normal: [number, number, number] }
+  | { type: "crease"; thresholdDeg: number };
+
+/** Result of a split, mirroring the Rust `SplitResult`. */
+export type SplitResult = {
+  segments: Segment[];
+  segmentLabels: number[];
+  movedFaces: number;
+  keptLabel: number;
+  newLabel: number;
+};
+
 export type AlgorithmKind = SegmentationAlgorithm["type"];
 
 /** Default auto-segmentation applied right after import. */

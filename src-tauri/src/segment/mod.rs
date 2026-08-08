@@ -5,6 +5,7 @@ pub mod manual;
 pub mod metrics;
 pub mod postprocess;
 pub mod sdf;
+pub mod split;
 
 use serde::{Deserialize, Serialize};
 
@@ -296,6 +297,7 @@ mod preserve_manual_tests {
 #[cfg(test)]
 mod wire_format_tests {
     use super::*;
+    use crate::segment::split::SplitMethod;
 
     /// The IPC boundary is untyped: Tauri hands serde whatever JSON the webview
     /// produced. A rename on either side is invisible at compile time and shows
@@ -331,6 +333,34 @@ mod wire_format_tests {
             let back: SegmentationAlgorithm =
                 serde_json::from_str(expected).expect("deserialize frontend payload");
             assert_eq!(format!("{:?}", back), format!("{:?}", algo));
+        }
+    }
+
+    /// The split method travels over the same untyped IPC boundary, so its exact
+    /// JSON must be pinned too. The frontend sends `thresholdDeg` (camelCase);
+    /// a missing per-variant `rename_all` would silently ship `threshold_deg`
+    /// and fail at runtime with "missing field".
+    #[test]
+    fn split_method_wire_format_is_stable() {
+        let cases: Vec<(SplitMethod, &str)> = vec![
+            (
+                SplitMethod::Crease { threshold_deg: 30.0 },
+                r#"{"type":"crease","thresholdDeg":30.0}"#,
+            ),
+            (
+                SplitMethod::Plane {
+                    point: [0.0, 0.0, 0.0],
+                    normal: [0.0, 1.0, 0.0],
+                },
+                r#"{"type":"plane","point":[0.0,0.0,0.0],"normal":[0.0,1.0,0.0]}"#,
+            ),
+        ];
+        for (method, expected) in cases {
+            let json = serde_json::to_string(&method).expect("serialize");
+            assert_eq!(json, expected, "split wire format drifted for {:?}", method);
+            let back: SplitMethod =
+                serde_json::from_str(expected).expect("deserialize frontend payload");
+            assert_eq!(format!("{:?}", back), format!("{:?}", method));
         }
     }
 }

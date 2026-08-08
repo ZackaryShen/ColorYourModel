@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
 import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
-import type { SegmentationAlgorithm } from "../types/segment";
+import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
 
 export function useTauriCommand() {
@@ -142,6 +142,35 @@ export function useTauriCommand() {
         error: String(e),
       });
       setStatusMessage(`合并失败：${e}`);
+      return null;
+    }
+  };
+
+  /**
+   * Divide one region into sub-regions along its internal creases.
+   *
+   * Labels move; paint does not, so the response carries no colour buffer and the
+   * store is refreshed through `updateSegmentLabels` with `faceColors` omitted.
+   * Returns the result (with `movedFaces`/labels) or null if the split was
+   * rejected. The split is on the backend undo timeline via `OpKind::Split`.
+   */
+  const splitSegment = async (
+    segmentId: number,
+    method: SplitMethod
+  ): Promise<SplitResult | null> => {
+    try {
+      const result = await invoke<SplitResult>("split_segment", {
+        label: segmentId,
+        method,
+      });
+
+      updateSegmentLabels(result.segmentLabels, result.segments);
+      // The split invalidated any redo branch, like merge does.
+      markHistoryDirty();
+      return result;
+    } catch (e) {
+      log.error("useTauriCommand", "splitSegment failed", { segmentId, error: String(e) });
+      setStatusMessage(`拆分失败：${e}`);
       return null;
     }
   };
@@ -318,6 +347,7 @@ export function useTauriCommand() {
     finalizeSegment,
     renameSegment,
     mergeSegments,
+    splitSegment,
     manualRegionAddPoint,
     finalizeManualRegion,
     undo,
