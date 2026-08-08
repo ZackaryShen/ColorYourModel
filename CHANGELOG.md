@@ -14,6 +14,14 @@
 - **上次选择持久化**：导出配置存 zustand persist（`lastExportSelection`，值域校验）
 - 后端新增 IPC：`list_export_presets`、`export_palette_preview`；`export_3mf_command` 支持可选 `selection`
 
+### Added — 智能分区前端面板（2026-08-07, 本轮提交）
+- **统一分区入口**：新增 `IntelligentSegmentPanel`（模态，沿用 `ExportDialog` 的 overlay/dialog 样式）。算法 `<select>`（曲率 K-Means / 形态直径 SDF / 二面角）+ 动态参数滑块（聚类数 k、法线平滑迭代、融合 SDF 开关、棱角阈值、二面角阈值），运行即 `invoke("auto_segment_v2", { algorithm })`。
+- **偏好持久化**：`appStore` 新增 `lastAlgorithmParams`（按算法分桶保留已调滑块）+ `lastSegmentKind`，走 zustand persist 白名单 + `sanitizeAlgorithmParams` 值域校验；面板运行即写回 localStorage。
+- **收口硬编码**：工具栏导入后的自动分区改用 `autoSegmentV2(buildAlgorithm(持久化 or 默认 dihedral 30°, 参数))`，消除 `Toolbar.tsx:89,105` 与 `useTauriCommand.ts:41` 三处字面量 `30.0`；旧 `autoSegment` / `autoSegmentSmart` 钩子退役，统一走 `auto_segment_v2` IPC（后端 `b087c3c` 已落地，golden-sample 测试 74 passed）。
+- 改动文件：`IntelligentSegmentPanel.tsx`（新增）、`Toolbar.tsx`、`useTauriCommand.ts`、`appStore.ts`、`i18n.ts`。
+
+> 待先生 `cargo tauri dev` 手动复验：面板切算法 + 拖滑块后分区结果是否符合预期（headless 无法自动验证 Tauri 渲染）。
+
 ### Changed — 着色器分区高亮（方案 B，2026-08-08, `eea2fd1` + `485aa7d` + `f192f98`）
 - **高亮改为 GPU 着色器方案 α**：删除 `SegmentHighlight`（重建几何叠加，是 giant 段卡死根因）与 `FillFaceHighlight`；主材质经 `onBeforeCompile` 注入 per-vertex `aSegLabel` + `uHighlightLabel`/`uHighlightColor` uniform，hover 切换从 O(F) 降到 O(1)，整模型 giant 段也能瞬时高亮
 - **性能优化**：引入条件性 `frameloop="demand"`（`IdleFrameloop`：静止 1.5s 切 demand，任意交互唤醒），删除 `preserveDrawingBuffer`，`aSegLabel` varying 加 `flat` 限定符
