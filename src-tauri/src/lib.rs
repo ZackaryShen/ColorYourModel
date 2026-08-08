@@ -24,6 +24,7 @@ pub fn run() {
             commands::mesh::get_face_color,
             commands::segment::auto_segment,
             commands::segment::auto_segment_smart,
+            commands::segment::auto_segment_v2,
             commands::segment::paint_segment_face,
             commands::segment::finalize_segment,
             commands::segment::manual_region_add_point,

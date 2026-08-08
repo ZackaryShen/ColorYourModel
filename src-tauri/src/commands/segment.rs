@@ -10,6 +10,7 @@ use crate::segment::manual::{
     MANUAL_SEGMENT_OFFSET,
 };
 use crate::segment::sdf::segment_by_sdf;
+use crate::segment::{run_segmentation, SegmentationAlgorithm};
 
 /// Flatten per-face `[[r,g,b,a]; N]` into a flat `Vec<u8>` matching `MeshDataDto.faceColors`.
 fn flatten_face_colors(colors: &[[u8; 4]]) -> Vec<u8> {
@@ -252,11 +253,14 @@ pub fn auto_segment_smart(
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let _ = app.emit(
-        "segment-progress",
-        serde_json::json!({ "progress": 0.1, "stage": "Computing SDF..." }),
-    );
-    let segments = segment_by_sdf(mesh, k);
+    let app_for_progress = app.clone();
+    let progress_cb: Box<ProgressFn> = Box::new(move |fraction: f32, stage: &str| {
+        let _ = app_for_progress.emit(
+            "segment-progress",
+            serde_json::json!({ "progress": fraction, "stage": stage }),
+        );
+    });
+    let segments = segment_by_sdf(mesh, k, &*progress_cb);
     // Auto segmentation rewrites all labels; drop stale history (see auto_segment).
     mesh.history.clear();
 
@@ -265,6 +269,46 @@ pub fn auto_segment_smart(
         serde_json::json!({ "progress": 1.0, "stage": format!("Found {} parts", segments.len()) }),
     );
     log::info!("[cmd:auto_segment_smart] done: {} parts", segments.len());
+
+    Ok(SegmentResult {
+        segments,
+        segment_labels: mesh.segment_labels.clone(),
+        face_colors: flatten_face_colors(&mesh.face_colors),
+    })
+}
+
+/// Unified multi-algorithm auto-segmentation entry point. The UI sends a single
+/// `algorithm` enum (dihedral | shapeDiameter | curvatureKMeans) with its
+/// parameters; the backend dispatches via `run_segmentation`. One interface
+/// replaces the previous per-algorithm commands (REFUTE: avoid N near-identical
+/// commands and the configuration drift that caused).
+#[tauri::command]
+pub fn auto_segment_v2(
+    algorithm: SegmentationAlgorithm,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<SegmentResult, String> {
+    log::info!("[cmd:auto_segment_v2] algorithm={:?}", algorithm);
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+
+    let app_for_progress = app.clone();
+    let progress_cb: Box<ProgressFn> = Box::new(move |fraction: f32, stage: &str| {
+        let _ = app_for_progress.emit(
+            "segment-progress",
+            serde_json::json!({ "progress": fraction, "stage": stage }),
+        );
+    });
+
+    let segments = run_segmentation(mesh, &algorithm, &*progress_cb);
+    // Auto segmentation rewrites all labels; drop stale history (see auto_segment).
+    mesh.history.clear();
+
+    let _ = app.emit(
+        "segment-progress",
+        serde_json::json!({ "progress": 1.0, "stage": format!("Found {} regions", segments.len()) }),
+    );
+    log::info!("[cmd:auto_segment_v2] done: {} segments", segments.len());
 
     Ok(SegmentResult {
         segments,

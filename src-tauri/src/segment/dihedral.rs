@@ -210,13 +210,12 @@ pub fn segment_by_dihedral_angle(
     // ── Phase 4: Merge tiny leftover regions ─────────────────────
     on_progress(0.85, "合并残余小区域...");
     seg_log(&format!("Phase4 start: merge tiny regions ({} remain)", region_data.len()));
-    let min_faces = std::cmp::min(
-        MIN_REGION_CAP,
-        std::cmp::max(
-            MIN_REGION_FLOOR,
-            (n_faces as f64 * MIN_REGION_FRACTION).ceil() as u32,
-        ),
-    );
+    // Shared with the clustering algorithms so the three cannot drift apart on
+    // what "too small to be a part" means — and, more importantly, so the
+    // model-relative cap applies here too. With the old absolute 10-face floor a
+    // twelve-triangle cube had every face classified as a crumb and came back as
+    // a single region; the same happened to any low-poly import.
+    let min_faces = crate::segment::postprocess::min_region_faces(n_faces);
     log::info!(
         "[segment] min_faces={} (total={})",
         min_faces, n_faces

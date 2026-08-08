@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use petgraph::visit::EdgeRef;
 
 use crate::mesh::model::{MeshModel, Segment};
-use crate::mesh::kdtree::distance;
+use crate::mesh::loader::ProgressFn;
+use crate::segment::postprocess;
 
 // ─── SDF-based "smart" segmentation (Tier 0) ───────────────────────
 //
@@ -23,14 +24,23 @@ use crate::mesh::kdtree::distance;
 const SDF_RAYS: usize = 12;
 const SDF_CONE_HALF_ANGLE: f32 = 1.05; // ~60° half-angle
 const SDF_HOLE_FILL: f32 = -1.0; // sentinel for faces with no ray hit (hole)
+/// Upper bound on candidate faces sampled per face center. Bounds SDF cost to
+/// O(n·K·rays) instead of the previous O(12·n²) (REFUTE blocker #1: the kdtree
+/// query used the full bbox-diagonal radius and sat inside the ray loop, so it
+/// returned ~all faces and was unusable on real meshes). Thickness beyond the
+/// 512th-nearest neighbour is approximated; ample for typical models and the
+/// golden-sample acceptance set.
+const SDF_CANDIDATE_K: usize = 512;
 
-/// Force a globally orientation-consistent normal field via BFS over the
-/// adjacency graph. STL winding is not guaranteed, so raw normals may point
-/// inward on some faces; this makes "inward = -normal" well-defined.
-fn consistent_normals(mesh: &mut MeshModel) {
+/// Compute a globally orientation-consistent normal field via BFS over the
+/// adjacency graph, **without mutating `mesh.normals`** (the previous version
+/// wrote back into `mesh.normals`, which corrupted any subsequent dihedral run
+/// when multiple algorithms were chained). Returns the oriented copy; callers
+/// that need it must hold it locally.
+pub(crate) fn oriented_normals(mesh: &MeshModel) -> Vec<[f32; 3]> {
     let n = mesh.faces.len();
     if n == 0 {
-        return;
+        return Vec::new();
     }
     let mut oriented = mesh.normals.clone();
     let mut visited = vec![false; n];
@@ -68,7 +78,7 @@ fn consistent_normals(mesh: &mut MeshModel) {
             }
         }
     }
-    mesh.normals = oriented;
+    oriented
 }
 
 /// Moller–Trumbore ray/triangle intersection. Returns t>0 if hit.
@@ -138,20 +148,32 @@ fn basis(n: &[f32; 3]) -> ([f32; 3], [f32; 3]) {
 
 /// Per-face Shape Diameter Function (log-normalized). Returns raw SDF values;
 /// faces with no ray hit are filled with SDF_HOLE_FILL and later imputed.
-pub fn compute_sdf(mesh: &mut MeshModel) -> Vec<f32> {
-    consistent_normals(mesh);
+pub fn compute_sdf(mesh: &MeshModel) -> Vec<f32> {
+    let oriented = oriented_normals(mesh);
+    compute_sdf_inner(mesh, &oriented)
+}
+
+/// Core SDF computation using an already orientation-consistent normal field.
+/// Candidates are queried **once per face** (not per ray) and bounded to the
+/// `SDF_CANDIDATE_K` nearest neighbours, so cost is O(n·K·rays) instead of the
+/// previous O(12·n²) that made SDF unusable on real meshes (REFUTE blocker #1:
+/// the kdtree query radius was the full bbox diagonal and sat inside the ray
+/// loop, so it returned ~all faces).
+fn compute_sdf_inner(mesh: &MeshModel, oriented: &[[f32; 3]]) -> Vec<f32> {
     let n = mesh.faces.len();
     let mut sdf = vec![SDF_HOLE_FILL; n];
 
-    // Candidate search radius: bounding-box diagonal (max plausible thickness)
-    let diag = distance(&mesh.bbox.min, &mesh.bbox.max).max(1.0);
-
     for fi in 0..n {
         let center = mesh.face_center(fi as u32);
-        let nrm = mesh.normals[fi]; // consistent outward normal
+        let nrm = oriented[fi]; // consistent outward normal
         // inward direction (negative of outward normal)
         let inward = [-nrm[0], -nrm[1], -nrm[2]];
         let (t1, t2) = basis(&inward);
+
+        // Candidate faces for the inward cone — computed ONCE per face, bounded.
+        let candidates = mesh
+            .face_kdtree
+            .nearest_n::<kiddo::SquaredEuclidean>(&center, SDF_CANDIDATE_K);
 
         let mut hits: Vec<f32> = Vec::with_capacity(SDF_RAYS);
         for r in 0..SDF_RAYS {
@@ -168,10 +190,6 @@ pub fn compute_sdf(mesh: &mut MeshModel) -> Vec<f32> {
             let dl = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
             let dir = [dir[0] / dl, dir[1] / dl, dir[2] / dl];
 
-            // Candidate faces via face KD-tree (accelerates ray query)
-            let candidates = mesh
-                .face_kdtree
-                .within_unsorted::<kiddo::SquaredEuclidean>(&center, diag * diag);
             let mut best_t = f32::INFINITY;
             for cand in candidates.iter() {
                 let cf = cand.item as usize;
@@ -253,12 +271,15 @@ pub fn compute_sdf(mesh: &mut MeshModel) -> Vec<f32> {
 }
 
 /// log-normalize SDF to (0,1]: log(v), min-max to [0,1].
+/// Delegates to the shared implementation, which floors the log-space span.
+///
+/// The previous `1e-6` floor was effectively no floor at all: on a model of
+/// uniform thickness (a sphere) the true span is ray-sampling jitter, and
+/// dividing by it stretched that jitter across the whole [0,1] range. Downstream
+/// `estimate_k` then read the resulting histogram as multi-modal and split a
+/// smooth ball into thickness "parts" that do not exist.
 fn log_normalize(sdf: &[f32]) -> Vec<f32> {
-    let logs: Vec<f32> = sdf.iter().map(|v| v.max(1e-4).ln()).collect();
-    let mn = logs.iter().cloned().fold(f32::INFINITY, f32::min);
-    let mx = logs.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    let span = (mx - mn).max(1e-6);
-    logs.iter().map(|l| (l - mn) / span).collect()
+    postprocess::log_normalize(sdf)
 }
 
 /// 1-D k-means (Lloyd) on sorted log-normalized SDF. Deterministic.
@@ -336,9 +357,12 @@ fn estimate_k(ln_sdf: &[f32]) -> usize {
 }
 
 /// Segment the mesh by SDF + concavity-aware merge.
-pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32) -> Vec<Segment> {
+pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32, on_progress: &ProgressFn) -> Vec<Segment> {
     let n = mesh.faces.len();
-    let sdf = compute_sdf(mesh);
+    on_progress(0.0, "sdf: sampling thickness");
+    let oriented = oriented_normals(mesh);
+    let sdf = compute_sdf_inner(mesh, &oriented);
+    on_progress(0.35, "sdf: clustering");
     let ln_sdf = log_normalize(&sdf);
     let k = if k_user == 0 {
         estimate_k(&ln_sdf)
@@ -358,66 +382,74 @@ pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32) -> Vec<Segment> {
         }
     }
 
-    // Concavity-aware merge: build region adjacency, merge adjacent clusters
-    // across boundaries that are convex (small dihedral angle). This pulls
-    // boundaries to concavities → semantic parts.
-    let mut region_adj: HashMap<u32, HashMap<u32, u32>> = HashMap::new();
+    // Concavity-aware merge. Single O(E) pass: for every inter-cluster edge
+    // accumulate both the shared-edge count and the summed normal dot, so we
+    // avoid the previous O(clusters²·E) rescan (REFUTE blocker #1).
+    // NOTE: `acos(dot)` here is the *magnitude* of the dihedral angle only —
+    // it is unsigned and cannot distinguish convex from concave. We therefore
+    // merge across *smooth* (high dot) boundaries, which empirically pulls cuts
+    // to sharp features. This is a known limitation, not "concavity".
+    let mut boundary: HashMap<(u32, u32), (f64, u32)> = HashMap::new();
     for edge in mesh.face_adjacency.edge_references() {
         let fi = mesh.face_adjacency[edge.source()];
         let fj = mesh.face_adjacency[edge.target()];
         let ci = face_cluster[fi as usize];
         let cj = face_cluster[fj as usize];
-        if ci != cj {
-            *region_adj.entry(ci).or_default().entry(cj).or_insert(0) += 1;
+        if ci == cj {
+            continue;
         }
+        let (a, b) = if ci <= cj { (ci, cj) } else { (cj, ci) };
+        let ni = &oriented[fi as usize];
+        let nj = &oriented[fj as usize];
+        let dot = (ni[0] * nj[0] + ni[1] * nj[1] + ni[2] * nj[2]).clamp(-1.0, 1.0);
+        let e = boundary.entry((a, b)).or_insert((0.0, 0));
+        e.0 += dot as f64;
+        e.1 += 1;
     }
 
-    // Merge small/clustered regions greedily by convexity (dihedral angle).
-    let mut merged: HashMap<u32, u32> = (0..k as u32).map(|c| (c, c)).collect();
-    let mut work: Vec<(u32, u32, f32)> = Vec::new();
-    for (&ci, neighbors) in &region_adj {
-        for (&cj, _count) in neighbors {
-            let (a, b) = (merged[&ci], merged[&cj]);
-            if a == b {
-                continue;
-            }
-            // dihedral angle at this boundary = average of face-pair normals
-            let mut ang_sum = 0.0f32;
-            let mut ang_n = 0u32;
-            for edge in mesh.face_adjacency.edge_references() {
-                let fi = mesh.face_adjacency[edge.source()];
-                let fj = mesh.face_adjacency[edge.target()];
-                if (face_cluster[fi as usize], face_cluster[fj as usize]) == (ci, cj)
-                    || (face_cluster[fi as usize], face_cluster[fj as usize]) == (cj, ci)
-                {
-                    let ni = &mesh.normals[fi as usize];
-                    let nj = &mesh.normals[fj as usize];
-                    let dot = (ni[0] * nj[0] + ni[1] * nj[1] + ni[2] * nj[2]).clamp(-1.0, 1.0);
-                    ang_sum += dot.acos();
-                    ang_n += 1;
-                }
-            }
-            let avg_dot = if ang_n > 0 {
-                (ang_sum / ang_n as f32).cos()
-            } else {
-                1.0
-            };
-            work.push((a, b, avg_dot));
+    // Union-find over cluster ids. The previous version snapshotted `merged`
+    // *before* merging and then rewrote entries equal to `hi` — which is not a
+    // union: given chained boundaries (0,1) and (1,2) it maps 1→0 and then 2→1,
+    // leaving three ids that transitively should have been one. On a smooth mesh
+    // (every boundary above the 0.93 dot) that silently kept several clusters
+    // alive, which is why a plain sphere came back in pieces.
+    let mut parent: Vec<u32> = (0..k as u32).collect();
+    fn find(mut x: u32, parent: &mut Vec<u32>) -> u32 {
+        while parent[x as usize] != x {
+            let g = parent[parent[x as usize] as usize];
+            parent[x as usize] = g; // path halving
+            x = g;
         }
+        x
     }
-    // Only merge across convex boundaries (high normal dot = similar orientation)
-    work.sort_by(|x, y| y.2.partial_cmp(&x.2).unwrap());
+    let mut work: Vec<(u32, u32, f32)> = boundary
+        .iter()
+        .map(|(&(a, b), &(sum_dot, cnt))| (a, b, (sum_dot / cnt as f64) as f32))
+        .collect();
+    // Strongest (smoothest) boundary first; ties broken by id so the HashMap's
+    // iteration order cannot leak into the result.
+    work.sort_by(|x, y| {
+        y.2.partial_cmp(&x.2)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then((x.0, x.1).cmp(&(y.0, y.1)))
+    });
     for (a, b, dot) in work {
-        if dot >= 0.93 {
-            // convex/smooth boundary → merge into lower id
-            let (lo, hi) = (a.min(b), a.max(b));
-            for v in merged.values_mut() {
-                if *v == hi {
-                    *v = lo;
-                }
-            }
+        // Only merge across convex/smooth boundaries (high normal dot = similar
+        // orientation); cuts stay on the concavities.
+        if dot < 0.93 {
+            continue;
         }
+        let (ra, rb) = (find(a, &mut parent), find(b, &mut parent));
+        if ra == rb {
+            continue;
+        }
+        let (lo, hi) = (ra.min(rb), ra.max(rb));
+        parent[hi as usize] = lo;
     }
+    let merged: HashMap<u32, u32> = (0..k as u32)
+        .map(|c| (c, find(c, &mut parent)))
+        .collect();
+    on_progress(0.9, "sdf: merging");
 
     // Compact labels → contiguous ids, assign to faces
     let mut remap: HashMap<u32, u32> = HashMap::new();
@@ -433,25 +465,22 @@ pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32) -> Vec<Segment> {
         labels[f] = id;
     }
 
-    mesh.segment_labels = labels.clone();
+    // Everything above clusters faces by a *global* thickness value, and a
+    // global value has no idea what is reachable from what: two disconnected
+    // spheres of equal radius get the same SDF, land in the same cluster, and
+    // come back as one "region" whose two halves never touch. The convex-merge
+    // step makes that worse, not better — it unions clusters mesh-wide. So the
+    // connectivity split has to run last, on the final labels.
+    //
+    // The contour merge is deliberately NOT applied here: SDF's whole purpose is
+    // to separate parts by thickness across smooth blends, which is exactly what
+    // that pass would undo.
+    on_progress(0.95, "sdf: connectivity split");
+    let curv = postprocess::face_curvature(mesh, &oriented);
+    let feats = postprocess::assemble_features(&curv, Some(&ln_sdf));
+    let labels = postprocess::refine_regions(mesh, &labels, &feats, &oriented, None);
 
-    // Build Segment metadata
-    let mut counts: HashMap<u32, u32> = HashMap::new();
-    for &l in &labels {
-        *counts.entry(l).or_insert(0) += 1;
-    }
-    let mut segments: Vec<Segment> = counts
-        .iter()
-        .map(|(&id, &count)| Segment {
-            id,
-            name: format!("Region {}", id + 1),
-            color: None,
-            face_count: count,
-        })
-        .collect();
-    segments.sort_by_key(|s| s.id);
-    mesh.segments = segments.iter().map(|s| (s.id, s.clone())).collect();
-    segments
+    postprocess::finalize_segments(mesh, labels)
 }
 
 #[cfg(test)]
@@ -549,8 +578,8 @@ mod tests {
 
     #[test]
     fn compute_sdf_separates_two_cubes() {
-        let mut m = two_separated_cubes();
-        let sdf = compute_sdf(&mut m);
+        let m = two_separated_cubes();
+        let sdf = compute_sdf(&m);
         // No unfilled holes should remain after imputation.
         assert!(sdf.iter().all(|&v| v > 0.0), "SDF left unfilled holes (-1 sentinel)");
         let min = sdf.iter().cloned().fold(f32::INFINITY, f32::min);
@@ -568,14 +597,14 @@ mod tests {
     #[test]
     fn segment_by_sdf_two_cubes_k2() {
         let mut m = two_separated_cubes();
-        let segs = segment_by_sdf(&mut m, 2);
+        let segs = segment_by_sdf(&mut m, 2, &|_, _| {});
         assert_eq!(segs.len(), 2, "two cubes must yield 2 segments");
     }
 
     #[test]
     fn segment_by_sdf_two_cubes_auto() {
         let mut m = two_separated_cubes();
-        let segs = segment_by_sdf(&mut m, 0);
+        let segs = segment_by_sdf(&mut m, 0, &|_, _| {});
         assert!(
             segs.len() >= 2,
             "auto-k must not collapse two cubes to 1 (got {})",
@@ -591,7 +620,7 @@ mod tests {
         // limitation (histogram peak-detection misses spread clusters), deferred
         // to a later iteration. The explicit-k path is the controllable guarantee.
         let mut m = single_cube();
-        let segs = segment_by_sdf(&mut m, 1);
+        let segs = segment_by_sdf(&mut m, 1, &|_, _| {});
         assert_eq!(segs.len(), 1, "explicit k=1 must yield 1 segment");
     }
 
@@ -613,7 +642,7 @@ mod tests {
     #[test]
     fn segment_by_sdf_block_with_plate() {
         let mut m = block_with_plate();
-        let segs = segment_by_sdf(&mut m, 2);
+        let segs = segment_by_sdf(&mut m, 2, &|_, _| {});
         assert_eq!(segs.len(), 2, "block+plate must be 2 parts (not over-merged)");
         // Connected fixture exercises the concavity merge: SDF reads the thin
         // plate (caps + rim, ~0.27) vs the thick block (~1.75); the concave z=2
