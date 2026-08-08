@@ -232,7 +232,6 @@ pub fn segment_by_dihedral_angle(
     on_progress(0.92, "重压缩区域 ID...");
     let mut compact_map: HashMap<u32, u32> = HashMap::new();
     let mut compact_next = 0u32;
-    let mut compact_counts: HashMap<u32, u32> = HashMap::new();
     for i in 0..n_faces {
         let old = labels[i];
         let new_id = *compact_map.entry(old).or_insert_with(|| {
@@ -241,24 +240,15 @@ pub fn segment_by_dihedral_angle(
             id
         });
         labels[i] = new_id;
-        *compact_counts.entry(new_id).or_insert(0) += 1;
     }
 
+    // Metadata is built by `rebuild_segments` rather than assembled here: this
+    // used to be a third private copy of "what a Segment looks like" (the other
+    // two being postprocess::finalize_segments and rebuild_segments itself),
+    // which meant naming and colouring rules had to be changed in three places
+    // to stay consistent — and were not.
     mesh.segment_labels = labels;
-
-    let mut segments = HashMap::new();
-    for (&id, &count) in &compact_counts {
-        segments.insert(
-            id,
-            Segment {
-                id,
-                name: format!("Region {}", id + 1),
-                color: None,
-                face_count: count,
-            },
-        );
-    }
-    mesh.segments = segments;
+    mesh.rebuild_segments();
 
     let seg_count = mesh.segments.len();
     seg_log(&format!("=== segment DONE: {} final regions ===", seg_count));

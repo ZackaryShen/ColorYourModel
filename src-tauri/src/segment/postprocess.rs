@@ -570,22 +570,16 @@ pub(crate) fn refine_regions(
 
 /// Write labels into the mesh and rebuild `mesh.segments`. Every algorithm ends
 /// here so the metadata shape (name, ordering, face counts) is identical.
+///
+/// The counting/naming used to be duplicated here (and a third time in
+/// `dihedral.rs`) instead of delegating to `MeshModel::rebuild_segments`. Three
+/// copies of "what a Segment looks like" is three places to forget: the local
+/// copies hardcoded `color: None` and a `Region {id+1}` name, so a manual label
+/// surviving into this path would have come back uncoloured, and any
+/// user-supplied name would have been silently discarded. Delegating makes
+/// `rebuild_segments` the only place that decides segment metadata.
 pub(crate) fn finalize_segments(mesh: &mut MeshModel, labels: Vec<u32>) -> Vec<Segment> {
-    let mut counts: HashMap<u32, u32> = HashMap::new();
-    for &l in &labels {
-        *counts.entry(l).or_insert(0) += 1;
-    }
     mesh.segment_labels = labels;
-    let mut segments: Vec<Segment> = counts
-        .iter()
-        .map(|(&id, &count)| Segment {
-            id,
-            name: format!("Region {}", id + 1),
-            color: None,
-            face_count: count,
-        })
-        .collect();
-    segments.sort_by_key(|s| s.id);
-    mesh.segments = segments.iter().map(|s| (s.id, s.clone())).collect();
-    segments
+    mesh.rebuild_segments();
+    mesh.sorted_segments()
 }
