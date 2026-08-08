@@ -997,13 +997,13 @@ function MeshDisplay() {
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nattribute float aSegLabel;\nvarying float vSegLabel;"
+        "#include <common>\nattribute float aSegLabel;\nflat varying float vSegLabel;"
       )
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvSegLabel = aSegLabel;");
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nvarying float vSegLabel;"
+        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nflat varying float vSegLabel;"
       )
       .replace(
         "#include <color_fragment>",
@@ -2106,6 +2106,63 @@ const toastStyles: Record<string, React.CSSProperties> = {
   text: { fontWeight: 600 },
 };
 
+// ─── Idle Frameloop (perf: stop rendering when the scene is static) ──
+// By default R3F renders at full framerate ("always"), so even a 1.5M-face
+// model is redrawn ~60×/s while the user is merely looking at it. That idle
+// redraw — not the highlight shader — is the dominant GPU/CPU cost. We keep
+// "always" during any interaction and flip to "demand" after 1.5s of silence,
+// so a static scene costs ~0 (iteration 23, REFUTE review).
+//
+// Why NOT a hard global frameloop="demand"? The scene mutates the SAME
+// BufferGeometry instance in place (color / aSegLabel writes in useMesh); R3F's
+// prop-identity diff cannot see those mutations, so a global demand mode
+// silently freezes paint/partition updates unless every mutation site also
+// calls invalidate() (REFUTE: 9 such sites, one miss = permanent freeze). The
+// conditional approach degrades any missed invalidate to "refreshes on next
+// pointer move" instead of "never", which is safe.
+function IdleFrameloop() {
+  const setFrameloop = useThree((s) => s.setFrameloop);
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const goDemand = () => {
+      invalidate(); // draw one last frame, then idle
+      setFrameloop("demand");
+    };
+    const wake = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      setFrameloop("always");
+    };
+    const scheduleDemand = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(goDemand, 1500);
+    };
+    const onActivity = () => {
+      wake();
+      scheduleDemand();
+    };
+    const events: (keyof WindowEventMap)[] = [
+      "pointerdown",
+      "pointermove",
+      "pointerup",
+      "wheel",
+      "keydown",
+      "resize",
+    ];
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    scheduleDemand(); // begin idle countdown immediately on mount
+    return () => {
+      if (timer) clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, onActivity));
+      setFrameloop("always");
+    };
+  }, [setFrameloop, invalidate]);
+  return null;
+}
+
 // ─── Viewport Root ────────────────────────────────────────────────
 export function Viewport() {
   const t = useT();
@@ -2116,7 +2173,7 @@ export function Viewport() {
       <Canvas
         orthographic
         camera={{ position: [50, 50, 50], zoom: 1 }}
-        gl={{ antialias: true, preserveDrawingBuffer: true }}
+        gl={{ antialias: true }}
         style={{ background: "var(--bg-canvas, #2a2a2a)" }}
         onCreated={({ gl }) => {
           log.info("Viewport", "Canvas ready", {
@@ -2126,6 +2183,7 @@ export function Viewport() {
         }}
       >
         <SceneSetup />
+        <IdleFrameloop />
         <CameraFit />
         <ControlsBridge />
         {isLoaded && <MeshDisplay />}
