@@ -45,13 +45,27 @@ export function useTauriCommand() {
    * `buildAlgorithm`; the backend dispatches via `run_segmentation`. Replaces the
    * old per-algorithm `autoSegment` / `autoSegmentSmart` hooks (REFUTE: avoid N
    * near-identical commands and the configuration drift that caused).
+   *
+   * `preserveManual` keeps hand-drawn regions (labels >= MANUAL_SEGMENT_OFFSET)
+   * alive across a re-run: the algorithm still claims every face, then the
+   * backend paints the manual labels back on top. It defaults to true here AND
+   * in Rust so that any future call site that forgets the argument still fails
+   * safe. We deliberately did NOT gate this behind a confirm dialog — a dialog
+   * on the panel would not cover Toolbar.tsx's segment-on-import path, so manual
+   * regions would still vanish silently there.
    */
-  const autoSegmentV2 = async (algorithm: SegmentationAlgorithm) => {
-    log.info("useTauriCommand", `autoSegmentV2(${algorithm.type})`);
+  const autoSegmentV2 = async (
+    algorithm: SegmentationAlgorithm,
+    preserveManual: boolean = true
+  ) => {
+    log.info("useTauriCommand", `autoSegmentV2(${algorithm.type})`, { preserveManual });
     try {
       setStatusMessage("智能分区中…");
       const t0 = performance.now();
-      const result = await invoke<SegmentResult>("auto_segment_v2", { algorithm });
+      const result = await invoke<SegmentResult>("auto_segment_v2", {
+        algorithm,
+        preserveManual,
+      });
       const dt = (performance.now() - t0).toFixed(1);
 
       log.info("useTauriCommand", `autoSegmentV2 returned in ${dt}ms`, {

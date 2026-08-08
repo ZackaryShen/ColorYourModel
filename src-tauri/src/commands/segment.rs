@@ -273,13 +273,23 @@ pub fn auto_segment_smart(
 /// parameters; the backend dispatches via `run_segmentation`. One interface
 /// replaces the previous per-algorithm commands (REFUTE: avoid N near-identical
 /// commands and the configuration drift that caused).
+/// `preserve_manual` is optional and defaults to **true**: omitting it must not
+/// silently pick the destructive branch. A caller that forgets the argument
+/// (or an older frontend bundle) keeps the user's hand-drawn regions; wiping
+/// them stays something you have to ask for explicitly.
 #[tauri::command]
 pub fn auto_segment_v2(
     algorithm: SegmentationAlgorithm,
+    preserve_manual: Option<bool>,
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<SegmentResult, String> {
-    log::info!("[cmd:auto_segment_v2] algorithm={:?}", algorithm);
+    let preserve_manual = preserve_manual.unwrap_or(true);
+    log::info!(
+        "[cmd:auto_segment_v2] algorithm={:?} preserve_manual={}",
+        algorithm,
+        preserve_manual
+    );
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
@@ -291,7 +301,7 @@ pub fn auto_segment_v2(
         );
     });
 
-    let segments = run_segmentation(mesh, &algorithm, &*progress_cb);
+    let segments = run_segmentation(mesh, &algorithm, preserve_manual, &*progress_cb);
     // Auto segmentation rewrites all labels; drop stale history (see auto_segment).
     mesh.history.clear();
 

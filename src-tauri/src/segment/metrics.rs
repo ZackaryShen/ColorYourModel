@@ -232,7 +232,7 @@ fn two_spheres() -> MeshModel {
 /// boundary would make the sphere test pass for entirely the wrong reason, so
 /// something with real creases has to stay split.
 #[cfg(test)]
-fn unit_cube() -> MeshModel {
+pub(crate) fn unit_cube() -> MeshModel {
     let v: Vec<[f32; 3]> = vec![
         [-1.0, -1.0, -1.0],
         [1.0, -1.0, -1.0],

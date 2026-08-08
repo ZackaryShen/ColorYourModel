@@ -9,7 +9,7 @@ pub mod sdf;
 use serde::{Deserialize, Serialize};
 
 use crate::mesh::loader::ProgressFn;
-use crate::mesh::model::{MeshModel, Segment};
+use crate::mesh::model::{MeshModel, Segment, MANUAL_SEGMENT_OFFSET};
 use crate::segment::dihedral::segment_by_dihedral_angle;
 use crate::segment::sdf::segment_by_sdf;
 
@@ -52,7 +52,60 @@ pub enum SegmentationAlgorithm {
 
 /// Run the selected algorithm and return segment metadata. Per-face labels are
 /// written into `mesh.segment_labels`; `mesh.segments` is rebuilt by the backend.
+///
+/// # `preserve_manual`
+///
+/// Every algorithm assigns a label to *every* face, so re-running one wipes the
+/// lasso regions and segment-brush strokes the user drew by hand — and the
+/// commands clear the undo history immediately afterwards, because the recorded
+/// diffs were taken against labels that no longer exist. The manual work is
+/// therefore unrecoverable. (Face colours are untouched: nothing in `export`
+/// reads `segment_labels`, so what is lost is the partition, not the paint.)
+///
+/// The obvious fix — warn before running — was rejected: the segmentation panel
+/// is not the only caller. Importing a model auto-segments it immediately, so a
+/// dialog wired into the panel guards one path, misses the other, and leaves
+/// behind the impression that the case is handled. Restoring the manual labels
+/// after the algorithm has run protects both callers without asking anything of
+/// either.
+///
+/// Auto labels are compacted to 0..K, and overwriting some of them can leave a
+/// hole in that range or empty a region entirely. That is safe: the frontend
+/// tests segment membership against the returned metadata (`segmentIds` in
+/// Viewport) and colours by `label % palette_len`, neither of which assumes the
+/// range is contiguous.
 pub fn run_segmentation(
+    mesh: &mut MeshModel,
+    algo: &SegmentationAlgorithm,
+    preserve_manual: bool,
+    on_progress: &ProgressFn,
+) -> Vec<Segment> {
+    let manual: Vec<(usize, u32)> = if preserve_manual {
+        mesh.segment_labels
+            .iter()
+            .enumerate()
+            .filter(|(_, &l)| l >= MANUAL_SEGMENT_OFFSET)
+            .map(|(i, &l)| (i, l))
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let segments = dispatch(mesh, algo, on_progress);
+
+    if manual.is_empty() {
+        return segments;
+    }
+    for (i, label) in manual {
+        mesh.segment_labels[i] = label;
+    }
+    // Face counts moved and regions may have disappeared, so the metadata the
+    // algorithm just produced is stale.
+    mesh.rebuild_segments();
+    mesh.sorted_segments()
+}
+
+fn dispatch(
     mesh: &mut MeshModel,
     algo: &SegmentationAlgorithm,
     on_progress: &ProgressFn,
@@ -75,6 +128,93 @@ pub fn run_segmentation(
             *crease_threshold_deg,
             on_progress,
         ),
+    }
+}
+
+#[cfg(test)]
+mod preserve_manual_tests {
+    use super::*;
+    use crate::segment::metrics::unit_cube;
+
+    fn noop_progress() -> Box<ProgressFn> {
+        Box::new(|_, _| {})
+    }
+
+    /// A cube with two faces claimed by a hand-drawn region.
+    fn cube_with_manual_region() -> (MeshModel, u32) {
+        let mut mesh = unit_cube();
+        let label = mesh.alloc_manual_label();
+        mesh.segment_labels[0] = label;
+        mesh.segment_labels[1] = label;
+        (mesh, label)
+    }
+
+    #[test]
+    fn rerunning_keeps_hand_drawn_regions() {
+        let (mut mesh, label) = cube_with_manual_region();
+        let cb = noop_progress();
+
+        let segments = run_segmentation(
+            &mut mesh,
+            &SegmentationAlgorithm::Dihedral {
+                angle_threshold: 30.0,
+            },
+            true,
+            &*cb,
+        );
+
+        assert_eq!(mesh.segment_labels[0], label);
+        assert_eq!(mesh.segment_labels[1], label);
+        // Metadata must describe the restored labels, not the ones the
+        // algorithm produced before they were overwritten.
+        let manual = segments
+            .iter()
+            .find(|s| s.id == label)
+            .expect("manual region missing from returned metadata");
+        assert_eq!(manual.face_count, 2);
+        assert_eq!(manual.color, Some(MeshModel::manual_label_color(label)));
+        let total: u32 = segments.iter().map(|s| s.face_count).sum();
+        assert_eq!(total, mesh.faces.len() as u32, "face counts must partition");
+    }
+
+    #[test]
+    fn opting_out_lets_the_algorithm_claim_every_face() {
+        let (mut mesh, label) = cube_with_manual_region();
+        let cb = noop_progress();
+
+        let segments = run_segmentation(
+            &mut mesh,
+            &SegmentationAlgorithm::Dihedral {
+                angle_threshold: 30.0,
+            },
+            false,
+            &*cb,
+        );
+
+        assert!(
+            !mesh.segment_labels.contains(&label),
+            "preserve_manual=false must not leave manual labels behind"
+        );
+        assert!(segments.iter().all(|s| s.id < MANUAL_SEGMENT_OFFSET));
+    }
+
+    /// The restore path must be inert when there is nothing to restore — the
+    /// common case, and the one where an accidental extra `rebuild_segments`
+    /// would be pure overhead on every import.
+    #[test]
+    fn a_mesh_without_manual_regions_is_unaffected_by_the_flag() {
+        let cb = noop_progress();
+        let algo = SegmentationAlgorithm::Dihedral {
+            angle_threshold: 30.0,
+        };
+
+        let mut kept = unit_cube();
+        let with = run_segmentation(&mut kept, &algo, true, &*cb);
+        let mut wiped = unit_cube();
+        let without = run_segmentation(&mut wiped, &algo, false, &*cb);
+
+        assert_eq!(kept.segment_labels, wiped.segment_labels);
+        assert_eq!(with.len(), without.len());
     }
 }
 
