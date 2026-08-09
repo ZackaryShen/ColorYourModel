@@ -63,7 +63,7 @@ export interface AlgorithmParams {
 export const DEFAULT_ALGORITHM_PARAMS: AlgorithmParams = {
   dihedral: { angleThreshold: DEFAULT_DIHEDRAL_ANGLE },
   shapeDiameter: { k: 0 },
-  curvatureKMeans: { k: 6, smoothingIters: 2, useSdf: true, creaseThresholdDeg: 20 },
+  curvatureKMeans: { k: 6, smoothingIters: 2, useSdf: true, creaseThresholdDeg: 45 },
 };
 
 /** Assemble the IPC payload for the currently selected algorithm. */
