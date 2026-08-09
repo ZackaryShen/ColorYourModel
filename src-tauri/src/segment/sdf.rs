@@ -240,7 +240,7 @@ fn compute_sdf_inner(
         if fi % report_every == 0 {
             on_progress(
                 base + span * (fi as f32 / n as f32),
-                "sdf: sampling thickness",
+                "sdf:sample",
             );
         }
     }
@@ -381,10 +381,10 @@ fn estimate_k(ln_sdf: &[f32]) -> usize {
 /// Segment the mesh by SDF + concavity-aware merge.
 pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32, on_progress: &ProgressFn) -> Vec<Segment> {
     let n = mesh.faces.len();
-    on_progress(0.0, "sdf: sampling thickness");
+    on_progress(0.0, "sdf:sample");
     let oriented = oriented_normals(mesh);
     let sdf = compute_sdf_inner(mesh, &oriented, on_progress, 0.0, 0.35);
-    on_progress(0.35, "sdf: clustering");
+    on_progress(0.35, "sdf:cluster");
     let ln_sdf = log_normalize(&sdf);
     let k = if k_user == 0 {
         estimate_k(&ln_sdf)
@@ -471,7 +471,7 @@ pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32, on_progress: &ProgressF
     let merged: HashMap<u32, u32> = (0..k as u32)
         .map(|c| (c, find(c, &mut parent)))
         .collect();
-    on_progress(0.9, "sdf: merging");
+    on_progress(0.9, "sdf:cluster");
 
     // Compact labels → contiguous ids, assign to faces
     let mut remap: HashMap<u32, u32> = HashMap::new();
@@ -497,7 +497,7 @@ pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32, on_progress: &ProgressF
     // The contour merge is deliberately NOT applied here: SDF's whole purpose is
     // to separate parts by thickness across smooth blends, which is exactly what
     // that pass would undo.
-    on_progress(0.95, "sdf: connectivity split");
+    on_progress(0.95, "sdf:split");
     let curv = postprocess::face_curvature(mesh, &oriented);
     let feats = postprocess::assemble_features(&curv, Some(&ln_sdf));
     let labels = postprocess::refine_regions(mesh, &labels, &feats, &oriented, None);

@@ -10,6 +10,7 @@ import { useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
 import type { HistoryResult } from "../../types/mesh";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
+import { resolveSegmentStage } from "../../segmentStages";
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
@@ -1904,30 +1905,86 @@ function SceneSetup() {
 }
 
 // ─── Progress Bar UI ──────────────────────────────────────────────
+// Two consumers feed the bar: the mesh loader emits `import-progress` and the
+// segmentation pipeline emits `segment-progress`. Both flip the same
+// `isLoading` flag, but each writes to its own slice of the store; the
+// `loadingKind` discriminator (set by whichever listener fired last) picks
+// which slice to render. The segment slice drives a canonical "Stage X/Y"
+// plan so the user sees the algorithm's logical phases ("Measure angles",
+// "Group regions", …) rather than the raw stage string the backend ships.
+//
+// The spinner is always-on while `isLoading` is true, so even stages that
+// emit no sub-fraction progress (k-means loop, merge loop) clearly show
+// activity. Stages flagged `indeterminate` in the plan swap the determinate
+// bar for an animated stripe so the percentage does not freeze.
+const spinnerKeyframes = `
+@keyframes cym-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes cym-indeterminate {
+  0% { left: -40%; width: 40%; }
+  50% { left: 30%; width: 40%; }
+  100% { left: 100%; width: 40%; }
+}
+`;
+
 function ProgressBar() {
   const t = useT();
   const isLoading = useAppStore((s) => s.isLoading);
+  const loadingKind = useAppStore((s) => s.loadingKind);
   const importProgress = useAppStore((s) => s.importProgress);
   const importStage = useAppStore((s) => s.importStage);
+  const segmentProgress = useAppStore((s) => s.segmentProgress);
+  const segmentStage = useAppStore((s) => s.segmentStage);
+  // The active algorithm kind for the current segmentation. Falls back to
+  // curvatureKMeans to match the toolbar's new import default. The persisted
+  // `lastSegmentKind` is updated by the panel before invoke, so any path that
+  // funnels through the panel will see the user's chosen algorithm here.
+  const segmentKind = useAppStore((s) => s.lastSegmentKind) ?? "curvatureKMeans";
 
   if (!isLoading) return null;
 
-  const pct = Math.round(importProgress * 100);
+  const isSegment = loadingKind === "segment";
+  const rawFraction = isSegment ? segmentProgress : importProgress;
+  const pct = Math.round(rawFraction * 100);
+
+  let stageLine: string;
+  let indeterminate = false;
+  if (isSegment) {
+    const st = resolveSegmentStage(segmentKind, segmentStage);
+    if (st.done) {
+      stageLine = t("segStage.done");
+    } else {
+      stageLine = `${t("segStage.header")} ${st.index}/${st.total} · ${t(st.labelKey)}`;
+    }
+    indeterminate = st.indeterminate;
+  } else {
+    stageLine = importStage || t("view.loading");
+  }
 
   return (
     <div style={progressStyles.overlay}>
+      <style>{spinnerKeyframes}</style>
       <div style={progressStyles.card}>
-        <div style={progressStyles.spinner}>⏳</div>
-        <div style={progressStyles.stageText}>{importStage || t("view.loading")}</div>
-        <div style={progressStyles.barOuter}>
-          <div
-            style={{
-              ...progressStyles.barInner,
-              width: `${pct}%`,
-            }}
-          />
+        <div style={progressStyles.spinner} aria-hidden>
+          <div style={progressStyles.spinnerRing} />
         </div>
-        <div style={progressStyles.pctText}>{pct}%</div>
+        <div style={progressStyles.stageText}>{stageLine}</div>
+        <div style={progressStyles.barOuter}>
+          {indeterminate ? (
+            <div style={progressStyles.barIndeterminate} />
+          ) : (
+            <div
+              style={{
+                ...progressStyles.barInner,
+                width: `${pct}%`,
+              }}
+            />
+          )}
+        </div>
+        <div style={progressStyles.pctText}>
+          {indeterminate ? "…" : `${pct}%`}
+        </div>
       </div>
     </div>
   );
@@ -1952,8 +2009,22 @@ const progressStyles: Record<string, React.CSSProperties> = {
     boxShadow: "0 4px 24px var(--shadow, rgba(0,0,0,0.3))",
   },
   spinner: {
-    fontSize: 36,
-    marginBottom: 12,
+    position: "relative",
+    width: 40,
+    height: 40,
+    margin: "0 auto 14px",
+  },
+  // The actual spinning element. CSS `border-top-color` painted with the
+  // accent token gives the spinner its visible "comet" arc; the four border
+  // widths are what the keyframe `cym-spin` rotates.
+  spinnerRing: {
+    width: 40,
+    height: 40,
+    borderRadius: "50%",
+    border: "4px solid var(--border-strong, #333333)",
+    borderTopColor: "var(--accent, #4a9eff)",
+    animation: "cym-spin 0.9s linear infinite",
+    boxSizing: "border-box",
   },
   stageText: {
     color: "var(--text-1, #cccccc)",
@@ -1962,6 +2033,7 @@ const progressStyles: Record<string, React.CSSProperties> = {
     minHeight: 20,
   },
   barOuter: {
+    position: "relative",
     width: "100%",
     height: 8,
     background: "var(--border-strong, #333333)",
@@ -1973,6 +2045,19 @@ const progressStyles: Record<string, React.CSSProperties> = {
     background: "var(--gradient, linear-gradient(90deg, #4a9eff, #00d4ff))",
     borderRadius: 4,
     transition: "width 0.3s ease",
+  },
+  // Indeterminate bar: a 40%-wide stripe that slides across the track,
+  // driven by the `cym-indeterminate` keyframe. Used for stages where the
+  // algorithm emits no sub-fraction progress (e.g. k-means loop) so the
+  // percentage doesn't freeze.
+  barIndeterminate: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    height: "100%",
+    background: "var(--gradient, linear-gradient(90deg, #4a9eff, #00d4ff))",
+    borderRadius: 4,
+    animation: "cym-indeterminate 1.2s ease-in-out infinite",
   },
   pctText: {
     color: "var(--accent-text, #4a9eff)",

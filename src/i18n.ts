@@ -126,6 +126,23 @@ const dict: Record<string, Record<Lang, string>> = {
   "segmentPanel.run": { zh: "运行分区", en: "Run segmentation" },
   "segmentPanel.running": { zh: "分区中…", en: "Segmenting…" },
   "segmentPanel.cancel": { zh: "取消", en: "Cancel" },
+
+  // Segmentation progress stages (iteration 40). The canonical stage keys
+  // are emitted by the backend; this map translates them into the human
+  // label that shows alongside "Stage X/Y" in the ProgressBar overlay.
+  "segStage.header": { zh: "阶段", en: "Stage" },
+  "segStage.dihedral.edges": { zh: "测量面间夹角", en: "Measuring face angles" },
+  "segStage.dihedral.regions": { zh: "聚合连通区域", en: "Grouping connected regions" },
+  "segStage.dihedral.merge": { zh: "归并相似区域", en: "Merging similar regions" },
+  "segStage.dihedral.finalize": { zh: "清理碎片区域", en: "Cleaning up small regions" },
+  "segStage.sdf.sample": { zh: "采样厚度 (SDF)", en: "Sampling thickness (SDF)" },
+  "segStage.sdf.cluster": { zh: "聚类并归并", en: "Clustering & merging" },
+  "segStage.sdf.split": { zh: "连通性拆分", en: "Connectivity split" },
+  "segStage.curv.features": { zh: "计算特征", en: "Computing features" },
+  "segStage.curv.kmeans": { zh: "K-Means 聚类", en: "K-Means clustering" },
+  "segStage.curv.refine": { zh: "拆分与轮廓归并", en: "Splitting & contour merge" },
+  "segStage.done": { zh: "完成", en: "Done" },
+  "segStage.working": { zh: "处理中", en: "Working" },
 };
 
 // ─── Hook: returns translation function ──────────────────────────

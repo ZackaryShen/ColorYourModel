@@ -78,6 +78,21 @@ interface AppStore {
   lastAlgorithmParams: AlgorithmParams | null;
   lastSegmentKind: AlgorithmKind | null;
 
+  // Transient loading-status discriminator. The shared ProgressBar consults
+  // this to decide whether to render the import UI or the segment UI. Both
+  // listener events flip isLoading, but they want different stage plans —
+  // the segment UI needs a canonical stage key + the active algorithm kind
+  // to render "Stage X/Y: …", while the import UI just shows the raw loader
+  // stage string.
+  loadingKind: "import" | "segment";
+  segmentProgress: number;
+  segmentStage: string;
+  // The algorithm kind the segmentation is currently running for. Set by
+  // both the panel (IntelligentSegmentPanel.run) and the import auto-segment
+  // (Toolbar.handleImport) before invoking, so the ProgressBar can pick the
+  // correct stage plan regardless of which flow triggered the work.
+  segmentStageKind: AlgorithmKind | null;
+
   // Actions
   setMeshData: (data: MeshData) => void;
   updateSegmentLabels: (labels: number[], segments: Segment[], faceColors?: number[]) => void;
@@ -120,6 +135,9 @@ interface AppStore {
   setLastExportSelection: (s: PersistedExportSelection | null) => void;
   setLastAlgorithmParams: (p: AlgorithmParams) => void;
   setLastSegmentKind: (k: AlgorithmKind) => void;
+  setSegmentProgress: (progress: number, stage: string) => void;
+  setSegmentStageKind: (kind: AlgorithmKind) => void;
+  setLoadingKind: (kind: "import" | "segment") => void;
 }
 
 // ── Preference persistence (iteration 21) ─────────────────────────────────
@@ -342,6 +360,11 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   lastAlgorithmParams: null,
   lastSegmentKind: null,
 
+  loadingKind: "import",
+  segmentProgress: 0,
+  segmentStage: "",
+  segmentStageKind: null,
+
   setMeshData: (data) =>
     set({
       meshData: data,
@@ -437,6 +460,10 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setLastExportSelection: (s) => set({ lastExportSelection: s }),
   setLastAlgorithmParams: (p) => set({ lastAlgorithmParams: p }),
   setLastSegmentKind: (k) => set({ lastSegmentKind: k }),
+  setSegmentProgress: (progress, stage) =>
+    set({ segmentProgress: progress, segmentStage: stage }),
+  setSegmentStageKind: (kind) => set({ segmentStageKind: kind }),
+  setLoadingKind: (kind) => set({ loadingKind: kind }),
 });
 
 export const useAppStore = create<AppStore>()(

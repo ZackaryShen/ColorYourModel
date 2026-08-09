@@ -75,7 +75,7 @@ pub fn segment_by_dihedral_angle(
     let threshold_rad = angle_threshold.to_radians();
     seg_log(&format!("=== segment START: {} faces, threshold={}deg ===", n_faces, angle_threshold));
 
-    on_progress(0.05, &format!("正在分割 {} 个面...", n_faces));
+    on_progress(0.05, "dihedral:edges");
 
     log::info!(
         "[segment] starting: {} faces, threshold={}° ({:.4} rad), graph_edges={}",
@@ -86,7 +86,7 @@ pub fn segment_by_dihedral_angle(
     );
 
     // ── Phase 1: Dihedral angle split (Union-Find) ───────────────
-    on_progress(0.10, "比较面法线...");
+    on_progress(0.10, "dihedral:edges");
     let mut connected_pairs: Vec<(u32, u32)> = Vec::new();
     let mut skipped = 0u32;
     for edge in mesh.face_adjacency.edge_references() {
@@ -110,7 +110,7 @@ pub fn segment_by_dihedral_angle(
         mesh.face_adjacency.edge_count()
     );
 
-    on_progress(0.30, &format!("从 {} 对中构建区域...", connected_pairs.len()));
+    on_progress(0.30, "dihedral:regions");
     let mut parent: Vec<u32> = (0..n_faces as u32).collect();
 
     fn find(parent: &mut Vec<u32>, x: u32) -> u32 {
@@ -129,13 +129,13 @@ pub fn segment_by_dihedral_angle(
     }
 
     // Flatten parents
-    on_progress(0.50, "展平区域标签...");
+    on_progress(0.50, "dihedral:regions");
     for i in 0..n_faces {
         parent[i] = find(&mut parent, i as u32);
     }
 
     // Remap labels to contiguous IDs + build region data
-    on_progress(0.55, "分配区域 ID...");
+    on_progress(0.55, "dihedral:regions");
     let mut label_map: HashMap<u32, u32> = HashMap::new();
     let mut next_id = 0u32;
     let mut labels = vec![0u32; n_faces];
@@ -168,7 +168,7 @@ pub fn segment_by_dihedral_angle(
 
     // ── Phase 2: Build Region Adjacency Graph (RAG) ──────────────
     // One pass over edges: O(|edges|)
-    on_progress(0.60, "构建区域邻接图...");
+    on_progress(0.60, "dihedral:regions");
     let mut region_adj: HashMap<u32, HashMap<u32, u32>> = HashMap::new();
 
     for edge in mesh.face_adjacency.edge_references() {
@@ -185,7 +185,7 @@ pub fn segment_by_dihedral_angle(
     // ── Phase 3: Normal-consistency merge (semantic grouping) ────
     // Merge adjacent regions whose weighted-average normals are very similar.
     // This reassembles smooth-surface fragments that dihedral split broke apart.
-    on_progress(0.65, "按法线一致性归并语义区域...");
+    on_progress(0.65, "dihedral:merge");
     seg_log(&format!("Phase3 start: normal-consistency merge ({} regions)", region_data.len()));
     normal_consistency_merge(
         &mut labels,
@@ -202,7 +202,7 @@ pub fn segment_by_dihedral_angle(
     seg_log(&format!("Phase3 done: {} regions (was {})", phase3_count, phase1_count));
 
     // ── Phase 4: Merge tiny leftover regions ─────────────────────
-    on_progress(0.85, "合并残余小区域...");
+    on_progress(0.85, "dihedral:finalize");
     seg_log(&format!("Phase4 start: merge tiny regions ({} remain)", region_data.len()));
     // Shared with the clustering algorithms so the three cannot drift apart on
     // what "too small to be a part" means — and, more importantly, so the
@@ -223,7 +223,7 @@ pub fn segment_by_dihedral_angle(
     );
 
     // ── Final: Re-compact labels to contiguous IDs ───────────────
-    on_progress(0.92, "重压缩区域 ID...");
+    on_progress(0.92, "dihedral:finalize");
     let mut compact_map: HashMap<u32, u32> = HashMap::new();
     let mut compact_next = 0u32;
     for i in 0..n_faces {
@@ -246,7 +246,7 @@ pub fn segment_by_dihedral_angle(
 
     let seg_count = mesh.segments.len();
     seg_log(&format!("=== segment DONE: {} final regions ===", seg_count));
-    on_progress(0.95, &format!("找到 {} 个区域", seg_count));
+    on_progress(0.95, "dihedral:finalize");
 
     mesh.sorted_segments()
 }

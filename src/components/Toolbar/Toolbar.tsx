@@ -36,6 +36,11 @@ export function Toolbar() {
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setLoading = useAppStore((s) => s.setLoading);
   const setImportProgress = useAppStore((s) => s.setImportProgress);
+  // Segment-progress listener writes to a separate slice so the ProgressBar
+  // can render the canonical "Stage X/Y" plan instead of the raw loader stage
+  // string. `loadingKind` lets the shared overlay pick which slice to read.
+  const setSegmentProgress = useAppStore((s) => s.setSegmentProgress);
+  const setLoadingKind = useAppStore((s) => s.setLoadingKind);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
   const { loadModel, autoSegmentV2, undo, redo, historyState } = useTauriCommand();
@@ -55,20 +60,22 @@ export function Toolbar() {
       (e) => {
         log.debug("Toolbar", "import-progress", e.payload);
         setImportProgress(e.payload.progress, e.payload.stage);
+        setLoadingKind("import");
       }
     );
     const unlistenSegment = listen<{ progress: number; stage: string }>(
       "segment-progress",
       (e) => {
         log.debug("Toolbar", "segment-progress", e.payload);
-        setImportProgress(e.payload.progress, e.payload.stage);
+        setSegmentProgress(e.payload.progress, e.payload.stage);
+        setLoadingKind("segment");
       }
     );
     return () => {
       unlistenImport.then((fn) => fn());
       unlistenSegment.then((fn) => fn());
     };
-  }, [setImportProgress]);
+  }, [setImportProgress, setSegmentProgress, setLoadingKind]);
 
   const handleImport = async () => {
     log.info("Toolbar", "Import button clicked");

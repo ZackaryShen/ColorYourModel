@@ -61,7 +61,7 @@ pub fn auto_segment(
     // Emit completion
     let _ = app.emit(
         "segment-progress",
-        serde_json::json!({ "progress": 1.0, "stage": format!("Found {} regions", segments.len()) }),
+        serde_json::json!({ "progress": 1.0, "stage": "done" }),
     );
 
     log::info!("[cmd:auto_segment] done: {} segments", segments.len());
@@ -221,7 +221,7 @@ pub fn finalize_manual_region(
     // Emit completion
     let _ = app.emit(
         "segment-progress",
-        serde_json::json!({ "progress": 1.0, "stage": format!("Manual region: {} faces", region.len()) }),
+        serde_json::json!({ "progress": 1.0, "stage": "done" }),
     );
 
     Ok(SegmentResult {
@@ -258,7 +258,7 @@ pub fn auto_segment_smart(
 
     let _ = app.emit(
         "segment-progress",
-        serde_json::json!({ "progress": 1.0, "stage": format!("Found {} parts", segments.len()) }),
+        serde_json::json!({ "progress": 1.0, "stage": "done" }),
     );
     log::info!("[cmd:auto_segment_smart] done: {} parts", segments.len());
 
@@ -411,7 +411,7 @@ pub async fn auto_segment_v2(
 
     let _ = app.emit(
         "segment-progress",
-        serde_json::json!({ "progress": 1.0, "stage": format!("Found {} regions", segments.len()) }),
+        serde_json::json!({ "progress": 1.0, "stage": "done" }),
     );
     log::info!("[cmd:auto_segment_v2] done: {} segments", segments.len());
 

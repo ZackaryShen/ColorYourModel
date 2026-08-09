@@ -182,17 +182,17 @@ pub fn segment_by_curvature_kmeans(
         on_progress(1.0, "curv: empty mesh");
         return Vec::new();
     }
-    on_progress(0.0, "curv: building features");
+    on_progress(0.0, "curv:features");
     let mut normals = oriented_normals(mesh);
     for _ in 0..smoothing_iters {
         normals = smooth_normals(mesh, &normals);
     }
     let feats = build_features(mesh, &normals, use_sdf, on_progress, 0.0, 0.3);
-    on_progress(0.3, "curv: k-means");
+    on_progress(0.3, "curv:kmeans");
 
     let k = if k_user == 0 { 6 } else { k_user as usize };
     let km_labels = deterministic_kmeans(&feats, k);
-    on_progress(0.55, "curv: connectivity split + contour merge");
+    on_progress(0.55, "curv:refine");
     let crease = if crease_threshold_deg > 0.0 {
         crease_threshold_deg
     } else {
@@ -201,6 +201,6 @@ pub fn segment_by_curvature_kmeans(
     let final_labels = refine_regions(mesh, &km_labels, &feats, &normals, Some(crease));
 
     let segments = finalize_segments(mesh, final_labels);
-    on_progress(1.0, &format!("curv: {} regions", segments.len()));
+    on_progress(1.0, "done");
     segments
 }
