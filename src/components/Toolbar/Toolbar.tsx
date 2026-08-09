@@ -105,11 +105,14 @@ export function Toolbar() {
     // and silently degrades to the brush (REFUTE, docs/06 §2.1 item 3). Say so
     // explicitly instead of letting the user discover "Fill = brush" later.
     try {
-      // Use the user's last chosen algorithm (persisted); default to a 30°
-      // dihedral which matches the previous hard-coded import behaviour. This
-      // removes the magic constant from the call site — the value now flows from
-      // the persisted prefs / DEFAULT_ALGORITHM_PARAMS instead of a literal.
-      const segKind: AlgorithmKind = lastSegmentKind ?? "dihedral";
+      // Use the user's last chosen algorithm (persisted); default to curvatureKMeans
+      // to match the panel's default. Dihedral is fast but fails on smooth models
+      // (armor, organic shapes) where there are no sharp edges to split —
+      // curvatureKMeans + useSdf groups by intrinsic curvature and thickness,
+      // which handles smooth surfaces much better. The cost is a longer wall-clock
+      // run, but the async fix (06303ee) keeps the UI responsive and the new
+      // per-stage progress bar lets the user see it's working.
+      const segKind: AlgorithmKind = lastSegmentKind ?? "curvatureKMeans";
       const segParams = lastAlgorithmParams ?? DEFAULT_ALGORITHM_PARAMS;
       await autoSegmentV2(buildAlgorithm(segKind, segParams));
       setImportProgress(1, t("toolbar.importComplete"));
