@@ -581,9 +581,10 @@ function nearestVertexLocalOnFace(
   faceNormal: THREE.Vector3,
   vertexFaces: Map<number, number[]>,
   vertexNormals: Float32Array
-): THREE.Vector3 | null {
+): { point: THREE.Vector3; vertexIndex: number } | null {
   if (faceIndex < 0 || !vertexFaces || vertexNormals.length === 0) {
-    return nearestVertexLocal(vertices, p);
+    const g = nearestVertexLocal(vertices, p);
+    return g ? { point: g, vertexIndex: -1 } : null;
   }
   const fi3 = faceIndex * 3;
   const hv0 = faces[fi3], hv1 = faces[fi3 + 1], hv2 = faces[fi3 + 2];
@@ -612,44 +613,66 @@ function nearestVertexLocalOnFace(
   const SNAP_COS_THRESH = Math.cos((60 * Math.PI) / 180);
   const fnx = faceNormal.x, fny = faceNormal.y, fnz = faceNormal.z;
 
-  // Pick nearest same-side from a candidate list → (pos, sqDist) or null
-  const pickSameSide = (cands: Iterable<number>): [THREE.Vector3, number] | null => {
-    let best: THREE.Vector3 | null = null; let bestSq = Infinity;
+  // Pick nearest same-side from a candidate list → (pos, sqDist, vertexIndex) or null
+  const pickSameSide = (cands: Iterable<number>): [THREE.Vector3, number, number] | null => {
+    let best: THREE.Vector3 | null = null; let bestSq = Infinity; let bestVi = -1;
     for (const vi of cands) {
       const nx = vertexNormals[vi*3], ny = vertexNormals[vi*3+1], nz = vertexNormals[vi*3+2];
       if (nx*fnx + ny*fny + nz*fnz < SNAP_COS_THRESH) continue;
       const dx = vertices[vi*3] - p.x, dy = vertices[vi*3+1] - p.y, dz = vertices[vi*3+2] - p.z;
       const sq = dx*dx + dy*dy + dz*dz;
-      if (sq < bestSq) { bestSq = sq; best = new THREE.Vector3(vertices[vi*3], vertices[vi*3+1], vertices[vi*3+2]); }
+      if (sq < bestSq) { bestSq = sq; bestVi = vi; best = new THREE.Vector3(vertices[vi*3], vertices[vi*3+1], vertices[vi*3+2]); }
     }
-    return best ? [best, bestSq] : null;
+    return best ? [best, bestSq, bestVi] : null;
   };
 
-  // Pick nearest ANY from candidates (no normal check)
-  const pickAny = (cands: Iterable<number>): THREE.Vector3 | null => {
-    let best: THREE.Vector3 | null = null; let bestSq = Infinity;
+  // Pick nearest ANY from candidates (no normal check) → (pos, vertexIndex)
+  const pickAny = (cands: Iterable<number>): [THREE.Vector3, number] | null => {
+    let best: THREE.Vector3 | null = null; let bestSq = Infinity; let bestVi = -1;
     for (const vi of cands) {
       const dx = vertices[vi*3] - p.x, dy = vertices[vi*3+1] - p.y, dz = vertices[vi*3+2] - p.z;
       const sq = dx*dx + dy*dy + dz*dz;
-      if (sq < bestSq) { bestSq = sq; best = new THREE.Vector3(vertices[vi*3], vertices[vi*3+1], vertices[vi*3+2]); }
+      if (sq < bestSq) { bestSq = sq; bestVi = vi; best = new THREE.Vector3(vertices[vi*3], vertices[vi*3+1], vertices[vi*3+2]); }
     }
-    return best;
+    return best ? [best, bestVi] : null;
   };
 
   // ── Tier 1: 1-ring same-side within local threshold ───────────
   const t1 = pickSameSide(oneRing);
-  if (t1 && t1[1] <= maxSnapSq) return t1[0];
+  if (t1 && t1[1] <= maxSnapSq) return { point: t1[0], vertexIndex: t1[2] };
 
   // ── Tier 2: hit-face-only same-side ──────────────────────────
   const t2 = pickSameSide(faceOnly);
-  if (t2) return t2[0];
+  if (t2) return { point: t2[0], vertexIndex: t2[2] };
 
   // ── Tier 3: hit-face-only any vertex (degenerate fallback) ────
   const t3 = pickAny(faceOnly);
-  if (t3) return t3;
+  if (t3) return { point: t3[0], vertexIndex: t3[1] };
 
   // Absolute last resort: global nearest (bad face data only).
-  return nearestVertexLocal(vertices, p);
+  const g = nearestVertexLocal(vertices, p);
+  return g ? { point: g, vertexIndex: -1 } : null;
+}
+
+/// Lasso closure must land on the START VERTEX (or a face-sharing neighbour)
+/// — not merely anywhere spatially near it. Tracing a thin cable can bring a
+/// point within `closeThreshold` of the start in SPACE while it is many faces
+/// away in the mesh graph; treating that as "close the loop" swallows the 3rd
+/// point (the reported bug). Returns true when `v` IS the start vertex or
+/// shares a face with it.
+function isVertexWithinOneRing(
+  v: number,
+  startV: number,
+  faces: number[],
+  vertexFaces: Map<number, number[]>
+): boolean {
+  if (v === startV) return true;
+  const inc = vertexFaces.get(startV);
+  if (!inc) return false;
+  for (const f of inc) {
+    if (faces[f * 3] === v || faces[f * 3 + 1] === v || faces[f * 3 + 2] === v) return true;
+  }
+  return false;
 }
 
 /// Result of a raycast hit on the mesh surface in model-local coordinates.
@@ -799,7 +822,15 @@ function MeshDisplay() {
     const b = meshData?.bbox;
     if (!b) return 1.0;
     const dx = b.max[0] - b.min[0], dy = b.max[1] - b.min[1], dz = b.max[2] - b.min[2];
-    return Math.max(0.01, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.012);
+    // Tightened 0.012 → 0.004 (iteration 43): the old radius was ~1.2% of the
+    // bbox diagonal, which is larger than a thin cable's diameter. Tracing a
+    // cable (or any thin feature) could bring a new point within the radius of
+    // the start in SPACE while it is topologically far along the feature —
+    // the "ready to close" line lit up and the click was swallowed as a close
+    // instead of adding the 3rd point. 0.4% of the diagonal is small enough
+    // that only a genuine return to the start triggers it; the vertex-identity
+    // check in handleLassoClick is the second, stronger guard.
+    return Math.max(0.01, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.004);
   }, [meshData?.bbox]);
   const dotSize = useMemo(() => {
     const b = meshData?.bbox;
@@ -1160,13 +1191,32 @@ function MeshDisplay() {
       const snapped = new THREE.Vector3(res.snapped[0], res.snapped[1], res.snapped[2]);
       const prev = lassoPointsRef.current;
       const startPoint = lassoStartPointRef.current;
+      const startVertex = lassoStartVertexRef.current;
       // Robust closure: at least 3 points placed (start + >=2 more) and the new
       // point is within closeThreshold of the START point (distance-based, NOT
       // exact vertex match). The old exact-match test was unreachable on dense
       // meshes, so finalize was never called and the region never appeared.
       // This matches the yellow "closing" preview the user already sees while
       // hovering near the start point.
-      if (prev.length >= 2 && startPoint && snapped.distanceTo(startPoint) < closeThreshold) {
+      //
+      // Iteration 43: ALSO require the snapped vertex to be the start vertex or
+      // a face-sharing neighbour. The spatial distance alone is not enough —
+      // tracing a thin cable can bring a new point within closeThreshold of the
+      // start in SPACE while it is many faces away along the feature, and that
+      // must stay an ADD, not a CLOSE (the "3rd point on a thin line gets
+      // swallowed" bug). `res.vertexIndex` is the backend-snap vertex, which
+      // mirrors the frontend preview snap, so hover and click stay consistent.
+      const topoNearStart =
+        startVertex != null &&
+        meshData != null &&
+        vertexData != null &&
+        isVertexWithinOneRing(res.vertexIndex, startVertex, meshData.faces, vertexData.vertexFaces);
+      if (
+        prev.length >= 2 &&
+        startPoint &&
+        topoNearStart &&
+        snapped.distanceTo(startPoint) < closeThreshold
+      ) {
         await finalizeLasso();
         return;
       }
@@ -1183,7 +1233,7 @@ function MeshDisplay() {
           (next.length >= 2 ? "（点击起点附近闭合，或按 Enter）" : "")
       );
     },
-    [manualRegionAddPoint, finalizeLasso, setStatusMessage, closeThreshold]
+    [manualRegionAddPoint, finalizeLasso, setStatusMessage, closeThreshold, meshData, vertexData]
   );
 
   const handleFacePicked = useCallback(
@@ -1507,14 +1557,20 @@ function MeshDisplay() {
         // path uses the backend snap, which on the wire is identical, so
         // the bug was purely a misleading preview).
         //
-        // Fix: compute the snap here, then only use it for closing detection
-        // when it is genuinely close to the current hit point. If the snap
-        // is far (Tier 4 fallback on a thin edge, etc.) fall back to the raw
-        // hit point so the preview reflects where the cursor actually is.
+        // Fix (iteration 42 + 43): compute the snap here, then use it for
+        // closing detection ONLY when (a) it is genuinely close to the current
+        // hit point — a snap farther than ~4× closeThreshold is a Tier-4
+        // fallback, not a real same-side vertex — AND (b) the snapped vertex
+        // is topologically near the start vertex (same vertex or face-sharing
+        // neighbour). (b) is the stronger guard from iteration 43: tracing a
+        // thin cable can bring a point within closeThreshold of the start in
+        // SPACE while it is many faces away along the feature — that must stay
+        // an ADD, not a CLOSE. The preview therefore mirrors exactly what a
+        // click will commit.
         const verts = meshData?.vertices;
-        let sv: THREE.Vector3 | null = null;
+        let snap: { point: THREE.Vector3; vertexIndex: number } | null = null;
         if (verts && vertexData) {
-          sv = nearestVertexLocalOnFace(
+          snap = nearestVertexLocalOnFace(
             verts,
             meshData.faces,
             hit.point,
@@ -1523,24 +1579,33 @@ function MeshDisplay() {
             vertexData.vertexFaces,
             vertexData.vertexNormals
           );
-          if (sv && (!lassoSnapRef.current || sv.distanceTo(lassoSnapRef.current) > 1e-6)) {
-            lassoSnapRef.current = sv.clone();
-            setLassoSnap(sv);
+          const snapPoint = snap?.point ?? null;
+          if (snapPoint && (!lassoSnapRef.current || snapPoint.distanceTo(lassoSnapRef.current) > 1e-6)) {
+            lassoSnapRef.current = snapPoint.clone();
+            setLassoSnap(snapPoint);
           }
         }
 
         const start = lassoPointsRef.current[0];
+        const startVertex = lassoStartVertexRef.current;
         if (start && lassoPointsRef.current.length >= 2) {
-          // Closing detection: prefer the snapped point (so the preview agrees
-          // with the actual commit on coarse meshes — iteration 23, REFUTE
-          // B18), but only when the snap is plausibly close to the hit point.
-          // A snap that is more than ~4× closeThreshold away from the hit is
-          // almost certainly a Tier-4 fallback, not a real same-side vertex,
-          // and trusting it would falsely flag the cursor as "ready to close".
           const maxSnapSq = closeThreshold * closeThreshold * 16;
-          const checkPoint =
-            sv && sv.distanceToSquared(hit.point) < maxSnapSq ? sv : hit.point;
-          setLassoClosing(checkPoint.distanceTo(start) < closeThreshold);
+          // (a) spatial: trust the snap only if plausibly close to the hit.
+          const snapPoint =
+            snap && snap.point.distanceToSquared(hit.point) < maxSnapSq ? snap.point : null;
+          const spatialPoint = snapPoint ?? hit.point;
+          // (b) topological: snapped vertex must be the start vertex or a
+          // face-sharing neighbour (mirrors handleLassoClick's guard).
+          const topoNearStart =
+            startVertex != null &&
+            snap != null &&
+            snap.vertexIndex >= 0 &&
+            meshData != null &&
+            vertexData != null &&
+            isVertexWithinOneRing(snap.vertexIndex, startVertex, meshData.faces, vertexData.vertexFaces);
+          setLassoClosing(
+            topoNearStart && spatialPoint.distanceTo(start) < closeThreshold
+          );
         } else {
           setLassoClosing(false);
         }
