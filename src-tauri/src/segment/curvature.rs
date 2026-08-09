@@ -61,10 +61,18 @@ fn smooth_normals(mesh: &MeshModel, normals: &[[f32; 3]]) -> Vec<[f32; 3]> {
 
 /// Build per-face intrinsic features: curvature = mean |dihedral| to neighbours
 /// on a 90° full-scale; thickness = |SDF| (log-normalized) when `use_sdf`.
-fn build_features(mesh: &MeshModel, normals: &[[f32; 3]], use_sdf: bool) -> Vec<Feature> {
+fn build_features(
+    mesh: &MeshModel,
+    normals: &[[f32; 3]],
+    use_sdf: bool,
+    on_progress: &ProgressFn,
+    base: f32,
+    span: f32,
+) -> Vec<Feature> {
     let curv = face_curvature(mesh, normals);
     if use_sdf {
-        let thick = log_normalize(&compute_sdf(mesh));
+        // SDF owns the 0.0..0.3 progress sub-range of the curvature pipeline.
+        let thick = log_normalize(&compute_sdf(mesh, on_progress, base, span));
         assemble_features(&curv, Some(&thick))
     } else {
         assemble_features(&curv, None)
@@ -179,7 +187,7 @@ pub fn segment_by_curvature_kmeans(
     for _ in 0..smoothing_iters {
         normals = smooth_normals(mesh, &normals);
     }
-    let feats = build_features(mesh, &normals, use_sdf);
+    let feats = build_features(mesh, &normals, use_sdf, on_progress, 0.0, 0.3);
     on_progress(0.3, "curv: k-means");
 
     let k = if k_user == 0 { 6 } else { k_user as usize };

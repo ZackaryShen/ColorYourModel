@@ -75,8 +75,11 @@ export function useTauriCommand() {
         labelCount: result.segmentLabels.length,
       });
 
-      // Update both segment metadata AND per-face labels in meshData.
-      updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
+      // Update both segment metadata AND per-face labels in meshData. The
+      // backend no longer returns faceColors for auto-segmentation (it never
+      // changes them), so colours are left untouched — also avoids a multi-MB
+      // IPC payload and a full repaint (see commands/segment.rs REFUTE major-5).
+      updateSegmentLabels(result.segmentLabels, result.segments);
       setStatusMessage(`分区完成：${result.segments.length} 个区域`);
       return result.segments;
     } catch (e) {

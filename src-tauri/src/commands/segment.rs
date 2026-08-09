@@ -372,11 +372,11 @@ pub fn rename_segment(
 /// (or an older frontend bundle) keeps the user's hand-drawn regions; wiping
 /// them stays something you have to ask for explicitly.
 #[tauri::command]
-pub fn auto_segment_v2(
+pub async fn auto_segment_v2(
     algorithm: SegmentationAlgorithm,
     preserve_manual: Option<bool>,
     app: tauri::AppHandle,
-    state: State<AppState>,
+    state: State<'_, AppState>,
 ) -> Result<SegmentResult, String> {
     let preserve_manual = preserve_manual.unwrap_or(true);
     log::info!(
@@ -384,8 +384,6 @@ pub fn auto_segment_v2(
         algorithm,
         preserve_manual
     );
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     let app_for_progress = app.clone();
     let progress_cb: Box<ProgressFn> = Box::new(move |fraction: f32, stage: &str| {
@@ -395,7 +393,19 @@ pub fn auto_segment_v2(
         );
     });
 
-    let segments = run_segmentation(mesh, &algorithm, preserve_manual, &*progress_cb);
+    // Take the mesh OUT of the shared Mutex for the whole (potentially very long)
+    // segmentation so a concurrent *synchronous* command on the main thread
+    // cannot freeze waiting on this lock (REFUTE major-1: a held MutexGuard on a
+    // worker thread makes every main-thread sync command block on `lock()`).
+    // Tauri v2 runs this async command on its multi-threaded tokio runtime, so
+    // the heavy work no longer blocks the webview thread (the "(未响应)" freeze).
+    // The mesh is restored afterwards; any command that races in during compute
+    // sees "No mesh loaded" instead of stalling the UI.
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
+    drop(mesh_guard);
+
+    let segments = run_segmentation(&mut mesh, &algorithm, preserve_manual, &*progress_cb);
     // Auto segmentation rewrites all labels; drop stale history (see auto_segment).
     mesh.history.clear();
 
@@ -405,9 +415,17 @@ pub fn auto_segment_v2(
     );
     log::info!("[cmd:auto_segment_v2] done: {} segments", segments.len());
 
+    // Auto segmentation never mutates face colours (only labels), so shipping the
+    // full colour buffer back would be several megabytes of identical JSON that
+    // also forces a full front-end repaint (REFUTE major-5). Mirror
+    // MergeResult/SplitResult: return labels + metadata only.
+    let labels = mesh.segment_labels.clone();
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    *mesh_guard = Some(mesh);
+
     Ok(SegmentResult {
         segments,
-        segment_labels: mesh.segment_labels.clone(),
-        face_colors: flatten_face_colors(&mesh.face_colors),
+        segment_labels: labels,
+        face_colors: Vec::new(),
     })
 }

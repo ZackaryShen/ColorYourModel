@@ -24,6 +24,7 @@ export function IntelligentSegmentPanel({ onClose }: { onClose: () => void }) {
   const { autoSegmentV2 } = useTauriCommand();
   const isLoaded = useAppStore((s) => s.isLoaded);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
+  const setLoading = useAppStore((s) => s.setLoading);
   const lastAlgorithmParams = useAppStore((s) => s.lastAlgorithmParams);
   const lastSegmentKind = useAppStore((s) => s.lastSegmentKind);
   const setLastAlgorithmParams = useAppStore((s) => s.setLastAlgorithmParams);
@@ -55,6 +56,12 @@ export function IntelligentSegmentPanel({ onClose }: { onClose: () => void }) {
   const run = async () => {
     if (!isLoaded || running) return;
     setRunning(true);
+    // Flip the shared loading flag so the existing Viewport progress overlay
+    // (driven by the `segment-progress` events the backend emits) actually
+    // shows during the now-off-main-thread segmentation. Without this the panel
+    // only had a binary "运行中" label and the overlay stayed hidden (REFUTE
+    // major-3).
+    setLoading(true);
     try {
       // Persist *before* running so a crash / cancel still remembers the choice.
       setLastAlgorithmParams(params);
@@ -67,6 +74,7 @@ export function IntelligentSegmentPanel({ onClose }: { onClose: () => void }) {
       setStatusMessage(`分区失败：${e}`);
     } finally {
       setRunning(false);
+      setLoading(false);
     }
   };
 

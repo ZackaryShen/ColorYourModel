@@ -148,9 +148,18 @@ fn basis(n: &[f32; 3]) -> ([f32; 3], [f32; 3]) {
 
 /// Per-face Shape Diameter Function (log-normalized). Returns raw SDF values;
 /// faces with no ray hit are filled with SDF_HOLE_FILL and later imputed.
-pub fn compute_sdf(mesh: &MeshModel) -> Vec<f32> {
+///
+/// `on_progress` / `base` / `span` let the caller surface progress for the SDF
+/// stage within its own progress sub-range (REFUTE major-2: this stage previously
+/// emitted nothing, so the progress bar sat frozen for the most expensive part).
+pub fn compute_sdf(
+    mesh: &MeshModel,
+    on_progress: &ProgressFn,
+    base: f32,
+    span: f32,
+) -> Vec<f32> {
     let oriented = oriented_normals(mesh);
-    compute_sdf_inner(mesh, &oriented)
+    compute_sdf_inner(mesh, &oriented, on_progress, base, span)
 }
 
 /// Core SDF computation using an already orientation-consistent normal field.
@@ -159,8 +168,15 @@ pub fn compute_sdf(mesh: &MeshModel) -> Vec<f32> {
 /// previous O(12·n²) that made SDF unusable on real meshes (REFUTE blocker #1:
 /// the kdtree query radius was the full bbox diagonal and sat inside the ray
 /// loop, so it returned ~all faces).
-fn compute_sdf_inner(mesh: &MeshModel, oriented: &[[f32; 3]]) -> Vec<f32> {
+fn compute_sdf_inner(
+    mesh: &MeshModel,
+    oriented: &[[f32; 3]],
+    on_progress: &ProgressFn,
+    base: f32,
+    span: f32,
+) -> Vec<f32> {
     let n = mesh.faces.len();
+    let report_every = (n / 50).max(1);
     let mut sdf = vec![SDF_HOLE_FILL; n];
 
     for fi in 0..n {
@@ -220,6 +236,12 @@ fn compute_sdf_inner(mesh: &MeshModel, oriented: &[[f32; 3]]) -> Vec<f32> {
             } else {
                 0.5 * (hits[mid - 1] + hits[mid])
             };
+        }
+        if fi % report_every == 0 {
+            on_progress(
+                base + span * (fi as f32 / n as f32),
+                "sdf: sampling thickness",
+            );
         }
     }
 
@@ -361,7 +383,7 @@ pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32, on_progress: &ProgressF
     let n = mesh.faces.len();
     on_progress(0.0, "sdf: sampling thickness");
     let oriented = oriented_normals(mesh);
-    let sdf = compute_sdf_inner(mesh, &oriented);
+    let sdf = compute_sdf_inner(mesh, &oriented, on_progress, 0.0, 0.35);
     on_progress(0.35, "sdf: clustering");
     let ln_sdf = log_normalize(&sdf);
     let k = if k_user == 0 {
@@ -579,7 +601,7 @@ mod tests {
     #[test]
     fn compute_sdf_separates_two_cubes() {
         let m = two_separated_cubes();
-        let sdf = compute_sdf(&m);
+        let sdf = compute_sdf(&m, &|_, _| {}, 0.0, 1.0);
         // No unfilled holes should remain after imputation.
         assert!(sdf.iter().all(|&v| v > 0.0), "SDF left unfilled holes (-1 sentinel)");
         let min = sdf.iter().cloned().fold(f32::INFINITY, f32::min);
