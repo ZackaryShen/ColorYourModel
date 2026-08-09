@@ -1488,27 +1488,33 @@ function MeshDisplay() {
         overModelRef.current = true; // iteration 22: refresh so LEFT is correctly disabled
         applyCameraButtons();
         setLassoPreview(hit.point);
-        const start = lassoPointsRef.current[0];
-        if (start && lassoPointsRef.current.length >= 2) {
-          // Closing detection uses the snapped point (iteration 23, REFUTE
-          // B18) so the yellow "ready to close" preview agrees with the actual
-          // commit behaviour. Previously the preview checked raw hit.point while
-          // the commit checked the backend-snapped vertex — on coarse meshes
-          // the two could disagree by half a face, causing "shows close but
-          // doesn't" or vice versa.
-          const checkPoint = lassoSnapRef.current ?? hit.point;
-          setLassoClosing(checkPoint.distanceTo(start) < closeThreshold);
-        } else {
-          setLassoClosing(false);
-        }
-        // Auto-snap preview: SAME-SIDE nearest vertex to the hit point — the
-        // exact mirror of the backend `snap_point_to_vertex_on_face` rule, so
-        // the preview dot lands EXACTLY where the committed point lands (no
-        // front/back ambiguity on thin shells) and the rubber-band connects
-        // predictably. Fixes "I can't pick/connect it" + "curve not preserved".
+
+        // Compute the snap FIRST so the closing detection below uses the
+        // CURRENT snap, not the stale one written by the previous pointermove.
+        //
+        // Bug fixed (iteration 42): the closing detection used to read
+        // `lassoSnapRef.current` AFTER this block wrote to it — meaning the
+        // "ready to close" preview was driven by the previous hover's snap.
+        // After placing 2 points the user would move the cursor away from the
+        // start, but the stale snap (cached from when they were hovering near
+        // the start) was still within `closeThreshold`, so the yellow "ready
+        // to close" line lit up even though the cursor was nowhere near the
+        // start. On thin edges this got worse: the snap algorithm can fall
+        // through to a vertex far from the click (Tier 4 global nearest when
+        // the same-side check rejects every Tier 1/2 candidate), so even a
+        // fresh snap could trigger a false closing preview and leave the 3rd
+        // point visually unpickable (the user could still click — the click
+        // path uses the backend snap, which on the wire is identical, so
+        // the bug was purely a misleading preview).
+        //
+        // Fix: compute the snap here, then only use it for closing detection
+        // when it is genuinely close to the current hit point. If the snap
+        // is far (Tier 4 fallback on a thin edge, etc.) fall back to the raw
+        // hit point so the preview reflects where the cursor actually is.
         const verts = meshData?.vertices;
+        let sv: THREE.Vector3 | null = null;
         if (verts && vertexData) {
-          const sv = nearestVertexLocalOnFace(
+          sv = nearestVertexLocalOnFace(
             verts,
             meshData.faces,
             hit.point,
@@ -1521,6 +1527,22 @@ function MeshDisplay() {
             lassoSnapRef.current = sv.clone();
             setLassoSnap(sv);
           }
+        }
+
+        const start = lassoPointsRef.current[0];
+        if (start && lassoPointsRef.current.length >= 2) {
+          // Closing detection: prefer the snapped point (so the preview agrees
+          // with the actual commit on coarse meshes — iteration 23, REFUTE
+          // B18), but only when the snap is plausibly close to the hit point.
+          // A snap that is more than ~4× closeThreshold away from the hit is
+          // almost certainly a Tier-4 fallback, not a real same-side vertex,
+          // and trusting it would falsely flag the cursor as "ready to close".
+          const maxSnapSq = closeThreshold * closeThreshold * 16;
+          const checkPoint =
+            sv && sv.distanceToSquared(hit.point) < maxSnapSq ? sv : hit.point;
+          setLassoClosing(checkPoint.distanceTo(start) < closeThreshold);
+        } else {
+          setLassoClosing(false);
         }
         return;
       }
