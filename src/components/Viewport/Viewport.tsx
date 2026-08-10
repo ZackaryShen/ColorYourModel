@@ -654,27 +654,6 @@ function nearestVertexLocalOnFace(
   return g ? { point: g, vertexIndex: -1 } : null;
 }
 
-/// Lasso closure must land on the START VERTEX (or a face-sharing neighbour)
-/// — not merely anywhere spatially near it. Tracing a thin cable can bring a
-/// point within `closeThreshold` of the start in SPACE while it is many faces
-/// away in the mesh graph; treating that as "close the loop" swallows the 3rd
-/// point (the reported bug). Returns true when `v` IS the start vertex or
-/// shares a face with it.
-function isVertexWithinOneRing(
-  v: number,
-  startV: number,
-  faces: number[],
-  vertexFaces: Map<number, number[]>
-): boolean {
-  if (v === startV) return true;
-  const inc = vertexFaces.get(startV);
-  if (!inc) return false;
-  for (const f of inc) {
-    if (faces[f * 3] === v || faces[f * 3 + 1] === v || faces[f * 3 + 2] === v) return true;
-  }
-  return false;
-}
-
 /// Result of a raycast hit on the mesh surface in model-local coordinates.
 interface LocalHit {
   /** Hit point in model-local coords (same space as meshData.vertices) */
@@ -815,7 +794,6 @@ function MeshDisplay() {
   const lassoSnapRef = useRef<THREE.Vector3 | null>(null);
   const lassoPointsRef = useRef<THREE.Vector3[]>([]);
   const lassoFaceIndicesRef = useRef<number[]>([]);
-  const lassoStartVertexRef = useRef<number | null>(null);
   const lassoStartPointRef = useRef<THREE.Vector3 | null>(null);
 
   const closeThreshold = useMemo(() => {
@@ -1172,7 +1150,6 @@ function MeshDisplay() {
     lassoFaceIndicesRef.current = [];
     setLassoPoints([]);
     lassoStartPointRef.current = null;
-    lassoStartVertexRef.current = null;
     setLassoPreview(null);
     setLassoClosing(false);
     setLassoSnap(null);
@@ -1191,43 +1168,40 @@ function MeshDisplay() {
       const snapped = new THREE.Vector3(res.snapped[0], res.snapped[1], res.snapped[2]);
       const prev = lassoPointsRef.current;
       const startPoint = lassoStartPointRef.current;
-      const startVertex = lassoStartVertexRef.current;
-      // Robust closure: at least 3 points placed (start + >=2 more) and the new
-      // point is within closeThreshold of the START point (distance-based, NOT
-      // exact vertex match). The old exact-match test was unreachable on dense
-      // meshes, so finalize was never called and the region never appeared.
-      // This matches the yellow "closing" preview the user already sees while
-      // hovering near the start point.
-      //
-      // Iteration 43: ALSO require the snapped vertex to be the start vertex or
-      // a face-sharing neighbour. The spatial distance alone is not enough —
-      // tracing a thin cable can bring a new point within closeThreshold of the
-      // start in SPACE while it is many faces away along the feature, and that
-      // must stay an ADD, not a CLOSE (the "3rd point on a thin line gets
-      // swallowed" bug). `res.vertexIndex` is the backend-snap vertex, which
-      // mirrors the frontend preview snap, so hover and click stay consistent.
-      const topoNearStart =
-        startVertex != null &&
-        meshData != null &&
-        vertexData != null &&
-        isVertexWithinOneRing(res.vertexIndex, startVertex, meshData.faces, vertexData.vertexFaces);
-      if (
-        prev.length >= 2 &&
-        startPoint &&
-        topoNearStart &&
-        snapped.distanceTo(startPoint) < closeThreshold
-      ) {
-        await finalizeLasso();
-        return;
-      }
+      // Append the clicked point FIRST (including the closing one) so
+      // `finalizeLasso` always receives a complete point list — a triangle
+      // (3 clicks) otherwise arrives as 2 points and is rejected by the
+      // `pts.length < 3` guard before the backend ever sees it. The backend
+      // `region_from_loop` closes the loop itself via (i+1)%n and skips
+      // self-edges (a==b), so an appended closing point that snaps back to the
+      // start vertex is harmless, and one that lands on a neighbour correctly
+      // becomes the final edge back to the start.
       if (prev.length === 0) {
         lassoStartPointRef.current = snapped.clone();
-        lassoStartVertexRef.current = res.vertexIndex;
       }
       lassoFaceIndicesRef.current.push(hit.faceIndex);
       const next = [...prev, snapped];
       lassoPointsRef.current = next;
       setLassoPoints(next);
+      // Robust closure: at least 3 points placed (start + >=2 more) and the new
+      // point within closeThreshold of the START point — spatial distance only.
+      //
+      // The topological 1-ring guard from iteration 43 was RETIRED (iteration
+      // 44): it could not distinguish a thin-cable midpoint from a genuine
+      // return-to-start — both are topologically far from the start vertex yet
+      // spatially close — so it silently blocked every real closure. The tight
+      // closeThreshold (0.004 × bbox diagonal, 3× tighter than the old 0.012)
+      // is what actually keeps thin-feature midpoints from false-closing;
+      // "能自由选择" in the field was itself evidence the 0.004 gate already
+      // keeps midpoints out.
+      if (
+        prev.length >= 2 &&
+        startPoint &&
+        snapped.distanceTo(startPoint) < closeThreshold
+      ) {
+        await finalizeLasso();
+        return;
+      }
       setStatusMessage(
         `套索：已选 ${next.length} 个点` +
           (next.length >= 2 ? "（点击起点附近闭合，或按 Enter）" : "")
@@ -1587,25 +1561,19 @@ function MeshDisplay() {
         }
 
         const start = lassoPointsRef.current[0];
-        const startVertex = lassoStartVertexRef.current;
         if (start && lassoPointsRef.current.length >= 2) {
-          const maxSnapSq = closeThreshold * closeThreshold * 16;
-          // (a) spatial: trust the snap only if plausibly close to the hit.
-          const snapPoint =
-            snap && snap.point.distanceToSquared(hit.point) < maxSnapSq ? snap.point : null;
-          const spatialPoint = snapPoint ?? hit.point;
-          // (b) topological: snapped vertex must be the start vertex or a
-          // face-sharing neighbour (mirrors handleLassoClick's guard).
-          const topoNearStart =
-            startVertex != null &&
-            snap != null &&
-            snap.vertexIndex >= 0 &&
-            meshData != null &&
-            vertexData != null &&
-            isVertexWithinOneRing(snap.vertexIndex, startVertex, meshData.faces, vertexData.vertexFaces);
-          setLassoClosing(
-            topoNearStart && spatialPoint.distanceTo(start) < closeThreshold
-          );
+          // Mirror the click closure EXACTLY: use the same-side snapped vertex
+          // the click will commit (frontend `nearestVertexLocalOnFace` is a
+          // line-for-line mirror of the backend snap, so snap.point == the
+          // backend's res.snapped). Fall back to the raw hit point ONLY when
+          // the snap is unavailable — never when it merely seems far, because
+          // that reintroduces the hover/click disagreement that made the yellow
+          // "ready to close" line lie (iteration 44: the topological 1-ring
+          // guard from iteration 43 is retired — it blocked every genuine
+          // return-to-start because the closing vertex is topologically N-ring
+          // from the start yet spatially close).
+          const spatialPoint = snap?.point ?? hit.point;
+          setLassoClosing(spatialPoint.distanceTo(start) < closeThreshold);
         } else {
           setLassoClosing(false);
         }
@@ -1810,7 +1778,6 @@ function MeshDisplay() {
         lassoPointsRef.current = [];
         lassoFaceIndicesRef.current = [];
         setLassoPoints([]);
-        lassoStartVertexRef.current = null;
         setLassoPreview(null);
         setLassoClosing(false);
         setLassoSnap(null);
@@ -1822,7 +1789,6 @@ function MeshDisplay() {
         lassoPointsRef.current = next;
         lassoFaceIndicesRef.current = lassoFaceIndicesRef.current.slice(0, -1);
         setLassoPoints(next);
-        if (next.length === 0) lassoStartVertexRef.current = null;
         setLassoClosing(false);
         setStatusMessage(
           t("lasso.undoPoint") + (next.length > 0 ? `（剩 ${next.length} 个点）` : "")
@@ -1895,7 +1861,6 @@ function MeshDisplay() {
           lassoPointsRef.current = next;
           lassoFaceIndicesRef.current = lassoFaceIndicesRef.current.slice(0, -1);
           setLassoPoints(next);
-          if (next.length === 0) lassoStartVertexRef.current = null;
           setLassoClosing(false);
           setStatusMessage(
             t("lasso.undoPoint") + (next.length > 0 ? `（剩 ${next.length} 个点）` : "")
