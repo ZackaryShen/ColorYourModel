@@ -1,6 +1,8 @@
+pub mod concavity;
 pub mod curvature;
 pub mod dihedral;
 pub mod flood_fill;
+pub mod graphcut;
 pub mod manual;
 pub mod metrics;
 pub mod postprocess;
@@ -49,6 +51,21 @@ pub enum SegmentationAlgorithm {
         use_sdf: bool,
         crease_threshold_deg: f32,
     },
+    /// SDF + GMM soft clustering + alpha-expansion graph cut (Shapira 2008 /
+    /// CGAL Surface_mesh_segmentation standard second stage). The smoothness
+    /// term uses the signed minima-rule prior: concave folds cost 1× their
+    /// dihedral to cut, convex edges 0.1×. `k = 0` auto-estimates from the SDF
+    /// histogram peaks. Experimental (iter 45), compared head-to-head against
+    /// the legacy paths.
+    #[serde(rename_all = "camelCase")]
+    SdfGraphCut { k: u32 },
+    /// Concavity-Aware Fields (Au et al. 2012 TVCG, simplified): a
+    /// concavity-sensitive Laplacian (concave vertices weaken the edge weight
+    /// so the scalar field barely resists crossing a concave seam) is solved
+    /// once, then the field is thresholded into regions. `k = 0` defaults to 6.
+    /// Experimental (iter 45).
+    #[serde(rename_all = "camelCase")]
+    Concavity { k: u32 },
 }
 
 /// Run the selected algorithm and return segment metadata. Per-face labels are
@@ -143,6 +160,12 @@ fn dispatch(
             *crease_threshold_deg,
             on_progress,
         ),
+        SegmentationAlgorithm::SdfGraphCut { k } => {
+            graphcut::segment_by_sdf_graphcut(mesh, *k, on_progress)
+        }
+        SegmentationAlgorithm::Concavity { k } => {
+            concavity::segment_by_concavity(mesh, *k, on_progress)
+        }
     }
 }
 
@@ -325,6 +348,14 @@ mod wire_format_tests {
                 },
                 r#"{"type":"curvatureKMeans","k":6,"smoothingIters":2,"useSdf":true,"creaseThresholdDeg":20.0}"#,
             ),
+            (
+                SegmentationAlgorithm::SdfGraphCut { k: 0 },
+                r#"{"type":"sdfGraphCut","k":0}"#,
+            ),
+            (
+                SegmentationAlgorithm::Concavity { k: 6 },
+                r#"{"type":"concavity","k":6}"#,
+            ),
         ];
         for (algo, expected) in cases {
             let json = serde_json::to_string(&algo).expect("serialize");
@@ -361,6 +392,117 @@ mod wire_format_tests {
             let back: SplitMethod =
                 serde_json::from_str(expected).expect("deserialize frontend payload");
             assert_eq!(format!("{:?}", back), format!("{:?}", method));
+        }
+    }
+}
+
+/// Real-STL head-to-head harness for the iter-45 segmentation algorithms.
+/// Reads STL files from disk and reports region counts + wall-clock time for
+/// the curvatureKMeans baseline vs sdfGraphCut vs concavity.
+///
+/// Run with:
+///   cargo test --lib -- --ignored --nocapture stl_comparison_harness
+#[cfg(test)]
+mod stl_comparison_harness {
+    use std::time::Instant;
+
+    use super::{run_segmentation, SegmentationAlgorithm};
+    use crate::mesh::loader::load_stl;
+
+    struct Fixture {
+        name: &'static str,
+        path: &'static str,
+    }
+
+    const FIXTURES: &[Fixture] = &[
+        Fixture {
+            name: "Sphere",
+            path: r"C:\Users\Administrator\Desktop\Sphere.stl",
+        },
+        Fixture {
+            name: "Fire_Bambuslicer",
+            path: r"C:\Users\Administrator\Desktop\Fire_Bambuslicer.stl",
+        },
+        Fixture {
+            name: "dargon",
+            path: r"C:\Users\Administrator\Desktop\dargon.stl",
+        },
+        Fixture {
+            name: "KamenRider",
+            path: r"C:\selfDIr\Blender3D\假面骑士ZZZ灾厄2.stl",
+        },
+        Fixture {
+            name: "Sanji",
+            path: r"C:\selfDIr\Blender3D\Sanji+Diorama+Detailed_U1.stl",
+        },
+    ];
+
+    fn noop_progress() -> Box<crate::mesh::loader::ProgressFn> {
+        Box::new(|_, _| {})
+    }
+
+    fn run_algo(
+        mesh: &mut crate::mesh::model::MeshModel,
+        algo: &SegmentationAlgorithm,
+    ) -> (usize, f64) {
+        let cb = noop_progress();
+        let t = Instant::now();
+        let segs = run_segmentation(mesh, algo, false, &*cb);
+        let dt = t.elapsed().as_secs_f64();
+        (segs.len(), dt)
+    }
+
+    fn load(path: &std::path::Path) -> Option<crate::mesh::model::MeshModel> {
+        let cb = noop_progress();
+        load_stl(path, &*cb).ok()
+    }
+
+    #[test]
+    #[ignore = "reads large STL files from disk; run explicitly"]
+    fn stl_comparison_harness() {
+        for fx in FIXTURES {
+            let path = std::path::Path::new(fx.path);
+            if !path.exists() {
+                eprintln!("[{}] MISSING {} — skipped", fx.name, fx.path);
+                continue;
+            }
+            let mesh = match load(path) {
+                Some(m) => m,
+                None => {
+                    eprintln!("[{}] LOAD FAILED — skipped", fx.name);
+                    continue;
+                }
+            };
+            let n = mesh.faces.len();
+            eprintln!("=== {} ({} faces) ===", fx.name, n);
+
+            let mut m = mesh;
+            let (c_regions, c_secs) = run_algo(
+                &mut m,
+                &SegmentationAlgorithm::CurvatureKMeans {
+                    k: 6,
+                    smoothing_iters: 2,
+                    use_sdf: true,
+                    crease_threshold_deg: 45.0,
+                },
+            );
+            eprintln!("  curvatureKMeans : {:4} regions in {:6.2}s", c_regions, c_secs);
+
+            let mut m = match load(path) {
+                Some(x) => x,
+                None => continue,
+            };
+            let (g_regions, g_secs) =
+                run_algo(&mut m, &SegmentationAlgorithm::SdfGraphCut { k: 0 });
+            eprintln!("  sdfGraphCut      : {:4} regions in {:6.2}s", g_regions, g_secs);
+
+            let mut m = match load(path) {
+                Some(x) => x,
+                None => continue,
+            };
+            let (a_regions, a_secs) = run_algo(&mut m, &SegmentationAlgorithm::Concavity { k: 0 });
+            eprintln!("  concavity        : {:4} regions in {:6.2}s", a_regions, a_secs);
+            eprintln!();
         }
     }
 }

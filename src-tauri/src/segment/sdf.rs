@@ -32,6 +32,14 @@ const SDF_HOLE_FILL: f32 = -1.0; // sentinel for faces with no ray hit (hole)
 /// golden-sample acceptance set.
 const SDF_CANDIDATE_K: usize = 512;
 
+/// Maximum *signed* crease strength (degrees) across a cluster boundary for the
+/// boundary to be dissolved by the SDF merge. Signed means concave folds score
+/// 1× and convex edges 0.5× their angle (minima rule, postprocess.rs), so a
+/// concave seam survives while a same-angle convex edge may be merged. Matches
+/// `DEFAULT_CREASE_DEG` (20°) so the SDF merge and the shared crease pipeline
+/// agree on what a real feature edge is.
+const SDF_MERGE_CREASE_DEG: f32 = 20.0;
+
 /// Compute a globally orientation-consistent normal field via BFS over the
 /// adjacency graph, **without mutating `mesh.normals`** (the previous version
 /// wrote back into `mesh.normals`, which corrupted any subsequent dihedral run
@@ -168,7 +176,7 @@ pub fn compute_sdf(
 /// previous O(12·n²) that made SDF unusable on real meshes (REFUTE blocker #1:
 /// the kdtree query radius was the full bbox diagonal and sat inside the ray
 /// loop, so it returned ~all faces).
-fn compute_sdf_inner(
+pub(crate) fn compute_sdf_inner(
     mesh: &MeshModel,
     oriented: &[[f32; 3]],
     on_progress: &ProgressFn,
@@ -358,7 +366,7 @@ fn kmeans_1d(values: &[f32], k: usize) -> Vec<u32> {
 
 /// Estimate k from SDF histogram peaks (REFUTE: silhouette is too expensive;
 /// fixed k=6 over-segments single-part models). Clamp to [2, 12].
-fn estimate_k(ln_sdf: &[f32]) -> usize {
+pub(crate) fn estimate_k(ln_sdf: &[f32]) -> usize {
     if ln_sdf.is_empty() {
         return 2;
     }
@@ -405,12 +413,18 @@ pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32, on_progress: &ProgressF
     }
 
     // Concavity-aware merge. Single O(E) pass: for every inter-cluster edge
-    // accumulate both the shared-edge count and the summed normal dot, so we
-    // avoid the previous O(clusters²·E) rescan (REFUTE blocker #1).
-    // NOTE: `acos(dot)` here is the *magnitude* of the dihedral angle only —
-    // it is unsigned and cannot distinguish convex from concave. We therefore
-    // merge across *smooth* (high dot) boundaries, which empirically pulls cuts
-    // to sharp features. This is a known limitation, not "concavity".
+    // accumulate the shared-edge count and the summed *signed* crease strength
+    // (minima rule, see postprocess::crease_strength_deg), so we avoid the
+    // previous O(clusters²·E) rescan (REFUTE blocker #1).
+    //
+    // Iteration 45 (REVISE after adversarial review): the old accumulator summed
+    // the raw normal dot, whose `acos` is the UNSIGNED dihedral magnitude — it
+    // cannot tell a concave crease (neck, underarm — the real part boundaries
+    // the minima rule wants to keep) from a convex one (armour plate edge). A
+    // 20° concave fold reads dot≈0.94 > 0.93 and got merged away. The signed
+    // strength weights convex edges by CONVEX_CREASE_WEIGHT=0.5, so a concave
+    // fold scores twice as high as a same-angle convex one and survives the
+    // merge threshold.
     let mut boundary: HashMap<(u32, u32), (f64, u32)> = HashMap::new();
     for edge in mesh.face_adjacency.edge_references() {
         let fi = mesh.face_adjacency[edge.source()];
@@ -421,11 +435,9 @@ pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32, on_progress: &ProgressF
             continue;
         }
         let (a, b) = if ci <= cj { (ci, cj) } else { (cj, ci) };
-        let ni = &oriented[fi as usize];
-        let nj = &oriented[fj as usize];
-        let dot = (ni[0] * nj[0] + ni[1] * nj[1] + ni[2] * nj[2]).clamp(-1.0, 1.0);
+        let s = postprocess::crease_strength_deg(mesh, &oriented, fi as usize, fj as usize) as f64;
         let e = boundary.entry((a, b)).or_insert((0.0, 0));
-        e.0 += dot as f64;
+        e.0 += s;
         e.1 += 1;
     }
 
@@ -448,17 +460,23 @@ pub fn segment_by_sdf(mesh: &mut MeshModel, k_user: u32, on_progress: &ProgressF
         .iter()
         .map(|(&(a, b), &(sum_dot, cnt))| (a, b, (sum_dot / cnt as f64) as f32))
         .collect();
-    // Strongest (smoothest) boundary first; ties broken by id so the HashMap's
-    // iteration order cannot leak into the result.
+    // Weakest boundary first; ties broken by id so the HashMap's iteration order
+    // cannot leak into the result. Note the semantic flip from the old code:
+    // "strongest (smoothest)" used to mean *highest dot* (≈0.93, i.e. ~21°
+    // unsigned dihedral); with signed crease strength the same notion is
+    // *lowest* signed angle (convex edges already halved).
     work.sort_by(|x, y| {
-        y.2.partial_cmp(&x.2)
+        x.2.partial_cmp(&y.2)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then((x.0, x.1).cmp(&(y.0, y.1)))
     });
-    for (a, b, dot) in work {
-        // Only merge across convex/smooth boundaries (high normal dot = similar
-        // orientation); cuts stay on the concavities.
-        if dot < 0.93 {
+    for (a, b, crease) in work {
+        // Only merge across genuinely smooth boundaries; real creases — concave
+        // ones in particular, which the minima rule weights at 2× a convex edge
+        // of the same angle — must survive as cuts. The 20° default matches
+        // DEFAULT_CREASE_DEG (postprocess.rs) so the SDF merge honours the same
+        // crease notion the shared refine_regions pipeline uses.
+        if crease >= SDF_MERGE_CREASE_DEG {
             continue;
         }
         let (ra, rb) = (find(a, &mut parent), find(b, &mut parent));
