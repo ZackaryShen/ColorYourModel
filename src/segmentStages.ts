@@ -50,6 +50,18 @@ export const SEGMENT_STAGE_PLANS: Record<AlgorithmKind, StageDef[]> = {
     { key: "curv:kmeans", labelKey: "segStage.curv.kmeans", indeterminate: true },
     { key: "curv:refine", labelKey: "segStage.curv.refine", indeterminate: true },
   ],
+  sdfGraphCut: [
+    { key: "sdf:sample", labelKey: "segStage.sdf.sample", indeterminate: false },
+    { key: "sdf:gmm", labelKey: "segStage.sdf.gmm", indeterminate: true },
+    { key: "sdf:graphcut", labelKey: "segStage.sdf.graphcut", indeterminate: true },
+    { key: "sdf:connectivity", labelKey: "segStage.sdf.connectivity", indeterminate: true },
+  ],
+  concavity: [
+    { key: "concav:topology", labelKey: "segStage.concav.topology", indeterminate: true },
+    { key: "concav:laplacian", labelKey: "segStage.concav.laplacian", indeterminate: true },
+    { key: "concav:field", labelKey: "segStage.concav.field", indeterminate: true },
+    { key: "concav:refine", labelKey: "segStage.concav.refine", indeterminate: true },
+  ],
 };
 
 /**
@@ -97,7 +109,8 @@ export function resolveSegmentStage(
       done: true,
     };
   }
-  const normalised = STAGE_ALIASES[rawKey] ?? rawKey;
+  const normalised =
+    kind === "curvatureKMeans" ? (STAGE_ALIASES[rawKey] ?? rawKey) : rawKey;
   const idx = plan.findIndex((s) => s.key === normalised);
   if (idx >= 0) {
     const s = plan[idx];

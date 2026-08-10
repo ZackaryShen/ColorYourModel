@@ -15,7 +15,9 @@ export type SegmentationAlgorithm =
       smoothingIters: number;
       useSdf: boolean;
       creaseThresholdDeg: number;
-    };
+    }
+  | { type: "sdfGraphCut"; k: number }
+  | { type: "concavity"; k: number };
 
 import type { Segment } from "./mesh";
 
@@ -58,12 +60,16 @@ export interface AlgorithmParams {
     useSdf: boolean;
     creaseThresholdDeg: number;
   };
+  sdfGraphCut: { k: number };
+  concavity: { k: number };
 }
 
 export const DEFAULT_ALGORITHM_PARAMS: AlgorithmParams = {
   dihedral: { angleThreshold: DEFAULT_DIHEDRAL_ANGLE },
   shapeDiameter: { k: 0 },
   curvatureKMeans: { k: 6, smoothingIters: 2, useSdf: true, creaseThresholdDeg: 45 },
+  sdfGraphCut: { k: 0 },
+  concavity: { k: 0 },
 };
 
 /** Assemble the IPC payload for the currently selected algorithm. */
@@ -84,6 +90,10 @@ export function buildAlgorithm(
         useSdf: params.curvatureKMeans.useSdf,
         creaseThresholdDeg: params.curvatureKMeans.creaseThresholdDeg,
       };
+    case "sdfGraphCut":
+      return { type: "sdfGraphCut", k: params.sdfGraphCut.k };
+    case "concavity":
+      return { type: "concavity", k: params.concavity.k };
   }
 }
 
@@ -114,12 +124,20 @@ export function sanitizeAlgorithmParams(raw: unknown): AlgorithmParams {
     dihedral: { ...d.dihedral },
     shapeDiameter: { ...d.shapeDiameter },
     curvatureKMeans: { ...d.curvatureKMeans },
+    sdfGraphCut: { ...d.sdfGraphCut },
+    concavity: { ...d.concavity },
   };
   if (p.dihedral && isNum(p.dihedral.angleThreshold)) {
     out.dihedral.angleThreshold = clamp(p.dihedral.angleThreshold, 1, 179);
   }
   if (p.shapeDiameter && isNum(p.shapeDiameter.k)) {
     out.shapeDiameter.k = clamp(Math.round(p.shapeDiameter.k), 0, 24);
+  }
+  if (p.sdfGraphCut && isNum(p.sdfGraphCut.k)) {
+    out.sdfGraphCut.k = clamp(Math.round(p.sdfGraphCut.k), 0, 24);
+  }
+  if (p.concavity && isNum(p.concavity.k)) {
+    out.concavity.k = clamp(Math.round(p.concavity.k), 0, 24);
   }
   if (p.curvatureKMeans) {
     const c = p.curvatureKMeans;

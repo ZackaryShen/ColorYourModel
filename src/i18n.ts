@@ -141,6 +141,13 @@ const dict: Record<string, Record<Lang, string>> = {
   "segStage.curv.features": { zh: "计算特征", en: "Computing features" },
   "segStage.curv.kmeans": { zh: "K-Means 聚类", en: "K-Means clustering" },
   "segStage.curv.refine": { zh: "拆分与轮廓归并", en: "Splitting & contour merge" },
+  "segStage.sdf.gmm": { zh: "拟合混合高斯 (GMM)", en: "Fitting Gaussian mixture" },
+  "segStage.sdf.graphcut": { zh: "图割全局优化", en: "Graph-cut optimisation" },
+  "segStage.sdf.connectivity": { zh: "连通性拆分", en: "Connectivity split" },
+  "segStage.concav.topology": { zh: "重建顶点拓扑", en: "Building vertex topology" },
+  "segStage.concav.laplacian": { zh: "构造凹度感知矩阵", en: "Assembling concavity matrix" },
+  "segStage.concav.field": { zh: "求解标量场", en: "Solving scalar field" },
+  "segStage.concav.refine": { zh: "拆分与清理", en: "Splitting & cleanup" },
   "segStage.done": { zh: "完成", en: "Done" },
   "segStage.working": { zh: "处理中", en: "Working" },
 };
