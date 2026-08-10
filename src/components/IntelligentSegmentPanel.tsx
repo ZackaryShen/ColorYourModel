@@ -48,7 +48,7 @@ export function IntelligentSegmentPanel({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   // Merge a partial patch into the *currently selected* kind's sub-object.
-  // `params` always carries all three kinds, so narrow-and-write is unnecessary.
+  // `params` always carries all kinds, so narrow-and-write is unnecessary.
   const patchKind = (patch: Record<string, number | boolean>) => {
     setParams((prev) => ({ ...prev, [kind]: { ...prev[kind], ...patch } }));
   };
@@ -122,6 +122,30 @@ export function IntelligentSegmentPanel({ onClose }: { onClose: () => void }) {
             label={t("segmentPanel.clusters")}
             hint={t("segmentPanel.clustersAuto")}
             value={params.shapeDiameter.k}
+            min={0}
+            max={24}
+            step={1}
+            onChange={(v) => patchKind({ k: v })}
+          />
+        )}
+
+        {kind === "sdfGraphCut" && (
+          <Slider
+            label={t("segmentPanel.clusters")}
+            hint={t("segmentPanel.clustersAuto")}
+            value={params.sdfGraphCut.k}
+            min={0}
+            max={24}
+            step={1}
+            onChange={(v) => patchKind({ k: v })}
+          />
+        )}
+
+        {kind === "concavity" && (
+          <Slider
+            label={t("segmentPanel.clusters")}
+            hint={t("segmentPanel.clustersAuto")}
+            value={params.concavity.k}
             min={0}
             max={24}
             step={1}

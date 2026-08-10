@@ -104,6 +104,12 @@ export const ALGORITHM_KINDS: AlgorithmKind[] = [
   "curvatureKMeans",
   "shapeDiameter",
   "dihedral",
+  // Iter-45 experimental algorithms (validated head-to-head in the Rust harness:
+  // they collapse hundreds of fragments into 4–7 semantic parts). Exposed for
+  // the user to A/B visually; the default stays curvatureKMeans until the user
+  // picks one, which persists as lastSegmentKind.
+  "sdfGraphCut",
+  "concavity",
 ];
 
 export function isAlgorithmKind(v: unknown): v is AlgorithmKind {

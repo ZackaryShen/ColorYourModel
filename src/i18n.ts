@@ -115,6 +115,8 @@ const dict: Record<string, Record<Lang, string>> = {
   "segmentPanel.algo.curvatureKMeans": { zh: "曲率 K-Means（特征感知）", en: "Curvature K-Means (feature-aware)" },
   "segmentPanel.algo.shapeDiameter": { zh: "形态直径 SDF（语义零件）", en: "Shape Diameter SDF (semantic parts)" },
   "segmentPanel.algo.dihedral": { zh: "二面角（法线夹角）", en: "Dihedral angle (normal angle)" },
+  "segmentPanel.algo.sdfGraphCut": { zh: "SDF 图割（GMM 全局优化）", en: "SDF Graph-Cut (GMM + global opt)" },
+  "segmentPanel.algo.concavity": { zh: "凹度场（沿凹缝切分）", en: "Concavity-Aware Fields (seams)" },
   "segmentPanel.angle": { zh: "二面角阈值 (°)", en: "Dihedral threshold (°)" },
   "segmentPanel.clusters": { zh: "聚类数 k", en: "Clusters k" },
   "segmentPanel.clustersAuto": { zh: "0 = 自动估计聚类数", en: "0 = auto-estimate cluster count" },
