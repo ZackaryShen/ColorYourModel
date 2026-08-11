@@ -17,7 +17,9 @@ export type SegmentationAlgorithm =
       creaseThresholdDeg: number;
     }
   | { type: "sdfGraphCut"; k: number }
-  | { type: "concavity"; k: number };
+  | { type: "concavity"; k: number }
+  | { type: "convexDecomposition"; maxHulls: number; concavity: number }
+  | { type: "curveSkeleton"; maxHulls: number; concavity: number };
 
 import type { Segment } from "./mesh";
 
@@ -62,6 +64,8 @@ export interface AlgorithmParams {
   };
   sdfGraphCut: { k: number };
   concavity: { k: number };
+  convexDecomposition: { maxHulls: number; concavity: number };
+  curveSkeleton: { maxHulls: number; concavity: number };
 }
 
 export const DEFAULT_ALGORITHM_PARAMS: AlgorithmParams = {
@@ -70,6 +74,8 @@ export const DEFAULT_ALGORITHM_PARAMS: AlgorithmParams = {
   curvatureKMeans: { k: 6, smoothingIters: 2, useSdf: true, creaseThresholdDeg: 45 },
   sdfGraphCut: { k: 0 },
   concavity: { k: 0 },
+  convexDecomposition: { maxHulls: 0, concavity: 5 },
+  curveSkeleton: { maxHulls: 0, concavity: 5 },
 };
 
 /** Assemble the IPC payload for the currently selected algorithm. */
@@ -94,6 +100,20 @@ export function buildAlgorithm(
       return { type: "sdfGraphCut", k: params.sdfGraphCut.k };
     case "concavity":
       return { type: "concavity", k: params.concavity.k };
+    case "convexDecomposition":
+      return {
+        type: "convexDecomposition",
+        maxHulls: params.convexDecomposition.maxHulls,
+        // `concavity` is authored as a percent (1–20) on the slider; the backend
+        // expects the 0..1 fraction VHACD uses.
+        concavity: params.convexDecomposition.concavity / 100,
+      };
+    case "curveSkeleton":
+      return {
+        type: "curveSkeleton",
+        maxHulls: params.curveSkeleton.maxHulls,
+        concavity: params.curveSkeleton.concavity / 100,
+      };
   }
 }
 
@@ -110,6 +130,11 @@ export const ALGORITHM_KINDS: AlgorithmKind[] = [
   // picks one, which persists as lastSegmentKind.
   "sdfGraphCut",
   "concavity",
+  // Iter-48: V-HACD approximate convex decomposition (pure Rust, parry3d) and the
+  // curve-skeleton derived from it. Target the failure mode concavity could not
+  // fix on armoured characters — cutting at narrow joints instead of concave seams.
+  "convexDecomposition",
+  "curveSkeleton",
 ];
 
 export function isAlgorithmKind(v: unknown): v is AlgorithmKind {
@@ -132,6 +157,8 @@ export function sanitizeAlgorithmParams(raw: unknown): AlgorithmParams {
     curvatureKMeans: { ...d.curvatureKMeans },
     sdfGraphCut: { ...d.sdfGraphCut },
     concavity: { ...d.concavity },
+    convexDecomposition: { ...d.convexDecomposition },
+    curveSkeleton: { ...d.curveSkeleton },
   };
   if (p.dihedral && isNum(p.dihedral.angleThreshold)) {
     out.dihedral.angleThreshold = clamp(p.dihedral.angleThreshold, 1, 179);
@@ -144,6 +171,24 @@ export function sanitizeAlgorithmParams(raw: unknown): AlgorithmParams {
   }
   if (p.concavity && isNum(p.concavity.k)) {
     out.concavity.k = clamp(Math.round(p.concavity.k), 0, 48);
+  }
+  if (p.convexDecomposition) {
+    const c = p.convexDecomposition;
+    if (isNum(c.maxHulls)) {
+      out.convexDecomposition.maxHulls = clamp(Math.round(c.maxHulls), 0, 64);
+    }
+    if (isNum(c.concavity)) {
+      out.convexDecomposition.concavity = clamp(c.concavity, 1, 20);
+    }
+  }
+  if (p.curveSkeleton) {
+    const c = p.curveSkeleton;
+    if (isNum(c.maxHulls)) {
+      out.curveSkeleton.maxHulls = clamp(Math.round(c.maxHulls), 0, 64);
+    }
+    if (isNum(c.concavity)) {
+      out.curveSkeleton.concavity = clamp(c.concavity, 1, 20);
+    }
   }
   if (p.curvatureKMeans) {
     const c = p.curvatureKMeans;

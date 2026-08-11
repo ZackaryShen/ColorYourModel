@@ -62,6 +62,21 @@ export const SEGMENT_STAGE_PLANS: Record<AlgorithmKind, StageDef[]> = {
     { key: "concav:field", labelKey: "segStage.concav.field", indeterminate: true },
     { key: "concav:refine", labelKey: "segStage.concav.refine", indeterminate: true },
   ],
+  // V-HACD convex decomposition: voxelize + hierarchical ACD, then assign each
+  // triangle to the nearest hull centroid. Both phases are indeterminate (VHACD
+  // emits no sub-fraction).
+  convexDecomposition: [
+    { key: "vhacd:decompose", labelKey: "segStage.vhacd.decompose", indeterminate: true },
+    { key: "vhacd:assign", labelKey: "segStage.vhacd.assign", indeterminate: true },
+    { key: "finalize:merge", labelKey: "segStage.finalize.merge", indeterminate: true },
+  ],
+  // Curve skeleton: same V-HACD pass, then group each chain between joints into
+  // one limb-level region.
+  curveSkeleton: [
+    { key: "skeleton:decompose", labelKey: "segStage.skeleton.decompose", indeterminate: true },
+    { key: "skeleton:limbs", labelKey: "segStage.skeleton.limbs", indeterminate: true },
+    { key: "finalize:merge", labelKey: "segStage.finalize.merge", indeterminate: true },
+  ],
 };
 
 /**

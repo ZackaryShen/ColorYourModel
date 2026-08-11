@@ -1,4 +1,5 @@
 pub mod concavity;
+pub mod convex_decomp;
 pub mod curvature;
 pub mod dihedral;
 pub mod flood_fill;
@@ -13,6 +14,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::mesh::loader::ProgressFn;
 use crate::mesh::model::{MeshModel, Segment, MANUAL_SEGMENT_OFFSET};
+use crate::segment::convex_decomp::{
+    segment_by_convex_decomposition, segment_by_curve_skeleton,
+};
 use crate::segment::dihedral::segment_by_dihedral_angle;
 use crate::segment::sdf::segment_by_sdf;
 
@@ -67,6 +71,20 @@ pub enum SegmentationAlgorithm {
     /// Experimental (iter 45).
     #[serde(rename_all = "camelCase")]
     Concavity { k: u32 },
+    /// Approximate convex decomposition (V-HACD): voxelized hierarchical ACD that
+    /// cuts the model at its narrow joints (neck / waist / wrist / ankle). Pure
+    /// Rust via parry3d; robust where the concavity field went silent on armoured
+    /// characters (convex ridges carry no concavity signal). Each region is one
+    /// approximately-convex block. `max_hulls = 0` auto-picks 32.
+    #[serde(rename_all = "camelCase")]
+    ConvexDecomposition { max_hulls: u32, concavity: f32 },
+    /// Curve-skeleton segmentation derived from the convex-decomposition adjacency
+    /// graph: each chain between joints is merged into one limb-level region, so
+    /// head / torso / limbs come back as whole parts instead of dozens of blocks.
+    /// Coarser and more semantic than the raw block partition. Same V-HACD pass
+    /// under the hood (`max_hulls = 0` auto-picks 32; `concavity` 0..1).
+    #[serde(rename_all = "camelCase")]
+    CurveSkeleton { max_hulls: u32, concavity: f32 },
 }
 
 /// Run the selected algorithm and return segment metadata. Per-face labels are
@@ -167,6 +185,14 @@ fn dispatch(
         SegmentationAlgorithm::Concavity { k } => {
             concavity::segment_by_concavity(mesh, *k, on_progress)
         }
+        SegmentationAlgorithm::ConvexDecomposition {
+            max_hulls,
+            concavity,
+        } => segment_by_convex_decomposition(mesh, *max_hulls, *concavity, on_progress),
+        SegmentationAlgorithm::CurveSkeleton {
+            max_hulls,
+            concavity,
+        } => segment_by_curve_skeleton(mesh, *max_hulls, *concavity, on_progress),
     }
 }
 
@@ -357,6 +383,20 @@ mod wire_format_tests {
                 SegmentationAlgorithm::Concavity { k: 6 },
                 r#"{"type":"concavity","k":6}"#,
             ),
+            (
+                SegmentationAlgorithm::ConvexDecomposition {
+                    max_hulls: 0,
+                    concavity: 0.05,
+                },
+                r#"{"type":"convexDecomposition","maxHulls":0,"concavity":0.05}"#,
+            ),
+            (
+                SegmentationAlgorithm::CurveSkeleton {
+                    max_hulls: 32,
+                    concavity: 0.02,
+                },
+                r#"{"type":"curveSkeleton","maxHulls":32,"concavity":0.02}"#,
+            ),
         ];
         for (algo, expected) in cases {
             let json = serde_json::to_string(&algo).expect("serialize");
@@ -503,6 +543,32 @@ mod stl_comparison_harness {
             };
             let (a_regions, a_secs) = run_algo(&mut m, &SegmentationAlgorithm::Concavity { k: 0 });
             eprintln!("  concavity        : {:4} regions in {:6.2}s", a_regions, a_secs);
+
+            let mut m = match load(path) {
+                Some(x) => x,
+                None => continue,
+            };
+            let (v_regions, v_secs) = run_algo(
+                &mut m,
+                &SegmentationAlgorithm::ConvexDecomposition {
+                    max_hulls: 0,
+                    concavity: 0.05,
+                },
+            );
+            eprintln!("  convexDecomp     : {:4} regions in {:6.2}s", v_regions, v_secs);
+
+            let mut m = match load(path) {
+                Some(x) => x,
+                None => continue,
+            };
+            let (s_regions, s_secs) = run_algo(
+                &mut m,
+                &SegmentationAlgorithm::CurveSkeleton {
+                    max_hulls: 0,
+                    concavity: 0.05,
+                },
+            );
+            eprintln!("  curveSkeleton    : {:4} regions in {:6.2}s", s_regions, s_secs);
             eprintln!();
         }
     }

@@ -156,6 +156,54 @@ export function IntelligentSegmentPanel({ onClose }: { onClose: () => void }) {
           />
         )}
 
+        {kind === "convexDecomposition" && (
+          <>
+            <Slider
+              label={t("segmentPanel.maxHulls")}
+              hint={t("segmentPanel.maxHullsAuto")}
+              value={params.convexDecomposition.maxHulls}
+              min={0}
+              max={64}
+              step={1}
+              onChange={(v) => patchKind({ maxHulls: v })}
+            />
+            <Slider
+              label={t("segmentPanel.concavityTol")}
+              hint={t("segmentPanel.concavityTolHint")}
+              value={params.convexDecomposition.concavity}
+              min={1}
+              max={20}
+              step={1}
+              onChange={(v) => patchKind({ concavity: v })}
+              suffix="%"
+            />
+          </>
+        )}
+
+        {kind === "curveSkeleton" && (
+          <>
+            <Slider
+              label={t("segmentPanel.maxHulls")}
+              hint={t("segmentPanel.maxHullsAuto")}
+              value={params.curveSkeleton.maxHulls}
+              min={0}
+              max={64}
+              step={1}
+              onChange={(v) => patchKind({ maxHulls: v })}
+            />
+            <Slider
+              label={t("segmentPanel.concavityTol")}
+              hint={t("segmentPanel.concavityTolHint")}
+              value={params.curveSkeleton.concavity}
+              min={1}
+              max={20}
+              step={1}
+              onChange={(v) => patchKind({ concavity: v })}
+              suffix="%"
+            />
+          </>
+        )}
+
         {kind === "curvatureKMeans" && (
           <>
             <Slider
