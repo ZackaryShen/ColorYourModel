@@ -43,8 +43,9 @@ use std::collections::HashMap;
 use crate::mesh::loader::ProgressFn;
 use crate::mesh::model::{MeshModel, Segment};
 use crate::segment::postprocess::{
-    assemble_features, face_curvature, finalize_segments, refine_regions,
+    assemble_features, face_curvature, finalize_segments, log_normalize, refine_regions,
 };
+use crate::segment::sdf::{compute_sdf_inner, oriented_normals};
 
 /// Concave-vertex β (paper: 0.01) — a concave fold contributes almost nothing
 /// to the edge weight, so the field barely resists crossing it; isolines/thresholds
@@ -400,6 +401,14 @@ pub fn segment_by_concavity(
     let span = (mx - mn).max(1e-6);
     let norm: Vec<f32> = face_val.iter().map(|v| (v - mn) / span).collect();
 
+    // Hybrid refinement: the concavity field alone cannot separate smoothly-
+    // connected parts (armour torso vs legs — the iter-45 "瞎搞" feedback). Add
+    // the SDF thickness as a second feature axis so k-means splits thin limbs
+    // from the thick torso even when there is no concave crease between them.
+    on_progress(0.65, "concav:sdf");
+    let sdf = compute_sdf_inner(mesh, &normals, on_progress, 0.65, 0.15);
+    let ln_sdf = log_normalize(&sdf);
+
     // Auto-k: a mesh with (almost) no concave vertices has no concave seams for
     // this method to cut along, so the field between the two anchors is pure
     // solver gradient — thresholding it would carve fake "latitude rings" out
@@ -427,9 +436,11 @@ pub fn segment_by_concavity(
     let labels = kmeans_1d(&norm, k);
     on_progress(0.85, "concav:refine");
 
-    // Shared connectivity/crumb cleanup + finalize.
+    // Shared connectivity/crumb cleanup + finalize. Features now carry the
+    // concavity field (curv axis) + SDF thickness (thick axis), so the merge
+    // can tell a thin limb from the thick torso even across a smooth blend.
     let curv_f = face_curvature(mesh, &normals);
-    let feats = assemble_features(&curv_f, None);
+    let feats = assemble_features(&curv_f, Some(&ln_sdf));
     let final_labels = refine_regions(mesh, &labels, &feats, &normals, None);
 
     let segments = finalize_segments(mesh, final_labels);
