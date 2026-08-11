@@ -104,6 +104,9 @@ export function IntelligentSegmentPanel({ onClose }: { onClose: () => void }) {
           ))}
         </select>
 
+        {/* Plain-language description of the currently selected algorithm */}
+        <div style={styles.algoDesc}>{t(`segmentPanel.algoDesc.${kind}`)}</div>
+
         {/* Per-algorithm parameters */}
         {kind === "dihedral" && (
           <Slider
@@ -147,7 +150,7 @@ export function IntelligentSegmentPanel({ onClose }: { onClose: () => void }) {
             hint={t("segmentPanel.clustersAuto")}
             value={params.concavity.k}
             min={0}
-            max={24}
+            max={48}
             step={1}
             onChange={(v) => patchKind({ k: v })}
           />
@@ -295,6 +298,16 @@ const styles: Record<string, React.CSSProperties> = {
   hint: {
     color: "var(--text-3, #888)",
     fontSize: 11,
+  },
+  algoDesc: {
+    marginTop: 8,
+    padding: "8px 10px",
+    background: "var(--bg-elevated, #3a3a3a)",
+    borderLeft: "3px solid var(--accent, #4a9eff)",
+    borderRadius: 6,
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "var(--text-2, #aaa)",
   },
   select: {
     width: "100%",

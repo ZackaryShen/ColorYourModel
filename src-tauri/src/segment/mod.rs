@@ -62,7 +62,8 @@ pub enum SegmentationAlgorithm {
     /// Concavity-Aware Fields (Au et al. 2012 TVCG, simplified): a
     /// concavity-sensitive Laplacian (concave vertices weaken the edge weight
     /// so the scalar field barely resists crossing a concave seam) is solved
-    /// once, then the field is thresholded into regions. `k = 0` defaults to 6.
+    /// once, then the field is thresholded into regions. `k = 0` auto-estimates
+    /// from concave-seam density (articulated models get more regions).
     /// Experimental (iter 45).
     #[serde(rename_all = "camelCase")]
     Concavity { k: u32 },

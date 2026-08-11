@@ -70,6 +70,10 @@ const CG_TOL: f32 = 1e-5;
 /// share the field between the anchors is pure solver gradient and thresholding
 /// it would carve fake regions (the iter-45 over-segmentation regression).
 const CONCAVE_STRUCTURE_MIN_SHARE: f32 = 0.01;
+/// Upper bound on the auto / user cluster count for concavity. Humanoids with
+/// fingers/elbows/knees can use up to ~20; 48 leaves headroom for extreme
+/// articulated models without OOM-ing k-means on a 1.5M-face mesh.
+const MAX_CONCAVITY_K: usize = 48;
 
 /// Vertex topology rebuilt from faces: vertex → incident face indices.
 fn build_vertex_faces(mesh: &MeshModel) -> Vec<Vec<u32>> {
@@ -81,6 +85,42 @@ fn build_vertex_faces(mesh: &MeshModel) -> Vec<Vec<u32>> {
         vf[f[2] as usize].push(fi as u32);
     }
     vf
+}
+
+/// Connected components of concave vertices, ignoring tiny components (just
+/// mesh noise / isolated sharp creases). Each meaningful component is one seam
+/// the concavity field can gather along; the auto-k heuristic scales k with
+/// this count so articulated models (many seams) split fine while a plain
+/// block (≈0 seams) stays one region.
+fn count_concave_seams(nv: usize, vf: &[Vec<u32>], faces: &[[u32; 3]], concave: &[bool]) -> usize {
+    const MIN_COMPONENT: usize = 6;
+    let mut visited = vec![false; nv];
+    let mut seams = 0usize;
+    for start in 0..nv {
+        if !concave[start] || visited[start] {
+            continue;
+        }
+        let mut stack = vec![start];
+        visited[start] = true;
+        let mut size = 0usize;
+        while let Some(u) = stack.pop() {
+            size += 1;
+            for &fi in &vf[u] {
+                let f = &faces[fi as usize];
+                for &w in &f[0..3] {
+                    let w = w as usize;
+                    if concave[w] && !visited[w] {
+                        visited[w] = true;
+                        stack.push(w);
+                    }
+                }
+            }
+        }
+        if size >= MIN_COMPONENT {
+            seams += 1;
+        }
+    }
+    seams
 }
 
 /// Gaussian curvature at each vertex via angle deficit:
@@ -421,7 +461,12 @@ pub fn segment_by_concavity(
         if concave_share < CONCAVE_STRUCTURE_MIN_SHARE {
             1
         } else {
-            6
+            // Scale k with how articulated the model is: each meaningful concave
+            // seam (a connected run of concave vertices) is one cut opportunity.
+            // ×1.5 over-estimates slightly so k-means + refine still yield clean
+            // parts, and refine_regions' merge collapses any residual over-split.
+            let seams = count_concave_seams(nv, &vf, &mesh.faces, &concave);
+            ((seams as f32) * 1.5).round() as usize
         }
     } else {
         k_user as usize
@@ -430,7 +475,7 @@ pub fn segment_by_concavity(
     // (sphere, plain block) must come back as exactly one region. k-means
     // handles k=1 (all faces → label 0); clamping to 2 would fabricate a
     // second class out of solver noise.
-    let k = k.clamp(1, 24).min(n);
+    let k = k.clamp(1, MAX_CONCAVITY_K).min(n);
     // Reuse curvature.rs's deterministic k-means via a 1-D wrapper? We have
     // sdf.rs's kmeans_1d which is private. Implement a tiny 1-D k-means here.
     let labels = kmeans_1d(&norm, k);

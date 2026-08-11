@@ -143,7 +143,7 @@ export function sanitizeAlgorithmParams(raw: unknown): AlgorithmParams {
     out.sdfGraphCut.k = clamp(Math.round(p.sdfGraphCut.k), 0, 24);
   }
   if (p.concavity && isNum(p.concavity.k)) {
-    out.concavity.k = clamp(Math.round(p.concavity.k), 0, 24);
+    out.concavity.k = clamp(Math.round(p.concavity.k), 0, 48);
   }
   if (p.curvatureKMeans) {
     const c = p.curvatureKMeans;
