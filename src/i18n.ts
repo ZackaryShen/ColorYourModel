@@ -55,7 +55,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.weightConcHint": { zh: "权重越高，推荐点越偏向凹谷（真实零件分界）附近的内部", en: "Higher weight pushes suggestions toward interiors near concave valleys" },
   "seed.suggest": { zh: "💡 推荐种子", en: "💡 Suggest seeds" },
   "seed.clearSuggest": { zh: "清空推荐 ({0})", en: "Clear suggestions ({0})" },
-  "seed.suggestHint": { zh: "灰色半透明点为推荐种子：点击它即接受（转为正式种子），不点则忽略。正式种子仍为黄色/青色。", en: "Grey ghost dots are suggestions: click one to accept it (becomes a real seed), or ignore it. Real seeds stay yellow/cyan." },
+  "seed.suggestHint": { zh: "亮粉色十字标记为推荐种子（A2 修复后已可见）：在模型上任意位置点击，即采纳离点击处最近的推荐种子；清空推荐后可手动落点。正式种子仍为黄色/青色。", en: "Bright magenta cross markers are suggestions (visible after the A2 fix): click anywhere on the model to accept the nearest one; clear suggestions first to place seeds manually. Real seeds stay yellow/cyan." },
   "seed.accepted": { zh: "已接受推荐种子（共 {0} 个）", en: "Accepted suggestion ({0} seeds total)" },
   "seed.acceptDup": { zh: "该推荐点附近已有种子，已忽略", en: "A seed already exists near this suggestion; ignored" },
 
@@ -77,6 +77,9 @@ const dict: Record<string, Record<Lang, string>> = {
 
   // SegmentsPanel
   "segments.title": { zh: "分区", en: "Regions" },
+  "segments.reset": { zh: "重置", en: "Reset" },
+  "segments.resetHint": { zh: "清除全部分区与上色，回到刚导入的未上色状态", en: "Clear all regions and paint, back to the freshly-loaded uncoloured state" },
+  "segments.resetConfirm": { zh: "确定重置分区并清除所有上色吗？此操作不可撤销。", en: "Reset all regions and clear all paint? This cannot be undone." },
   "segments.empty": { zh: "暂无分区，请先导入模型", en: "No segments yet. Import a model first." },
   "segments.renameHint": { zh: "双击重命名，Ctrl+点击多选", en: "Double-click to rename, Ctrl-click to multi-select" },
   "segments.mergeInto": { zh: "合并 {0} 个分区到「{1}」", en: "Merge {0} regions into \"{1}\"" },

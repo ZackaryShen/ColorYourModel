@@ -35,6 +35,7 @@ pub fn run() {
             commands::segment::resegment_region,
             commands::segment::seed_grow,
             commands::segment::recommend_seeds,
+            commands::segment::reset_segmentation,
             commands::paint::brush_paint,
             commands::paint::fill_paint,
             commands::paint::fill_segment_paint,

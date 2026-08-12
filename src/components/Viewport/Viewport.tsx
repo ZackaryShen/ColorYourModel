@@ -827,6 +827,18 @@ function MeshDisplay() {
     return Math.max(0.03, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0008);
   }, [meshData?.bbox]);
 
+  // Marker size for *suggested* (ghost) seeds — iteration 57 / REFUTE A2.
+  // Decoupled from `dotSize` on purpose: dotSize is tuned for the brush cursor
+  // and real seeds (sub-pixel on a 30cm model), which is exactly why the ghost
+  // suggestions were invisible before. This is ~7.5x larger and floored so the
+  // markers are always clearly readable.
+  const seedMarkerSize = useMemo(() => {
+    const b = meshData?.bbox;
+    if (!b) return 0.02;
+    const dx = b.max[0] - b.min[0], dy = b.max[1] - b.min[1], dz = b.max[2] - b.min[2];
+    return Math.max(0.012, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.006);
+  }, [meshData?.bbox]);
+
   // The faint wireframe overlay is built from a WireframeGeometry that, for large
   // meshes, synchronously allocates a ~360k-element array with millions of string
   // concatenations (three's edge de-dup) — the REAL cause of the multi-second
@@ -1493,13 +1505,15 @@ function MeshDisplay() {
           }
           return;
         }
-        // Accept a suggested (ghost) seed: if the click lands near a suggestion,
-        // move that exact point into the real seeds instead of raycast-adding a
-        // fresh one (which could land slightly off the suggested centroid).
-        // Skip if it would duplicate an existing real seed.
+        // Accept a suggested (ghost) seed (iteration 57 / REFUTE A2): when any
+        // suggestions exist, clicking anywhere on the model grabs the NEAREST
+        // one — no need to click precisely on the (now visible) marker. This is
+        // the "click blank space to quickly accept the nearest suggestion" flow;
+        // to place a manual seed instead, clear the suggestions first (panel
+        // button). A duplicate is accepted (removes the suggestion) without
+        // adding a second real seed at the same spot.
         if (suggestedSeeds.length > 0) {
-          const tol = dotSize * 4;
-          let best = -1;
+          let best = 0;
           let bestD = Infinity;
           for (let i = 0; i < suggestedSeeds.length; i++) {
             const s = suggestedSeeds[i];
@@ -1509,20 +1523,14 @@ function MeshDisplay() {
               best = i;
             }
           }
-          if (best >= 0 && bestD <= tol) {
-            const picked = suggestedSeeds[best];
-            const dup = seedPoints.some(
-              (p) => Math.hypot(p.x - picked.x, p.y - picked.y, p.z - picked.z) <= tol
-            );
-            if (dup) {
-              acceptSuggestedSeed(best); // removes the suggestion, no new seed
-              setStatusMessage(t("seed.acceptDup"));
-            } else {
-              acceptSuggestedSeed(best);
-              setStatusMessage(t("seed.accepted", seedPoints.length + 1));
-            }
-            return;
-          }
+          const picked = suggestedSeeds[best];
+          const tol = dotSize * 12;
+          const dup = seedPoints.some(
+            (p) => Math.hypot(p.x - picked.x, p.y - picked.y, p.z - picked.z) <= tol
+          );
+          acceptSuggestedSeed(best);
+          setStatusMessage(dup ? t("seed.acceptDup") : t("seed.accepted", seedPoints.length + 1));
+          return;
         }
         (async () => {
           try {
@@ -2062,16 +2070,77 @@ function MeshDisplay() {
             />
           </mesh>
         ))}
-      {/* Suggested (ghost) seeds for the seeded-watershed tool (iteration 52).
-          Advisory only: semi-transparent grey, slightly larger than real seeds.
-          Clicking one accepts it (handled in the seed click branch above). */}
-      {isSeedTool &&
-        suggestedSeeds.map((p, i) => (
-          <mesh key={`sug-${i}`} position={[p.x, p.y, p.z]}>
-            <sphereGeometry args={[dotSize * 2.4, 12, 12]} />
-            <meshBasicMaterial color="#9aa0a6" transparent opacity={0.5} />
-          </mesh>
-        ))}
+      {/* Suggested (ghost) seeds for the seeded-watershed tool (iteration 52),
+          refreshed in iteration 57 / REFUTE A2: bright magenta + a billboarded
+          white cross so they are unmistakable against any model colour, and
+          `depthTest={false}` so they are never buried under the surface. Clicking
+          anywhere on the model accepts the nearest one (see seed click branch). */}
+      {isSeedTool && (
+        <GhostSeedMarkers seeds={suggestedSeeds} size={seedMarkerSize} camera={camera} />
+      )}
+    </group>
+  );
+}
+
+// ─── Suggested (ghost) seed markers ──────────────────────────────
+// Iteration 57 / REFUTE A2: the old ghost markers were `dotSize * 2.4` of a
+// sub-pixel dot size, in flat grey, with depth-test on — invisible. Replaced by
+// a bright magenta sphere + a billboarded white cross, always drawn on top
+// (depthTest=false + high renderOrder) so the user can actually see and aim at
+// the recommendations.
+function GhostSeedMarkers({
+  seeds,
+  size,
+  camera,
+}: {
+  seeds: { x: number; y: number; z: number }[];
+  size: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  camera: any;
+}) {
+  return (
+    <>
+      {seeds.map((p, i) => (
+        <GhostMarker key={`sug-${i}`} pos={[p.x, p.y, p.z]} size={size} camera={camera} />
+      ))}
+    </>
+  );
+}
+
+function GhostMarker({
+  pos,
+  size,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  camera,
+}: {
+  pos: [number, number, number];
+  size: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  camera: any;
+}) {
+  const crossRef = useRef<THREE.Group>(null);
+  // Billboard the cross so it always faces the camera (a screen-space "+").
+  useFrame(() => {
+    if (crossRef.current && camera) {
+      crossRef.current.quaternion.copy(camera.quaternion);
+    }
+  });
+  return (
+    <group position={pos}>
+      <mesh renderOrder={20}>
+        <sphereGeometry args={[size, 16, 16]} />
+        <meshBasicMaterial color="#ff2bd6" depthTest={false} transparent opacity={0.92} />
+      </mesh>
+      <group ref={crossRef} renderOrder={21}>
+        <mesh>
+          <boxGeometry args={[size * 3.2, size * 0.5, size * 0.5]} />
+          <meshBasicMaterial color="#ffffff" depthTest={false} />
+        </mesh>
+        <mesh>
+          <boxGeometry args={[size * 0.5, size * 3.2, size * 0.5]} />
+          <meshBasicMaterial color="#ffffff" depthTest={false} />
+        </mesh>
+      </group>
     </group>
   );
 }

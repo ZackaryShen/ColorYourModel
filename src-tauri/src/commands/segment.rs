@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::mesh::AppState;
 use crate::mesh::loader::ProgressFn;
-use crate::mesh::model::Segment;
+use crate::mesh::model::{MeshModel, Segment, DEFAULT_FACE_COLOR};
 use crate::segment::dihedral::segment_by_dihedral_angle;
 use crate::segment::manual::{
     finalize_manual_region as backend_finalize_manual_region, snap_point_to_vertex_on_face,
@@ -435,6 +435,38 @@ pub async fn auto_segment_v2(
     })
 }
 
+/// Wipe the current segmentation AND all face paint, returning the mesh to its
+/// freshly-loaded "uncoloured" state. This is the missing "I don't like the
+/// auto-segment, let me start over" affordance (REFUTE iteration 57): previously
+/// the only escape was re-loading the model, because `auto_segment_v2` clears the
+/// undo stack and there was no dedicated reset command.
+///
+/// Kept as a free function so it is unit-testable without standing up an
+/// `AppState`/`Mutex`. The command below is a thin wrapper around it.
+pub(crate) fn reset_mesh_state(mesh: &mut MeshModel) {
+    let n = mesh.faces.len();
+    mesh.segment_labels = vec![0u32; n];
+    mesh.segments.clear();
+    mesh.segment_names.clear();
+    mesh.next_manual_label = MANUAL_SEGMENT_OFFSET;
+    mesh.face_colors = vec![DEFAULT_FACE_COLOR; n];
+    mesh.history.clear();
+}
+
+#[tauri::command]
+pub fn reset_segmentation(state: State<AppState>) -> Result<SegmentResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    reset_mesh_state(mesh);
+    let labels = mesh.segment_labels.clone();
+    let face_colors = flatten_face_colors(&mesh.face_colors);
+    Ok(SegmentResult {
+        segments: Vec::new(),
+        segment_labels: labels,
+        face_colors,
+    })
+}
+
 /// Re-run any segmentation algorithm on a single existing region, replacing it
 /// with the sub-regions the algorithm finds inside it. See
 /// `segment::resegment::resegment_region` — this command only wraps it with the
@@ -569,4 +601,55 @@ pub fn recommend_seeds(
     let suggestions = backend_recommend_seeds(mesh, count, weights);
     log::info!("[cmd:recommend_seeds] done: {} suggestions", suggestions.len());
     Ok(suggestions)
+}
+
+#[cfg(test)]
+mod reset_tests {
+    use super::*;
+    use crate::mesh::model::MeshModel;
+
+    fn tiny_mesh() -> MeshModel {
+        let mut m = MeshModel::new();
+        m.vertices = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        m.faces = vec![[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
+        m.compute_normals();
+        m.build_adjacency();
+        m
+    }
+
+    #[test]
+    fn reset_mesh_state_neutralises_everything() {
+        let mut m = tiny_mesh();
+        // Simulate a fully painted, multi-region state.
+        m.face_colors = vec![[255, 0, 0, 255]; 4];
+        m.segment_labels = vec![1, 2, 2, 1];
+        m.segments.insert(
+            1,
+            Segment {
+                id: 1,
+                name: "Left arm".to_string(),
+                color: None,
+                face_count: 2,
+            },
+        );
+        m.segment_names.insert(1, "Left arm".to_string());
+
+        reset_mesh_state(&mut m);
+
+        assert!(
+            m.face_colors.iter().all(|c| *c == DEFAULT_FACE_COLOR),
+            "face colours must return to neutral grey"
+        );
+        assert!(
+            m.segment_labels.iter().all(|&l| l == 0),
+            "all labels must be zeroed"
+        );
+        assert!(m.segments.is_empty(), "segments map must be cleared");
+        assert!(m.segment_names.is_empty(), "segment names must be cleared");
+    }
 }

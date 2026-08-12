@@ -90,6 +90,27 @@ export function useTauriCommand() {
   };
 
   /**
+   * Wipe the current segmentation AND all face paint, returning the mesh to its
+   * freshly-loaded "uncoloured" state (iteration 57, B2). Unlike `autoSegmentV2`
+   * this DOES return the (neutral) face-colour buffer so the frontend repaints
+   * back to grey in one shot — no model reload needed.
+   */
+  const resetSegmentation = async (): Promise<void> => {
+    try {
+      setStatusMessage("正在重置分区…");
+      const result = await invoke<SegmentResult>("reset_segmentation");
+      // faceColors length matches meshData.faceColors, so the store guard passes
+      // and the canvas repaints to neutral grey.
+      updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
+      setStatusMessage("已重置：分区与上色均已清除");
+    } catch (e) {
+      log.error("useTauriCommand", "resetSegmentation failed", { error: String(e) });
+      setStatusMessage(`重置失败：${e}`);
+      throw e;
+    }
+  };
+
+  /**
    * Give a region a user-facing name. An empty string clears it back to the
    * generated "Region N".
    *
@@ -446,6 +467,7 @@ export function useTauriCommand() {
     resegmentRegion,
     seedGrow,
     recommendSeeds,
+    resetSegmentation,
     manualRegionAddPoint,
     finalizeManualRegion,
     undo,

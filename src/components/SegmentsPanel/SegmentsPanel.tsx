@@ -17,7 +17,8 @@ export function SegmentsPanel() {
   const selectedSegment = useAppStore((s) => s.selectedSegment);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const { renameSegment, mergeSegments, splitSegment, resegmentRegion } = useTauriCommand();
+  const { renameSegment, mergeSegments, splitSegment, resegmentRegion, resetSegmentation } = useTauriCommand();
+  const isLoaded = useAppStore((s) => s.isLoaded);
 
   // Ordered multi-selection for merging. `picked[0]` is the anchor and becomes
   // the surviving region — the target is never inferred from size or label,
@@ -56,6 +57,19 @@ export function SegmentsPanel() {
   // save" work, but Enter and Escape also remove focus, so without this the
   // commit would run a second time against a row that is already closed.
   const closingRef = useRef(false);
+
+  // B2 (iteration 57): "I don't like the auto-segment, let me start over."
+  // Destructive, so gate it behind a native confirm. There is intentionally no
+  // undo for this (the reset itself also clears the undo stack on the backend),
+  // which is why the confirm is non-negotiable.
+  const onResetSegmentation = async () => {
+    if (!window.confirm(t("segments.resetConfirm"))) return;
+    try {
+      await resetSegmentation();
+    } catch {
+      // error already surfaced via status message in the hook
+    }
+  };
 
   useEffect(() => {
     if (editingId !== null) {
@@ -233,7 +247,17 @@ export function SegmentsPanel() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>{t("segments.title")} ({segments.length})</div>
+      <div style={{ ...styles.header, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span>{t("segments.title")} ({segments.length})</span>
+        <button
+          onClick={onResetSegmentation}
+          disabled={!isLoaded || segments.length === 0}
+          title={t("segments.resetHint")}
+          style={styles.resetBtn}
+        >
+          {t("segments.reset")}
+        </button>
+      </div>
       <div style={styles.list}>
         {segments.map((seg) => {
           const editing = editingId === seg.id;
@@ -402,6 +426,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 600,
     marginBottom: 8,
+  },
+  resetBtn: {
+    padding: "3px 10px",
+    borderRadius: 6,
+    border: "1px solid var(--border, #555)",
+    background: "transparent",
+    color: "var(--text-2, #ccc)",
+    cursor: "pointer",
+    fontSize: 12,
   },
   empty: {
     color: "var(--text-3, #888888)",
