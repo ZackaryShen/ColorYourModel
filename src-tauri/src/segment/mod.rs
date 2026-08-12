@@ -2,6 +2,7 @@ pub mod concavity;
 pub mod convex_decomp;
 pub mod curvature;
 pub mod dihedral;
+pub mod fh;
 pub mod flood_fill;
 pub mod graphcut;
 pub mod manual;
@@ -21,6 +22,8 @@ use crate::segment::convex_decomp::{
     segment_by_convex_decomposition, segment_by_curve_skeleton,
 };
 use crate::segment::dihedral::segment_by_dihedral_angle;
+use crate::segment::fh::segment_by_fh;
+use crate::segment::recommend::RecommendWeights;
 use crate::segment::sdf::segment_by_sdf;
 
 /// Which intelligent-segmentation algorithm to run, with its tunable parameters.
@@ -88,6 +91,20 @@ pub enum SegmentationAlgorithm {
     /// under the hood (`max_hulls = 0` auto-picks 32; `concavity` 0..1).
     #[serde(rename_all = "camelCase")]
     CurveSkeleton { max_hulls: u32, concavity: f32 },
+    /// Felzenszwalb-Huttenlocher graph segmentation (iter 56), ported from the
+    /// final stage of SAM3D (Pointcept, arxiv 2306.03908). Unlike every other
+    /// variant here it takes a *scale* (granularity) instead of a preset region
+    /// count k: edges merge while their weight is below the adaptive MST
+    /// threshold `Int(C) + scale/|C|`, so the part count emerges from the
+    /// geometry. Edge weight = |sig_u − sig_v|, the significance field from
+    /// `recommend` (curvature ⊕ concavity), so the same UI weights feed the seed
+    /// suggestion and the partition. Pure-geometric: no ML, no preset k.
+    #[serde(rename_all = "camelCase")]
+    FhGraph {
+        scale: f32,
+        curvature: f32,
+        concavity: f32,
+    },
 }
 
 /// Run the selected algorithm and return segment metadata. Per-face labels are
@@ -196,6 +213,19 @@ fn dispatch(
             max_hulls,
             concavity,
         } => segment_by_curve_skeleton(mesh, *max_hulls, *concavity, on_progress),
+        SegmentationAlgorithm::FhGraph {
+            scale,
+            curvature,
+            concavity,
+        } => segment_by_fh(
+            mesh,
+            *scale,
+            RecommendWeights {
+                curvature: *curvature,
+                concavity: *concavity,
+            },
+            on_progress,
+        ),
     }
 }
 
@@ -400,6 +430,14 @@ mod wire_format_tests {
                 },
                 r#"{"type":"curveSkeleton","maxHulls":32,"concavity":0.02}"#,
             ),
+            (
+                SegmentationAlgorithm::FhGraph {
+                    scale: 0.3,
+                    curvature: 1.0,
+                    concavity: 1.0,
+                },
+                r#"{"type":"fhGraph","scale":0.3,"curvature":1.0,"concavity":1.0}"#,
+            ),
         ];
         for (algo, expected) in cases {
             let json = serde_json::to_string(&algo).expect("serialize");
@@ -572,6 +610,20 @@ mod stl_comparison_harness {
                 },
             );
             eprintln!("  curveSkeleton    : {:4} regions in {:6.2}s", s_regions, s_secs);
+
+            let mut m = match load(path) {
+                Some(x) => x,
+                None => continue,
+            };
+            let (h_regions, h_secs) = run_algo(
+                &mut m,
+                &SegmentationAlgorithm::FhGraph {
+                    scale: 0.3,
+                    curvature: 1.0,
+                    concavity: 1.0,
+                },
+            );
+            eprintln!("  fhGraph          : {:4} regions in {:6.2}s", h_regions, h_secs);
             eprintln!();
         }
     }

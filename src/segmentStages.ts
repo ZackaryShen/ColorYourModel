@@ -77,6 +77,16 @@ export const SEGMENT_STAGE_PLANS: Record<AlgorithmKind, StageDef[]> = {
     { key: "skeleton:limbs", labelKey: "segStage.skeleton.limbs", indeterminate: true },
     { key: "finalize:merge", labelKey: "segStage.finalize.merge", indeterminate: true },
   ],
+  // Felzenszwalb-Huttenlocher graph segmentation (iter 56): significance field →
+  // edge list → MST-based adaptive merge → compact → crumb cleanup.
+  fhGraph: [
+    { key: "fh:significance", labelKey: "segStage.fh.significance", indeterminate: false },
+    { key: "fh:edges", labelKey: "segStage.fh.edges", indeterminate: false },
+    { key: "fh:merge", labelKey: "segStage.fh.merge", indeterminate: false },
+    { key: "fh:compact", labelKey: "segStage.fh.compact", indeterminate: false },
+    { key: "fh:cleanup", labelKey: "segStage.fh.cleanup", indeterminate: true },
+    { key: "fh:finalize", labelKey: "segStage.fh.finalize", indeterminate: true },
+  ],
 };
 
 /**

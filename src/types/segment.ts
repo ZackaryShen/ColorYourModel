@@ -19,7 +19,13 @@ export type SegmentationAlgorithm =
   | { type: "sdfGraphCut"; k: number }
   | { type: "concavity"; k: number }
   | { type: "convexDecomposition"; maxHulls: number; concavity: number }
-  | { type: "curveSkeleton"; maxHulls: number; concavity: number };
+  | { type: "curveSkeleton"; maxHulls: number; concavity: number }
+  | {
+      type: "fhGraph";
+      scale: number;
+      curvature: number;
+      concavity: number;
+    };
 
 import type { Segment } from "./mesh";
 
@@ -66,6 +72,7 @@ export interface AlgorithmParams {
   concavity: { k: number };
   convexDecomposition: { maxHulls: number; concavity: number };
   curveSkeleton: { maxHulls: number; concavity: number };
+  fhGraph: { scale: number; curvature: number; concavity: number };
 }
 
 export const DEFAULT_ALGORITHM_PARAMS: AlgorithmParams = {
@@ -76,6 +83,7 @@ export const DEFAULT_ALGORITHM_PARAMS: AlgorithmParams = {
   concavity: { k: 0 },
   convexDecomposition: { maxHulls: 0, concavity: 5 },
   curveSkeleton: { maxHulls: 0, concavity: 5 },
+  fhGraph: { scale: 0.3, curvature: 1.0, concavity: 1.0 },
 };
 
 /** Assemble the IPC payload for the currently selected algorithm. */
@@ -114,6 +122,13 @@ export function buildAlgorithm(
         maxHulls: params.curveSkeleton.maxHulls,
         concavity: params.curveSkeleton.concavity / 100,
       };
+    case "fhGraph":
+      return {
+        type: "fhGraph",
+        scale: params.fhGraph.scale,
+        curvature: params.fhGraph.curvature,
+        concavity: params.fhGraph.concavity,
+      };
   }
 }
 
@@ -135,6 +150,11 @@ export const ALGORITHM_KINDS: AlgorithmKind[] = [
   // fix on armoured characters — cutting at narrow joints instead of concave seams.
   "convexDecomposition",
   "curveSkeleton",
+  // Iter-56: Felzenszwalb-Huttenlocher graph segmentation, ported from SAM3D's
+  // final stage. Takes a scale (granularity) instead of a preset k, and reuses
+  // the curvature/concavity significance field — a pure-geometric, no-ML cousin
+  // of the other algorithms that emerges the part count from the mesh.
+  "fhGraph",
 ];
 
 export function isAlgorithmKind(v: unknown): v is AlgorithmKind {
@@ -159,6 +179,7 @@ export function sanitizeAlgorithmParams(raw: unknown): AlgorithmParams {
     concavity: { ...d.concavity },
     convexDecomposition: { ...d.convexDecomposition },
     curveSkeleton: { ...d.curveSkeleton },
+    fhGraph: { ...d.fhGraph },
   };
   if (p.dihedral && isNum(p.dihedral.angleThreshold)) {
     out.dihedral.angleThreshold = clamp(p.dihedral.angleThreshold, 1, 179);
@@ -200,6 +221,12 @@ export function sanitizeAlgorithmParams(raw: unknown): AlgorithmParams {
     if (isNum(c.creaseThresholdDeg)) {
       out.curvatureKMeans.creaseThresholdDeg = clamp(c.creaseThresholdDeg, 1, 90);
     }
+  }
+  if (p.fhGraph) {
+    const c = p.fhGraph;
+    if (isNum(c.scale)) out.fhGraph.scale = clamp(c.scale, 0.05, 1);
+    if (isNum(c.curvature)) out.fhGraph.curvature = clamp(c.curvature, 0, 2);
+    if (isNum(c.concavity)) out.fhGraph.concavity = clamp(c.concavity, 0, 2);
   }
   return out;
 }

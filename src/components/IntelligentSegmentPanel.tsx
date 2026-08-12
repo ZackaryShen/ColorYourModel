@@ -245,6 +245,38 @@ export function IntelligentSegmentPanel({ onClose }: { onClose: () => void }) {
           </>
         )}
 
+        {kind === "fhGraph" && (
+          <>
+            <Slider
+              label={t("segmentPanel.fhScale")}
+              hint={t("segmentPanel.fhScaleHint")}
+              value={params.fhGraph.scale}
+              min={0.05}
+              max={1}
+              step={0.05}
+              onChange={(v) => patchKind({ scale: v })}
+            />
+            <Slider
+              label={t("seed.weightCurv")}
+              hint={t("seed.weightCurvHint")}
+              value={params.fhGraph.curvature}
+              min={0}
+              max={2}
+              step={0.1}
+              onChange={(v) => patchKind({ curvature: v })}
+            />
+            <Slider
+              label={t("seed.weightConc")}
+              hint={t("seed.weightConcHint")}
+              value={params.fhGraph.concavity}
+              min={0}
+              max={2}
+              step={0.1}
+              onChange={(v) => patchKind({ concavity: v })}
+            />
+          </>
+        )}
+
         {!isLoaded && (
           <div style={styles.warn}>{t("segments.empty")}</div>
         )}

@@ -134,7 +134,12 @@ fn face_concavity_scores(mesh: &MeshModel) -> Vec<f32> {
 /// Combine curvature + concavity into a single significance score `sig ∈ [0,1]`
 /// (higher = more boundary-like). Each term is normalised to its own max so the
 /// two weights are comparable regardless of absolute magnitudes.
-fn face_significance(mesh: &MeshModel, weights: &RecommendWeights) -> Vec<f32> {
+///
+/// `pub(crate)` so the FH graph segmenter (iter 56) reuses the exact same field
+/// instead of duplicating the curvature/concavity normalisation — if the two
+/// ever drifted, the seed suggestion and the partition would disagree about
+/// where the real part boundaries are.
+pub(crate) fn face_significance(mesh: &MeshModel, weights: &RecommendWeights) -> Vec<f32> {
     let n = mesh.faces.len();
     let curv = face_curvature_scores(mesh);
     let conc = face_concavity_scores(mesh);

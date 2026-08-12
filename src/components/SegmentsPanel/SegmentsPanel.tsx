@@ -149,6 +149,7 @@ export function SegmentsPanel() {
     concavity: t("segmentPanel.algo.concavity"),
     convexDecomposition: t("segmentPanel.algo.convexDecomposition"),
     curveSkeleton: t("segmentPanel.algo.curveSkeleton"),
+    fhGraph: t("segmentPanel.algo.fhGraph"),
   };
   const algoLabel = (k: AlgorithmKind): string => ALGO_LABELS[k];
 
@@ -182,6 +183,11 @@ export function SegmentsPanel() {
           break;
         case "curveSkeleton":
           params.curveSkeleton.maxHulls = resegK;
+          break;
+        case "fhGraph":
+          // The re-segment dialog reuses its single `k` slider; map it onto the
+          // FH scale (granularity) parameter.
+          params.fhGraph.scale = resegK / 10;
           break;
       }
       const algorithm = buildAlgorithm(resegKind, params);
