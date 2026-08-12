@@ -12,6 +12,7 @@ use crate::segment::manual::{
 use crate::segment::sdf::segment_by_sdf;
 use crate::segment::split::{split_segment as split_segment_impl, SplitMethod, SplitResult};
 use crate::segment::resegment::resegment_region as resegment_region_impl;
+use crate::segment::recommend::{recommend_seeds as backend_recommend_seeds, SeedSuggestion};
 use crate::segment::seeded::{seed_grow as backend_seed_grow, SeedGrowParams, SeedInput};
 use crate::segment::{run_segmentation, SegmentationAlgorithm};
 
@@ -535,4 +536,24 @@ pub fn seed_grow(
         segment_labels: inner.segment_labels,
         face_colors: flatten_face_colors(&mesh.face_colors),
     })
+}
+
+/// Suggest seed locations for the seeded-watershed tool (iteration 52). Returns
+/// up to `count` candidate points spread across the mesh and biased toward
+/// region interiors (weighted farthest-point sampling over face centroids — see
+/// `segment::recommend`). These are ADVISORY: the frontend shows them as ghost
+/// markers the user accepts (click → becomes a real seed) or ignores. They do
+/// not participate in `seed_grow` until accepted. Read-only: the mesh is never
+/// mutated, so no history interaction is needed.
+#[tauri::command]
+pub fn recommend_seeds(
+    count: usize,
+    state: State<'_, AppState>,
+) -> Result<Vec<SeedSuggestion>, String> {
+    log::info!("[cmd:recommend_seeds] count={}", count);
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    let suggestions = backend_recommend_seeds(mesh, count);
+    log::info!("[cmd:recommend_seeds] done: {} suggestions", suggestions.len());
+    Ok(suggestions)
 }

@@ -11,6 +11,7 @@ pub mod sdf;
 pub mod seeded;
 pub mod split;
 pub mod resegment;
+pub mod recommend;
 
 use serde::{Deserialize, Serialize};
 

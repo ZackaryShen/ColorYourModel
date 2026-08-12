@@ -140,6 +140,15 @@ interface AppStore {
   seedEraseMode: boolean;
   removeSeedPoint: (index: number) => void;
   setSeedEraseMode: (v: boolean) => void;
+  /** Iteration 52: advisory seed suggestions from the backend (weighted FPS over
+   *  face centroids, biased to region interiors). Shown as ghost markers; the
+   *  user accepts one by clicking it (moves to `seedPoints`) or ignores it. They
+   *  never reach `seed_grow` until accepted, so a bad suggestion is harmless.
+   *  Transient: NOT persisted. */
+  suggestedSeeds: SeedPoint[];
+  setSuggestedSeeds: (seeds: SeedPoint[]) => void;
+  acceptSuggestedSeed: (index: number) => void;
+  clearSuggestedSeeds: () => void;
   setLoading: (loading: boolean) => void;
   setImportProgress: (progress: number, stage: string) => void;
   setLanguage: (lang: Lang) => void;
@@ -473,6 +482,18 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   removeSeedPoint: (index) =>
     set((s) => ({ seedPoints: s.seedPoints.filter((_, i) => i !== index) })),
   setSeedEraseMode: (v) => set({ seedEraseMode: v }),
+  suggestedSeeds: [],
+  setSuggestedSeeds: (seeds) => set({ suggestedSeeds: seeds }),
+  acceptSuggestedSeed: (index) =>
+    set((s) => {
+      const picked = s.suggestedSeeds[index];
+      if (!picked) return {};
+      return {
+        seedPoints: [...s.seedPoints, picked],
+        suggestedSeeds: s.suggestedSeeds.filter((_, i) => i !== index),
+      };
+    }),
+  clearSuggestedSeeds: () => set({ suggestedSeeds: [] }),
   setLoading: (loading) => set({ isLoading: loading }),
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),
   setLanguage: (lang) => set({ language: lang }),

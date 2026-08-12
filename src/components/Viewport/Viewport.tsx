@@ -748,6 +748,8 @@ function MeshDisplay() {
   const seedEraseMode = useAppStore((s) => s.seedEraseMode);
   const removeSeedPoint = useAppStore((s) => s.removeSeedPoint);
   const setSeedEraseMode = useAppStore((s) => s.setSeedEraseMode);
+  const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
+  const acceptSuggestedSeed = useAppStore((s) => s.acceptSuggestedSeed);
   const { buildGeometry, publishGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
   const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
@@ -1491,6 +1493,37 @@ function MeshDisplay() {
           }
           return;
         }
+        // Accept a suggested (ghost) seed: if the click lands near a suggestion,
+        // move that exact point into the real seeds instead of raycast-adding a
+        // fresh one (which could land slightly off the suggested centroid).
+        // Skip if it would duplicate an existing real seed.
+        if (suggestedSeeds.length > 0) {
+          const tol = dotSize * 4;
+          let best = -1;
+          let bestD = Infinity;
+          for (let i = 0; i < suggestedSeeds.length; i++) {
+            const s = suggestedSeeds[i];
+            const d = Math.hypot(local.point.x - s.x, local.point.y - s.y, local.point.z - s.z);
+            if (d < bestD) {
+              bestD = d;
+              best = i;
+            }
+          }
+          if (best >= 0 && bestD <= tol) {
+            const picked = suggestedSeeds[best];
+            const dup = seedPoints.some(
+              (p) => Math.hypot(p.x - picked.x, p.y - picked.y, p.z - picked.z) <= tol
+            );
+            if (dup) {
+              acceptSuggestedSeed(best); // removes the suggestion, no new seed
+              setStatusMessage(t("seed.acceptDup"));
+            } else {
+              acceptSuggestedSeed(best);
+              setStatusMessage(t("seed.accepted", seedPoints.length + 1));
+            }
+            return;
+          }
+        }
         (async () => {
           try {
             const res = await manualRegionAddPoint(
@@ -1814,7 +1847,7 @@ function MeshDisplay() {
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, suggestedSeeds, acceptSuggestedSeed]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {
@@ -2027,6 +2060,16 @@ function MeshDisplay() {
             <meshBasicMaterial
               color={seedEraseMode ? "#ff4d4f" : i === 0 ? "#00e5ff" : "#ffd400"}
             />
+          </mesh>
+        ))}
+      {/* Suggested (ghost) seeds for the seeded-watershed tool (iteration 52).
+          Advisory only: semi-transparent grey, slightly larger than real seeds.
+          Clicking one accepts it (handled in the seed click branch above). */}
+      {isSeedTool &&
+        suggestedSeeds.map((p, i) => (
+          <mesh key={`sug-${i}`} position={[p.x, p.y, p.z]}>
+            <sphereGeometry args={[dotSize * 2.4, 12, 12]} />
+            <meshBasicMaterial color="#9aa0a6" transparent opacity={0.5} />
           </mesh>
         ))}
     </group>

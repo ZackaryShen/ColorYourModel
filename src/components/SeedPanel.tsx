@@ -12,12 +12,29 @@ export function SeedPanel() {
   const clearSeedPoints = useAppStore((s) => s.clearSeedPoints);
   const seedEraseMode = useAppStore((s) => s.seedEraseMode);
   const setSeedEraseMode = useAppStore((s) => s.setSeedEraseMode);
+  const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
+  const setSuggestedSeeds = useAppStore((s) => s.setSuggestedSeeds);
+  const clearSuggestedSeeds = useAppStore((s) => s.clearSuggestedSeeds);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const { seedGrow } = useTauriCommand();
+  const { seedGrow, recommendSeeds } = useTauriCommand();
 
   const [barrierDeg, setBarrierDeg] = useState(45);
   const [optimizer, setOptimizer] = useState(false);
   const [growing, setGrowing] = useState(false);
+  const [recommending, setRecommending] = useState(false);
+  const [suggestCount, setSuggestCount] = useState(12);
+
+  const onRecommend = async () => {
+    setRecommending(true);
+    try {
+      const seeds = await recommendSeeds(suggestCount);
+      setSuggestedSeeds(seeds);
+    } catch {
+      // error already surfaced via status message in recommendSeeds
+    } finally {
+      setRecommending(false);
+    }
+  };
 
   const onGrow = async () => {
     if (seedPoints.length === 0) {
@@ -49,7 +66,11 @@ export function SeedPanel() {
     <div style={styles.panel}>
       <div style={styles.title}>🌱 {t("tool.seed")}</div>
       <div style={styles.hint}>
-        {seedEraseMode ? t("seed.eraseHint") : t("seed.hint")}
+        {seedEraseMode
+          ? t("seed.eraseHint")
+          : suggestedSeeds.length > 0
+            ? t("seed.suggestHint")
+            : t("seed.hint")}
       </div>
 
       <div style={styles.row}>
@@ -62,6 +83,31 @@ export function SeedPanel() {
           }}
         >
           🩹 {t("seed.eraseMode")}
+        </button>
+      </div>
+
+      <div style={styles.row}>
+        <span style={styles.label}>{t("seed.suggestCount")}</span>
+        <input
+          type="range"
+          min={2}
+          max={40}
+          value={suggestCount}
+          onChange={(e) => setSuggestCount(Number(e.target.value))}
+          style={{ flex: 1 }}
+        />
+        <span style={styles.val}>{suggestCount}</span>
+      </div>
+      <div style={styles.row}>
+        <button onClick={onRecommend} disabled={recommending} style={styles.grow}>
+          {recommending ? "…" : t("seed.suggest")}
+        </button>
+        <button
+          onClick={clearSuggestedSeeds}
+          disabled={suggestedSeeds.length === 0}
+          style={styles.clear}
+        >
+          {t("seed.clearSuggest", suggestedSeeds.length)}
         </button>
       </div>
 

@@ -48,6 +48,12 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.eraseHint": { zh: "擦除模式：点击模型上任一红色种子即可删除它（只删那一个，不清空全部）。再点「擦除模式」退出。", en: "Eraser: click any red seed on the model to delete just that one (not all). Click Eraser again to exit." },
   "seed.erased": { zh: "已擦除 1 个种子（剩余 {0} 个）", en: "Erased 1 seed ({0} left)" },
   "seed.eraseMiss": { zh: "附近没有种子可擦除（请点在种子圆点上）", en: "No seed nearby to erase (click on a seed dot)" },
+  "seed.suggestCount": { zh: "推荐数量", en: "Suggest count" },
+  "seed.suggest": { zh: "💡 推荐种子", en: "💡 Suggest seeds" },
+  "seed.clearSuggest": { zh: "清空推荐 ({0})", en: "Clear suggestions ({0})" },
+  "seed.suggestHint": { zh: "灰色半透明点为推荐种子：点击它即接受（转为正式种子），不点则忽略。正式种子仍为黄色/青色。", en: "Grey ghost dots are suggestions: click one to accept it (becomes a real seed), or ignore it. Real seeds stay yellow/cyan." },
+  "seed.accepted": { zh: "已接受推荐种子（共 {0} 个）", en: "Accepted suggestion ({0} seeds total)" },
+  "seed.acceptDup": { zh: "该推荐点附近已有种子，已忽略", en: "A seed already exists near this suggestion; ignored" },
 
   // BrushSettings
   "brush.title": { zh: "画笔设置", en: "Brush Settings" },

@@ -395,6 +395,38 @@ export function useTauriCommand() {
     }
   };
 
+  /**
+   * Suggest seed locations for the seeded-watershed tool (iteration 52). The
+   * backend runs weighted FPS over face centroids and returns advisory points;
+   * the UI renders them as ghost markers the user accepts (click) or ignores.
+   * Returns the suggested SeedPoints for the store.
+   */
+  const recommendSeeds = async (count: number): Promise<SeedPoint[]> => {
+    log.info("useTauriCommand", `recommendSeeds(${count})`);
+    try {
+      setStatusMessage("正在推荐种子点位…");
+      // Backend returns { point: [x,y,z], faceIndex } — map to the JS SeedPoint
+      // shape ({x,y,z,faceIndex}). Tauri 2 only converts top-level invoke keys,
+      // so nested field names already match the Rust side (camelCase here).
+      const raw = await invoke<Array<{ point: [number, number, number]; faceIndex: number }>>(
+        "recommend_seeds",
+        { count }
+      );
+      const seeds: SeedPoint[] = raw.map((r) => ({
+        x: r.point[0],
+        y: r.point[1],
+        z: r.point[2],
+        faceIndex: r.faceIndex,
+      }));
+      setStatusMessage(`已推荐 ${seeds.length} 个候选种子（点击接受）`);
+      return seeds;
+    } catch (e) {
+      log.error("useTauriCommand", "recommendSeeds failed", { error: String(e) });
+      setStatusMessage(`推荐种子失败：${e}`);
+      throw e;
+    }
+  };
+
   return {
     loadModel,
     autoSegmentV2,
@@ -406,6 +438,7 @@ export function useTauriCommand() {
     splitSegment,
     resegmentRegion,
     seedGrow,
+    recommendSeeds,
     manualRegionAddPoint,
     finalizeManualRegion,
     undo,
