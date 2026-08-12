@@ -51,7 +51,20 @@ pub fn export_3mf_command(
     let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
 
-    let output_path = PathBuf::from(&path);
+    let mut output_path = PathBuf::from(&path);
+    // Tauri's save dialog does not append the extension; guarantee a .3mf
+    // suffix so the file is visible / openable as a 3MF (REF: export broken
+    // report — bytes were written but under a suffix-less name).
+    if output_path.extension().and_then(|e| e.to_str()) != Some("3mf") {
+        let mut name = output_path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "model".to_string());
+        if !name.to_lowercase().ends_with(".3mf") {
+            name.push_str(".3mf");
+        }
+        output_path.set_file_name(name);
+    }
     export_3mf(mesh, &output_path, selection.as_ref())?;
 
     Ok(format!("Exported to {}", output_path.display()))

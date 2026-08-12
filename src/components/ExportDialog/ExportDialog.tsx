@@ -139,7 +139,13 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         defaultPath: "model.3mf",
       });
       if (path) {
-        await export3mf(path, selection);
+        // Tauri's save dialog does NOT auto-append the extension, so a user
+        // who types "mymodel" would otherwise get a file named "mymodel"
+        // with no suffix — invisible when filtering for *.3mf. Force it.
+        const outPath = path.toLowerCase().endsWith(".3mf")
+          ? path
+          : `${path}.3mf`;
+        await export3mf(outPath, selection);
         setLastExportSelection({
           machineId,
           nozzleDiameter: nozzle,

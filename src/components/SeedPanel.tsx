@@ -23,11 +23,13 @@ export function SeedPanel() {
   const [growing, setGrowing] = useState(false);
   const [recommending, setRecommending] = useState(false);
   const [suggestCount, setSuggestCount] = useState(12);
+  const [curvWeight, setCurvWeight] = useState(1.0);
+  const [concWeight, setConcWeight] = useState(1.0);
 
   const onRecommend = async () => {
     setRecommending(true);
     try {
-      const seeds = await recommendSeeds(suggestCount);
+      const seeds = await recommendSeeds(suggestCount, curvWeight, concWeight);
       setSuggestedSeeds(seeds);
     } catch {
       // error already surfaced via status message in recommendSeeds
@@ -98,6 +100,38 @@ export function SeedPanel() {
         />
         <span style={styles.val}>{suggestCount}</span>
       </div>
+
+      <div style={styles.row}>
+        <span style={styles.label} title={t("seed.weightCurvHint")}>
+          {t("seed.weightCurv")}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={2}
+          step={0.1}
+          value={curvWeight}
+          onChange={(e) => setCurvWeight(Number(e.target.value))}
+          style={{ flex: 1 }}
+        />
+        <span style={styles.val}>{curvWeight.toFixed(1)}</span>
+      </div>
+      <div style={styles.row}>
+        <span style={styles.label} title={t("seed.weightConcHint")}>
+          {t("seed.weightConc")}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={2}
+          step={0.1}
+          value={concWeight}
+          onChange={(e) => setConcWeight(Number(e.target.value))}
+          style={{ flex: 1 }}
+        />
+        <span style={styles.val}>{concWeight.toFixed(1)}</span>
+      </div>
+
       <div style={styles.row}>
         <button onClick={onRecommend} disabled={recommending} style={styles.grow}>
           {recommending ? "…" : t("seed.suggest")}

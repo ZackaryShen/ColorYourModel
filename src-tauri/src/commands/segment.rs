@@ -12,7 +12,9 @@ use crate::segment::manual::{
 use crate::segment::sdf::segment_by_sdf;
 use crate::segment::split::{split_segment as split_segment_impl, SplitMethod, SplitResult};
 use crate::segment::resegment::resegment_region as resegment_region_impl;
-use crate::segment::recommend::{recommend_seeds as backend_recommend_seeds, SeedSuggestion};
+use crate::segment::recommend::{
+    recommend_seeds as backend_recommend_seeds, RecommendWeights, SeedSuggestion,
+};
 use crate::segment::seeded::{seed_grow as backend_seed_grow, SeedGrowParams, SeedInput};
 use crate::segment::{run_segmentation, SegmentationAlgorithm};
 
@@ -548,12 +550,23 @@ pub fn seed_grow(
 #[tauri::command]
 pub fn recommend_seeds(
     count: usize,
+    curvature: f32,
+    concavity: f32,
     state: State<'_, AppState>,
 ) -> Result<Vec<SeedSuggestion>, String> {
-    log::info!("[cmd:recommend_seeds] count={}", count);
+    log::info!(
+        "[cmd:recommend_seeds] count={} curvature={} concavity={}",
+        count,
+        curvature,
+        concavity
+    );
     let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
-    let suggestions = backend_recommend_seeds(mesh, count);
+    let weights = RecommendWeights {
+        curvature,
+        concavity,
+    };
+    let suggestions = backend_recommend_seeds(mesh, count, weights);
     log::info!("[cmd:recommend_seeds] done: {} suggestions", suggestions.len());
     Ok(suggestions)
 }

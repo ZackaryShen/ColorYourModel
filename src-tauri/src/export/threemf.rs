@@ -22,7 +22,7 @@ use super::project_config::{
     build_project_settings_config, build_selected_machine_config, build_selected_process_config,
     filament_preset_path, MACHINE_PRESET_PATH, PROCESS_PRESET_PATH,
 };
-use super::quantize::quantize_face_colors;
+use super::quantize::{quantize_face_colors, Quantized};
 use crate::mesh::model::MeshModel;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
 use quick_xml::Writer;
@@ -52,7 +52,17 @@ pub fn export_3mf(
     output_path: &Path,
     selection: Option<&ExportSelection>,
 ) -> Result<(), String> {
-    let quantized = quantize_face_colors(&mesh.face_colors, MAX_EXTRUDER_SLOT as usize);
+    // An unpainted mesh (face_colors empty) still deserves to export — emit a
+    // single neutral slot for every face instead of hard-erroring. A painted
+    // mesh always has face_colors sized to faces (init_default_colors on load).
+    let quantized = if mesh.face_colors.is_empty() {
+        Quantized {
+            palette: vec![[200, 200, 200]],
+            face_slots: vec![1u8; mesh.faces.len()],
+        }
+    } else {
+        quantize_face_colors(&mesh.face_colors, MAX_EXTRUDER_SLOT as usize)
+    };
 
     if quantized.face_slots.len() != mesh.faces.len() {
         return Err(format!(

@@ -401,8 +401,15 @@ export function useTauriCommand() {
    * the UI renders them as ghost markers the user accepts (click) or ignores.
    * Returns the suggested SeedPoints for the store.
    */
-  const recommendSeeds = async (count: number): Promise<SeedPoint[]> => {
-    log.info("useTauriCommand", `recommendSeeds(${count})`);
+  const recommendSeeds = async (
+    count: number,
+    curvature: number,
+    concavity: number
+  ): Promise<SeedPoint[]> => {
+    log.info(
+      "useTauriCommand",
+      `recommendSeeds(${count}, curv=${curvature}, conc=${concavity})`
+    );
     try {
       setStatusMessage("正在推荐种子点位…");
       // Backend returns { point: [x,y,z], faceIndex } — map to the JS SeedPoint
@@ -410,7 +417,7 @@ export function useTauriCommand() {
       // so nested field names already match the Rust side (camelCase here).
       const raw = await invoke<Array<{ point: [number, number, number]; faceIndex: number }>>(
         "recommend_seeds",
-        { count }
+        { count, curvature, concavity }
       );
       const seeds: SeedPoint[] = raw.map((r) => ({
         x: r.point[0],

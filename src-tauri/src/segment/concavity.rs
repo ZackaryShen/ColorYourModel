@@ -176,7 +176,11 @@ fn vertex_gaussian_curvature(mesh: &MeshModel, vf: &[Vec<u32>]) -> Vec<f32> {
 /// sign test exactly. We cannot reuse that function's *return value* for the
 /// sign: it returns `ang` for concave and `ang × CONVEX_CREASE_WEIGHT` for
 /// convex — always positive, the concavity is in the branch, not in the sign.
-fn vertex_concavity(mesh: &MeshModel, normals: &[[f32; 3]], vf: &[Vec<u32>]) -> Vec<bool> {
+pub(crate) fn vertex_concavity(
+    mesh: &MeshModel,
+    normals: &[[f32; 3]],
+    vf: &[Vec<u32>],
+) -> Vec<bool> {
     let nv = mesh.vertices.len();
     let mut concave = vec![false; nv];
     // Collect all vertex → incident vertices (via faces).
