@@ -1,6 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { MeshData, PaintTool, Segment } from "../types/mesh";
+import { MeshData, PaintTool, Segment, SeedPoint } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
 import type { Lang } from "../i18n";
 import {
@@ -127,6 +127,19 @@ interface AppStore {
   markHistoryDirty: () => void;
   resetHistory: () => void;
   setStatusMessage: (msg: string) => void;
+
+  // Seeded watershed tool (iteration 50): points the user clicks on the mesh.
+  // Each seed grows into one region; the backend fills the rest by geometry.
+  seedPoints: SeedPoint[];
+  addSeedPoint: (p: SeedPoint) => void;
+  clearSeedPoints: () => void;
+  /** Iteration 51: eraser-mode toggle. While ON, clicking the mesh removes the
+   *  seed nearest the click (within a tolerance radius) instead of adding a new
+   *  one — so a misplaced seed can be fixed without clearing all of them.
+   *  Transient on purpose: NOT persisted (see partialize whitelist). */
+  seedEraseMode: boolean;
+  removeSeedPoint: (index: number) => void;
+  setSeedEraseMode: (v: boolean) => void;
   setLoading: (loading: boolean) => void;
   setImportProgress: (progress: number, stage: string) => void;
   setLanguage: (lang: Lang) => void;
@@ -452,6 +465,14 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   markHistoryDirty: () => set({ canUndo: true, canRedo: false }),
   resetHistory: () => set({ canUndo: false, canRedo: false }),
   setStatusMessage: (msg) => set({ statusMessage: msg }),
+
+  seedPoints: [],
+  addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),
+  clearSeedPoints: () => set({ seedPoints: [] }),
+  seedEraseMode: false,
+  removeSeedPoint: (index) =>
+    set((s) => ({ seedPoints: s.seedPoints.filter((_, i) => i !== index) })),
+  setSeedEraseMode: (v) => set({ seedEraseMode: v }),
   setLoading: (loading) => set({ isLoading: loading }),
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),
   setLanguage: (lang) => set({ language: lang }),

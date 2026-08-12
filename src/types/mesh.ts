@@ -35,6 +35,17 @@ export enum PaintTool {
   Eraser = "eraser",
   Segment = "segment",
   Lasso = "lasso",
+  Seed = "seed",
+}
+
+/// A user-placed seed for seeded watershed segmentation (iteration 50).
+/// `point` is the snapped 3D position (model-local); `faceIndex` is the face the
+/// raycaster hit, so the backend can re-snap exactly.
+export interface SeedPoint {
+  x: number;
+  y: number;
+  z: number;
+  faceIndex: number;
 }
 
 export interface SegmentResult {

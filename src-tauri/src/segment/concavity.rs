@@ -45,7 +45,7 @@ use crate::mesh::model::{MeshModel, Segment};
 use crate::segment::postprocess::{
     assemble_features, face_curvature, finalize_segments, log_normalize, refine_regions,
 };
-use crate::segment::sdf::{compute_sdf_inner, oriented_normals};
+use crate::segment::sdf::compute_sdf_inner;
 
 /// Concave-vertex β (paper: 0.01) — a concave fold contributes almost nothing
 /// to the edge weight, so the field barely resists crossing it; isolines/thresholds

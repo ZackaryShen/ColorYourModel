@@ -3,6 +3,13 @@ import { useAppStore } from "../../store/appStore";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useT } from "../../i18n";
 import { segmentColorHex } from "../../utils/segmentPalette";
+import {
+  buildAlgorithm,
+  DEFAULT_ALGORITHM_PARAMS,
+  ALGORITHM_KINDS,
+  type AlgorithmKind,
+  type AlgorithmParams,
+} from "../../types/segment";
 
 export function SegmentsPanel() {
   const t = useT();
@@ -10,7 +17,7 @@ export function SegmentsPanel() {
   const selectedSegment = useAppStore((s) => s.selectedSegment);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const { renameSegment, mergeSegments, splitSegment } = useTauriCommand();
+  const { renameSegment, mergeSegments, splitSegment, resegmentRegion } = useTauriCommand();
 
   // Ordered multi-selection for merging. `picked[0]` is the anchor and becomes
   // the surviving region — the target is never inferred from size or label,
@@ -30,6 +37,14 @@ export function SegmentsPanel() {
   const [splitFor, setSplitFor] = useState<number | null>(null);
   const [splitThreshold, setSplitThreshold] = useState(30);
   const [splitting, setSplitting] = useState(false);
+
+  // Which row has its re-segment form open, the algorithm + k chosen for it, and
+  // an in-flight flag. Mirrors the split form but drives `resegmentRegion`, which
+  // re-runs a full segmentation algorithm *inside* the selected region only.
+  const [resegmentFor, setResegmentFor] = useState<number | null>(null);
+  const [resegKind, setResegKind] = useState<AlgorithmKind>("concavity");
+  const [resegK, setResegK] = useState(6);
+  const [resegmenting, setResegmenting] = useState(false);
 
   // Which row is in edit mode, and the text being typed. Held here rather than
   // per-row so only one row can ever be open: two open editors would both
@@ -75,6 +90,14 @@ export function SegmentsPanel() {
     }
   }, [segments, splitFor]);
 
+  // Same hazard for the re-segment form: a re-run, undo, or merge can dissolve
+  // the targeted region; the form must not keep pointing at a stale label.
+  useEffect(() => {
+    if (resegmentFor !== null && !segments.some((s) => s.id === resegmentFor)) {
+      setResegmentFor(null);
+    }
+  }, [segments, resegmentFor]);
+
   const target = picked.length >= 2 ? segments.find((s) => s.id === picked[0]) : undefined;
 
   const toggle = (id: number, additive: boolean) => {
@@ -116,6 +139,65 @@ export function SegmentsPanel() {
     setSelectedSegment(result.keptLabel);
   };
 
+  // Human-readable label for an algorithm kind, reused from the intelligent
+  // segmentation panel's i18n keys (explicit literals keep t() type-safe).
+  const ALGO_LABELS: Record<AlgorithmKind, string> = {
+    curvatureKMeans: t("segmentPanel.algo.curvatureKMeans"),
+    shapeDiameter: t("segmentPanel.algo.shapeDiameter"),
+    dihedral: t("segmentPanel.algo.dihedral"),
+    sdfGraphCut: t("segmentPanel.algo.sdfGraphCut"),
+    concavity: t("segmentPanel.algo.concavity"),
+    convexDecomposition: t("segmentPanel.algo.convexDecomposition"),
+    curveSkeleton: t("segmentPanel.algo.curveSkeleton"),
+  };
+  const algoLabel = (k: AlgorithmKind): string => ALGO_LABELS[k];
+
+  const runResegment = async (id: number) => {
+    if (resegmenting) return;
+    setResegmenting(true);
+    try {
+      // Start from the default algorithm params and override the one field the
+      // chosen algorithm reads as "k" (block count, hull count, or angle).
+      const params = JSON.parse(
+        JSON.stringify(DEFAULT_ALGORITHM_PARAMS)
+      ) as AlgorithmParams;
+      switch (resegKind) {
+        case "dihedral":
+          params.dihedral.angleThreshold = resegK;
+          break;
+        case "shapeDiameter":
+          params.shapeDiameter.k = resegK;
+          break;
+        case "curvatureKMeans":
+          params.curvatureKMeans.k = resegK;
+          break;
+        case "sdfGraphCut":
+          params.sdfGraphCut.k = resegK;
+          break;
+        case "concavity":
+          params.concavity.k = resegK;
+          break;
+        case "convexDecomposition":
+          params.convexDecomposition.maxHulls = resegK;
+          break;
+        case "curveSkeleton":
+          params.curveSkeleton.maxHulls = resegK;
+          break;
+      }
+      const algorithm = buildAlgorithm(resegKind, params);
+      const result = await resegmentRegion(id, algorithm);
+      if (!result) return;
+      setStatusMessage(t("segments.resegmentDone", result.segments.length));
+      // The target label no longer exists; clear the (now stale) selection.
+      setSelectedSegment(null);
+    } catch {
+      // error already surfaced by useTauriCommand via status message
+    } finally {
+      setResegmenting(false);
+      setResegmentFor(null);
+    }
+  };
+
   const beginEdit = (id: number, current: string) => {
     closingRef.current = false;
     setDraft(current);
@@ -151,6 +233,7 @@ export function SegmentsPanel() {
           const editing = editingId === seg.id;
           const pickIndex = picked.indexOf(seg.id);
           const splitOpen = splitFor === seg.id && !editing;
+          const resegOpen = resegmentFor === seg.id && !editing;
           return (
             <Fragment key={seg.id}>
               <div
@@ -201,7 +284,7 @@ export function SegmentsPanel() {
                   <span style={styles.itemName}>{seg.name}</span>
                 )}
                 <span style={styles.itemCount}>{seg.faceCount}</span>
-                {!editing && !splitOpen && (
+                {!editing && !splitOpen && !resegOpen && (
                   <button
                     title={t("segments.splitHint")}
                     onClick={(e) => {
@@ -211,6 +294,18 @@ export function SegmentsPanel() {
                     style={styles.splitButton}
                   >
                     {t("segments.split")}
+                  </button>
+                )}
+                {!editing && !splitOpen && !resegOpen && (
+                  <button
+                    title={t("segments.resegmentHint")}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setResegmentFor(seg.id);
+                    }}
+                    style={styles.resegmentButton}
+                  >
+                    {t("segments.resegment")}
                   </button>
                 )}
               </div>
@@ -234,6 +329,41 @@ export function SegmentsPanel() {
                     {t("segments.splitAlongCreases")}
                   </button>
                   <button onClick={() => setSplitFor(null)} style={styles.splitCancel}>
+                    ×
+                  </button>
+                </div>
+              )}
+              {resegOpen && (
+                <div style={styles.resegForm} onClick={(e) => e.stopPropagation()}>
+                  <span style={styles.splitFormLabel}>{t("segments.resegmentAlgo")}</span>
+                  <select
+                    value={resegKind}
+                    onChange={(e) => setResegKind(e.target.value as AlgorithmKind)}
+                    style={styles.resegSelect}
+                  >
+                    {ALGORITHM_KINDS.map((k) => (
+                      <option key={k} value={k}>
+                        {algoLabel(k)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="range"
+                    min={1}
+                    max={48}
+                    value={resegK}
+                    onChange={(e) => setResegK(Number(e.target.value))}
+                    style={{ width: 80 }}
+                  />
+                  <span style={styles.splitThreshVal}>{resegK}</span>
+                  <button
+                    onClick={() => void runResegment(seg.id)}
+                    disabled={resegmenting}
+                    style={styles.resegGo}
+                  >
+                    {t("segments.resegmentRun")}
+                  </button>
+                  <button onClick={() => setResegmentFor(null)} style={styles.splitCancel}>
                     ×
                   </button>
                 </div>
@@ -387,6 +517,46 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--text-2, #bbbbbb)",
     fontSize: 12,
     lineHeight: 1,
+    cursor: "pointer",
+  },
+  // "Re-cut" affordance — sits next to the per-row Split button.
+  resegmentButton: {
+    flexShrink: 0,
+    marginLeft: 4,
+    padding: "1px 6px",
+    borderRadius: 3,
+    border: "1px solid var(--accent, #4a9eff)",
+    background: "transparent",
+    color: "var(--accent, #4a9eff)",
+    fontSize: 11,
+    cursor: "pointer",
+  },
+  // Sub-row shown under the target region while its re-segment form is open.
+  resegForm: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 8px",
+    marginLeft: 18,
+    borderRadius: 4,
+    background: "var(--bg-input, #1e1e1e)",
+    flexWrap: "wrap",
+  },
+  resegSelect: {
+    background: "var(--bg-input, #1e1e1e)",
+    color: "var(--text-1, #dddddd)",
+    border: "1px solid var(--text-3, #888888)",
+    borderRadius: 3,
+    fontSize: 11,
+    padding: "1px 2px",
+  },
+  resegGo: {
+    padding: "2px 8px",
+    borderRadius: 3,
+    border: "1px solid var(--accent, #4a9eff)",
+    background: "transparent",
+    color: "var(--accent, #4a9eff)",
+    fontSize: 11,
     cursor: "pointer",
   },
 };

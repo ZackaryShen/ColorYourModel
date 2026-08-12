@@ -10,6 +10,7 @@ import { useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
 import type { HistoryResult } from "../../types/mesh";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
+import { SeedPanel } from "../SeedPanel";
 import { resolveSegmentStage } from "../../segmentStages";
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
 
@@ -741,6 +742,12 @@ function MeshDisplay() {
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setLastPaintDebug = useAppStore((s) => s.setLastPaintDebug);
   const setHoverProbe = useAppStore((s) => s.setHoverProbe);
+  const addSeedPoint = useAppStore((s) => s.addSeedPoint);
+  const seedPoints = useAppStore((s) => s.seedPoints);
+  const clearSeedPoints = useAppStore((s) => s.clearSeedPoints);
+  const seedEraseMode = useAppStore((s) => s.seedEraseMode);
+  const removeSeedPoint = useAppStore((s) => s.removeSeedPoint);
+  const setSeedEraseMode = useAppStore((s) => s.setSeedEraseMode);
   const { buildGeometry, publishGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
   const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
@@ -776,6 +783,7 @@ function MeshDisplay() {
 
   // Lasso (manual region) state
   const isLassoTool = activeTool === "lasso";
+  const isSeedTool = activeTool === "seed";
   // View/Navigate mode: left button rotates the camera (no tool action).
   const isViewTool = activeTool === "view";
   // Tools that TARGET a partition and therefore show the whole-segment highlight
@@ -1456,6 +1464,54 @@ function MeshDisplay() {
         handleLassoClick(local);
         return;
       }
+      if (isSeedTool) {
+        const local = getLocalHit(e.clientX, e.clientY);
+        // Off-model click: let OrbitControls rotate.
+        if (!local) return;
+        // Eraser mode (iteration 51): remove the nearest existing seed instead
+        // of adding one. Tolerance ~0.0032 × bbox diagonal — same order as the
+        // lasso closeThreshold (0.004) so it feels like "click on the dot".
+        if (seedEraseMode) {
+          const tol = dotSize * 4;
+          let best = -1;
+          let bestD = Infinity;
+          for (let i = 0; i < seedPoints.length; i++) {
+            const s = seedPoints[i];
+            const d = Math.hypot(local.point.x - s.x, local.point.y - s.y, local.point.z - s.z);
+            if (d < bestD) {
+              bestD = d;
+              best = i;
+            }
+          }
+          if (best >= 0 && bestD <= tol) {
+            removeSeedPoint(best);
+            setStatusMessage(t("seed.erased", seedPoints.length - 1));
+          } else {
+            setStatusMessage(t("seed.eraseMiss"));
+          }
+          return;
+        }
+        (async () => {
+          try {
+            const res = await manualRegionAddPoint(
+              [local.point.x, local.point.y, local.point.z],
+              local.faceIndex
+            );
+            if (res) {
+              addSeedPoint({
+                x: res.snapped[0],
+                y: res.snapped[1],
+                z: res.snapped[2],
+                faceIndex: local.faceIndex,
+              });
+              setStatusMessage(t("seed.count", seedPoints.length + 1));
+            }
+          } catch (err) {
+            log.error("Viewport", "seed add failed", { error: String(err) });
+          }
+        })();
+        return;
+      }
       // Paint-like tools (brush/segment/fill/picker): LEFT only paints when the
       // cursor is over the model. Over empty space LEFT stays ROTATE (handled by
       // OrbitControls via the context-sensitive mapping) — so a drag on empty
@@ -1758,12 +1814,32 @@ function MeshDisplay() {
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, meshData, vertexData, segmentIds, setHoveredSegment]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {
     if (isLassoTool) setStatusMessage(t("lasso.hint"));
   }, [isLassoTool, setStatusMessage, t]);
+
+  // Show seed usage hint when the seed tool is selected.
+  useEffect(() => {
+    if (isSeedTool) setStatusMessage(t("seed.hint"));
+  }, [isSeedTool, setStatusMessage, t]);
+
+  // Seed keyboard: Esc / Backspace clears all placed seeds (and exits eraser
+  // mode so the user isn't left stuck in a delete-only state).
+  useEffect(() => {
+    if (!isSeedTool) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Backspace") {
+        clearSeedPoints();
+        setSeedEraseMode(false);
+        setStatusMessage(t("seed.clear"));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isSeedTool, clearSeedPoints, setSeedEraseMode, setStatusMessage, t]);
 
   // Lasso keyboard:
   //   Esc          → clear the whole in-progress loop
@@ -1941,6 +2017,18 @@ function MeshDisplay() {
           snap={lassoSnap}
         />
       )}
+      {/* Seed markers for the seeded-watershed tool (iteration 50).
+          In eraser mode (iteration 51) they turn red so the user can see which
+          ones the next click would delete. */}
+      {isSeedTool &&
+        seedPoints.map((p, i) => (
+          <mesh key={i} position={[p.x, p.y, p.z]}>
+            <sphereGeometry args={[dotSize * 1.6, 12, 12]} />
+            <meshBasicMaterial
+              color={seedEraseMode ? "#ff4d4f" : i === 0 ? "#00e5ff" : "#ffd400"}
+            />
+          </mesh>
+        ))}
     </group>
   );
 }
@@ -2361,6 +2449,7 @@ function IdleFrameloop() {
 export function Viewport() {
   const t = useT();
   const isLoaded = useAppStore((s) => s.isLoaded);
+  const activeTool = useAppStore((s) => s.activeTool);
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
@@ -2383,6 +2472,7 @@ export function Viewport() {
         {isLoaded && <MeshDisplay />}
         <AdaptiveGrid />
       </Canvas>
+      {isLoaded && activeTool === "seed" && <SeedPanel />}
       <ProgressBar />
       <SegmentToggle />
       <ControlsHelp />

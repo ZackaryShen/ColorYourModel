@@ -11,6 +11,8 @@ use crate::segment::manual::{
 };
 use crate::segment::sdf::segment_by_sdf;
 use crate::segment::split::{split_segment as split_segment_impl, SplitMethod, SplitResult};
+use crate::segment::resegment::resegment_region as resegment_region_impl;
+use crate::segment::seeded::{seed_grow as backend_seed_grow, SeedGrowParams, SeedInput};
 use crate::segment::{run_segmentation, SegmentationAlgorithm};
 
 /// Flatten per-face `[[r,g,b,a]; N]` into a flat `Vec<u8>` matching `MeshDataDto.faceColors`.
@@ -216,7 +218,7 @@ pub fn finalize_manual_region(
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let (_label, region) = backend_finalize_manual_region(mesh, &points, &face_indices)?;
+    let (_label, _region) = backend_finalize_manual_region(mesh, &points, &face_indices)?;
 
     // Emit completion
     let _ = app.emit(
@@ -427,5 +429,110 @@ pub async fn auto_segment_v2(
         segments,
         segment_labels: labels,
         face_colors: Vec::new(),
+    })
+}
+
+/// Re-run any segmentation algorithm on a single existing region, replacing it
+/// with the sub-regions the algorithm finds inside it. See
+/// `segment::resegment::resegment_region` — this command only wraps it with the
+/// same take/restore-mesh + progress-emit pattern as `auto_segment_v2` so the
+/// heavy work runs off the main thread and does not freeze the webview.
+#[tauri::command]
+pub async fn resegment_region(
+    label: u32,
+    algorithm: SegmentationAlgorithm,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SegmentResult, String> {
+    log::info!(
+        "[cmd:resegment_region] label={} algorithm={:?}",
+        label,
+        algorithm
+    );
+
+    let app_for_progress = app.clone();
+    let progress_cb: Box<ProgressFn> = Box::new(move |fraction: f32, stage: &str| {
+        let _ = app_for_progress.emit(
+            "segment-progress",
+            serde_json::json!({ "progress": fraction, "stage": stage }),
+        );
+    });
+
+    // Take the mesh out of the shared Mutex for the (potentially long) sub-mesh
+    // segmentation — mirror auto_segment_v2's rationale.
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
+    drop(mesh_guard);
+
+    let inner = resegment_region_impl(&mut mesh, label, &algorithm, &*progress_cb)
+        .map_err(|e| e.to_string())?;
+
+    let _ = app.emit(
+        "segment-progress",
+        serde_json::json!({ "progress": 1.0, "stage": "done" }),
+    );
+    log::info!(
+        "[cmd:resegment_region] done: {} sub-regions ({} faces moved)",
+        inner.region_count,
+        inner.moved_faces
+    );
+
+    // Re-segmentation is a local edit, so unlike auto_segment_v2 it must NOT
+    // clear history — `resegment_region_impl` already recorded an `OpKind::Split`
+    // undo op, letting the user undo the refine just like a split.
+    let labels = mesh.segment_labels.clone();
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    *mesh_guard = Some(mesh);
+
+    Ok(SegmentResult {
+        segments: inner.segments,
+        segment_labels: labels,
+        face_colors: Vec::new(),
+    })
+}
+
+/// Seeded watershed segmentation (iteration 50): the user drops a few seed points
+/// (one per region) and the algorithm grows each into a region using feature-edge
+/// barriers + geodesic nearest-seed Voronoi, with a fallback that fills any
+/// unseeded patch from the geodesic-nearest seed across barriers.
+#[tauri::command]
+pub fn seed_grow(
+    seeds: Vec<SeedInput>,
+    barrier_deg: f32,
+    optimizer: bool,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SegmentResult, String> {
+    log::info!(
+        "[cmd:seed_grow] seeds={} barrier_deg={:.1} optimizer={}",
+        seeds.len(),
+        barrier_deg,
+        optimizer
+    );
+
+    let params = SeedGrowParams {
+        barrier_deg,
+        optimizer,
+    };
+
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+
+    let inner = backend_seed_grow(mesh, &seeds, &params).map_err(|e| e.to_string())?;
+
+    let _ = app.emit(
+        "segment-progress",
+        serde_json::json!({ "progress": 1.0, "stage": "done" }),
+    );
+    log::info!(
+        "[cmd:seed_grow] done: {} regions ({} faces moved)",
+        inner.region_count,
+        inner.moved_faces
+    );
+
+    Ok(SegmentResult {
+        segments: inner.segments,
+        segment_labels: inner.segment_labels,
+        face_colors: flatten_face_colors(&mesh.face_colors),
     })
 }

@@ -25,6 +25,7 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.Eraser, icon: "🧹", i18nKey: "tool.eraser" },
   { tool: PaintTool.Segment, icon: "✂️", i18nKey: "tool.segment" },
   { tool: PaintTool.Lasso, icon: "📍", i18nKey: "tool.lasso" },
+  { tool: PaintTool.Seed, icon: "🌱", i18nKey: "tool.seed" },
 ];
 
 export function Toolbar() {

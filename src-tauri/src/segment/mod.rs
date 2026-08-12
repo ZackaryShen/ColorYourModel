@@ -8,7 +8,9 @@ pub mod manual;
 pub mod metrics;
 pub mod postprocess;
 pub mod sdf;
+pub mod seeded;
 pub mod split;
+pub mod resegment;
 
 use serde::{Deserialize, Serialize};
 

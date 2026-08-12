@@ -32,6 +32,8 @@ pub fn run() {
             commands::segment::rename_segment,
             commands::segment::merge_segments,
             commands::segment::split_segment,
+            commands::segment::resegment_region,
+            commands::segment::seed_grow,
             commands::paint::brush_paint,
             commands::paint::fill_paint,
             commands::paint::fill_segment_paint,

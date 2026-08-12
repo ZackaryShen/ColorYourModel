@@ -34,6 +34,20 @@ const dict: Record<string, Record<Lang, string>> = {
   "tool.eraser": { zh: "🧹 橡皮 — 擦除颜色，恢复为默认底色", en: "🧹 Eraser — restore the default base color" },
   "tool.segment": { zh: "✂️ 分区画笔 — 拖拽涂选面，松开鼠标创建分区", en: "✂️ Segment Brush — drag to paint faces, release to create region" },
   "tool.lasso": { zh: "📍 选点套索 — 依次点选顶点围合区域，点击起点闭合", en: "📍 Lasso — click vertices to outline a region; click the start point to close" },
+  "tool.seed": { zh: "🌱 种子分区 — 在模型上点选若干种子，算法按几何智能长成区域", en: "🌱 Seed — drop seed points; the algorithm grows each into a region by geometry" },
+  "seed.hint": { zh: "种子分区：在模型上点击放置种子（每点一个区域），调节屏障角度后点「生长」。未点的区域由最近种子兜底。Backspace/Esc 清空。", en: "Seed: click to place seeds (one region each), tune the barrier angle, then Grow. Un-seeded patches fall back to the nearest seed. Backspace/Esc clears." },
+  "seed.barrier": { zh: "屏障角度 (°)", en: "Barrier angle (°)" },
+  "seed.barrierHint": { zh: "大于此二面角的棱成为硬边界，区域不会越过折缝", en: "Edges above this dihedral angle are hard boundaries the regions won't cross" },
+  "seed.optimizer": { zh: "智能优化（合并微小区域）", en: "Optimize (merge tiny regions)" },
+  "seed.grow": { zh: "🌱 生长", en: "🌱 Grow" },
+  "seed.clear": { zh: "清空种子", en: "Clear seeds" },
+  "seed.count": { zh: "已放置 {0} 个种子", en: "{0} seeds placed" },
+  "seed.needOne": { zh: "请至少放置一个种子", en: "Place at least one seed first" },
+  "seed.done": { zh: "种子分区完成：{0} 个区域", en: "Seed partition done: {0} regions" },
+  "seed.eraseMode": { zh: "擦除模式", en: "Eraser" },
+  "seed.eraseHint": { zh: "擦除模式：点击模型上任一红色种子即可删除它（只删那一个，不清空全部）。再点「擦除模式」退出。", en: "Eraser: click any red seed on the model to delete just that one (not all). Click Eraser again to exit." },
+  "seed.erased": { zh: "已擦除 1 个种子（剩余 {0} 个）", en: "Erased 1 seed ({0} left)" },
+  "seed.eraseMiss": { zh: "附近没有种子可擦除（请点在种子圆点上）", en: "No seed nearby to erase (click on a seed dot)" },
 
   // BrushSettings
   "brush.title": { zh: "画笔设置", en: "Brush Settings" },
@@ -62,6 +76,11 @@ const dict: Record<string, Record<Lang, string>> = {
   "segments.splitThreshold": { zh: "棱角阈值 (°)", en: "Crease threshold (°)" },
   "segments.splitAlongCreases": { zh: "按棱角拆分", en: "Split along creases" },
   "segments.splitDone": { zh: "已拆分：{0} 个面移到新分区", en: "Split: {0} faces moved to a new region" },
+  "segments.resegment": { zh: "再切", en: "Re-cut" },
+  "segments.resegmentHint": { zh: "只用某算法对这个分区内部重新切分（适合凸分解切不开的管状肢体）", en: "Re-run an algorithm inside this region only (good for tubular limbs the convex decomposition left whole)" },
+  "segments.resegmentRun": { zh: "重新切分", en: "Re-segment" },
+  "segments.resegmentDone": { zh: "再分区完成：{0} 个新区域", en: "Re-segmented into {0} new regions" },
+  "segments.resegmentAlgo": { zh: "算法", en: "Algorithm" },
 
   // Viewport — ControlsHelp
   "controls.leftPaint": { zh: "🖱️ 左键: 旋转(查看) / Alt+左键: 旋转", en: "🖱️ Left: Rotate (View) / Alt+Left: Rotate" },

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState } from "../types/mesh";
+import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
@@ -342,6 +342,59 @@ export function useTauriCommand() {
     }
   };
 
+  /**
+   * Re-run any algorithm on a single region, splitting it into sub-regions.
+   * Returns the refreshed SegmentResult so the panel can update labels; the
+   * backend records an undo op, so this is reversible like a split.
+   */
+  const resegmentRegion = async (
+    label: number,
+    algorithm: SegmentationAlgorithm
+  ): Promise<SegmentResult> => {
+    log.info("useTauriCommand", `resegmentRegion(${label}, ${algorithm.type})`);
+    try {
+      setStatusMessage("区域内再分区中…");
+      const result = await invoke<SegmentResult>("resegment_region", { label, algorithm });
+      updateSegmentLabels(result.segmentLabels, result.segments);
+      setStatusMessage(`再分区完成：${result.segments.length} 个区域`);
+      return result;
+    } catch (e) {
+      log.error("useTauriCommand", "resegmentRegion failed", { error: String(e) });
+      setStatusMessage(`再分区失败：${e}`);
+      throw e;
+    }
+  };
+
+  /**
+   * Seeded watershed segmentation (iteration 50). `seeds` are the user-placed
+   * points (one region each); the backend grows them by feature-edge barriers +
+   * geodesic nearest-seed Voronoi, filling any un-seeded patch from the
+   * geodesic-nearest seed across barriers. Returns the refreshed SegmentResult.
+   */
+  const seedGrow = async (
+    seeds: SeedPoint[],
+    barrierDeg: number,
+    optimizer: boolean
+  ): Promise<SegmentResult> => {
+    log.info("useTauriCommand", `seedGrow(${seeds.length} seeds, barrier=${barrierDeg}°)`);
+    try {
+      setStatusMessage("种子生长分区中…");
+      // Map the JS SeedPoint shape ({x,y,z,faceIndex}) to the Rust SeedInput
+      // ({point, face_index}) the command expects. Tauri 2 only converts
+      // top-level invoke keys (camelCase↔snake_case); nested struct fields
+      // must already match the Rust side, so we spell `face_index` here.
+      const payload = seeds.map((s) => ({ point: [s.x, s.y, s.z], face_index: s.faceIndex }));
+      const result = await invoke<SegmentResult>("seed_grow", { seeds: payload, barrierDeg, optimizer });
+      updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
+      setStatusMessage(`种子分区完成：${result.segments.length} 个区域`);
+      return result;
+    } catch (e) {
+      log.error("useTauriCommand", "seedGrow failed", { error: String(e) });
+      setStatusMessage(`种子分区失败：${e}`);
+      throw e;
+    }
+  };
+
   return {
     loadModel,
     autoSegmentV2,
@@ -351,6 +404,8 @@ export function useTauriCommand() {
     renameSegment,
     mergeSegments,
     splitSegment,
+    resegmentRegion,
+    seedGrow,
     manualRegionAddPoint,
     finalizeManualRegion,
     undo,

@@ -291,7 +291,7 @@ fn shortest_vertex_path_with_adj(
 
 /// The shared mesh edge (as an undirected (min,max) pair) between two faces,
 /// if they share exactly two vertices.
-fn shared_edge(mesh: &MeshModel, fi: u32, fj: u32) -> Option<(u32, u32)> {
+pub(crate) fn shared_edge(mesh: &MeshModel, fi: u32, fj: u32) -> Option<(u32, u32)> {
     let f = mesh.faces[fi as usize];
     let g = mesh.faces[fj as usize];
     let common: Vec<u32> = f.iter().copied().filter(|x| g.contains(x)).collect();

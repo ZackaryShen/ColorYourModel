@@ -34,3 +34,4 @@ petgraph = "0.6"
 # Logging
 log = "0.4"
 env_logger = "0.11"
+parry3d = "0.30.2"
