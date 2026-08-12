@@ -5,6 +5,7 @@ import { ColorPanel } from "./components/ColorPanel/ColorPanel";
 import { SegmentsPanel } from "./components/SegmentsPanel/SegmentsPanel";
 import { BrushSettings } from "./components/BrushSettings/BrushSettings";
 import { StatusBar } from "./components/StatusBar/StatusBar";
+import { DebugLogViewer } from "./components/DebugLogViewer";
 import { useAppStore } from "./store/appStore";
 
 function App() {
@@ -40,6 +41,10 @@ function App() {
 
       {/* Bottom status bar */}
       <StatusBar />
+
+      {/* In-app debug log viewer (iteration 59): release builds can't open
+          devtools, so logs surface here instead. */}
+      <DebugLogViewer />
     </div>
   );
 }
