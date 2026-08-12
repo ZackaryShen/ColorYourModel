@@ -3,6 +3,7 @@ import { persist, createJSONStorage, type StateStorage } from "zustand/middlewar
 import { MeshData, PaintTool, Segment, SeedPoint } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
 import type { Lang } from "../i18n";
+import { log } from "../utils/logger";
 import {
   sanitizeAlgorithmParams,
   isAlgorithmKind,
@@ -483,16 +484,32 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
     set((s) => ({ seedPoints: s.seedPoints.filter((_, i) => i !== index) })),
   setSeedEraseMode: (v) => set({ seedEraseMode: v }),
   suggestedSeeds: [],
-  setSuggestedSeeds: (seeds) => set({ suggestedSeeds: seeds }),
-  acceptSuggestedSeed: (index) =>
+  setSuggestedSeeds: (seeds) => {
+    log.info("store", "setSuggestedSeeds", { count: seeds.length, first: seeds[0] });
+    set({ suggestedSeeds: seeds });
+  },
+  acceptSuggestedSeed: (index) => {
+    log.info("store", "acceptSuggestedSeed enter", { index });
     set((s) => {
       const picked = s.suggestedSeeds[index];
-      if (!picked) return {};
+      if (!picked) {
+        log.warn("store", "acceptSuggestedSeed: index out of range", {
+          index,
+          count: s.suggestedSeeds.length,
+        });
+        return {};
+      }
+      log.info("store", "acceptSuggestedSeed: promoting suggestion to real seed", {
+        x: picked.x.toFixed(3),
+        y: picked.y.toFixed(3),
+        z: picked.z.toFixed(3),
+      });
       return {
         seedPoints: [...s.seedPoints, picked],
         suggestedSeeds: s.suggestedSeeds.filter((_, i) => i !== index),
       };
-    }),
+    });
+  },
   clearSuggestedSeeds: () => set({ suggestedSeeds: [] }),
   setLoading: (loading) => set({ isLoading: loading }),
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),

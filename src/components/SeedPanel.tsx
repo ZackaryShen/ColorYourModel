@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { useTauriCommand } from "../hooks/useTauriCommand";
 import { useT } from "../i18n";
+import { log } from "../utils/logger";
 
 /// Seeded-watershed control panel (iteration 50). Shown while the Seed tool is
 /// active. The user places seed points on the mesh (handled in Viewport), and
@@ -28,8 +29,14 @@ export function SeedPanel() {
 
   const onRecommend = async () => {
     setRecommending(true);
+    log.info("SeedPanel", "onRecommend click", {
+      suggestCount,
+      curvWeight,
+      concWeight,
+    });
     try {
       const seeds = await recommendSeeds(suggestCount, curvWeight, concWeight);
+      log.info("SeedPanel", "onRecommend received", { count: seeds.length });
       setSuggestedSeeds(seeds);
     } catch {
       // error already surfaced via status message in recommendSeeds
@@ -43,7 +50,7 @@ export function SeedPanel() {
       setStatusMessage(t("seed.needOne"));
       return;
     }
-    console.log("[SeedPanel] onGrow click", {
+    log.info("SeedPanel", "onGrow click", {
       seeds: seedPoints.length,
       barrierDeg,
       optimizer,
@@ -54,10 +61,14 @@ export function SeedPanel() {
     );
     try {
       const result = await seedGrow(seedPoints, barrierDeg, optimizer);
+      log.info("SeedPanel", "onGrow done", {
+        segments: result.segments.length,
+        movedFaces: result.segmentLabels.length,
+      });
       setStatusMessage(t("seed.done", result.segments.length));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error("[SeedPanel] seedGrow failed", e);
+      log.error("SeedPanel", "seedGrow failed", { error: msg });
       setStatusMessage(`🌱 种子分区失败：${msg}`);
     } finally {
       setGrowing(false);

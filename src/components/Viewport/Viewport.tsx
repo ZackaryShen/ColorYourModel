@@ -1479,9 +1479,23 @@ function MeshDisplay() {
         return;
       }
       if (isSeedTool) {
+        log.info("Viewport", "seed tool: pointer down", {
+          x: e.clientX,
+          y: e.clientY,
+          seedEraseMode,
+          suggestedCount: suggestedSeeds.length,
+          acceptedCount: seedPoints.length,
+        });
         const local = getLocalHit(e.clientX, e.clientY);
         // Off-model click: let OrbitControls rotate.
-        if (!local) return;
+        if (!local) {
+          log.info("Viewport", "seed click missed model — letting orbit rotate");
+          return;
+        }
+        log.info("Viewport", "seed click landed on model", {
+          hit: { x: local.point.x.toFixed(3), y: local.point.y.toFixed(3), z: local.point.z.toFixed(3) },
+          faceIndex: local.faceIndex,
+        });
         // Eraser mode (iteration 51): remove the nearest existing seed instead
         // of adding one. Tolerance ~0.0032 × bbox diagonal — same order as the
         // lasso closeThreshold (0.004) so it feels like "click on the dot".
@@ -1528,6 +1542,14 @@ function MeshDisplay() {
           const dup = seedPoints.some(
             (p) => Math.hypot(p.x - picked.x, p.y - picked.y, p.z - picked.z) <= tol
           );
+          log.info("Viewport", "seed click: accepting nearest suggestion", {
+            bestIndex: best,
+            bestDist: bestD.toFixed(4),
+            dotSize: dotSize.toFixed(4),
+            tol: tol.toFixed(4),
+            duplicate: dup,
+            willBeSeedCount: seedPoints.length + (dup ? 0 : 1),
+          });
           acceptSuggestedSeed(best);
           setStatusMessage(dup ? t("seed.acceptDup") : t("seed.accepted", seedPoints.length + 1));
           return;
@@ -1544,6 +1566,10 @@ function MeshDisplay() {
                 y: res.snapped[1],
                 z: res.snapped[2],
                 faceIndex: local.faceIndex,
+              });
+              log.info("Viewport", "manual seed added via backend snap", {
+                snapped: { x: res.snapped[0].toFixed(3), y: res.snapped[1].toFixed(3), z: res.snapped[2].toFixed(3) },
+                newCount: seedPoints.length + 1,
               });
               setStatusMessage(t("seed.count", seedPoints.length + 1));
             }
@@ -2098,6 +2124,18 @@ function GhostSeedMarkers({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   camera: any;
 }) {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const lastCountRef = useRef<number>(-1);
+  if (seeds.length !== lastCountRef.current) {
+    log.info("Viewport", "GhostSeedMarkers rendering new suggestion set", {
+      count: seeds.length,
+      size,
+      first: seeds[0]
+        ? { x: seeds[0].x.toFixed(3), y: seeds[0].y.toFixed(3), z: seeds[0].z.toFixed(3) }
+        : null,
+    });
+    lastCountRef.current = seeds.length;
+  }
   return (
     <>
       {seeds.map((p, i) => (
