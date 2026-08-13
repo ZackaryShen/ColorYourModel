@@ -1519,13 +1519,12 @@ function MeshDisplay() {
           }
           return;
         }
-        // Accept a suggested (ghost) seed (iteration 57 / REFUTE A2): when any
-        // suggestions exist, clicking anywhere on the model grabs the NEAREST
-        // one — no need to click precisely on the (now visible) marker. This is
-        // the "click blank space to quickly accept the nearest suggestion" flow;
-        // to place a manual seed instead, clear the suggestions first (panel
-        // button). A duplicate is accepted (removes the suggestion) without
-        // adding a second real seed at the same spot.
+        // Iteration 61: allow BOTH manual seeds and suggested seeds to coexist.
+        // Previously any click while suggestions existed auto-accepted the
+        // nearest one and returned, so the user could never add a manual seed
+        // without first clearing all suggestions. Now: only accept the nearest
+        // ghost when the click is within tolerance; otherwise fall through to
+        // the manual-add branch below.
         if (suggestedSeeds.length > 0) {
           let best = 0;
           let bestD = Infinity;
@@ -1537,22 +1536,30 @@ function MeshDisplay() {
               best = i;
             }
           }
-          const picked = suggestedSeeds[best];
           const tol = dotSize * 12;
-          const dup = seedPoints.some(
-            (p) => Math.hypot(p.x - picked.x, p.y - picked.y, p.z - picked.z) <= tol
-          );
-          log.info("Viewport", "seed click: accepting nearest suggestion", {
-            bestIndex: best,
-            bestDist: bestD.toFixed(4),
-            dotSize: dotSize.toFixed(4),
+          if (bestD <= tol) {
+            const picked = suggestedSeeds[best];
+            const dup = seedPoints.some(
+              (p) => Math.hypot(p.x - picked.x, p.y - picked.y, p.z - picked.z) <= tol
+            );
+            log.info("Viewport", "seed click: accepting nearest suggestion", {
+              bestIndex: best,
+              bestDist: bestD.toFixed(4),
+              dotSize: dotSize.toFixed(4),
+              tol: tol.toFixed(4),
+              duplicate: dup,
+              willBeSeedCount: seedPoints.length + (dup ? 0 : 1),
+            });
+            acceptSuggestedSeed(best);
+            setStatusMessage(dup ? t("seed.acceptDup") : t("seed.accepted", seedPoints.length + 1));
+            return;
+          }
+          // Far from every ghost marker: fall through to manual seed add so
+          // manual and suggested seeds can coexist in the same session.
+          log.info("Viewport", "seed click far from any ghost; adding manual seed", {
+            nearestDist: bestD.toFixed(4),
             tol: tol.toFixed(4),
-            duplicate: dup,
-            willBeSeedCount: seedPoints.length + (dup ? 0 : 1),
           });
-          acceptSuggestedSeed(best);
-          setStatusMessage(dup ? t("seed.acceptDup") : t("seed.accepted", seedPoints.length + 1));
-          return;
         }
         (async () => {
           try {

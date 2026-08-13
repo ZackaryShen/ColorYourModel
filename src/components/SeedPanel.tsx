@@ -73,9 +73,13 @@ export function SeedPanel() {
         movedFaces: result.segmentLabels.length,
       });
       setStatusMessage(t("seed.done", result.segments.length));
-      // Always clear stale ghost suggestions after a grow so they don't linger,
-      // regardless of whether we grew from accepted seeds or from suggestions.
-      clearSuggestedSeeds();
+      // Iteration 61: do NOT clear ghost suggestions on grow success. The
+      // user's workflow is "推荐先生成一次了，我再手动微调" — after the AI
+      // generates once, they want the ghost markers to remain visible as
+      // reference so they can keep adding manual seeds (or click more
+      // suggestions) and grow again. Clearing was hiding the very reference
+      // markers the user needed to fine-tune. They can be cleared explicitly
+      // via the "Clear suggestions" button.
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       log.error("SeedPanel", "seedGrow failed", { error: msg });
