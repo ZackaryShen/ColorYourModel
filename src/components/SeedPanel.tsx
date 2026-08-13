@@ -46,26 +46,36 @@ export function SeedPanel() {
   };
 
   const onGrow = async () => {
-    if (seedPoints.length === 0) {
-      setStatusMessage(t("seed.needOne"));
-      return;
-    }
     log.info("SeedPanel", "onGrow click", {
-      seeds: seedPoints.length,
+      seedPoints: seedPoints.length,
+      suggested: suggestedSeeds.length,
       barrierDeg,
       optimizer,
     });
+    // Iteration 60 fix: the user may have only clicked "建议种子" (which fills
+    // `suggestedSeeds`) and never clicked the model to accept them into
+    // `seedPoints`. Grow directly from the suggestions so "建议种子 → 生成"
+    // works in one shot. Previously onGrow early-returned on
+    // `seedPoints.length === 0`, silently doing nothing.
+    const seeds = seedPoints.length > 0 ? seedPoints : suggestedSeeds;
+    if (seeds.length === 0) {
+      setStatusMessage(t("seed.needOne"));
+      return;
+    }
     setGrowing(true);
     setStatusMessage(
-      `🌱 准备生长（${seedPoints.length} 个种子，barrier=${barrierDeg}°，optimizer=${optimizer}）…`,
+      `🌱 准备生长（${seeds.length} 个种子，barrier=${barrierDeg}°，optimizer=${optimizer}）…`,
     );
     try {
-      const result = await seedGrow(seedPoints, barrierDeg, optimizer);
+      const result = await seedGrow(seeds, barrierDeg, optimizer);
       log.info("SeedPanel", "onGrow done", {
         segments: result.segments.length,
         movedFaces: result.segmentLabels.length,
       });
       setStatusMessage(t("seed.done", result.segments.length));
+      // Always clear stale ghost suggestions after a grow so they don't linger,
+      // regardless of whether we grew from accepted seeds or from suggestions.
+      clearSuggestedSeeds();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       log.error("SeedPanel", "seedGrow failed", { error: msg });
