@@ -52,12 +52,19 @@ export function SeedPanel() {
       barrierDeg,
       optimizer,
     });
-    // Iteration 60 fix: the user may have only clicked "建议种子" (which fills
+    // Iteration 60+63: the user may have only clicked "建议种子" (which fills
     // `suggestedSeeds`) and never clicked the model to accept them into
     // `seedPoints`. Grow directly from the suggestions so "建议种子 → 生成"
     // works in one shot. Previously onGrow early-returned on
     // `seedPoints.length === 0`, silently doing nothing.
-    const seeds = seedPoints.length > 0 ? seedPoints : suggestedSeeds;
+    //
+    // Iteration 63: do NOT drop suggestions once any manual seed exists.
+    // The user's workflow is "推荐先生成一次了，我再手动微调" — after the AI
+    // generates once, the ghost markers must still participate when the user
+    // adds more manual seeds and re-grows. They are two views of the same
+    // working set. To grow with only manual seeds, the user explicitly clicks
+    // "Clear suggestions" first.
+    const seeds = [...seedPoints, ...suggestedSeeds];
     if (seeds.length === 0) {
       setStatusMessage(t("seed.needOne"));
       return;
