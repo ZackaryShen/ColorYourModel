@@ -55,7 +55,10 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.weightConcHint": { zh: "权重越高，推荐点越偏向凹谷（真实零件分界）附近的内部", en: "Higher weight pushes suggestions toward interiors near concave valleys" },
   "seed.suggest": { zh: "💡 推荐种子", en: "💡 Suggest seeds" },
   "seed.clearSuggest": { zh: "清空推荐 ({0})", en: "Clear suggestions ({0})" },
-  "seed.suggestHint": { zh: "亮粉色十字标记为推荐种子（A2 修复后已可见）：在模型上任意位置点击，即采纳离点击处最近的推荐种子；清空推荐后可手动落点。正式种子仍为黄色/青色。", en: "Bright magenta cross markers are suggestions (visible after the A2 fix): click anywhere on the model to accept the nearest one; clear suggestions first to place seeds manually. Real seeds stay yellow/cyan." },
+  "seed.suggestHint": {
+    zh: "亮粉色十字标记为推荐种子（A2 修复后已可见）：点「幽灵附近」采纳该条；点「远离所有幽灵」则作为手动种子继续添加（两条路径并存）。正式种子仍为黄色/青色。",
+    en: "Magenta cross = suggested seed (visible since the A2 fix). Click CLOSE to one cross to accept it; click FAR from all crosses to add a new manual seed (both paths work side-by-side). Real seeds stay yellow/cyan.",
+  },
   "seed.accepted": { zh: "已接受推荐种子（共 {0} 个）", en: "Accepted suggestion ({0} seeds total)" },
   "seed.acceptDup": { zh: "该推荐点附近已有种子，已忽略", en: "A seed already exists near this suggestion; ignored" },
 
