@@ -40,6 +40,9 @@ Desktop.ini
 # Local agent memory (project-specific, not for version control)
 .workbuddy/
 
+# Build backups created when bypassing the safe-delete shim (emptyOutDir:false)
+dist_bak*/
+
 # Ad-hoc cargo target dirs used when the main target dir lock is stuck (Windows orphan handles)
 .cargo-target*/
 .cargo-probe/
