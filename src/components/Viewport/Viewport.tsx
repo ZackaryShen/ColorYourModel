@@ -827,16 +827,16 @@ function MeshDisplay() {
     return Math.max(0.03, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0008);
   }, [meshData?.bbox]);
 
-  // Marker size for *suggested* (ghost) seeds — iteration 57 / REFUTE A2.
-  // Decoupled from `dotSize` on purpose: dotSize is tuned for the brush cursor
-  // and real seeds (sub-pixel on a 30cm model), which is exactly why the ghost
-  // suggestions were invisible before. This is ~7.5x larger and floored so the
-  // markers are always clearly readable.
+  // Marker size for ALL seed markers (manual + suggested), iteration 63.
+  // One unified size for both glyphs so they read as the same "sapling" family.
+  // Deliberately smaller than the old ghost size (diag*0.006 → *0.0012): the
+  // previous magenta-sphere + white-cross combo was ~20x the manual seed and
+  // read as "too thick". Based on the bbox diagonal, same provenance as dotSize.
   const seedMarkerSize = useMemo(() => {
     const b = meshData?.bbox;
     if (!b) return 0.02;
     const dx = b.max[0] - b.min[0], dy = b.max[1] - b.min[1], dz = b.max[2] - b.min[2];
-    return Math.max(0.012, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.006);
+    return Math.max(0.004, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0012);
   }, [meshData?.bbox]);
 
   // The faint wireframe overlay is built from a WireframeGeometry that, for large
@@ -2091,42 +2091,92 @@ function MeshDisplay() {
           snap={lassoSnap}
         />
       )}
-      {/* Seed markers for the seeded-watershed tool (iteration 50).
-          In eraser mode (iteration 51) they turn red so the user can see which
-          ones the next click would delete. */}
-      {isSeedTool &&
-        seedPoints.map((p, i) => (
-          <mesh key={i} position={[p.x, p.y, p.z]}>
-            <sphereGeometry args={[dotSize * 1.6, 12, 12]} />
-            <meshBasicMaterial
-              color={seedEraseMode ? "#ff4d4f" : i === 0 ? "#00e5ff" : "#ffd400"}
-            />
-          </mesh>
-        ))}
-      {/* Suggested (ghost) seeds for the seeded-watershed tool (iteration 52),
-          refreshed in iteration 57 / REFUTE A2: bright magenta + a billboarded
-          white cross so they are unmistakable against any model colour, and
-          `depthTest={false}` so they are never buried under the surface. Clicking
-          anywhere on the model accepts the nearest one (see seed click branch). */}
+      {/* Seed markers for the seeded-watershed tool — iteration 63 unified
+          "sapling" glyph for BOTH committed (manual) seeds and suggested
+          (ghost) seeds. Committed = solid green (red in eraser mode);
+          suggested = magenta + translucent + always-on-top (depthTest off) so
+          recommendations stay visible against any surface (iter57 requirement).
+          The sapling is far smaller than the old magenta-sphere + white-cross
+          combo that read as "too thick". Shape is identical for both; only
+          colour/opacity/depthTest differ (see SeedMarker). */}
       {isSeedTool && (
-        <GhostSeedMarkers seeds={suggestedSeeds} size={seedMarkerSize} camera={camera} />
+        <>
+          <SeedMarkers seeds={seedPoints} ghost={false} erase={seedEraseMode} size={seedMarkerSize} camera={camera} />
+          <SeedMarkers seeds={suggestedSeeds} ghost erase={false} size={seedMarkerSize} camera={camera} />
+        </>
       )}
     </group>
   );
 }
 
-// ─── Suggested (ghost) seed markers ──────────────────────────────
-// Iteration 57 / REFUTE A2: the old ghost markers were `dotSize * 2.4` of a
-// sub-pixel dot size, in flat grey, with depth-test on — invisible. Replaced by
-// a bright magenta sphere + a billboarded white cross, always drawn on top
-// (depthTest=false + high renderOrder) so the user can actually see and aim at
-// the recommendations.
-function GhostSeedMarkers({
-  seeds,
+// ─── Unified seed markers (iteration 63) ─────────────────────────
+// A small "sapling": a seed sphere, a thin stem, two leaf dots. The whole
+// glyph is billboarded to face the camera so it reads as a tidy seedling from
+// any angle. Same shape for committed and suggested; only colour/opacity/
+// depthTest differ — committed green, eraser red, suggested magenta + on-top.
+function SeedMarker({
+  pos,
   size,
+  ghost,
+  erase,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  camera,
+}: {
+  pos: [number, number, number];
+  size: number;
+  ghost: boolean;
+  erase: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  camera: any;
+}) {
+  const ref = useRef<THREE.Group>(null);
+  useFrame(() => {
+    if (ref.current && camera) ref.current.quaternion.copy(camera.quaternion);
+  });
+  const color = erase ? "#ff4d4f" : ghost ? "#ff2bd6" : "#3ddc84";
+  const depthTest = !ghost; // ghosts always visible (iter57)
+  const renderOrder = ghost ? 20 : 0;
+  const r = size;
+  const stemH = size * 2.0;
+  const stemR = size * 0.16;
+  const leafR = size * 0.55;
+  // Material factored once per marker (cheap: 4 meshes share the colour rule).
+  const matProps = { color, depthTest, transparent: ghost, opacity: ghost ? 0.85 : 1 };
+  return (
+    <group position={pos}>
+      <group ref={ref}>
+        <mesh renderOrder={renderOrder}>
+          <sphereGeometry args={[r, 10, 10]} />
+          <meshBasicMaterial {...matProps} />
+        </mesh>
+        <mesh position={[0, r + stemH / 2, 0]} renderOrder={renderOrder}>
+          <cylinderGeometry args={[stemR, stemR, stemH, 6]} />
+          <meshBasicMaterial {...matProps} />
+        </mesh>
+        <mesh position={[leafR, r + stemH, 0]} renderOrder={renderOrder}>
+          <sphereGeometry args={[leafR * 0.7, 8, 8]} />
+          <meshBasicMaterial {...matProps} />
+        </mesh>
+        <mesh position={[-leafR, r + stemH, 0]} renderOrder={renderOrder}>
+          <sphereGeometry args={[leafR * 0.7, 8, 8]} />
+          <meshBasicMaterial {...matProps} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+function SeedMarkers({
+  seeds,
+  ghost,
+  erase,
+  size,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   camera,
 }: {
   seeds: { x: number; y: number; z: number }[];
+  ghost: boolean;
+  erase: boolean;
   size: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   camera: any;
@@ -2134,7 +2184,7 @@ function GhostSeedMarkers({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const lastCountRef = useRef<number>(-1);
   if (seeds.length !== lastCountRef.current) {
-    log.info("Viewport", "GhostSeedMarkers rendering new suggestion set", {
+    log.info("Viewport", ghost ? "GhostSeedMarkers rendering new suggestion set" : "ManualSeedMarkers rendering", {
       count: seeds.length,
       size,
       first: seeds[0]
@@ -2146,47 +2196,16 @@ function GhostSeedMarkers({
   return (
     <>
       {seeds.map((p, i) => (
-        <GhostMarker key={`sug-${i}`} pos={[p.x, p.y, p.z]} size={size} camera={camera} />
+        <SeedMarker
+          key={`${ghost ? "sug" : "m"}-${i}`}
+          pos={[p.x, p.y, p.z]}
+          size={size}
+          ghost={ghost}
+          erase={erase}
+          camera={camera}
+        />
       ))}
     </>
-  );
-}
-
-function GhostMarker({
-  pos,
-  size,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  camera,
-}: {
-  pos: [number, number, number];
-  size: number;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  camera: any;
-}) {
-  const crossRef = useRef<THREE.Group>(null);
-  // Billboard the cross so it always faces the camera (a screen-space "+").
-  useFrame(() => {
-    if (crossRef.current && camera) {
-      crossRef.current.quaternion.copy(camera.quaternion);
-    }
-  });
-  return (
-    <group position={pos}>
-      <mesh renderOrder={20}>
-        <sphereGeometry args={[size, 16, 16]} />
-        <meshBasicMaterial color="#ff2bd6" depthTest={false} transparent opacity={0.92} />
-      </mesh>
-      <group ref={crossRef} renderOrder={21}>
-        <mesh>
-          <boxGeometry args={[size * 3.2, size * 0.5, size * 0.5]} />
-          <meshBasicMaterial color="#ffffff" depthTest={false} />
-        </mesh>
-        <mesh>
-          <boxGeometry args={[size * 0.5, size * 3.2, size * 0.5]} />
-          <meshBasicMaterial color="#ffffff" depthTest={false} />
-        </mesh>
-      </group>
-    </group>
   );
 }
 
