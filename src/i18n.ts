@@ -55,6 +55,12 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.weightConcHint": { zh: "权重越高，推荐点越偏向凹谷（真实零件分界）附近的内部", en: "Higher weight pushes suggestions toward interiors near concave valleys" },
   "seed.suggest": { zh: "💡 推荐种子", en: "💡 Suggest seeds" },
   "seed.clearSuggest": { zh: "清空推荐 ({0})", en: "Clear suggestions ({0})" },
+  "seed.planar": { zh: "🟦 平面种子", en: "🟦 Planar seeds" },
+  "seed.clearPlanar": { zh: "清空平面 ({0})", en: "Clear planes ({0})" },
+  "seed.planarHint": {
+    zh: "「平面种子」自动检测模型上的连续平面区域（Layer 1，docs/09）：每个平面生成一枚建议种子（粉色幽灵，可点击采纳）并用青色线条标出其边界。阈值：法向差 15°、平面距离 M/30。",
+    en: "Planar seeds auto-detect the mesh's continuous flat patches (Layer 1, docs/09): each plane yields one suggested seed (magenta ghost, click to accept) and its boundary is outlined in cyan. Thresholds: 15° normal diff, M/30 plane distance.",
+  },
   "seed.suggestHint": {
     zh: "亮粉色十字标记为推荐种子（A2 修复后已可见）：点「幽灵附近」采纳该条；点「远离所有幽灵」则作为手动种子继续添加（两条路径并存）。正式种子仍为黄色/青色。",
     en: "Magenta cross = suggested seed (visible since the A2 fix). Click CLOSE to one cross to accept it; click FAR from all crosses to add a new manual seed (both paths work side-by-side). Real seeds stay yellow/cyan.",

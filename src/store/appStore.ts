@@ -1,6 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { MeshData, PaintTool, Segment, SeedPoint } from "../types/mesh";
+import { MeshData, PaintTool, Segment, SeedPoint, PlanarRegion } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
 import type { Lang } from "../i18n";
 import { log } from "../utils/logger";
@@ -150,6 +150,14 @@ interface AppStore {
   setSuggestedSeeds: (seeds: SeedPoint[]) => void;
   acceptSuggestedSeed: (index: number) => void;
   clearSuggestedSeeds: () => void;
+  /** Layer 1 planar-region detection (`docs/09`): the flat patches the backend
+   *  found, kept so the Viewport can outline each one with boundary lines. The
+   *  region seeds are ALSO pushed into `suggestedSeeds` (ghost markers) so the
+   *  user can accept them into `seed_grow` via the existing iter58-64 path.
+   *  Transient: NOT persisted. */
+  planarRegions: PlanarRegion[];
+  setPlanarRegions: (regions: PlanarRegion[]) => void;
+  clearPlanarRegions: () => void;
   setLoading: (loading: boolean) => void;
   setImportProgress: (progress: number, stage: string) => void;
   setLanguage: (lang: Lang) => void;
@@ -511,6 +519,12 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
     });
   },
   clearSuggestedSeeds: () => set({ suggestedSeeds: [] }),
+  planarRegions: [],
+  setPlanarRegions: (regions) => {
+    log.info("store", "setPlanarRegions", { count: regions.length });
+    set({ planarRegions: regions });
+  },
+  clearPlanarRegions: () => set({ planarRegions: [] }),
   setLoading: (loading) => set({ isLoading: loading }),
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),
   setLanguage: (lang) => set({ language: lang }),

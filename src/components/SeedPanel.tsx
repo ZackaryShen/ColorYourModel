@@ -16,8 +16,12 @@ export function SeedPanel() {
   const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
   const setSuggestedSeeds = useAppStore((s) => s.setSuggestedSeeds);
   const clearSuggestedSeeds = useAppStore((s) => s.clearSuggestedSeeds);
+  const planarRegions = useAppStore((s) => s.planarRegions);
+  const setPlanarRegions = useAppStore((s) => s.setPlanarRegions);
+  const clearPlanarRegions = useAppStore((s) => s.clearPlanarRegions);
+  const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const { seedGrow, recommendSeeds } = useTauriCommand();
+  const { seedGrow, recommendSeeds, detectPlanarRegions } = useTauriCommand();
 
   const [barrierDeg, setBarrierDeg] = useState(45);
   const [optimizer, setOptimizer] = useState(false);
@@ -26,6 +30,7 @@ export function SeedPanel() {
   const [suggestCount, setSuggestCount] = useState(12);
   const [curvWeight, setCurvWeight] = useState(1.0);
   const [concWeight, setConcWeight] = useState(1.0);
+  const [detecting, setDetecting] = useState(false);
 
   const onRecommend = async () => {
     setRecommending(true);
@@ -42,6 +47,29 @@ export function SeedPanel() {
       // error already surfaced via status message in recommendSeeds
     } finally {
       setRecommending(false);
+    }
+  };
+
+  // Layer 1 (docs/09): detect the mesh's continuous planar regions and feed
+  // them in as advisory seed suggestions. Each region's representative seed is
+  // pushed into the ghost-suggestion set (reuse iter58-64 accept path), and its
+  // boundary outline is stored for the Viewport to draw. Thresholds follow the
+  // cited defaults (angle 15° ≈ π/12, dist M/30); min region size scales with
+  // mesh resolution so a 500k-face model doesn't emit 50 tiny patches.
+  const onDetectPlanar = async () => {
+    setDetecting(true);
+    log.info("SeedPanel", "onDetectPlanar click");
+    const faceCount = meshData?.faceCount ?? 0;
+    const minFaces = Math.max(2, Math.floor(faceCount / 500));
+    try {
+      const regions = await detectPlanarRegions(15, 1 / 30, minFaces);
+      log.info("SeedPanel", "onDetectPlanar received", { regions: regions.length });
+      setPlanarRegions(regions);
+      setSuggestedSeeds(regions.map((r) => r.seed));
+    } catch {
+      // error already surfaced via status message in detectPlanarRegions
+    } finally {
+      setDetecting(false);
     }
   };
 
@@ -102,9 +130,11 @@ export function SeedPanel() {
       <div style={styles.hint}>
         {seedEraseMode
           ? t("seed.eraseHint")
-          : suggestedSeeds.length > 0
-            ? t("seed.suggestHint")
-            : t("seed.hint")}
+          : planarRegions.length > 0
+            ? t("seed.planarHint")
+            : suggestedSeeds.length > 0
+              ? t("seed.suggestHint")
+              : t("seed.hint")}
       </div>
 
       <div style={styles.row}>
@@ -174,6 +204,19 @@ export function SeedPanel() {
           style={styles.clear}
         >
           {t("seed.clearSuggest", suggestedSeeds.length)}
+        </button>
+      </div>
+
+      <div style={styles.row}>
+        <button onClick={onDetectPlanar} disabled={detecting} style={styles.grow}>
+          {detecting ? "…" : t("seed.planar")}
+        </button>
+        <button
+          onClick={clearPlanarRegions}
+          disabled={planarRegions.length === 0}
+          style={styles.clear}
+        >
+          {t("seed.clearPlanar", planarRegions.length)}
         </button>
       </div>
 

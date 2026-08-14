@@ -15,6 +15,9 @@ use crate::segment::resegment::resegment_region as resegment_region_impl;
 use crate::segment::recommend::{
     recommend_seeds as backend_recommend_seeds, RecommendWeights, SeedSuggestion,
 };
+use crate::segment::planar::{
+    detect_planar_regions as backend_detect_planar_regions, PlanarRegion,
+};
 use crate::segment::seeded::{seed_grow as backend_seed_grow, SeedGrowParams, SeedInput};
 use crate::segment::{run_segmentation, SegmentationAlgorithm};
 
@@ -601,6 +604,44 @@ pub fn recommend_seeds(
     let suggestions = backend_recommend_seeds(mesh, count, weights);
     log::info!("[cmd:recommend_seeds] done: {} suggestions", suggestions.len());
     Ok(suggestions)
+}
+
+/// Layer 1 of the planar-region fusion study (`docs/09`): detect the mesh's
+/// continuous planar regions and return them as ADVISORY seed suggestions.
+///
+/// Each returned [`PlanarRegion`] carries a representative interior `seed`
+/// (a `SeedSuggestion` the frontend can drop straight into the existing
+/// ghost-suggestion → `seed_grow` union path, iter58-64) plus `boundary_edges`
+/// so the flat patch can be outlined on the model. Read-only: the mesh is never
+/// mutated. Like `recommend_seeds`, a region is purely advisory — the user
+/// accepts it (click → becomes a real seed) or ignores it, and nothing reaches
+/// `seed_grow` until accepted.
+#[tauri::command]
+pub fn detect_planar_regions(
+    angle_threshold_deg: f32,
+    dist_thr_factor: f32,
+    min_region_faces: u32,
+    state: State<'_, AppState>,
+) -> Result<Vec<PlanarRegion>, String> {
+    log::info!(
+        "[cmd:detect_planar_regions] angle={:.1}° dist_factor={:.4} min_faces={}",
+        angle_threshold_deg,
+        dist_thr_factor,
+        min_region_faces
+    );
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    let params = crate::segment::planar::PlanarParams {
+        angle_thr_deg: angle_threshold_deg,
+        dist_thr_factor,
+        min_region_faces: min_region_faces as usize,
+    };
+    let regions = backend_detect_planar_regions(mesh, &params);
+    log::info!(
+        "[cmd:detect_planar_regions] done: {} planar regions",
+        regions.len()
+    );
+    Ok(regions)
 }
 
 #[cfg(test)]

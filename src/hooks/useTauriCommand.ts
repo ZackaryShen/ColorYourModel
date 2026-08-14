@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint } from "../types/mesh";
+import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint, PlanarRegion } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
@@ -455,6 +455,51 @@ export function useTauriCommand() {
     }
   };
 
+  /**
+   * Layer 1 planar-region detection (`docs/09`): find the mesh's continuous
+   * flat patches and return them as advisory seed suggestions. Each region
+   * carries a representative `seed` (a `SeedPoint` to drop into the ghost set)
+   * and `boundaryEdges` (3D outline segments). Read-only; nothing is committed
+   * until the user accepts a seed into `seed_grow`.
+   */
+  const detectPlanarRegions = async (
+    angleThresholdDeg: number,
+    distThrFactor: number,
+    minRegionFaces: number
+  ): Promise<PlanarRegion[]> => {
+    log.info(
+      "useTauriCommand",
+      `detectPlanarRegions(angle=${angleThresholdDeg}°, distFactor=${distThrFactor}, min=${minRegionFaces})`
+    );
+    try {
+      setStatusMessage("正在检测连续平面区域…");
+      const raw = await invoke<
+        Array<{
+          plane: [number, number, number, number];
+          faceCount: number;
+          seed: { point: [number, number, number]; faceIndex: number };
+          boundaryEdges: number[][][];
+        }>
+      >("detect_planar_regions", {
+        angleThresholdDeg,
+        distThrFactor,
+        minRegionFaces,
+      });
+      const regions: PlanarRegion[] = (raw ?? []).map((r) => ({
+        plane: r.plane,
+        faceCount: r.faceCount,
+        seed: { x: r.seed.point[0], y: r.seed.point[1], z: r.seed.point[2], faceIndex: r.seed.faceIndex },
+        boundaryEdges: r.boundaryEdges,
+      }));
+      setStatusMessage(`已检测 ${regions.length} 个连续平面区域`);
+      return regions;
+    } catch (e) {
+      log.error("useTauriCommand", "detectPlanarRegions failed", { error: String(e) });
+      setStatusMessage(`平面检测失败：${e}`);
+      return [];
+    }
+  };
+
   return {
     loadModel,
     autoSegmentV2,
@@ -467,6 +512,7 @@ export function useTauriCommand() {
     resegmentRegion,
     seedGrow,
     recommendSeeds,
+    detectPlanarRegions,
     resetSegmentation,
     manualRegionAddPoint,
     finalizeManualRegion,

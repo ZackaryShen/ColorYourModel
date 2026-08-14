@@ -2105,6 +2105,7 @@ function MeshDisplay() {
           <SeedMarkers seeds={suggestedSeeds} ghost erase={false} size={seedMarkerSize} camera={camera} />
         </>
       )}
+      <PlanarBoundaries />
     </group>
   );
 }
@@ -2206,6 +2207,40 @@ function SeedMarkers({
         />
       ))}
     </>
+  );
+}
+
+// ─── Planar region boundaries (Layer 1, docs/09) ─────────────────────────
+// Outlines every detected continuous planar region with cyan line segments so
+// the user can SEE the flat patches before accepting their seeds. Purely a
+// visual aid fed by `planarRegions` (set by the "平面种子" action in SeedPanel);
+// it never mutates the mesh. Each region's `boundaryEdges` is a list of 3D
+// segments `[[x,y,z],[x,y,z]]`, flattened into one shared BufferGeometry.
+function PlanarBoundaries() {
+  const planarRegions = useAppStore((s) => s.planarRegions);
+  const geometry = useMemo(() => {
+    const pts: number[] = [];
+    for (const r of planarRegions) {
+      for (const e of r.boundaryEdges) {
+        const a = e[0];
+        const b = e[1];
+        if (a && b && a.length === 3 && b.length === 3) {
+          pts.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+        }
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    return g;
+  }, [planarRegions]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  if (planarRegions.length === 0) {
+    return null;
+  }
+  return (
+    <lineSegments geometry={geometry} renderOrder={15}>
+      <lineBasicMaterial color="#22d3ee" depthTest={false} transparent opacity={0.9} />
+    </lineSegments>
   );
 }
 

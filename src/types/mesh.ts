@@ -48,6 +48,17 @@ export interface SeedPoint {
   faceIndex: number;
 }
 
+/// Layer 1 planar-region detection result (`detect_planar_regions`). One entry
+/// per detected continuous flat patch. `seed` is a representative interior face
+/// that the UI drops into the ghost-suggestion set (same path as `recommend`),
+/// `boundaryEdges` outlines the patch as 3D line segments (each `[[x,y,z],[x,y,z]]`).
+export interface PlanarRegion {
+  plane: [number, number, number, number];
+  faceCount: number;
+  seed: SeedPoint;
+  boundaryEdges: number[][][];
+}
+
 export interface SegmentResult {
   segments: Segment[];
   segmentLabels: number[];

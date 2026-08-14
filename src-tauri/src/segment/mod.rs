@@ -13,6 +13,7 @@ pub mod seeded;
 pub mod split;
 pub mod resegment;
 pub mod recommend;
+pub mod planar;
 
 use serde::{Deserialize, Serialize};
 
