@@ -188,7 +188,7 @@ fn uv_sphere(radius: f32, c: [f32; 3], bands: usize, sectors: usize) -> (Vec<[f3
 
 /// Fully prepare a MeshModel (normals, bbox, kdtrees, adjacency, default labels).
 #[cfg(test)]
-fn build_mesh(verts: &[[f32; 3]], faces_flat: &[u32]) -> MeshModel {
+pub(crate) fn build_mesh(verts: &[[f32; 3]], faces_flat: &[u32]) -> MeshModel {
     let mut m = MeshModel::new();
     m.vertices = verts.to_vec();
     m.faces = faces_flat

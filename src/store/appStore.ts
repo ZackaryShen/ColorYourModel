@@ -1,6 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { MeshData, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion } from "../types/mesh";
+import { MeshData, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
 import type { Lang } from "../i18n";
 import { log } from "../utils/logger";
@@ -161,6 +161,9 @@ interface AppStore {
   multiviewRegions: MultiViewRegion[];
   setMultiviewRegions: (regions: MultiViewRegion[]) => void;
   clearMultiviewRegions: () => void;
+  crossSectionRegions: CrossSectionRegion[];
+  setCrossSectionRegions: (regions: CrossSectionRegion[]) => void;
+  clearCrossSectionRegions: () => void;
   setLoading: (loading: boolean) => void;
   setImportProgress: (progress: number, stage: string) => void;
   setLanguage: (lang: Lang) => void;
@@ -534,6 +537,12 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
     set({ multiviewRegions: regions });
   },
   clearMultiviewRegions: () => set({ multiviewRegions: [] }),
+  crossSectionRegions: [],
+  setCrossSectionRegions: (regions) => {
+    log.info("store", "setCrossSectionRegions", { count: regions.length });
+    set({ crossSectionRegions: regions });
+  },
+  clearCrossSectionRegions: () => set({ crossSectionRegions: [] }),
   setLoading: (loading) => set({ isLoading: loading }),
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),
   setLanguage: (lang) => set({ language: lang }),

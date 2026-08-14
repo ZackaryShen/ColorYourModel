@@ -68,6 +68,21 @@ export interface MultiViewRegion {
   boundaryEdges: number[][][];
 }
 
+/// Layer 2 (cross-section / ray marching, docs/09) feature detection result
+/// (`detect_cross_section_features`). A *visual-only* evidence overlay: each
+/// entry is one feature cross-section (where the cross-sectional profile
+/// changes sharply) carrying its actual 3D contour (`boundaryEdges`) plus a
+/// generalized-winding-number inside/outside confidence. It is NOT a partition
+/// seed (a slice is a plane, not a face) so it never feeds `seed_grow`.
+export interface CrossSectionRegion {
+  plane: number[];
+  axis: number;
+  position: number;
+  areaMetric: number;
+  winding: number;
+  boundaryEdges: number[][][];
+}
+
 export interface SegmentResult {
   segments: Segment[];
   segmentLabels: number[];

@@ -59,6 +59,12 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.clearPlanar": { zh: "清空平面 ({0})", en: "Clear planes ({0})" },
   "seed.multiview": { zh: "👁 多视角", en: "👁 MultiView" },
   "seed.clearMultiview": { zh: "清空多视角 ({0})", en: "Clear MultiView ({0})" },
+  "seed.crossSection": { zh: "✂️ 截面", en: "✂️ Cross-section" },
+  "seed.clearCrossSection": { zh: "清空截面 ({0})", en: "Clear cross-sections ({0})" },
+  "seed.crossSectionHint": {
+    zh: "「截面」用射线/切片（Layer 2，docs/09）沿主轴逐层切模型，找出剖面变化剧烈处（特征截面），用绿色线条标出真实切面轮廓——纯视觉证据，不生成分区种子（截面是平面而非面，Layer 2 不参与裁决）。含广义绕数内壁置信度。阈值：每轴 24 切片、变化≥最剧烈处的一半。",
+    en: "Cross-section uses ray/marching-plane (Layer 2, docs/09): it slices the model along each principal axis and marks where the cross-sectional profile changes sharply (feature cross-sections), drawing the real slice contours in green — purely visual evidence, it does NOT create partition seeds (a slice is a plane, not a face; Layer 2 is not a verdict). Includes a generalized-winding-number inside/outside confidence. Thresholds: 24 slices/axis, change ≥ half the sharpest.",
+  },
   "seed.multiviewHint": {
     zh: "「多视角」用 MultiView 3→2→3（Layer 3，docs/09）提供第二种意见：从多个视角投影→2D连通区域生长→回投→带权 match graph 切割。每个共识簇生成一枚建议种子（粉色幽灵，可点击采纳），边界用橙色线条标出。阈值：12 视角、法向差 20°、≥1 视角一致才合并。",
     en: "MultiView uses 3→2→3 (Layer 3, docs/09) as a second opinion: project from many views → grow 2D-connected regions → back-project → cut a weighted match graph. Each consensus cluster yields a suggested seed (magenta ghost, click to accept), outlined in orange. Thresholds: 12 views, 20° normal diff, ≥1 view agreement to merge.",

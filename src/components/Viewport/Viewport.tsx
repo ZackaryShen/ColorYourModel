@@ -752,6 +752,7 @@ function MeshDisplay() {
   const acceptSuggestedSeed = useAppStore((s) => s.acceptSuggestedSeed);
   const planarRegions = useAppStore((s) => s.planarRegions);
   const multiviewRegions = useAppStore((s) => s.multiviewRegions);
+  const crossSectionRegions = useAppStore((s) => s.crossSectionRegions);
   const { buildGeometry, publishGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
   const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
@@ -2109,6 +2110,7 @@ function MeshDisplay() {
       )}
       <BoundaryLines regions={planarRegions} color="#22d3ee" />
       <BoundaryLines regions={multiviewRegions} color="#fb923c" />
+      <BoundaryLines regions={crossSectionRegions} color="#84cc16" />
     </group>
   );
 }
@@ -2213,12 +2215,14 @@ function SeedMarkers({
   );
 }
 
-// ─── Region boundaries (Layer 1 planar + Layer 3 multiview, docs/09) ──────
+// ─── Region boundaries (Layer 1 planar + Layer 2 cross-section + Layer 3
+// multiview, docs/09) ─────────────────────────────────────────────────────
 // Outlines detected regions with line segments so the user can SEE the patches
 // before accepting their seeds. Purely a visual aid fed by `planarRegions`
-// (cyan, Layer 1) or `multiviewRegions` (orange, Layer 3); it never mutates the
-// mesh. Each region's `boundaryEdges` is a list of 3D segments
-// `[[x,y,z],[x,y,z]]`, flattened into one shared BufferGeometry.
+// (cyan, Layer 1), `crossSectionRegions` (green, Layer 2 — feature
+// cross-sections, visual-only evidence), or `multiviewRegions` (orange, Layer
+// 3); it never mutates the mesh. Each region's `boundaryEdges` is a list of 3D
+// segments `[[x,y,z],[x,y,z]]`, flattened into one shared BufferGeometry.
 function BoundaryLines({
   regions,
   color,

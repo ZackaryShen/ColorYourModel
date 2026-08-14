@@ -21,6 +21,9 @@ use crate::segment::planar::{
 use crate::segment::multiview::{
     detect_multiview_regions as backend_detect_multiview_regions, MultiViewRegion,
 };
+use crate::segment::cross_section::{
+    detect_cross_section_features as backend_detect_cross_section_features, CrossSectionRegion,
+};
 use crate::segment::seeded::{seed_grow as backend_seed_grow, SeedGrowParams, SeedInput};
 use crate::segment::{run_segmentation, SegmentationAlgorithm};
 
@@ -684,6 +687,43 @@ pub fn detect_multiview_regions(
     let regions = backend_detect_multiview_regions(mesh, &params);
     log::info!(
         "[cmd:detect_multiview_regions] done: {} multiview regions",
+        regions.len()
+    );
+    Ok(regions)
+}
+
+/// Layer 2 of the planar-region fusion study (`docs/09`): the **ray / plane
+/// enhancement evidence channel**. Marches a slice plane along each principal
+/// axis and reports the *feature cross-sections* — positions where the
+/// cross-sectional profile changes sharply (the "面积/轮廓对路径的导数超过阈值
+/// 处即特征边界" criterion from docs/09 §1.2).
+///
+/// Each returned [`CrossSectionRegion`] carries the slice plane, its position,
+/// the profile metric, a generalized-winding-number inside/outside confidence
+/// (Jacobson 2013, stays well-defined on open meshes), and `boundary_edges` —
+/// the actual 3D contour of the cross-section, drawn as `lineSegments`. This is
+/// **visual-only evidence**: it never mutates the mesh and is NOT folded into
+/// `seed_grow` (a slice is a plane, not a face — docs/09 Layer 2 = "不裁决").
+#[tauri::command]
+pub fn detect_cross_section_features(
+    planes_per_axis: u32,
+    feature_threshold: f32,
+    state: State<'_, AppState>,
+) -> Result<Vec<CrossSectionRegion>, String> {
+    log::info!(
+        "[cmd:detect_cross_section_features] planes/axis={} feature_threshold={:.2}",
+        planes_per_axis,
+        feature_threshold
+    );
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    let params = crate::segment::cross_section::CrossSectionParams {
+        planes_per_axis: planes_per_axis as usize,
+        feature_threshold,
+    };
+    let regions = backend_detect_cross_section_features(mesh, &params);
+    log::info!(
+        "[cmd:detect_cross_section_features] done: {} feature cross-sections",
         regions.len()
     );
     Ok(regions)

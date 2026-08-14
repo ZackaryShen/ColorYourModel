@@ -22,9 +22,12 @@ export function SeedPanel() {
   const multiviewRegions = useAppStore((s) => s.multiviewRegions);
   const setMultiviewRegions = useAppStore((s) => s.setMultiviewRegions);
   const clearMultiviewRegions = useAppStore((s) => s.clearMultiviewRegions);
+  const crossSectionRegions = useAppStore((s) => s.crossSectionRegions);
+  const setCrossSectionRegions = useAppStore((s) => s.setCrossSectionRegions);
+  const clearCrossSectionRegions = useAppStore((s) => s.clearCrossSectionRegions);
   const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions } = useTauriCommand();
+  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions } = useTauriCommand();
 
   const [barrierDeg, setBarrierDeg] = useState(45);
   const [optimizer, setOptimizer] = useState(false);
@@ -101,6 +104,27 @@ export function SeedPanel() {
     }
   };
 
+  // Layer 2 (docs/09): cross-section / ray-marching feature detection. Marches a
+  // plane along each principal axis and reports the feature cross-sections
+  // (where the cross-sectional profile changes sharply). This is *visual-only
+  // evidence*: the green contours are drawn over the model so the user can SEE
+  // where the shape steps/features are. It does NOT inject seeds into
+  // `suggestedSeeds` / `seed_grow` — a slice is a plane, not a face, and Layer 2
+  // is explicitly "不裁决" (not a verdict) in docs/09.
+  const onDetectCrossSection = async () => {
+    setDetecting(true);
+    log.info("SeedPanel", "onDetectCrossSection click");
+    try {
+      const regions = await detectCrossSectionRegions(24, 0.5);
+      log.info("SeedPanel", "onDetectCrossSection received", { regions: regions.length });
+      setCrossSectionRegions(regions);
+    } catch {
+      // error already surfaced via status message in detectCrossSectionRegions
+    } finally {
+      setDetecting(false);
+    }
+  };
+
   const onGrow = async () => {
     log.info("SeedPanel", "onGrow click", {
       seedPoints: seedPoints.length,
@@ -158,13 +182,15 @@ export function SeedPanel() {
       <div style={styles.hint}>
         {seedEraseMode
           ? t("seed.eraseHint")
-          : multiviewRegions.length > 0
-            ? t("seed.multiviewHint")
-            : planarRegions.length > 0
-              ? t("seed.planarHint")
-              : suggestedSeeds.length > 0
-                ? t("seed.suggestHint")
-                : t("seed.hint")}
+          : crossSectionRegions.length > 0
+            ? t("seed.crossSectionHint")
+            : multiviewRegions.length > 0
+              ? t("seed.multiviewHint")
+              : planarRegions.length > 0
+                ? t("seed.planarHint")
+                : suggestedSeeds.length > 0
+                  ? t("seed.suggestHint")
+                  : t("seed.hint")}
       </div>
 
       <div style={styles.row}>
@@ -260,6 +286,19 @@ export function SeedPanel() {
           style={styles.clear}
         >
           {t("seed.clearMultiview", multiviewRegions.length)}
+        </button>
+      </div>
+
+      <div style={styles.row}>
+        <button onClick={onDetectCrossSection} disabled={detecting} style={styles.grow}>
+          {detecting ? "…" : t("seed.crossSection")}
+        </button>
+        <button
+          onClick={clearCrossSectionRegions}
+          disabled={crossSectionRegions.length === 0}
+          style={styles.clear}
+        >
+          {t("seed.clearCrossSection", crossSectionRegions.length)}
         </button>
       </div>
 

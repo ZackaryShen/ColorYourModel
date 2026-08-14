@@ -15,6 +15,7 @@ pub mod resegment;
 pub mod recommend;
 pub mod planar;
 pub mod multiview;
+pub mod cross_section;
 
 use serde::{Deserialize, Serialize};
 

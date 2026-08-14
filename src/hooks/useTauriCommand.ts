@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint, PlanarRegion, MultiViewRegion } from "../types/mesh";
+import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
@@ -540,6 +540,50 @@ export function useTauriCommand() {
     }
   };
 
+  /// Layer 2 (cross-section / ray marching, docs/09) detection. Returns feature
+  /// cross-sections as a *visual-only* evidence overlay (contour lines +
+  /// inside/outside confidence). Nothing reaches `seed_grow` — a slice is a
+  /// plane, not a face (docs/09 Layer 2 = "不裁决").
+  const detectCrossSectionRegions = async (
+    planesPerAxis: number,
+    featureThreshold: number
+  ): Promise<CrossSectionRegion[]> => {
+    log.info(
+      "useTauriCommand",
+      `detectCrossSectionRegions(planesPerAxis=${planesPerAxis}, featureThreshold=${featureThreshold})`
+    );
+    try {
+      setStatusMessage("正在截面(射线)检测特征…");
+      const raw = await invoke<
+        Array<{
+          plane: number[];
+          axis: number;
+          position: number;
+          areaMetric: number;
+          winding: number;
+          boundaryEdges: number[][][];
+        }>
+      >("detect_cross_section_features", {
+        planesPerAxis,
+        featureThreshold,
+      });
+      const regions: CrossSectionRegion[] = (raw ?? []).map((r) => ({
+        plane: r.plane,
+        axis: r.axis,
+        position: r.position,
+        areaMetric: r.areaMetric,
+        winding: r.winding,
+        boundaryEdges: r.boundaryEdges,
+      }));
+      setStatusMessage(`已检测 ${regions.length} 个截面特征`);
+      return regions;
+    } catch (e) {
+      log.error("useTauriCommand", "detectCrossSectionRegions failed", { error: String(e) });
+      setStatusMessage(`截面检测失败：${e}`);
+      return [];
+    }
+  };
+
   return {
     loadModel,
     autoSegmentV2,
@@ -554,6 +598,7 @@ export function useTauriCommand() {
     recommendSeeds,
     detectPlanarRegions,
     detectMultiViewRegions,
+    detectCrossSectionRegions,
     resetSegmentation,
     manualRegionAddPoint,
     finalizeManualRegion,
