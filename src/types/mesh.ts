@@ -59,6 +59,15 @@ export interface PlanarRegion {
   boundaryEdges: number[][][];
 }
 
+/// Layer 3 (MultiView 3→2→3) region detection result (`detect_multiview_regions`).
+/// Same shape as `PlanarRegion` so the UI can reuse the ghost-seed path and the
+/// boundary-outline renderer. One entry per multi-view-consensus cluster.
+export interface MultiViewRegion {
+  faceCount: number;
+  seed: SeedPoint;
+  boundaryEdges: number[][][];
+}
+
 export interface SegmentResult {
   segments: Segment[];
   segmentLabels: number[];

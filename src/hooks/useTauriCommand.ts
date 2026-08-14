@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint, PlanarRegion } from "../types/mesh";
+import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint, PlanarRegion, MultiViewRegion } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
@@ -500,6 +500,46 @@ export function useTauriCommand() {
     }
   };
 
+  /// Layer 3 (MultiView 3→2→3) detection. Returns consensus clusters as advisory
+  /// seed suggestions; nothing reaches `seed_grow` until the user accepts one.
+  const detectMultiViewRegions = async (
+    viewCount: number,
+    angleThresholdDeg: number,
+    minRegionFaces: number,
+    matchThreshold: number
+  ): Promise<MultiViewRegion[]> => {
+    log.info(
+      "useTauriCommand",
+      `detectMultiViewRegions(views=${viewCount}, angle=${angleThresholdDeg}°, min=${minRegionFaces}, match=${matchThreshold})`
+    );
+    try {
+      setStatusMessage("正在多视角(3→2→3)检测区域…");
+      const raw = await invoke<
+        Array<{
+          faceCount: number;
+          seed: { point: [number, number, number]; faceIndex: number };
+          boundaryEdges: number[][][];
+        }>
+      >("detect_multiview_regions", {
+        viewCount,
+        angleThresholdDeg,
+        minRegionFaces,
+        matchThreshold,
+      });
+      const regions: MultiViewRegion[] = (raw ?? []).map((r) => ({
+        faceCount: r.faceCount,
+        seed: { x: r.seed.point[0], y: r.seed.point[1], z: r.seed.point[2], faceIndex: r.seed.faceIndex },
+        boundaryEdges: r.boundaryEdges,
+      }));
+      setStatusMessage(`已检测 ${regions.length} 个多视角区域`);
+      return regions;
+    } catch (e) {
+      log.error("useTauriCommand", "detectMultiViewRegions failed", { error: String(e) });
+      setStatusMessage(`多视角检测失败：${e}`);
+      return [];
+    }
+  };
+
   return {
     loadModel,
     autoSegmentV2,
@@ -513,6 +553,7 @@ export function useTauriCommand() {
     seedGrow,
     recommendSeeds,
     detectPlanarRegions,
+    detectMultiViewRegions,
     resetSegmentation,
     manualRegionAddPoint,
     finalizeManualRegion,

@@ -19,9 +19,12 @@ export function SeedPanel() {
   const planarRegions = useAppStore((s) => s.planarRegions);
   const setPlanarRegions = useAppStore((s) => s.setPlanarRegions);
   const clearPlanarRegions = useAppStore((s) => s.clearPlanarRegions);
+  const multiviewRegions = useAppStore((s) => s.multiviewRegions);
+  const setMultiviewRegions = useAppStore((s) => s.setMultiviewRegions);
+  const clearMultiviewRegions = useAppStore((s) => s.clearMultiviewRegions);
   const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const { seedGrow, recommendSeeds, detectPlanarRegions } = useTauriCommand();
+  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions } = useTauriCommand();
 
   const [barrierDeg, setBarrierDeg] = useState(45);
   const [optimizer, setOptimizer] = useState(false);
@@ -68,6 +71,31 @@ export function SeedPanel() {
       setSuggestedSeeds(regions.map((r) => r.seed));
     } catch {
       // error already surfaced via status message in detectPlanarRegions
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  // Layer 3 (docs/09): MultiView 3→2→3. Project the mesh from many views, grow
+  // 2D-connected regions per view, back-project and cut a weighted match graph,
+  // then feed each consensus cluster in as an advisory seed suggestion. This is
+  // a *second opinion* evidence channel distinct from Layer 1 (planar): it may
+  // agree or disagree; both are offered, never silently overriding. Thresholds:
+  // 12 views, angle 20° (a touch looser than Layer 1's 15° because the per-view
+  // projection already supplies the spatial-contact constraint), min region size
+  // scales with mesh resolution, match_threshold 1 (agreed in ≥1 view).
+  const onDetectMultiView = async () => {
+    setDetecting(true);
+    log.info("SeedPanel", "onDetectMultiView click");
+    const faceCount = meshData?.faceCount ?? 0;
+    const minFaces = Math.max(2, Math.floor(faceCount / 500));
+    try {
+      const regions = await detectMultiViewRegions(12, 20, minFaces, 1);
+      log.info("SeedPanel", "onDetectMultiView received", { regions: regions.length });
+      setMultiviewRegions(regions);
+      setSuggestedSeeds(regions.map((r) => r.seed));
+    } catch {
+      // error already surfaced via status message in detectMultiViewRegions
     } finally {
       setDetecting(false);
     }
@@ -130,11 +158,13 @@ export function SeedPanel() {
       <div style={styles.hint}>
         {seedEraseMode
           ? t("seed.eraseHint")
-          : planarRegions.length > 0
-            ? t("seed.planarHint")
-            : suggestedSeeds.length > 0
-              ? t("seed.suggestHint")
-              : t("seed.hint")}
+          : multiviewRegions.length > 0
+            ? t("seed.multiviewHint")
+            : planarRegions.length > 0
+              ? t("seed.planarHint")
+              : suggestedSeeds.length > 0
+                ? t("seed.suggestHint")
+                : t("seed.hint")}
       </div>
 
       <div style={styles.row}>
@@ -217,6 +247,19 @@ export function SeedPanel() {
           style={styles.clear}
         >
           {t("seed.clearPlanar", planarRegions.length)}
+        </button>
+      </div>
+
+      <div style={styles.row}>
+        <button onClick={onDetectMultiView} disabled={detecting} style={styles.grow}>
+          {detecting ? "…" : t("seed.multiview")}
+        </button>
+        <button
+          onClick={clearMultiviewRegions}
+          disabled={multiviewRegions.length === 0}
+          style={styles.clear}
+        >
+          {t("seed.clearMultiview", multiviewRegions.length)}
         </button>
       </div>
 

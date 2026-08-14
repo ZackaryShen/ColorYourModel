@@ -750,6 +750,8 @@ function MeshDisplay() {
   const setSeedEraseMode = useAppStore((s) => s.setSeedEraseMode);
   const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
   const acceptSuggestedSeed = useAppStore((s) => s.acceptSuggestedSeed);
+  const planarRegions = useAppStore((s) => s.planarRegions);
+  const multiviewRegions = useAppStore((s) => s.multiviewRegions);
   const { buildGeometry, publishGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
   const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
@@ -2105,7 +2107,8 @@ function MeshDisplay() {
           <SeedMarkers seeds={suggestedSeeds} ghost erase={false} size={seedMarkerSize} camera={camera} />
         </>
       )}
-      <PlanarBoundaries />
+      <BoundaryLines regions={planarRegions} color="#22d3ee" />
+      <BoundaryLines regions={multiviewRegions} color="#fb923c" />
     </group>
   );
 }
@@ -2210,17 +2213,22 @@ function SeedMarkers({
   );
 }
 
-// ─── Planar region boundaries (Layer 1, docs/09) ─────────────────────────
-// Outlines every detected continuous planar region with cyan line segments so
-// the user can SEE the flat patches before accepting their seeds. Purely a
-// visual aid fed by `planarRegions` (set by the "平面种子" action in SeedPanel);
-// it never mutates the mesh. Each region's `boundaryEdges` is a list of 3D
-// segments `[[x,y,z],[x,y,z]]`, flattened into one shared BufferGeometry.
-function PlanarBoundaries() {
-  const planarRegions = useAppStore((s) => s.planarRegions);
+// ─── Region boundaries (Layer 1 planar + Layer 3 multiview, docs/09) ──────
+// Outlines detected regions with line segments so the user can SEE the patches
+// before accepting their seeds. Purely a visual aid fed by `planarRegions`
+// (cyan, Layer 1) or `multiviewRegions` (orange, Layer 3); it never mutates the
+// mesh. Each region's `boundaryEdges` is a list of 3D segments
+// `[[x,y,z],[x,y,z]]`, flattened into one shared BufferGeometry.
+function BoundaryLines({
+  regions,
+  color,
+}: {
+  regions: { boundaryEdges: number[][][] }[];
+  color: string;
+}) {
   const geometry = useMemo(() => {
     const pts: number[] = [];
-    for (const r of planarRegions) {
+    for (const r of regions) {
       for (const e of r.boundaryEdges) {
         const a = e[0];
         const b = e[1];
@@ -2232,14 +2240,14 @@ function PlanarBoundaries() {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
     return g;
-  }, [planarRegions]);
+  }, [regions]);
   useEffect(() => () => geometry.dispose(), [geometry]);
-  if (planarRegions.length === 0) {
+  if (regions.length === 0) {
     return null;
   }
   return (
     <lineSegments geometry={geometry} renderOrder={15}>
-      <lineBasicMaterial color="#22d3ee" depthTest={false} transparent opacity={0.9} />
+      <lineBasicMaterial color={color} depthTest={false} transparent opacity={0.9} />
     </lineSegments>
   );
 }

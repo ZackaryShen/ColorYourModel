@@ -18,6 +18,9 @@ use crate::segment::recommend::{
 use crate::segment::planar::{
     detect_planar_regions as backend_detect_planar_regions, PlanarRegion,
 };
+use crate::segment::multiview::{
+    detect_multiview_regions as backend_detect_multiview_regions, MultiViewRegion,
+};
 use crate::segment::seeded::{seed_grow as backend_seed_grow, SeedGrowParams, SeedInput};
 use crate::segment::{run_segmentation, SegmentationAlgorithm};
 
@@ -639,6 +642,48 @@ pub fn detect_planar_regions(
     let regions = backend_detect_planar_regions(mesh, &params);
     log::info!(
         "[cmd:detect_planar_regions] done: {} planar regions",
+        regions.len()
+    );
+    Ok(regions)
+}
+
+/// Layer 3 of the planar-region fusion study (`docs/09`): the **machine-vision
+/// (MultiView 3→2→3) evidence channel**. Detects coherent regions by projecting
+/// the mesh from multiple views, growing 2D-connected regions per view, then
+/// back-projecting and cutting a weighted face–face match graph.
+///
+/// Each returned [`MultiViewRegion`] carries a representative interior `seed`
+/// (a `SeedSuggestion` the frontend can drop straight into the existing
+/// ghost-suggestion → `seed_grow` union path, iter58-64) plus `boundary_edges`
+/// so the cluster can be outlined on the model. Read-only: the mesh is never
+/// mutated. Like `recommend_seeds` / `detect_planar_regions`, a region is purely
+/// advisory — the user accepts it (click → becomes a real seed) or ignores it.
+#[tauri::command]
+pub fn detect_multiview_regions(
+    view_count: u32,
+    angle_threshold_deg: f32,
+    min_region_faces: u32,
+    match_threshold: u32,
+    state: State<'_, AppState>,
+) -> Result<Vec<MultiViewRegion>, String> {
+    log::info!(
+        "[cmd:detect_multiview_regions] views={} angle={:.1}° min_faces={} match={}",
+        view_count,
+        angle_threshold_deg,
+        min_region_faces,
+        match_threshold
+    );
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    let params = crate::segment::multiview::MultiViewParams {
+        view_count: view_count as usize,
+        angle_thr_deg: angle_threshold_deg,
+        min_region_faces: min_region_faces as usize,
+        match_threshold: match_threshold as usize,
+    };
+    let regions = backend_detect_multiview_regions(mesh, &params);
+    log::info!(
+        "[cmd:detect_multiview_regions] done: {} multiview regions",
         regions.len()
     );
     Ok(regions)

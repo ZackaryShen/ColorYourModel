@@ -57,6 +57,12 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.clearSuggest": { zh: "清空推荐 ({0})", en: "Clear suggestions ({0})" },
   "seed.planar": { zh: "🟦 平面种子", en: "🟦 Planar seeds" },
   "seed.clearPlanar": { zh: "清空平面 ({0})", en: "Clear planes ({0})" },
+  "seed.multiview": { zh: "👁 多视角", en: "👁 MultiView" },
+  "seed.clearMultiview": { zh: "清空多视角 ({0})", en: "Clear MultiView ({0})" },
+  "seed.multiviewHint": {
+    zh: "「多视角」用 MultiView 3→2→3（Layer 3，docs/09）提供第二种意见：从多个视角投影→2D连通区域生长→回投→带权 match graph 切割。每个共识簇生成一枚建议种子（粉色幽灵，可点击采纳），边界用橙色线条标出。阈值：12 视角、法向差 20°、≥1 视角一致才合并。",
+    en: "MultiView uses 3→2→3 (Layer 3, docs/09) as a second opinion: project from many views → grow 2D-connected regions → back-project → cut a weighted match graph. Each consensus cluster yields a suggested seed (magenta ghost, click to accept), outlined in orange. Thresholds: 12 views, 20° normal diff, ≥1 view agreement to merge.",
+  },
   "seed.planarHint": {
     zh: "「平面种子」自动检测模型上的连续平面区域（Layer 1，docs/09）：每个平面生成一枚建议种子（粉色幽灵，可点击采纳）并用青色线条标出其边界。阈值：法向差 15°、平面距离 M/30。",
     en: "Planar seeds auto-detect the mesh's continuous flat patches (Layer 1, docs/09): each plane yields one suggested seed (magenta ghost, click to accept) and its boundary is outlined in cyan. Thresholds: 15° normal diff, M/30 plane distance.",
