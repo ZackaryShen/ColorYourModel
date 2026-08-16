@@ -750,9 +750,12 @@ function MeshDisplay() {
   const setSeedEraseMode = useAppStore((s) => s.setSeedEraseMode);
   const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
   const acceptSuggestedSeed = useAppStore((s) => s.acceptSuggestedSeed);
-  const planarRegions = useAppStore((s) => s.planarRegions);
-  const multiviewRegions = useAppStore((s) => s.multiviewRegions);
-  const crossSectionRegions = useAppStore((s) => s.crossSectionRegions);
+const planarRegions = useAppStore((s) => s.planarRegions);
+const planarRegionsVisible = useAppStore((s) => s.planarRegionsVisible);
+const multiviewRegions = useAppStore((s) => s.multiviewRegions);
+const multiviewRegionsVisible = useAppStore((s) => s.multiviewRegionsVisible);
+const crossSectionRegions = useAppStore((s) => s.crossSectionRegions);
+const crossSectionRegionsVisible = useAppStore((s) => s.crossSectionRegionsVisible);
   const { buildGeometry, publishGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
   const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
@@ -2108,9 +2111,9 @@ function MeshDisplay() {
           <SeedMarkers seeds={suggestedSeeds} ghost erase={false} size={seedMarkerSize} camera={camera} />
         </>
       )}
-      <BoundaryLines regions={planarRegions} color="#22d3ee" />
-      <BoundaryLines regions={multiviewRegions} color="#fb923c" />
-      <BoundaryLines regions={crossSectionRegions} color="#84cc16" />
+      <BoundaryLines regions={planarRegions} color="#22d3ee" visible={planarRegionsVisible} />
+      <BoundaryLines regions={multiviewRegions} color="#fb923c" visible={multiviewRegionsVisible} />
+      <BoundaryLines regions={crossSectionRegions} color="#84cc16" visible={crossSectionRegionsVisible} />
     </group>
   );
 }
@@ -2226,9 +2229,11 @@ function SeedMarkers({
 function BoundaryLines({
   regions,
   color,
+  visible = true,
 }: {
   regions: { boundaryEdges: number[][][] }[];
   color: string;
+  visible?: boolean;
 }) {
   const geometry = useMemo(() => {
     const pts: number[] = [];
@@ -2246,7 +2251,7 @@ function BoundaryLines({
     return g;
   }, [regions]);
   useEffect(() => () => geometry.dispose(), [geometry]);
-  if (regions.length === 0) {
+  if (!visible || regions.length === 0) {
     return null;
   }
   return (

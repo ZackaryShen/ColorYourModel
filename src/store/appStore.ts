@@ -158,12 +158,21 @@ interface AppStore {
   planarRegions: PlanarRegion[];
   setPlanarRegions: (regions: PlanarRegion[]) => void;
   clearPlanarRegions: () => void;
+  /** 是否在 Viewport 中绘制 Layer 1 平面边界（默认 true）。切换只是显隐，数据保留。 */
+  planarRegionsVisible: boolean;
+  togglePlanarRegionsVisible: () => void;
   multiviewRegions: MultiViewRegion[];
   setMultiviewRegions: (regions: MultiViewRegion[]) => void;
   clearMultiviewRegions: () => void;
+  multiviewRegionsVisible: boolean;
+  toggleMultiviewRegionsVisible: () => void;
   crossSectionRegions: CrossSectionRegion[];
   setCrossSectionRegions: (regions: CrossSectionRegion[]) => void;
   clearCrossSectionRegions: () => void;
+  crossSectionRegionsVisible: boolean;
+  toggleCrossSectionRegionsVisible: () => void;
+  /** 只显当前层：传入要保留下来的层名，其余关闭。null 表示全开。 */
+  setOnlyVisible: (which: "planar" | "multiview" | "crosssection" | null) => void;
   setLoading: (loading: boolean) => void;
   setImportProgress: (progress: number, stage: string) => void;
   setLanguage: (lang: Lang) => void;
@@ -526,23 +535,40 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   },
   clearSuggestedSeeds: () => set({ suggestedSeeds: [] }),
   planarRegions: [],
+  planarRegionsVisible: true,
+  togglePlanarRegionsVisible: () =>
+    set((s) => ({ planarRegionsVisible: !s.planarRegionsVisible })),
   setPlanarRegions: (regions) => {
     log.info("store", "setPlanarRegions", { count: regions.length });
     set({ planarRegions: regions });
   },
   clearPlanarRegions: () => set({ planarRegions: [] }),
   multiviewRegions: [],
+  multiviewRegionsVisible: true,
+  toggleMultiviewRegionsVisible: () =>
+    set((s) => ({ multiviewRegionsVisible: !s.multiviewRegionsVisible })),
   setMultiviewRegions: (regions) => {
     log.info("store", "setMultiviewRegions", { count: regions.length });
     set({ multiviewRegions: regions });
   },
   clearMultiviewRegions: () => set({ multiviewRegions: [] }),
   crossSectionRegions: [],
+  crossSectionRegionsVisible: true,
+  toggleCrossSectionRegionsVisible: () =>
+    set((s) => ({ crossSectionRegionsVisible: !s.crossSectionRegionsVisible })),
   setCrossSectionRegions: (regions) => {
     log.info("store", "setCrossSectionRegions", { count: regions.length });
     set({ crossSectionRegions: regions });
   },
   clearCrossSectionRegions: () => set({ crossSectionRegions: [] }),
+  setOnlyVisible: (which) => {
+    // null = 全部恢复；指定层 = 只保留它。
+    set({
+      planarRegionsVisible: which === null || which === "planar",
+      multiviewRegionsVisible: which === null || which === "multiview",
+      crossSectionRegionsVisible: which === null || which === "crosssection",
+    });
+  },
   setLoading: (loading) => set({ isLoading: loading }),
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),
   setLanguage: (lang) => set({ language: lang }),

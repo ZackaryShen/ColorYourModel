@@ -19,12 +19,19 @@ export function SeedPanel() {
   const planarRegions = useAppStore((s) => s.planarRegions);
   const setPlanarRegions = useAppStore((s) => s.setPlanarRegions);
   const clearPlanarRegions = useAppStore((s) => s.clearPlanarRegions);
+  const planarRegionsVisible = useAppStore((s) => s.planarRegionsVisible);
+  const togglePlanarRegionsVisible = useAppStore((s) => s.togglePlanarRegionsVisible);
   const multiviewRegions = useAppStore((s) => s.multiviewRegions);
   const setMultiviewRegions = useAppStore((s) => s.setMultiviewRegions);
   const clearMultiviewRegions = useAppStore((s) => s.clearMultiviewRegions);
+  const multiviewRegionsVisible = useAppStore((s) => s.multiviewRegionsVisible);
+  const toggleMultiviewRegionsVisible = useAppStore((s) => s.toggleMultiviewRegionsVisible);
   const crossSectionRegions = useAppStore((s) => s.crossSectionRegions);
   const setCrossSectionRegions = useAppStore((s) => s.setCrossSectionRegions);
   const clearCrossSectionRegions = useAppStore((s) => s.clearCrossSectionRegions);
+  const crossSectionRegionsVisible = useAppStore((s) => s.crossSectionRegionsVisible);
+  const toggleCrossSectionRegionsVisible = useAppStore((s) => s.toggleCrossSectionRegionsVisible);
+  const setOnlyVisible = useAppStore((s) => s.setOnlyVisible);
   const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions } = useTauriCommand();
@@ -268,11 +275,24 @@ export function SeedPanel() {
           {detecting ? "…" : t("seed.planar")}
         </button>
         <button
+          onClick={togglePlanarRegionsVisible}
+          disabled={planarRegions.length === 0}
+          style={{
+            ...styles.toggle,
+            background: planarRegionsVisible ? "#1e3a5f" : "#2a2a2a",
+            color: planarRegionsVisible ? "#22d3ee" : "#888",
+          }}
+          title={t(planarRegionsVisible ? "seed.hide" : "seed.show")}
+        >
+          {planarRegionsVisible ? "👁" : "🚫"} {planarRegions.length}
+        </button>
+        <button
           onClick={clearPlanarRegions}
           disabled={planarRegions.length === 0}
           style={styles.clear}
+          title={t("seed.clearPlanarTitle")}
         >
-          {t("seed.clearPlanar", planarRegions.length)}
+          ×
         </button>
       </div>
 
@@ -281,11 +301,24 @@ export function SeedPanel() {
           {detecting ? "…" : t("seed.multiview")}
         </button>
         <button
+          onClick={toggleMultiviewRegionsVisible}
+          disabled={multiviewRegions.length === 0}
+          style={{
+            ...styles.toggle,
+            background: multiviewRegionsVisible ? "#5f3a1e" : "#2a2a2a",
+            color: multiviewRegionsVisible ? "#fb923c" : "#888",
+          }}
+          title={t(multiviewRegionsVisible ? "seed.hide" : "seed.show")}
+        >
+          {multiviewRegionsVisible ? "👁" : "🚫"} {multiviewRegions.length}
+        </button>
+        <button
           onClick={clearMultiviewRegions}
           disabled={multiviewRegions.length === 0}
           style={styles.clear}
+          title={t("seed.clearMultiviewTitle")}
         >
-          {t("seed.clearMultiview", multiviewRegions.length)}
+          ×
         </button>
       </div>
 
@@ -294,11 +327,59 @@ export function SeedPanel() {
           {detecting ? "…" : t("seed.crossSection")}
         </button>
         <button
+          onClick={toggleCrossSectionRegionsVisible}
+          disabled={crossSectionRegions.length === 0}
+          style={{
+            ...styles.toggle,
+            background: crossSectionRegionsVisible ? "#3a5f1e" : "#2a2a2a",
+            color: crossSectionRegionsVisible ? "#84cc16" : "#888",
+          }}
+          title={t(crossSectionRegionsVisible ? "seed.hide" : "seed.show")}
+        >
+          {crossSectionRegionsVisible ? "👁" : "🚫"} {crossSectionRegions.length}
+        </button>
+        <button
           onClick={clearCrossSectionRegions}
           disabled={crossSectionRegions.length === 0}
           style={styles.clear}
+          title={t("seed.clearCrossSectionTitle")}
         >
-          {t("seed.clearCrossSection", crossSectionRegions.length)}
+          ×
+        </button>
+      </div>
+
+      {/* Solo / all toggles — quick way to show only one layer */}
+      <div style={styles.row}>
+        <button
+          onClick={() => setOnlyVisible(null)}
+          style={styles.miniBtn}
+          title={t("seed.showAll")}
+        >
+          {t("seed.showAll")}
+        </button>
+        <button
+          onClick={() => setOnlyVisible("planar")}
+          disabled={planarRegions.length === 0}
+          style={{ ...styles.miniBtn, color: "#22d3ee" }}
+          title={t("seed.soloPlanar")}
+        >
+          🟦
+        </button>
+        <button
+          onClick={() => setOnlyVisible("multiview")}
+          disabled={multiviewRegions.length === 0}
+          style={{ ...styles.miniBtn, color: "#fb923c" }}
+          title={t("seed.soloMultiview")}
+        >
+          👁
+        </button>
+        <button
+          onClick={() => setOnlyVisible("crosssection")}
+          disabled={crossSectionRegions.length === 0}
+          style={{ ...styles.miniBtn, color: "#84cc16" }}
+          title={t("seed.soloCrossSection")}
+        >
+          ✂️
         </button>
       </div>
 
@@ -384,5 +465,25 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--text-2, #ccc)",
     cursor: "pointer",
     fontSize: 13,
+  },
+  toggle: {
+    padding: "6px 8px",
+    borderRadius: 6,
+    border: "1px solid var(--border, #555)",
+    cursor: "pointer",
+    fontSize: 12,
+    minWidth: 56,
+    textAlign: "center",
+    transition: "background 0.15s, color 0.15s",
+  },
+  miniBtn: {
+    padding: "4px 8px",
+    borderRadius: 4,
+    border: "1px solid var(--border, #555)",
+    background: "transparent",
+    color: "var(--text-2, #ccc)",
+    cursor: "pointer",
+    fontSize: 12,
+    flex: 1,
   },
 };
