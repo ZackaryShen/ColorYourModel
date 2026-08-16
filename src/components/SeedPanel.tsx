@@ -34,7 +34,7 @@ export function SeedPanel() {
   const setOnlyVisible = useAppStore((s) => s.setOnlyVisible);
   const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions } = useTauriCommand();
+  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions, fuseSegmentation } = useTauriCommand();
 
   const [barrierDeg, setBarrierDeg] = useState(45);
   const [optimizer, setOptimizer] = useState(false);
@@ -44,6 +44,7 @@ export function SeedPanel() {
   const [curvWeight, setCurvWeight] = useState(1.0);
   const [concWeight, setConcWeight] = useState(1.0);
   const [detecting, setDetecting] = useState(false);
+  const [fusing, setFusing] = useState(false);
 
   const onRecommend = async () => {
     setRecommending(true);
@@ -129,6 +130,25 @@ export function SeedPanel() {
       // error already surfaced via status message in detectCrossSectionRegions
     } finally {
       setDetecting(false);
+    }
+  };
+
+  // Layer 4 (docs/09): fuse Layer 1 planar + Layer 3 MultiView region
+  // *membership* into one partition via edge-level majority vote, then commit
+  // it — the fix for "the algorithms sketch useful regions but the real
+  // partition is still just seeds". The backend runs both detectors with the
+  // panel defaults and fuses their face sets; only cutThreshold is exposed
+  // (1 = a cut must outvote keep; ties merge to suppress over-splitting).
+  const onFuse = async () => {
+    setFusing(true);
+    log.info("SeedPanel", "onFuse click");
+    try {
+      const result = await fuseSegmentation(1, 0);
+      log.info("SeedPanel", "onFuse done", { segments: result.segments.length });
+    } catch {
+      // error already surfaced via status message in fuseSegmentation
+    } finally {
+      setFusing(false);
     }
   };
 
@@ -383,6 +403,14 @@ export function SeedPanel() {
         </button>
       </div>
 
+      {/* Layer 4 fusion — one click turns the algorithm regions into the
+          actual partition, no seed placement required. */}
+      <div style={styles.row}>
+        <button onClick={onFuse} disabled={fusing} style={styles.fuse} title={t("seed.fuseTitle")}>
+          {fusing ? "…" : t("seed.fuse")}
+        </button>
+      </div>
+
       <div style={styles.row}>
         <span style={styles.label}>{t("seed.barrier")}</span>
         <input
@@ -447,6 +475,17 @@ const styles: Record<string, React.CSSProperties> = {
   label: { flex: "0 0 auto", whiteSpace: "nowrap" },
   val: { flex: "0 0 auto", width: 32, textAlign: "right", color: "var(--text-2, #ccc)" },
   buttonRow: { display: "flex", gap: 8, marginTop: 6 },
+  fuse: {
+    flex: 1,
+    padding: "8px 10px",
+    borderRadius: 6,
+    border: "1px solid #a78bfa",
+    background: "linear-gradient(90deg, #7c3aed, #2563eb)",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: 13,
+    fontWeight: 700,
+  },
   grow: {
     flex: 1,
     padding: "6px 10px",

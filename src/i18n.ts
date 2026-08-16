@@ -70,6 +70,12 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.soloPlanar": { zh: "只显 Layer 1 平面", en: "Solo: Layer 1 planar only" },
   "seed.soloMultiview": { zh: "只显 Layer 3 多视角", en: "Solo: Layer 3 MultiView only" },
   "seed.soloCrossSection": { zh: "只显 Layer 2 截面", en: "Solo: Layer 2 cross-section only" },
+  "seed.fuse": { zh: "🧩 融合生成", en: "🧩 Fuse & generate" },
+  "seed.fuseTitle": { zh: "把 Layer 1 平面 + Layer 3 多视角的区域成员关系按边级多数投票融合成最终分区并落盘（不再依赖种子点）", en: "Fuse Layer 1 planar + Layer 3 MultiView region membership by edge-level majority vote into the final partition (no seed points needed)" },
+  "seed.fuseHint": {
+    zh: "「融合生成」把 Layer 1 平面 + Layer 3 多视角的区域成员关系按边级多数投票融合成最终分区并直接落盘（可撤销）。每条边由两算法投票「该不该切开」，切票多于留票才切开，平票合并——抑制过切、让分区更成块。无需手动种种子。",
+    en: "Fuse & generate merges Layer 1 planar + Layer 3 MultiView region membership by edge-level majority vote into the final partition and commits it (undoable). Each edge is voted cut/keep by the two algorithms; cut wins only when it outvotes keep, ties merge — suppressing over-splitting into more meaningful blocks. No manual seeds needed.",
+  },
   "seed.crossSectionHint": {
     zh: "「截面」用射线/切片（Layer 2，docs/09）沿主轴逐层切模型，找出剖面变化剧烈处（特征截面），用绿色线条标出真实切面轮廓——纯视觉证据，不生成分区种子（截面是平面而非面，Layer 2 不参与裁决）。含广义绕数内壁置信度。阈值：每轴 24 切片、变化≥最剧烈处的一半。",
     en: "Cross-section uses ray/marching-plane (Layer 2, docs/09): it slices the model along each principal axis and marks where the cross-sectional profile changes sharply (feature cross-sections), drawing the real slice contours in green — purely visual evidence, it does NOT create partition seeds (a slice is a plane, not a face; Layer 2 is not a verdict). Includes a generalized-winding-number inside/outside confidence. Thresholds: 24 slices/axis, change ≥ half the sharpest.",

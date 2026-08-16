@@ -16,14 +16,15 @@ use crate::segment::recommend::{
     recommend_seeds as backend_recommend_seeds, RecommendWeights, SeedSuggestion,
 };
 use crate::segment::planar::{
-    detect_planar_regions as backend_detect_planar_regions, PlanarRegion,
+    detect_planar_regions as backend_detect_planar_regions, PlanarParams, PlanarRegion,
 };
 use crate::segment::multiview::{
-    detect_multiview_regions as backend_detect_multiview_regions, MultiViewRegion,
+    detect_multiview_regions as backend_detect_multiview_regions, MultiViewParams, MultiViewRegion,
 };
 use crate::segment::cross_section::{
     detect_cross_section_features as backend_detect_cross_section_features, CrossSectionRegion,
 };
+use crate::segment::fuse::fuse_region_sets;
 use crate::segment::seeded::{seed_grow as backend_seed_grow, SeedGrowParams, SeedInput};
 use crate::segment::{run_segmentation, SegmentationAlgorithm};
 
@@ -727,6 +728,100 @@ pub fn detect_cross_section_features(
         regions.len()
     );
     Ok(regions)
+}
+
+/// Layer 4 (docs/09): fuse the planar (Layer 1) and multiview (Layer 3) region
+/// *memberships* into one partition via edge-level majority vote, then commit it
+/// to the mesh (manual labels + colour + one undo entry) — the same落盘 path as
+/// `seed_grow`, but the region boundaries now come from the algorithms' actual
+/// face membership instead of a re-grown Voronoi over seed points.
+///
+/// This is the fix for the user's "the algorithms sketch useful regions but the
+/// real partition is still just seeds" complaint. Detection parameters are the
+/// same defaults the SeedPanel already uses (planar 15° / M·1/30, multiview 12
+/// views / 20° / match 1); only the fusion knobs are exposed:
+/// `cut_threshold` (edge cut vote margin, 1 = cut must outvote keep) and
+/// `min_region_faces` (post-fusion tiny-region filter, 0 = auto).
+#[tauri::command]
+pub async fn fuse_segmentation(
+    cut_threshold: i32,
+    min_region_faces: u32,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SegmentResult, String> {
+    log::info!(
+        "[cmd:fuse_segmentation] cut_threshold={} min_region_faces={}",
+        cut_threshold,
+        min_region_faces
+    );
+
+    // Take the mesh out for the whole compute (mirror auto_segment_v2) so a
+    // concurrent sync command cannot stall on the lock.
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
+    drop(mesh_guard);
+
+    let n = mesh.faces.len();
+    let detect_min = (n / 500).max(2);
+
+    // Layer 1: geometric backbone (裁决源).
+    let planar_regions = backend_detect_planar_regions(
+        &mesh,
+        &PlanarParams {
+            angle_thr_deg: 15.0,
+            dist_thr_factor: 1.0 / 30.0,
+            min_region_faces: detect_min,
+        },
+    );
+    // Layer 3: machine-vision evidence channel.
+    let multiview_regions = backend_detect_multiview_regions(
+        &mesh,
+        &MultiViewParams {
+            view_count: 12,
+            angle_thr_deg: 20.0,
+            min_region_faces: detect_min,
+            match_threshold: 1,
+        },
+    );
+
+    let planar_sets: Vec<Vec<u32>> = planar_regions
+        .iter()
+        .map(|r| r.face_indices.clone())
+        .collect();
+    let multiview_sets: Vec<Vec<u32>> = multiview_regions
+        .iter()
+        .map(|r| r.face_indices.clone())
+        .collect();
+
+    let result = fuse_region_sets(
+        &mut mesh,
+        &planar_sets,
+        &multiview_sets,
+        cut_threshold,
+        min_region_faces as usize,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let _ = app.emit(
+        "segment-progress",
+        serde_json::json!({ "progress": 1.0, "stage": "done" }),
+    );
+    log::info!(
+        "[cmd:fuse_segmentation] done: {} regions ({} faces moved)",
+        result.region_count,
+        result.moved_faces
+    );
+
+    let labels = result.segment_labels.clone();
+    let face_colors = flatten_face_colors(&mesh.face_colors);
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    *mesh_guard = Some(mesh);
+
+    Ok(SegmentResult {
+        segments: result.segments,
+        segment_labels: labels,
+        face_colors,
+    })
 }
 
 #[cfg(test)]

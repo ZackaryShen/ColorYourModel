@@ -38,6 +38,7 @@ pub fn run() {
             commands::segment::detect_planar_regions,
             commands::segment::detect_multiview_regions,
             commands::segment::detect_cross_section_features,
+            commands::segment::fuse_segmentation,
             commands::segment::reset_segmentation,
             commands::paint::brush_paint,
             commands::paint::fill_paint,

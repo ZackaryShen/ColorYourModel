@@ -16,6 +16,7 @@ pub mod recommend;
 pub mod planar;
 pub mod multiview;
 pub mod cross_section;
+pub mod fuse;
 
 use serde::{Deserialize, Serialize};
 

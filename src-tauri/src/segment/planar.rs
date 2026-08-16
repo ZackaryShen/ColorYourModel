@@ -81,6 +81,11 @@ pub struct PlanarRegion {
     /// Outline of the region as 3D line segments: each entry is
     /// `[[x,y,z],[x,y,z]]` (an edge's two endpoints). Drawn as `lineSegments`.
     pub boundary_edges: Vec<[[f32; 3]; 2]>,
+    /// The triangle faces this region owns. This is the *actual region
+    /// membership* — the field that lets the fusion layer (`segment/fuse.rs`)
+    /// turn a region into per-edge cut/keep votes instead of discarding the
+    /// membership and keeping only the seed.
+    pub face_indices: Vec<u32>,
 }
 
 /// Mean edge length over all triangle edges — drives the absolute distance
@@ -381,6 +386,7 @@ pub fn detect_planar_regions(mesh: &MeshModel, params: &PlanarParams) -> Vec<Pla
                     face_index: best_f,
                 },
                 boundary_edges,
+                face_indices: region,
             }
         })
         .collect();

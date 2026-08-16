@@ -479,6 +479,7 @@ export function useTauriCommand() {
           faceCount: number;
           seed: { point: [number, number, number]; faceIndex: number };
           boundaryEdges: number[][][];
+          faceIndices: number[];
         }>
       >("detect_planar_regions", {
         angleThresholdDeg,
@@ -490,6 +491,7 @@ export function useTauriCommand() {
         faceCount: r.faceCount,
         seed: { x: r.seed.point[0], y: r.seed.point[1], z: r.seed.point[2], faceIndex: r.seed.faceIndex },
         boundaryEdges: r.boundaryEdges,
+        faceIndices: r.faceIndices,
       }));
       setStatusMessage(`已检测 ${regions.length} 个连续平面区域`);
       return regions;
@@ -519,6 +521,7 @@ export function useTauriCommand() {
           faceCount: number;
           seed: { point: [number, number, number]; faceIndex: number };
           boundaryEdges: number[][][];
+          faceIndices: number[];
         }>
       >("detect_multiview_regions", {
         viewCount,
@@ -530,6 +533,7 @@ export function useTauriCommand() {
         faceCount: r.faceCount,
         seed: { x: r.seed.point[0], y: r.seed.point[1], z: r.seed.point[2], faceIndex: r.seed.faceIndex },
         boundaryEdges: r.boundaryEdges,
+        faceIndices: r.faceIndices,
       }));
       setStatusMessage(`已检测 ${regions.length} 个多视角区域`);
       return regions;
@@ -584,6 +588,38 @@ export function useTauriCommand() {
     }
   };
 
+  /**
+   * Layer 4 (docs/09): fuse the planar (Layer 1) + multiview (Layer 3) region
+   * *memberships* into one partition via edge-level majority vote and commit it
+   * to the mesh — the fix for "the algorithms sketch useful regions but the
+   * real partition is still just seeds". The backend runs both detectors with
+   * the panel's defaults and fuses their face membership; only the fusion knobs
+   * are exposed here.
+   */
+  const fuseSegmentation = async (
+    cutThreshold: number = 1,
+    minRegionFaces: number = 0
+  ): Promise<SegmentResult> => {
+    log.info(
+      "useTauriCommand",
+      `fuseSegmentation(cutThreshold=${cutThreshold}, minRegionFaces=${minRegionFaces})`
+    );
+    try {
+      setStatusMessage("融合生成分区中…");
+      const result = await invoke<SegmentResult>("fuse_segmentation", {
+        cutThreshold,
+        minRegionFaces,
+      });
+      updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
+      setStatusMessage(`融合分区完成：${result.segments.length} 个区域`);
+      return result;
+    } catch (e) {
+      log.error("useTauriCommand", "fuseSegmentation failed", { error: String(e) });
+      setStatusMessage(`融合分区失败：${e}`);
+      throw e;
+    }
+  };
+
   return {
     loadModel,
     autoSegmentV2,
@@ -599,6 +635,7 @@ export function useTauriCommand() {
     detectPlanarRegions,
     detectMultiViewRegions,
     detectCrossSectionRegions,
+    fuseSegmentation,
     resetSegmentation,
     manualRegionAddPoint,
     finalizeManualRegion,

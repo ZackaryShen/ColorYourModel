@@ -78,6 +78,9 @@ pub struct MultiViewRegion {
     pub seed: SeedSuggestion,
     /// Outline of the cluster as 3D line segments `[[x,y,z],[x,y,z]]`.
     pub boundary_edges: Vec<[[f32; 3]; 2]>,
+    /// The triangle faces this cluster owns — the actual region membership the
+    /// fusion layer (`segment/fuse.rs`) needs to cast per-edge cut/keep votes.
+    pub face_indices: Vec<u32>,
 }
 
 // ─── small vector helpers ────────────────────────────────────────────────
@@ -397,6 +400,7 @@ pub fn detect_multiview_regions(mesh: &MeshModel, params: &MultiViewParams) -> V
                     face_index: best_f,
                 },
                 boundary_edges,
+                face_indices: region,
             }
         })
         .filter(|r| r.face_count as usize >= params.min_region_faces)

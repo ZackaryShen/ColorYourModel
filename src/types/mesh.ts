@@ -57,6 +57,8 @@ export interface PlanarRegion {
   faceCount: number;
   seed: SeedPoint;
   boundaryEdges: number[][][];
+  /** 该区域实际包含的面索引 — 融合层据此把区域规约成边级 cut/keep 投票。 */
+  faceIndices: number[];
 }
 
 /// Layer 3 (MultiView 3→2→3) region detection result (`detect_multiview_regions`).
@@ -66,6 +68,8 @@ export interface MultiViewRegion {
   faceCount: number;
   seed: SeedPoint;
   boundaryEdges: number[][][];
+  /** 该簇实际包含的面索引 — 融合层据此把区域规约成边级 cut/keep 投票。 */
+  faceIndices: number[];
 }
 
 /// Layer 2 (cross-section / ray marching, docs/09) feature detection result
