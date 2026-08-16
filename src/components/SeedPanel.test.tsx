@@ -26,6 +26,9 @@ const { mockInvoke, calls } = vi.hoisted(() => {
         faceColors: [],
       };
     }
+    if (cmd === "reset_segmentation") {
+      return { segments: [], segmentLabels: [], faceColors: [] };
+    }
     return {};
   });
   return { mockInvoke, calls };
@@ -112,5 +115,52 @@ describe("SeedPanel.onGrow — iter60/61/63 回归（建议种子 → 生成 一
     await new Promise((r) => setTimeout(r, 30));
     expect(calls.some((c) => c.cmd === "seed_grow")).toBe(false);
     expect(useAppStore.getState().statusMessage).toContain("请至少放置一个种子");
+  });
+});
+
+describe("SeedPanel.onResetAll — iteration 65「无法清空」修复", () => {
+  it("点「清空分区」 → 调 reset_segmentation + 清掉所有 transient 数据", async () => {
+    const user = userEvent.setup();
+    // 预先塞入「旧的 × 按钮清不掉」的状态
+    useAppStore.setState({
+      seedPoints: [{ x: 1, y: 1, z: 1, faceIndex: 10 }],
+      suggestedSeeds: [{ x: 2, y: 2, z: 2, faceIndex: 20 }],
+      planarRegions: [{ plane: [0, 0, 0, 0], faceCount: 1, seed: { x: 0, y: 0, z: 0, faceIndex: 0 }, boundaryEdges: [], faceIndices: [] }],
+      multiviewRegions: [],
+      crossSectionRegions: [],
+      seedEraseMode: true,
+    });
+    // 自动 confirm
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<SeedPanel />);
+    await user.click(screen.getByRole("button", { name: /清空分区/ }));
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.cmd === "reset_segmentation")).toBe(true)
+    );
+    expect(confirmSpy).toHaveBeenCalled();
+
+    // 前端 transient 数据全部清掉:BoundaryLines / 种子 / 擦除模式 都不会残留
+    const s = useAppStore.getState();
+    expect(s.seedPoints).toHaveLength(0);
+    expect(s.suggestedSeeds).toHaveLength(0);
+    expect(s.planarRegions).toHaveLength(0);
+    expect(s.seedEraseMode).toBe(false);
+    expect(s.statusMessage).toContain("已清空分区");
+
+    confirmSpy.mockRestore();
+  });
+
+  it("取消 confirm → 不发任何命令", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    render(<SeedPanel />);
+    await user.click(screen.getByRole("button", { name: /清空分区/ }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(calls.some((c) => c.cmd === "reset_segmentation")).toBe(false);
+    confirmSpy.mockRestore();
   });
 });

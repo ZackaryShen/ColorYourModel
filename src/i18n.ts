@@ -72,6 +72,8 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.soloCrossSection": { zh: "只显 Layer 2 截面", en: "Solo: Layer 2 cross-section only" },
   "seed.fuse": { zh: "🧩 融合生成", en: "🧩 Fuse & generate" },
   "seed.fuseTitle": { zh: "把 Layer 1 平面 + Layer 3 多视角的区域成员关系按边级多数投票融合成最终分区并落盘（不再依赖种子点）", en: "Fuse Layer 1 planar + Layer 3 MultiView region membership by edge-level majority vote into the final partition (no seed points needed)" },
+  "seed.clearAll": { zh: "🗑 清空分区", en: "🗑 Reset partition" },
+  "seed.clearAllTitle": { zh: "清空分区与上色（回到刚导入的干净状态，不可撤销）", en: "Clear partition + paint (back to the freshly-loaded clean state; cannot be undone)" },
   "seed.fuseHint": {
     zh: "「融合生成」把 Layer 1 平面 + Layer 3 多视角的区域成员关系按边级多数投票融合成最终分区并直接落盘（可撤销）。每条边由两算法投票「该不该切开」，切票多于留票才切开，平票合并——抑制过切、让分区更成块。无需手动种种子。",
     en: "Fuse & generate merges Layer 1 planar + Layer 3 MultiView region membership by edge-level majority vote into the final partition and commits it (undoable). Each edge is voted cut/keep by the two algorithms; cut wins only when it outvotes keep, ties merge — suppressing over-splitting into more meaningful blocks. No manual seeds needed.",

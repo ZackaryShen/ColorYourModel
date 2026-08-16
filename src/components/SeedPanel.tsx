@@ -34,7 +34,7 @@ export function SeedPanel() {
   const setOnlyVisible = useAppStore((s) => s.setOnlyVisible);
   const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions, fuseSegmentation } = useTauriCommand();
+  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions, fuseSegmentation, resetSegmentation } = useTauriCommand();
 
   const [barrierDeg, setBarrierDeg] = useState(45);
   const [optimizer, setOptimizer] = useState(false);
@@ -45,6 +45,7 @@ export function SeedPanel() {
   const [concWeight, setConcWeight] = useState(1.0);
   const [detecting, setDetecting] = useState(false);
   const [fusing, setFusing] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const onRecommend = async () => {
     setRecommending(true);
@@ -149,6 +150,32 @@ export function SeedPanel() {
       // error already surfaced via status message in fuseSegmentation
     } finally {
       setFusing(false);
+    }
+  };
+
+  // "Clear everything" — 之前的 × 按钮只清某层,分区面着色依旧存在
+  // (meshData.segmentLabels 来自 manual label / fuse),所以用户一直没法清空。
+  // 后端 reset_segmentation 已就位(useTauriCommand.resetSegmentation):
+  // 把 segmentLabels 全置 0、segments 清空、faceColors 还原默认,history
+  // 也清空。前端顺手把算法 regions + 种子全部清掉,视口立刻恢复干净状态。
+  const onResetAll = async () => {
+    if (!window.confirm(t("segments.resetConfirm"))) return;
+    setResetting(true);
+    log.info("SeedPanel", "onResetAll click");
+    try {
+      await resetSegmentation();
+      // 视口残留清理:前端持有的算法层/种子瞬态数据都清掉,BoundaryLines 立刻消失
+      clearPlanarRegions();
+      clearMultiviewRegions();
+      clearCrossSectionRegions();
+      clearSeedPoints();
+      clearSuggestedSeeds();
+      setSeedEraseMode(false);
+      setStatusMessage("✅ 已清空分区（恢复导入时的干净状态）");
+    } catch {
+      // status already surfaced via useTauriCommand
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -411,6 +438,20 @@ export function SeedPanel() {
         </button>
       </div>
 
+      {/* Reset partition — wipes meshData.segmentLabels + faceColors + history
+          and clears every algorithm overlay. Indispensable since the previous
+          "× buttons" only cleared their own data slice. */}
+      <div style={styles.row}>
+        <button
+          onClick={onResetAll}
+          disabled={resetting}
+          style={styles.danger}
+          title={t("seed.clearAllTitle")}
+        >
+          {resetting ? "…" : t("seed.clearAll")}
+        </button>
+      </div>
+
       <div style={styles.row}>
         <span style={styles.label}>{t("seed.barrier")}</span>
         <input
@@ -485,6 +526,17 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontSize: 13,
     fontWeight: 700,
+  },
+  danger: {
+    flex: 1,
+    padding: "6px 10px",
+    borderRadius: 6,
+    border: "1px solid #ff4d4f",
+    background: "transparent",
+    color: "#ff4d4f",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 600,
   },
   grow: {
     flex: 1,
