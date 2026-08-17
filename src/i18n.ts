@@ -45,6 +45,10 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.needOne": { zh: "请至少放置一个种子", en: "Place at least one seed first" },
   "seed.done": { zh: "种子分区完成：{0} 个区域", en: "Seed partition done: {0} regions" },
   "seed.eraseMode": { zh: "擦除模式", en: "Eraser" },
+  "seed.closeTitle": {
+    zh: "关闭 Seed 面板（Esc / 切回 View 工具；已放置的种子会被保留）",
+    en: "Close Seed panel (Esc / switch back to View tool; placed seeds are kept)",
+  },
   "seed.eraseHint": { zh: "擦除模式：点击模型上任一红色种子即可删除它（只删那一个，不清空全部）。再点「擦除模式」退出。", en: "Eraser: click any red seed on the model to delete just that one (not all). Click Eraser again to exit." },
   "seed.erased": { zh: "已擦除 1 个种子（剩余 {0} 个）", en: "Erased 1 seed ({0} left)" },
   "seed.eraseMiss": { zh: "附近没有种子可擦除（请点在种子圆点上）", en: "No seed nearby to erase (click on a seed dot)" },

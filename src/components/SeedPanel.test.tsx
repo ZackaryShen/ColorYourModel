@@ -164,3 +164,39 @@ describe("SeedPanel.onResetAll — iteration 65「无法清空」修复", () => 
     confirmSpy.mockRestore();
   });
 });
+
+// ── Iteration 66: 「我没办法退出这个界面」修复 ─────────────────────
+// SeedPanel 之前没有 × / Esc 关闭出口,用户反馈「无法退出」。
+// 标题行右上角 × + Esc 都必须切回 View 工具(种子数据保留)。
+describe("SeedPanel.onClose — iteration 66「无法退出」修复", () => {
+  it("点标题行 × → activeTool 切回 View(种子/算法数据保留)", async () => {
+    const user = userEvent.setup();
+    useAppStore.setState({
+      activeTool: "seed",
+      seedPoints: [{ x: 1, y: 1, z: 1, faceIndex: 10 }],
+      suggestedSeeds: [{ x: 2, y: 2, z: 2, faceIndex: 20 }],
+    });
+
+    render(<SeedPanel />);
+    const closeBtn = screen.getByRole("button", { name: /关闭 Seed 面板/ });
+    await user.click(closeBtn);
+
+    // activeTool 切走 → SeedPanel 会被条件渲染自动卸载
+    expect(useAppStore.getState().activeTool).toBe("view");
+    // 重要:已放置的种子应该保留,避免「关掉再回来还要重新布置」的体验断裂
+    expect(useAppStore.getState().seedPoints).toHaveLength(1);
+    expect(useAppStore.getState().suggestedSeeds).toHaveLength(1);
+    // 不应该触发任何 Tauri 命令,纯前端本地切换
+    expect(calls).toHaveLength(0);
+  });
+
+  it("Esc → activeTool 切回 View", async () => {
+    useAppStore.setState({ activeTool: "seed" });
+    render(<SeedPanel />);
+
+    // 派发原生 keydown,模拟键盘 Esc
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(useAppStore.getState().activeTool).toBe("view");
+  });
+});

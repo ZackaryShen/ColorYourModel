@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "../store/appStore";
+import { PaintTool } from "../types/mesh";
 import { useTauriCommand } from "../hooks/useTauriCommand";
 import { useT } from "../i18n";
 import { log } from "../utils/logger";
@@ -34,7 +35,28 @@ export function SeedPanel() {
   const setOnlyVisible = useAppStore((s) => s.setOnlyVisible);
   const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
+  const setActiveTool = useAppStore((s) => s.setActiveTool);
   const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions, fuseSegmentation, resetSegmentation } = useTauriCommand();
+
+  // Iteration 66: give the panel an obvious "I'm done here" exit affordance.
+  // The × button on the title row and the Esc key both switch back to View —
+  // same semantics as IntelligentSegmentPanel uses for its modal. Seed / ghost /
+  // algorithm region state is left in the store so re-entering the Seed tool
+  // restores the in-progress workflow.
+  const closePanel = () => {
+    log.info("SeedPanel", "closePanel → View");
+    setActiveTool(PaintTool.View);
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        log.info("SeedPanel", "Esc pressed → View");
+        setActiveTool(PaintTool.View);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setActiveTool]);
 
   const [barrierDeg, setBarrierDeg] = useState(45);
   const [optimizer, setOptimizer] = useState(false);
@@ -232,7 +254,17 @@ export function SeedPanel() {
 
   return (
     <div style={styles.panel}>
-      <div style={styles.title}>🌱 {t("tool.seed")}</div>
+      <div style={styles.titleRow}>
+        <span style={styles.title}>🌱 {t("tool.seed")}</span>
+        <button
+          onClick={closePanel}
+          style={styles.closeBtn}
+          title={t("seed.closeTitle")}
+          aria-label={t("seed.closeTitle")}
+        >
+          ×
+        </button>
+      </div>
       <div style={styles.hint}>
         {seedEraseMode
           ? t("seed.eraseHint")
@@ -511,6 +543,27 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 20,
   },
   title: { fontWeight: 700, fontSize: 13, marginBottom: 4 },
+  titleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  closeBtn: {
+    width: 22,
+    height: 22,
+    border: "1px solid var(--border, #555)",
+    borderRadius: 11,
+    background: "transparent",
+    color: "var(--text-2, #ccc)",
+    cursor: "pointer",
+    fontSize: 14,
+    lineHeight: "20px",
+    padding: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   hint: { color: "var(--text-3, #aaa)", fontSize: 11, lineHeight: 1.5, marginBottom: 8 },
   row: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 },
   label: { flex: "0 0 auto", whiteSpace: "nowrap" },
