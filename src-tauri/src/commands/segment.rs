@@ -766,13 +766,15 @@ pub fn detect_cross_section_features(
 pub async fn fuse_segmentation(
     cut_threshold: i32,
     min_region_faces: u32,
+    dihedral_deg: f32,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<SegmentResult, String> {
     log::info!(
-        "[cmd:fuse_segmentation] cut_threshold={} min_region_faces={}",
+        "[cmd:fuse_segmentation] cut_threshold={} min_region_faces={} dihedral_deg={:.1}",
         cut_threshold,
-        min_region_faces
+        min_region_faces,
+        dihedral_deg
     );
 
     // Take the mesh out for the whole compute (mirror auto_segment_v2) so a
@@ -780,6 +782,11 @@ pub async fn fuse_segmentation(
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
     drop(mesh_guard);
+
+    // No-op progress callback: the detectors we call here are read-only and the
+    // heavy commit happens in `fuse_region_sets` (which emits its own done
+    // event below).
+    let progress_cb: Box<ProgressFn> = Box::new(|_, _| {});
 
     let n = mesh.faces.len();
     let detect_min = (n / 500).max(2);
@@ -804,6 +811,28 @@ pub async fn fuse_segmentation(
         },
     );
 
+    // Layer 0: geometry backbone — dihedral crease vote. On smooth / single-
+    // colour / organic meshes planar+multiview return little or nothing, so
+    // without this the fused partition collapses to one region (cat-model
+    // diagnosis: planar=0, multiview=125 disconnected islands → 1 fused
+    // region). Dihedral creases (leg–body, ear–head, tail–base) cut regardless
+    // of colour/flatness, giving the edge vote real signal. Computed
+    // transiently: we read the per-face labels into region sets, then reset the
+    // mesh's labels so `fuse_region_sets` re-labels everything itself.
+    let dihedral_sets: Vec<Vec<u32>> = {
+        let _segs = segment_by_dihedral_angle(&mut mesh, dihedral_deg, &*progress_cb);
+        let mut map: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+        for (i, &l) in mesh.segment_labels.iter().enumerate() {
+            map.entry(l).or_default().push(i as u32);
+        }
+        let sets: Vec<Vec<u32>> = map.into_values().collect();
+        let nfaces = mesh.segment_labels.len();
+        mesh.segment_labels = vec![0u32; nfaces];
+        mesh.segments.clear();
+        mesh.segment_names.clear();
+        sets
+    };
+
     let planar_sets: Vec<Vec<u32>> = planar_regions
         .iter()
         .map(|r| r.face_indices.clone())
@@ -817,6 +846,7 @@ pub async fn fuse_segmentation(
         &mut mesh,
         &planar_sets,
         &multiview_sets,
+        &dihedral_sets,
         cut_threshold,
         min_region_faces as usize,
     )

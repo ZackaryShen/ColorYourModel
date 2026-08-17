@@ -43,6 +43,12 @@ use petgraph::visit::EdgeRef;
 use crate::mesh::history::OpKind;
 use crate::mesh::model::{MeshModel, Segment};
 
+/// Weight given to a single dihedral-crease cut vote. The geometry backbone
+/// must be *authoritative*: on smooth / single-colour meshes planar and
+/// MultiView have no signal, so a dihedral crease has to cut even when no other
+/// channel agrees. A value far above any sane `cut_threshold` guarantees it.
+const DIHEDRAL_WEIGHT: i32 = 1000;
+
 /// Result of a fused partition — mirrors `SeedGrowResult` so the command layer
 /// and frontend can reuse the exact same wire shape.
 #[derive(Default)]
@@ -68,19 +74,28 @@ fn label_from_sets(n: usize, sets: &[Vec<u32>]) -> Vec<Option<u32>> {
     label
 }
 
-/// Fuse two face-level region sets (planar + multiview) into one partition via
-/// edge-level majority vote, then commit it to the mesh exactly like
-/// `seed_grow` does (manual labels, per-face colour, one undo entry).
+/// Fuse face-level region sets (planar + multiview + **dihedral geometry
+/// backbone**) into one partition via edge-level majority vote, then commit it
+/// to the mesh exactly like `seed_grow` does (manual labels, per-face colour,
+/// one undo entry).
 ///
 /// `cut_threshold` is the minimum `score` (cut votes − keep votes) needed to
 /// cut an edge — 1 means "cut must outvote keep", 0 means "a tie cuts", 2 means
-/// "both algorithms must vote cut with no keep opposition".
+/// "all channels must vote cut with no keep opposition".
 /// `min_region_faces` filters tiny regions after the vote (`0` = auto-pick
 /// `max(8, n·0.2%)`, the same default as the seed-grow optimizer).
+///
+/// The **dihedral channel is the geometry backbone** (Layer 0): on smooth,
+/// single-colour, organic meshes the planar (needs flat faces) and multiview
+/// (needs view-to-view visual variation) detectors return little or nothing,
+/// so without it the fused partition collapses to a single region. Dihedral
+/// creases (leg–body, ear–head, tail–base) cut regardless of colour/flatness,
+/// giving the vote real signal on exactly those models. See `docs/09` §fusion.
 pub fn fuse_region_sets(
     mesh: &mut MeshModel,
     planar_sets: &[Vec<u32>],
     multiview_sets: &[Vec<u32>],
+    dihedral_sets: &[Vec<u32>],
     cut_threshold: i32,
     min_region_faces: usize,
 ) -> Result<FuseResult, String> {
@@ -88,12 +103,13 @@ pub fn fuse_region_sets(
     if n == 0 {
         return Err("mesh 没有面 (mesh has no faces)".into());
     }
-    if planar_sets.is_empty() && multiview_sets.is_empty() {
-        return Err("两个算法均未检测到区域 (both detectors returned no regions)".into());
+    if planar_sets.is_empty() && multiview_sets.is_empty() && dihedral_sets.is_empty() {
+        return Err("所有算法均未检测到区域 (all detectors returned no regions)".into());
     }
 
     let planar_label = label_from_sets(n, planar_sets);
     let multiview_label = label_from_sets(n, multiview_sets);
+    let dihedral_label = label_from_sets(n, dihedral_sets);
 
     // ── 1. Per-edge majority vote ────────────────────────────────────────
     let mut cut_edges: HashSet<(u32, u32)> = HashSet::new();
@@ -122,6 +138,15 @@ pub fn fuse_region_sets(
                 } else {
                     cut += 1;
                 }
+            }
+            _ => {}
+        }
+        match (dihedral_label[a as usize], dihedral_label[b as usize]) {
+            (Some(x), Some(y)) if x != y => {
+                // Geometry backbone is authoritative: a dihedral crease cuts
+                // regardless of the feature channels (which have no signal on
+                // smooth / single-colour meshes). Weighted above any threshold.
+                cut += DIHEDRAL_WEIGHT;
             }
             _ => {}
         }
@@ -270,7 +295,7 @@ mod tests {
         let mut mesh = unit_cube();
         let planar = cube_planar_sets();
         let multiview = cube_multiview_sets();
-        let r = fuse_region_sets(&mut mesh, &planar, &multiview, 1, 2).unwrap();
+        let r = fuse_region_sets(&mut mesh, &planar, &multiview, &[], 1, 2).unwrap();
         assert_eq!(r.region_count, 6, "cube → 6 fused regions");
         assert_eq!(r.moved_faces, 12, "all 12 faces receive a fused label");
         assert_eq!(r.segments.len(), 6, "segment metadata must list 6 regions");
@@ -281,7 +306,7 @@ mod tests {
         let mut mesh = unit_cube();
         let planar = cube_planar_sets();
         let multiview = cube_multiview_sets();
-        fuse_region_sets(&mut mesh, &planar, &multiview, 1, 2).unwrap();
+        fuse_region_sets(&mut mesh, &planar, &multiview, &[], 1, 2).unwrap();
         assert!(
             mesh.segment_labels.iter().all(|&l| l != 0 || true),
             "labels present"
@@ -292,7 +317,7 @@ mod tests {
     #[test]
     fn empty_input_is_an_error() {
         let mut mesh = unit_cube();
-        let err = fuse_region_sets(&mut mesh, &[], &[], 1, 2);
+        let err = fuse_region_sets(&mut mesh, &[], &[], &[], 1, 2);
         assert!(err.is_err());
     }
 
@@ -302,7 +327,7 @@ mod tests {
         // → no cut votes → a single fused region (tie keeps everything).
         let mut mesh = unit_cube();
         let all: Vec<u32> = (0..12).collect();
-        let r = fuse_region_sets(&mut mesh, &[all], &[], 1, 2).unwrap();
+        let r = fuse_region_sets(&mut mesh, &[all], &[], &[], 1, 2).unwrap();
         assert_eq!(r.region_count, 1, "no cut votes → one region");
     }
 }
