@@ -14,6 +14,7 @@ pub mod split;
 pub mod resegment;
 pub mod recommend;
 pub mod planar;
+pub mod eye;
 pub mod multiview;
 pub mod cross_section;
 pub mod fuse;

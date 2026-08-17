@@ -18,6 +18,9 @@ use crate::segment::recommend::{
 use crate::segment::planar::{
     detect_planar_regions as backend_detect_planar_regions, PlanarParams, PlanarRegion,
 };
+use crate::segment::eye::{
+    detect_eye_regions as backend_detect_eye_regions, EyeRegion,
+};
 use crate::segment::multiview::{
     detect_multiview_regions as backend_detect_multiview_regions, MultiViewParams, MultiViewRegion,
 };
@@ -646,6 +649,23 @@ pub fn detect_planar_regions(
     let regions = backend_detect_planar_regions(mesh, &params);
     log::info!(
         "[cmd:detect_planar_regions] done: {} planar regions",
+        regions.len()
+    );
+    Ok(regions)
+}
+
+/// Eye-region semantic detection (docs/10 REVISE): given a user ROI that bounds
+/// an eye, classify its faces into socket / eyelid / globe / sclera and return
+/// them as advisory regions with boundary edges. Read-only — the mesh is never
+/// mutated, mirroring `detect_planar_regions`.
+#[tauri::command]
+pub fn detect_eye_regions(roi_faces: Vec<u32>, state: State<AppState>) -> Result<Vec<EyeRegion>, String> {
+    log::info!("[cmd:detect_eye_regions] roi_faces={}", roi_faces.len());
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    let regions = backend_detect_eye_regions(mesh, &roi_faces);
+    log::info!(
+        "[cmd:detect_eye_regions] done: {} eye regions",
         regions.len()
     );
     Ok(regions)
