@@ -756,6 +756,8 @@ const multiviewRegions = useAppStore((s) => s.multiviewRegions);
 const multiviewRegionsVisible = useAppStore((s) => s.multiviewRegionsVisible);
 const crossSectionRegions = useAppStore((s) => s.crossSectionRegions);
 const crossSectionRegionsVisible = useAppStore((s) => s.crossSectionRegionsVisible);
+const eyeRegions = useAppStore((s) => s.eyeRegions);
+const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const { buildGeometry, publishGeometry, updateFaceColors } = useMesh();
   const { paintFace } = usePaintTool();
   const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
@@ -2114,6 +2116,14 @@ const crossSectionRegionsVisible = useAppStore((s) => s.crossSectionRegionsVisib
       <BoundaryLines regions={planarRegions} color="#22d3ee" visible={planarRegionsVisible} />
       <BoundaryLines regions={multiviewRegions} color="#fb923c" visible={multiviewRegionsVisible} />
       <BoundaryLines regions={crossSectionRegions} color="#84cc16" visible={crossSectionRegionsVisible} />
+      {/* Layer 5 (docs/10) eye-region semantic overlays. Each semantic class gets
+          its own colour so the four sub-regions read at a glance:
+          Globe=amber, Sclera=pink, Eyelid=indigo, Socket=teal. All three draws
+          are gated by `eyeRegionsVisible` so the Solo toggle hides them together. */}
+      <BoundaryLines regions={eyeRegions.filter((r) => r.semantic === "globe")} color="#fbbf24" visible={eyeRegionsVisible} />
+      <BoundaryLines regions={eyeRegions.filter((r) => r.semantic === "sclera")} color="#ec4899" visible={eyeRegionsVisible} />
+      <BoundaryLines regions={eyeRegions.filter((r) => r.semantic === "eyelid")} color="#6366f1" visible={eyeRegionsVisible} />
+      <BoundaryLines regions={eyeRegions.filter((r) => r.semantic === "socket")} color="#14b8a6" visible={eyeRegionsVisible} />
     </group>
   );
 }

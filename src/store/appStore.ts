@@ -1,6 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { MeshData, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion } from "../types/mesh";
+import { MeshData, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
 import type { Lang } from "../i18n";
 import { log } from "../utils/logger";
@@ -171,8 +171,17 @@ interface AppStore {
   clearCrossSectionRegions: () => void;
   crossSectionRegionsVisible: boolean;
   toggleCrossSectionRegionsVisible: () => void;
+  /** Layer 5 (docs/10) eye-region semantic detection. The four sub-regions
+   *  (globe / sclera / eyelid / socket) the backend found inside the user's eye
+   *  ROI, kept so the Viewport can outline each semantic class with its own
+   *  colour. Transient: NOT persisted. */
+  eyeRegions: EyeRegion[];
+  setEyeRegions: (regions: EyeRegion[]) => void;
+  clearEyeRegions: () => void;
+  eyeRegionsVisible: boolean;
+  toggleEyeRegionsVisible: () => void;
   /** 只显当前层：传入要保留下来的层名，其余关闭。null 表示全开。 */
-  setOnlyVisible: (which: "planar" | "multiview" | "crosssection" | null) => void;
+  setOnlyVisible: (which: "planar" | "multiview" | "crosssection" | "eye" | null) => void;
   setLoading: (loading: boolean) => void;
   setImportProgress: (progress: number, stage: string) => void;
   setLanguage: (lang: Lang) => void;
@@ -561,12 +570,22 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
     set({ crossSectionRegions: regions });
   },
   clearCrossSectionRegions: () => set({ crossSectionRegions: [] }),
+  eyeRegions: [],
+  eyeRegionsVisible: true,
+  toggleEyeRegionsVisible: () =>
+    set((s) => ({ eyeRegionsVisible: !s.eyeRegionsVisible })),
+  setEyeRegions: (regions) => {
+    log.info("store", "setEyeRegions", { count: regions.length });
+    set({ eyeRegions: regions });
+  },
+  clearEyeRegions: () => set({ eyeRegions: [] }),
   setOnlyVisible: (which) => {
     // null = 全部恢复；指定层 = 只保留它。
     set({
       planarRegionsVisible: which === null || which === "planar",
       multiviewRegionsVisible: which === null || which === "multiview",
       crossSectionRegionsVisible: which === null || which === "crosssection",
+      eyeRegionsVisible: which === null || which === "eye",
     });
   },
   setLoading: (loading) => set({ isLoading: loading }),

@@ -32,11 +32,17 @@ export function SeedPanel() {
   const clearCrossSectionRegions = useAppStore((s) => s.clearCrossSectionRegions);
   const crossSectionRegionsVisible = useAppStore((s) => s.crossSectionRegionsVisible);
   const toggleCrossSectionRegionsVisible = useAppStore((s) => s.toggleCrossSectionRegionsVisible);
+  const eyeRegions = useAppStore((s) => s.eyeRegions);
+  const setEyeRegions = useAppStore((s) => s.setEyeRegions);
+  const clearEyeRegions = useAppStore((s) => s.clearEyeRegions);
+  const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
+  const toggleEyeRegionsVisible = useAppStore((s) => s.toggleEyeRegionsVisible);
+  const selectedSegment = useAppStore((s) => s.selectedSegment);
   const setOnlyVisible = useAppStore((s) => s.setOnlyVisible);
   const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setActiveTool = useAppStore((s) => s.setActiveTool);
-  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions, fuseSegmentation, resetSegmentation } = useTauriCommand();
+  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions, detectEyeRegions, fuseSegmentation, resetSegmentation } = useTauriCommand();
 
   // Iteration 66: give the panel an obvious "I'm done here" exit affordance.
   // The × button on the title row and the Esc key both switch back to View —
@@ -66,6 +72,7 @@ export function SeedPanel() {
   const [curvWeight, setCurvWeight] = useState(1.0);
   const [concWeight, setConcWeight] = useState(1.0);
   const [detecting, setDetecting] = useState(false);
+  const [detectingEye, setDetectingEye] = useState(false);
   const [fusing, setFusing] = useState(false);
   const [resetting, setResetting] = useState(false);
 
@@ -156,6 +163,43 @@ export function SeedPanel() {
     }
   };
 
+  // Layer 5 (docs/10): eye-region semantic decomposition. The ROI is the set of
+  // faces belonging to the CURRENTLY SELECTED partition — the user first boxes
+  // an eye area with any algorithm or the lasso, selects that partition, then
+  // clicks here. We derive the ROI faces from `segmentLabels` (the per-face
+  // partition id array) intersected with `selectedSegment`; no extra backend
+  // round-trip needed. The eye detector is read-only, so its regions are stored
+  // purely for the Viewport overlay (like Layer 1/2/3).
+  const onDetectEye = async () => {
+    setDetectingEye(true);
+    log.info("SeedPanel", "onDetectEye click", { selectedSegment });
+    const md = meshData;
+    if (selectedSegment === null || !md || !md.segmentLabels) {
+      setStatusMessage(t("seed.eyeNeedSegment"));
+      setDetectingEye(false);
+      return;
+    }
+    const roiFaces: number[] = [];
+    const labels = md.segmentLabels;
+    for (let i = 0; i < labels.length; i++) {
+      if (labels[i] === selectedSegment) roiFaces.push(i);
+    }
+    if (roiFaces.length < 1) {
+      setStatusMessage(t("seed.eyeNeedFaces"));
+      setDetectingEye(false);
+      return;
+    }
+    try {
+      const regions = await detectEyeRegions(roiFaces);
+      log.info("SeedPanel", "onDetectEye received", { regions: regions.length });
+      setEyeRegions(regions);
+    } catch {
+      // error already surfaced via status message in detectEyeRegions
+    } finally {
+      setDetectingEye(false);
+    }
+  };
+
   // Layer 4 (docs/09): fuse Layer 1 planar + Layer 3 MultiView region
   // *membership* into one partition via edge-level majority vote, then commit
   // it — the fix for "the algorithms sketch useful regions but the real
@@ -190,6 +234,7 @@ export function SeedPanel() {
       clearPlanarRegions();
       clearMultiviewRegions();
       clearCrossSectionRegions();
+      clearEyeRegions();
       clearSeedPoints();
       clearSuggestedSeeds();
       setSeedEraseMode(false);
@@ -268,15 +313,17 @@ export function SeedPanel() {
       <div style={styles.hint}>
         {seedEraseMode
           ? t("seed.eraseHint")
-          : crossSectionRegions.length > 0
-            ? t("seed.crossSectionHint")
-            : multiviewRegions.length > 0
-              ? t("seed.multiviewHint")
-              : planarRegions.length > 0
-                ? t("seed.planarHint")
-                : suggestedSeeds.length > 0
-                  ? t("seed.suggestHint")
-                  : t("seed.hint")}
+          : eyeRegions.length > 0
+            ? t("seed.eyeHint")
+            : crossSectionRegions.length > 0
+              ? t("seed.crossSectionHint")
+              : multiviewRegions.length > 0
+                ? t("seed.multiviewHint")
+                : planarRegions.length > 0
+                  ? t("seed.planarHint")
+                  : suggestedSeeds.length > 0
+                    ? t("seed.suggestHint")
+                    : t("seed.hint")}
       </div>
 
       <div style={styles.row}>
@@ -427,6 +474,32 @@ export function SeedPanel() {
         </button>
       </div>
 
+      <div style={styles.row}>
+        <button onClick={onDetectEye} disabled={detectingEye} style={styles.grow}>
+          {detectingEye ? "…" : t("seed.eye")}
+        </button>
+        <button
+          onClick={toggleEyeRegionsVisible}
+          disabled={eyeRegions.length === 0}
+          style={{
+            ...styles.toggle,
+            background: eyeRegionsVisible ? "#3a1e5f" : "#2a2a2a",
+            color: eyeRegionsVisible ? "#c084fc" : "#888",
+          }}
+          title={t(eyeRegionsVisible ? "seed.hide" : "seed.show")}
+        >
+          {eyeRegionsVisible ? "👁" : "🚫"} {eyeRegions.length}
+        </button>
+        <button
+          onClick={clearEyeRegions}
+          disabled={eyeRegions.length === 0}
+          style={styles.clear}
+          title={t("seed.eyeTitle")}
+        >
+          ×
+        </button>
+      </div>
+
       {/* Solo / all toggles — quick way to show only one layer */}
       <div style={styles.row}>
         <button
@@ -459,6 +532,14 @@ export function SeedPanel() {
           title={t("seed.soloCrossSection")}
         >
           ✂️
+        </button>
+        <button
+          onClick={() => setOnlyVisible("eye")}
+          disabled={eyeRegions.length === 0}
+          style={{ ...styles.miniBtn, color: "#c084fc" }}
+          title={t("seed.soloEye")}
+        >
+          👁
         </button>
       </div>
 

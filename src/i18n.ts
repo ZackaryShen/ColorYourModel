@@ -100,6 +100,16 @@ const dict: Record<string, Record<Lang, string>> = {
   },
   "seed.accepted": { zh: "已接受推荐种子（共 {0} 个）", en: "Accepted suggestion ({0} seeds total)" },
   "seed.acceptDup": { zh: "该推荐点附近已有种子，已忽略", en: "A seed already exists near this suggestion; ignored" },
+  "seed.eye": { zh: "👁 眼睛识别", en: "👁 Eye detect" },
+  "seed.clearEye": { zh: "清空眼睛 ({0})", en: "Clear eye ({0})" },
+  "seed.eyeTitle": { zh: "清空 Layer 5 眼睛语义区域", en: "Clear Layer 5 eye regions" },
+  "seed.eyeHint": {
+    zh: "「眼睛识别」(Layer 5, docs/10) 对**选中的分区**做 ROI 语义分解：把包围眼睛的那块面片细分成 眼球(Globe)/眼白(Sclera,启发式低置信)/眼睑(Eyelid)/眼眶(Socket) 四个子区域，并用分色边界线标出。先用任意算法或套索圈出一个包围眼睛的分区，选中它，再点此按钮。阈值与判定见 docs/10。",
+    en: "Eye detect (Layer 5, docs/10) does a semantic ROI decomposition of the CURRENTLY SELECTED partition: it splits the eye-bounding faces into Globe / Sclera (heuristic, low confidence) / Eyelid / Socket sub-regions and outlines each in its own colour. First box an eye area with any algorithm or the lasso, select that partition, then click here. Thresholds per docs/10.",
+  },
+  "seed.eyeNeedSegment": { zh: "请先在分区面板选中一个包围眼睛的分区", en: "Select a partition that bounds an eye first" },
+  "seed.eyeNeedFaces": { zh: "该分区面数过少，无法识别眼睛", en: "This partition has too few faces to detect an eye" },
+  "seed.soloEye": { zh: "只显 Layer 5 眼睛", en: "Solo: Layer 5 eye only" },
 
   // BrushSettings
   "brush.title": { zh: "画笔设置", en: "Brush Settings" },

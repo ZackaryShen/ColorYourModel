@@ -87,6 +87,24 @@ export interface CrossSectionRegion {
   boundaryEdges: number[][][];
 }
 
+/// Eye-region semantic detection result (`detect_eye_regions`, src/segment/eye.rs,
+/// docs/10). Given a user-lasso ROI (a set of face indices bounding an eye), the
+/// backend classifies each ROI face into one of four semantic labels. `semantic`
+/// is the Rust `EyeLabel` serialised with `rename_all = "camelCase"`, so the
+/// values here are lowercase: "socket" | "eyelid" | "globe" | "sclera".
+export type EyeSemantic = "socket" | "eyelid" | "globe" | "sclera";
+
+/// One detected eye sub-region. `boundaryEdges` is a list of 3D line segments
+/// `[[x,y,z],[x,y,z]]`, the same shape `BoundaryLines` consumes for the planar /
+/// multiview / cross-section overlays — so the Viewport can reuse that renderer.
+export interface EyeRegion {
+  semantic: EyeSemantic;
+  faceIndices: number[];
+  boundaryEdges: number[][][];
+  center: [number, number, number];
+  confidence: number;
+}
+
 export interface SegmentResult {
   segments: Segment[];
   segmentLabels: number[];

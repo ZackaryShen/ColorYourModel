@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion } from "../types/mesh";
+import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
@@ -588,6 +588,40 @@ export function useTauriCommand() {
     }
   };
 
+  /// Layer 5 (docs/10) eye-region semantic detection. Given a user-supplied ROI
+  /// (the face indices of a partition that bounds an eye), the backend
+  /// classifies each ROI face as globe / sclera / eyelid / socket and returns
+  /// the sub-regions with their boundary outlines. Read-only; nothing is
+  /// committed to the mesh — it is a visual evidence overlay like Layer 1/2/3.
+  const detectEyeRegions = async (roiFaces: number[]): Promise<EyeRegion[]> => {
+    log.info("useTauriCommand", `detectEyeRegions(roi=${roiFaces.length} faces)`);
+    try {
+      setStatusMessage("正在语义识别眼睛区域…");
+      const raw = await invoke<
+        Array<{
+          semantic: EyeRegion["semantic"];
+          faceIndices: number[];
+          boundaryEdges: number[][][];
+          center: [number, number, number];
+          confidence: number;
+        }>
+      >("detect_eye_regions", { roiFaces });
+      const regions: EyeRegion[] = (raw ?? []).map((r) => ({
+        semantic: r.semantic,
+        faceIndices: r.faceIndices,
+        boundaryEdges: r.boundaryEdges,
+        center: r.center,
+        confidence: r.confidence,
+      }));
+      setStatusMessage(`已识别 ${regions.length} 个眼睛子区域`);
+      return regions;
+    } catch (e) {
+      log.error("useTauriCommand", "detectEyeRegions failed", { error: String(e) });
+      setStatusMessage(`眼睛识别失败：${e}`);
+      return [];
+    }
+  };
+
   /**
    * Layer 4 (docs/09): fuse the planar (Layer 1) + multiview (Layer 3) region
    * *memberships* into one partition via edge-level majority vote and commit it
@@ -635,6 +669,7 @@ export function useTauriCommand() {
     detectPlanarRegions,
     detectMultiViewRegions,
     detectCrossSectionRegions,
+    detectEyeRegions,
     fuseSegmentation,
     resetSegmentation,
     manualRegionAddPoint,
