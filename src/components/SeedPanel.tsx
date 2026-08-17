@@ -74,6 +74,7 @@ export function SeedPanel() {
   const [detecting, setDetecting] = useState(false);
   const [detectingEye, setDetectingEye] = useState(false);
   const [fusing, setFusing] = useState(false);
+  const [dihedralDeg, setDihedralDeg] = useState(15);
   const [resetting, setResetting] = useState(false);
 
   const onRecommend = async () => {
@@ -210,7 +211,7 @@ export function SeedPanel() {
     setFusing(true);
     log.info("SeedPanel", "onFuse click");
     try {
-      const result = await fuseSegmentation(1, 0);
+      const result = await fuseSegmentation(1, 0, dihedralDeg);
       log.info("SeedPanel", "onFuse done", { segments: result.segments.length });
     } catch {
       // error already surfaced via status message in fuseSegmentation
@@ -541,6 +542,25 @@ export function SeedPanel() {
         >
           👁
         </button>
+      </div>
+
+      {/* Geometry backbone for the fusion: dihedral crease angle. On smooth /
+          single-colour meshes the planar + multiview channels have no signal,
+          so this is what actually splits the model into parts. Lower = more,
+          finer regions; higher = fewer, coarser parts. */}
+      <div style={styles.row}>
+        <span style={styles.label} title={t("seed.fuseDihedralHint")}>
+          {t("seed.fuseDihedral")}
+        </span>
+        <input
+          type="range"
+          min={5}
+          max={35}
+          value={dihedralDeg}
+          onChange={(e) => setDihedralDeg(Number(e.target.value))}
+          style={{ flex: 1 }}
+        />
+        <span style={styles.val}>{dihedralDeg}°</span>
       </div>
 
       {/* Layer 4 fusion — one click turns the algorithm regions into the

@@ -613,7 +613,17 @@ export function useTauriCommand() {
         center: r.center,
         confidence: r.confidence,
       }));
-      setStatusMessage(`已识别 ${regions.length} 个眼睛子区域`);
+      // Diagnostic breakdown: a "only 1 region" report is triaged by which
+      // labels survive — only Eyelid ⇒ ROI was the wrong partition; Globe +
+      // Sclera present ⇒ the split worked and the overlay is just subtle.
+      const tally: Record<string, number> = {};
+      for (const r of regions) {
+        tally[r.semantic] = (tally[r.semantic] ?? 0) + 1;
+      }
+      const parts = ["globe", "sclera", "eyelid", "socket"]
+        .map((k) => `${k}:${tally[k] ?? 0}`)
+        .join(" ");
+      setStatusMessage(`已识别 ${regions.length} 个眼睛子区域 (${parts})`);
       return regions;
     } catch (e) {
       log.error("useTauriCommand", "detectEyeRegions failed", { error: String(e) });
@@ -632,17 +642,19 @@ export function useTauriCommand() {
    */
   const fuseSegmentation = async (
     cutThreshold: number = 1,
-    minRegionFaces: number = 0
+    minRegionFaces: number = 0,
+    dihedralDeg: number = 15
   ): Promise<SegmentResult> => {
     log.info(
       "useTauriCommand",
-      `fuseSegmentation(cutThreshold=${cutThreshold}, minRegionFaces=${minRegionFaces})`
+      `fuseSegmentation(cutThreshold=${cutThreshold}, minRegionFaces=${minRegionFaces}, dihedralDeg=${dihedralDeg})`
     );
     try {
       setStatusMessage("融合生成分区中…");
       const result = await invoke<SegmentResult>("fuse_segmentation", {
         cutThreshold,
         minRegionFaces,
+        dihedralDeg,
       });
       updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
       setStatusMessage(`融合分区完成：${result.segments.length} 个区域`);
