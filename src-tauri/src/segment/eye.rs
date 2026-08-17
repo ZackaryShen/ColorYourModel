@@ -70,11 +70,14 @@ const R_SPHERE: f32 = 0.5;
 /// REVISE #2: a spherical face whose normalised centre distance `dn >=` this sits
 /// on the outer ring → sclera (the white of the eye); below it → globe (body).
 const BAND_SCLERA: f32 = 0.85;
-/// REVISE #5: if the total number of globe+sclera faces is below this, the eye
-/// is treated as closed (no visible eyeball) and globe/sclera are dropped.
-const CLOSED_EYE_MIN_GLOBE: usize = 30;
-/// docs/10 §5: regions with fewer faces than this are noise and are discarded.
-const MIN_REGION_FACES: u32 = 50;
+/// REVISE #5: floor on the globe+sclera count below which the eye is treated
+/// as closed. The effective threshold scales with the ROI size (see
+/// `detect_eye_regions`) so a small but real eye is not mis-dropped.
+const CLOSED_EYE_MIN_GLOBE: usize = 8;
+/// docs/10 §5: floor on region size; the effective minimum scales with the ROI
+/// (a 50-face absolute cap silently culls every sub-region of a small eye ROI,
+/// leaving only the largest patch — the "only 1 partition" regression).
+const MIN_REGION_FACES_FLOOR: u32 = 8;
 /// Dihedral peak threshold for an eyelid crease (empirical). A face whose
 /// maximum dihedral crease exceeds this is a *sharp* fold, not the smooth
 /// curved surface of an eyeball — see the classification in `detect_eye_regions`.
@@ -531,20 +534,33 @@ pub fn detect_eye_regions(mesh: &MeshModel, roi_faces: &[u32]) -> Vec<EyeRegion>
     }
 
     // Step 7: closed-eye fallback — too few spherical faces ⇒ discard globe/sclera.
+    // The threshold scales with the ROI: a real eye should make up a meaningful
+    // fraction of the selected partition, not an absolute 30 faces.
+    let closed_eye_min = (roi_faces.len() / 20).max(CLOSED_EYE_MIN_GLOBE);
     let globe_sclera_faces: usize = regions_raw
         .iter()
         .filter(|(c, v)| (*c == EyeLabel::Globe || *c == EyeLabel::Sclera) && !v.is_empty())
         .map(|(_, v)| v.len())
         .sum();
-    let closed_eye = globe_sclera_faces < CLOSED_EYE_MIN_GLOBE;
+    let closed_eye = globe_sclera_faces < closed_eye_min;
+
+    // Raw per-label component counts (computed before `regions_raw` is moved by
+    // the consuming loop below).
+    let mut raw_counts = [0usize; 4];
+    for (cls, _c) in &regions_raw {
+        raw_counts[*cls as usize] += 1;
+    }
 
     // Steps 8-10: filter, build regions, sort by size.
+    // `min_region_faces` is ROI-relative (floor 8) so a small eye ROI keeps its
+    // sub-regions instead of being culled to a single blob.
+    let min_region_faces = (roi_faces.len() / 25).max(MIN_REGION_FACES_FLOOR as usize) as u32;
     let mut out: Vec<EyeRegion> = Vec::new();
     for (cls, comp) in regions_raw {
         if closed_eye && (cls == EyeLabel::Globe || cls == EyeLabel::Sclera) {
             continue;
         }
-        if comp.len() < MIN_REGION_FACES as usize {
+        if comp.len() < min_region_faces as usize {
             continue;
         }
 
@@ -600,6 +616,26 @@ pub fn detect_eye_regions(mesh: &MeshModel, roi_faces: &[u32]) -> Vec<EyeRegion>
     }
 
     out.sort_by(|a, b| b.face_indices.len().cmp(&a.face_indices.len()));
+
+    // Diagnostics (dev console / env_logger). Surfaces the per-label raw and
+    // post-filter counts so a "only 1 region" report can be triaged without a
+    // GUI: is the ROI wrong (only Eyelid), or are sub-regions being culled?
+    let mut out_counts = [0usize; 4];
+    for r in &out {
+        out_counts[r.semantic as usize] += 1;
+    }
+    log::info!(
+        "[eye] roi={} r_roi={:.3} m_edge={:.4} degenerate_band={} closed_eye={} min_region={} | raw[G,S,E,So]={:?} out[G,S,E,So]={:?}",
+        roi_faces.len(),
+        r_roi,
+        m_edge,
+        degenerate_band,
+        closed_eye,
+        min_region_faces,
+        raw_counts,
+        out_counts,
+    );
+
     out
 }
 
@@ -704,5 +740,64 @@ mod tests {
                 s.confidence
             );
         }
+    }
+
+    /// Build a top hemisphere (curved surface only, open at the equator) — a
+    /// realistic exposed-eyeball ROI, distinct from a full sphere (which hits the
+    /// degenerate-band guard and collapses to a single Globe).
+    fn build_hemisphere(radius: f32, bands: u32, sectors: u32) -> MeshModel {
+        let mut m = MeshModel::new();
+        m.vertices.push([0.0, radius, 0.0]); // north pole
+        for b in 1..bands {
+            let theta = std::f32::consts::PI / 2.0 * (b as f32) / (bands as f32);
+            let y = radius * theta.cos();
+            let r = radius * theta.sin();
+            for s in 0..sectors {
+                let phi = 2.0 * std::f32::consts::PI * (s as f32) / (sectors as f32);
+                m.vertices.push([r * phi.cos(), y, r * phi.sin()]);
+            }
+        }
+        let ring_start = |b: usize| (1 + (b - 1) * sectors as usize) as u32;
+        for s in 0..sectors {
+            let a = ring_start(1) + s as u32;
+            let b = ring_start(1) + ((s + 1) % sectors) as u32;
+            m.faces.push([0, a, b]);
+        }
+        for b in 1..(bands as usize) - 1 {
+            for s in 0..sectors {
+                let r0 = ring_start(b) + s as u32;
+                let r1 = ring_start(b) + ((s + 1) % sectors) as u32;
+                let r0n = ring_start(b + 1) + s as u32;
+                let r1n = ring_start(b + 1) + ((s + 1) % sectors) as u32;
+                m.faces.push([r0, r0n, r1]);
+                m.faces.push([r1, r0n, r1n]);
+            }
+        }
+        m.compute_normals();
+        m.compute_bbox();
+        m.build_adjacency();
+        m
+    }
+
+    /// Regression for the "only 1 partition" report: a proper eye ROI must split
+    /// into several semantic regions, not collapse to a single Eyelid blob. With
+    /// the old absolute `MIN_REGION_FACES = 50` a small eye ROI could be culled
+    /// to one region; the ROI-relative threshold restores the sub-regions.
+    #[test]
+    fn hemisphere_roi_yields_globe_and_sclera() {
+        let mesh = build_hemisphere(1.0, 24, 24);
+        let roi: Vec<u32> = (0..mesh.faces.len() as u32).collect();
+        let regions = detect_eye_regions(&mesh, &roi);
+        let globe = regions.iter().filter(|r| r.semantic == EyeLabel::Globe).count();
+        let sclera = regions.iter().filter(|r| r.semantic == EyeLabel::Sclera).count();
+        assert!(
+            regions.len() >= 2,
+            "hemisphere ROI must split into >=2 regions, got {} (raw counts: globe={}, sclera={})",
+            regions.len(),
+            globe,
+            sclera
+        );
+        assert!(globe >= 1, "hemisphere must yield a Globe region");
+        assert!(sclera >= 1, "hemisphere rim must yield a Sclera region");
     }
 }
