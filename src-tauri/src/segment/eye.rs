@@ -729,6 +729,31 @@ mod tests {
     }
 
     #[test]
+    fn partial_sphere_roi_finds_globe_and_sclera() {
+        // Simulates the real use case: user Lasso-ed or selected a partition
+        // that wraps just the eye area (front hemisphere only). Must still
+        // split into Globe + Sclera — protects against MIN_REGION_FACES or
+        // the closed-eye fallback inadvertently culling both on a partial ROI.
+        let mesh = build_sphere(1.0, 24, 24);
+        let n = mesh.faces.len();
+        let half = n / 2;
+        let roi: Vec<u32> = (0..half as u32).collect();
+        let regions = detect_eye_regions(&mesh, &roi);
+        let has_globe = regions.iter().any(|r| r.semantic == EyeLabel::Globe);
+        let has_sclera = regions.iter().any(|r| r.semantic == EyeLabel::Sclera);
+        assert!(
+            has_globe,
+            "partial sphere ROI must produce Globe, got labels: {:?}",
+            regions.iter().map(|r| r.semantic).collect::<Vec<_>>()
+        );
+        assert!(
+            has_sclera,
+            "partial sphere ROI must produce Sclera (outer ring), got labels: {:?}",
+            regions.iter().map(|r| r.semantic).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn sclera_is_heuristic_low_confidence() {
         let mesh = build_sphere(1.0, 24, 24);
         let roi: Vec<u32> = (0..mesh.faces.len() as u32).collect();
