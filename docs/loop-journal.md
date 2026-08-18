@@ -60,3 +60,61 @@
 - 暴露参数面板（ball_radius_ratio / sphere_inlier_threshold / min_region_faces）。
 - 端到端 PSB/真实模型基准。
 - 眼白真实辅助判定（依赖 texture/UV，v1 纯几何 Heuristic）。
+
+---
+
+## 迭代 79 — Eye 区作为分区参与 fuse & grow + SeedPanel 自适应 clamp
+
+### 触发的理论缺口
+- 迭代 78 装的 detect_eye_regions 输的是「可视化 overlay」(BoundaryLines), 不进 partition。导致：
+  - 用户点了 "Fuse & generate" 后看到 fuse 出的 35 个区, 又点 Eye detect, 看到绿色 / 蓝色 / 青色 overlay, 但 overlay 是 dead layer。
+  - 之后任何一次 seedGrow / 二次 fuse 都会把 eye 面就近 Dijkstra 并走, 用户的"识别出眼睛"被吞, **算法判定的轮廓和最终分区永远对不上**。
+- 现有 Layer 4 (fuse) 是 3 通道 vote: planar (Layer 1) + multiview (Layer 3) + dihedral backbone (Layer 0)。Eye 是 Layer 4.5: 用户语义意图 (不是几何特征), 但是同样需要"防吞"。
+
+### 初版方案 (被推翻)
+- 候选 A: 每个 EyeRegion auto-addSeedPoint (中位面)。简单但有副作用: ① 用户没要 ghost marker UI; ② 单 seed 不强制 connectivity — eye region 内部被其他 seed 抢走的概率非零; ③ 完全不动 fuse, 用户调 fuse 时 eye 还是会被并。
+- 候选 B: seedGrow 路径里, 给 EyeRegion 强制 "锁面", 加进 seed_grow 的 `seed_input` 不可 grow。破坏既有 seed_grow 语义, 引入 mutation-on-read。
+- 候选 C (采纳): fuse 第 5 通道 eye_sets, EYE_WEIGHT=1000, 与 dihedral backbone 对齐; plus onGrow 给每个 EyeRegion 合成 1 颗 interior anchor seed 走 seedGrow Voronoi 路径。
+
+### 对抗审查结论 (REFUTE)
+- **[blocker] 1**: EyeRegion 不是 1-face label - 用 label_from_sets 给每眼面单独 label 会让"两个眼内面相邻"也投 cut+1, 等于把眼 region 自己切碎。采纳: 改用 `eye_bounded: Vec<bool>` (face-level flag), 边界检查 `ea != eb` 而不是 label diff。
+- **[blocker] 2**: tiny-region post-merge 会把 1-face 的 sclera 并到邻居, 即便眼 channel 切开了也会被合并掉。采纳: 给含眼面的 region 加锁, 不参与 tiny-region-merge 候选。
+- **[major]**: existing magic number `clampPos`/`resetPosition` 用 `innerHeight-460 / innerHeight-80` 写死, 高 DPI / 多屏 / 字体缩放下溢出。采纳: 用 panelRef getBoundingClientRect 实测 width/height。
+- **[major]**: DEFAULT_POS 用 bottom-center, 4K 屏上 panel 跑屏幕中下而非视觉重点, 不在用户视线落点 (模型)。采纳: 改 bottom-right + margin。
+
+### 改动文件 (实现)
+- `src-tauri/src/segment/fuse.rs`:
+  - 新增 `EYE_WEIGHT: i32 = 1000` 与 `DIHEDRAL_WEIGHT` 对齐。
+  - `fuse_region_sets` 增加第 5 参 `eye_sets: &[Vec<u32>]`。
+  - 新增 `eye_bounded: Vec<bool>` (每 face flag), 边界 vote: `ea != eb` → cut += EYE_WEIGHT。
+  - tiny-region merge 候选过滤: `region_has_eye[rid]` 为 true 的不入列。
+  - 4 个测试保留 + 2 个新测试: `eye_set_carves_itself_out` (1-face eye channel → 2 region), `eye_set_keeps_intra_region_cohesion` (2 adjacent eye faces → 1 region, outer 10 faces stay merged, total 2 region)。
+- `src-tauri/src/commands/segment.rs`:
+  - `fuse_segmentation` 加 `eye_face_indices: Option<Vec<Vec<u32>>>` 参, 内部直接 unwrap_or_default → `eye_sets`。
+- `src/hooks/useTauriCommand.ts`:
+  - `fuseSegmentation` 加第 4 参 `eyeFaceIndices?: number[][]`, invoke key `eyeFaceIndices` (camelCase, backend 已经 `snake_case: 'eye_face_indices'`, Tauri 2 自动转)。
+- `src/components/SeedPanel.tsx`:
+  - `onFuse`: `eyeSets = eyeRegions.map(r => r.faceIndices)`, 调 `fuseSegmentation(1, 0, dihedralDeg, eyeSets)`。
+  - `onGrow`: 合成 `eyeSeeds: SeedPoint[]` (从每个 EyeRegion faceIndices 中位面取三顶点均值作坐标), 拼入 `seeds = [...seedPoints, ...suggestedSeeds, ...eyeSeeds]`。状态栏显示 "手 X + 推 X + 眼 X" 拆分。
+  - `clampPos`/`loadPos`/`resetPosition` 全部用 `panelRef.current?.getBoundingClientRect()` 实测 width/height。
+  - 拖动 `onMove` clamp 同理用活体尺寸。
+  - resize 监听 rAF 节流。
+  - 新增 first-mount effect: 当 panel 第一次拿到真实 rect 时 re-clamp, 防首屏 overflow。
+  - DEFAULT_POS: bottom-right with margin (替代 bottom-center)。
+
+### 测试证据
+- 157 lib tests pass (原 6 fuse + 新 2 eye channel)。
+- 7 vitest pass (现有 iter60/61/63/65/66 路径不退化)。
+- tsc --noEmit 0 错。
+- NSIS 3.3MB + MSI 5.0MB。
+
+### E2E 期望
+- 先生: 加载青蛙 → Fuse & generate (35 区) → 点眼睛区域 → Eye detect (出现绿/蓝/青 overlay) → 再点 Fuse & generate → 眼睛区域变为独立分区 (而不是被吸收)。
+- 改走 Grow: 先生不重 Fuse, 直接点 Grow → 状态栏显示 "...+ 眼 3", 眼睛区保持独立 label, grow 后 overlay 还在。
+- 拖 panel 到右下角, 缩小窗口到 panel 高 > 窗口高 → panel 自动 clamp 到 top + margin (而不是 overflow 隐藏)。
+- 点 📍 复位: panel 落在右下 + 16px margin。
+
+### 遗留 backlog (deferred to v2)
+- 「auto-ROI」(无 selectedSegment 时 MultiView 自动选最像眼睛区域作 ROI) — 等先生决定。
+- EyeRegion 进 SegmentsPanel 列表 (作为特殊 label 显示, 让用户在分区面板里也能 "选中眼睛区")。
+- EyeRegion 在 export 3MF 时保存 semantic 信息 (globe/sclera/eyelid/socket 各自单独颜色组)。
