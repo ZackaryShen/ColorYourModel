@@ -166,6 +166,47 @@ export function SeedPanel() {
   const [pos, setPos] = useState<{ x: number; y: number }>(() =>
     loadPos(null),
   );
+
+  // Iteration 80: stash the most recent `fuse-debug` payload (emitted by
+  // `fuse_segmentation`) on a module-scoped slot so the post-fuse status
+  // message can read it. We avoid putting it in component state to keep the
+  // listener registration side-effect free.
+  useEffect(() => {
+    type FuseDebugPayload = {
+      channels?: {
+        planar?: number;
+        multiview?: number;
+        dihedral?: number;
+        eye?: number;
+      };
+      edgeTotal?: number;
+      edgeCut?: number;
+      regionSizeMin?: number;
+      regionSizeMax?: number;
+      regionSizeMedian?: number;
+    };
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        if (cancelled) return;
+        const h = await listen<FuseDebugPayload>("fuse-debug", (e) => {
+          // Latest-write-wins; the post-fuse status is read after `await fuse...`
+          // resolves.
+          (window as unknown as { __lastFuseDebug?: FuseDebugPayload }).__lastFuseDebug =
+            e.payload;
+        });
+        unlisten = h;
+      } catch {
+        /* non-Tauri context (unit tests): ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, []);
   const dragRef = useRef<{
     pointerId: number;
     startClientX: number;
@@ -530,6 +571,30 @@ export function SeedPanel() {
         segments: result.segments.length,
         eyeChannels: eyeSets.length,
       });
+      // Iteration 80: help the user debug the common "fuse produced 500 regions
+      // on a smooth model" failure by surfacing the channel + cut breakdown
+      // the backend emitted on `fuse-debug`. Most of the time the answer is
+      // "raise min_region_faces" (the sliver slider below) rather than
+      // tweaking the algorithms themselves.
+      const fuseLast = (window as unknown as { __lastFuseDebug?: {
+        channels?: { planar?: number; multiview?: number; dihedral?: number; eye?: number };
+        edgeTotal?: number;
+        edgeCut?: number;
+        regionSizeMin?: number;
+        regionSizeMax?: number;
+        regionSizeMedian?: number;
+      } }).__lastFuseDebug;
+      if (fuseLast && typeof fuseLast === "object") {
+        const c = fuseLast.channels || {};
+        const ec = fuseLast.edgeTotal ?? 0;
+        const cut = fuseLast.edgeCut ?? 0;
+        const min = fuseLast.regionSizeMin ?? 0;
+        const med = fuseLast.regionSizeMedian ?? 0;
+        const mx = fuseLast.regionSizeMax ?? 0;
+        setStatusMessage(
+          `🧩 融合完成：${result.segments.length} 区（通道 平面${c.planar ?? 0}/多视角${c.multiview ?? 0}/折痕${c.dihedral ?? 0}/眼${c.eye ?? 0}, 边 ${cut}/${ec} 切, 区大小 min=${min} med=${med} max=${mx}）`,
+        );
+      }
     } catch {
       // error already surfaced via status message in fuseSegmentation
     } finally {

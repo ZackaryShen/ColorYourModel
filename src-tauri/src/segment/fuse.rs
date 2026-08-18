@@ -43,6 +43,14 @@ use petgraph::visit::EdgeRef;
 use crate::mesh::history::OpKind;
 use crate::mesh::model::{MeshModel, Segment};
 
+/// Max tiny-region merge passes — mirror of [`postprocess::MAX_MERGE_PASSES`].
+/// Each pass absorbs *every* under-sized region (≥1 face below `min_faces`)
+/// instead of a single minimum; without this a 500k-face model with 500 small
+/// fragments would exit the loop after 3 passes with hundreds of crumbs still
+/// standing. The cap exists only to make termination provable; in practice the
+/// loop converges when no under-sized region remains.
+const MAX_MERGE_PASSES: u32 = 40;
+
 /// Weight given to a single dihedral-crease cut vote. The geometry backbone
 /// must be *authoritative*: on smooth / single-colour meshes planar and
 /// MultiView have no signal, so a dihedral crease has to cut even when no other
@@ -58,12 +66,24 @@ const EYE_WEIGHT: i32 = 1000;
 
 /// Result of a fused partition — mirrors `SeedGrowResult` so the command layer
 /// and frontend can reuse the exact same wire shape.
+///
+/// `edge_total` / `edge_cut` / `region_size_min` / `region_size_max` /
+/// `region_size_median` are diagnostic counters surfaced to the frontend via
+/// the `fuse-debug` Tauri event, so the user can see *why* the button produced
+/// the result it did (e.g. "535 raw components but only 38 large regions
+/// after small-region merge" — a hint the right knob to pull is the
+/// `min_region_faces` slider, not the algorithms themselves).
 #[derive(Default)]
 pub struct FuseResult {
     pub segments: Vec<Segment>,
     pub segment_labels: Vec<u32>,
     pub moved_faces: usize,
     pub region_count: usize,
+    pub edge_total: Option<u64>,
+    pub edge_cut: Option<u64>,
+    pub region_size_min: usize,
+    pub region_size_max: usize,
+    pub region_size_median: usize,
 }
 
 /// Build a per-face optional label from a set of regions. Each region is a list
@@ -144,6 +164,8 @@ pub fn fuse_region_sets(
 
     // ── 1. Per-edge majority vote ────────────────────────────────────────
     let mut cut_edges: HashSet<(u32, u32)> = HashSet::new();
+    let mut edge_total = 0u64;
+    let mut edge_cut = 0u64;
     for e in mesh.face_adjacency.edge_references() {
         let a = e.source().index() as u32;
         let b = e.target().index() as u32;
@@ -152,6 +174,7 @@ pub fn fuse_region_sets(
         }
         let mut cut = 0i32;
         let mut keep = 0i32;
+        edge_total += 1;
         match (planar_label[a as usize], planar_label[b as usize]) {
             (Some(x), Some(y)) => {
                 if x == y {
@@ -193,8 +216,19 @@ pub fn fuse_region_sets(
         }
         if cut - keep > cut_threshold {
             cut_edges.insert((a.min(b), a.max(b)));
+            edge_cut += 1;
         }
     }
+    log::info!(
+        "[fuse] channels — planar={} multiview={} dihedral={} eye_sets={}; total_edges={} cut={} cut_threshold={}",
+        planar_sets.len(),
+        multiview_sets.len(),
+        dihedral_sets.len(),
+        eye_sets.len(),
+        edge_total,
+        edge_cut,
+        cut_threshold,
+    );
 
     // ── 2. Connected components ignoring cut edges ────────────────────────
     let mut region = vec![u32::MAX; n];
@@ -220,6 +254,11 @@ pub fn fuse_region_sets(
         }
         region_count += 1;
     }
+    log::info!(
+        "[fuse] raw_components={} cut_edges={}",
+        region_count,
+        cut_edges.len()
+    );
 
     // ── 3. Merge tiny regions into their largest neighbour ────────────────
     let min_faces = if min_region_faces > 0 {
@@ -239,45 +278,79 @@ pub fn fuse_region_sets(
             region_has_eye.insert(rid, false);
         }
     }
-    for _pass in 0..3 {
+    for pass in 0..MAX_MERGE_PASSES {
+        // Build per-region face counts and accumulate per-pass statistics.
         let mut counts: HashMap<u32, usize> = HashMap::new();
         for &r in &region {
             *counts.entry(r).or_insert(0) += 1;
         }
-        let tiny = counts
+        // Snapshot the under-sized non-eye regions; do NOT mutate `region`
+        // mid-iteration — collecting first means every small region gets a
+        // chance this pass even when others just got absorbed.
+        let mut tiny: Vec<u32> = counts
             .iter()
-            // Never merge a region that has any eye face; it carries the
-            // user's intent.
-            .filter(|(_, &c)| c < min_faces)
-            .filter(|(&r, _)| !region_has_eye.get(&r).copied().unwrap_or(false))
-            .min_by_key(|(_, &c)| c)
-            .map(|(&r, _)| r);
-        let Some(tiny) = tiny else { break };
-        // The neighbour region sharing the most boundary edges with `tiny`.
-        let mut neighbour: HashMap<u32, usize> = HashMap::new();
-        for f in 0..n {
-            if region[f] != tiny {
+            // Skip under-sized regions that contain an eye face — the user
+            // explicitly confirmed those faces.
+            .filter(|(&r, &c)| c < min_faces && !region_has_eye.get(&r).copied().unwrap_or(false))
+            .map(|(&r, _)| r)
+            .collect();
+        if tiny.is_empty() {
+            break;
+        }
+        // Sort by size ascending so smaller crumbs merge first.
+        tiny.sort_by_key(|&r| counts[&r]);
+        let mut merged_this_pass = 0usize;
+        // Merge each small region into its largest neighbour (by shared
+        // boundary edge count). Compute the neighbour table once per small
+        // region; the inner pass is over its faces and their neighbours
+        // (≪ all edges).
+        for small_id in tiny {
+            // Build neighbour of `small_id` by face-level scan (only the
+            // faces whose `region[f] == small_id` are inspected, plus their
+            // adjacent neighbours — linear in the size of the small region).
+            let mut neighbour: HashMap<u32, usize> = HashMap::new();
+            let still_exists = counts.contains_key(&small_id);
+            if !still_exists {
                 continue;
             }
-            for e in mesh.face_adjacency.edges(NodeIndex::new(f)) {
-                let g = e.target().index();
-                if g >= n {
+            for f in 0..n {
+                if region[f] != small_id {
                     continue;
                 }
-                let rn = region[g];
-                if rn != tiny {
-                    *neighbour.entry(rn).or_insert(0) += 1;
+                for e in mesh.face_adjacency.edges(NodeIndex::new(f)) {
+                    let g = e.target().index();
+                    if g >= n {
+                        continue;
+                    }
+                    let rn = region[g];
+                    if rn != small_id {
+                        *neighbour.entry(rn).or_insert(0) += 1;
+                    }
                 }
+            }
+            if let Some((&target, _)) = neighbour.iter().max_by_key(|(_, &c)| c) {
+                if target == small_id {
+                    continue;
+                }
+                for f in 0..n {
+                    if region[f] == small_id {
+                        region[f] = target;
+                    }
+                }
+                merged_this_pass += 1;
+                counts.remove(&small_id);
+            } else {
+                break; // isolated (no neighbour) — stop trying
             }
         }
-        if let Some((&target, _)) = neighbour.iter().max_by_key(|(_, &c)| c) {
-            for f in 0..n {
-                if region[f] == tiny {
-                    region[f] = target;
-                }
-            }
-        } else {
-            break; // isolated — leave it
+        log::info!(
+            "[fuse] tiny-merge pass {}: merged {} small regions (min_faces={})",
+            pass,
+            merged_this_pass,
+            min_faces
+        );
+        if merged_this_pass == 0 {
+            break;
         }
     }
 
@@ -285,12 +358,15 @@ pub fn fuse_region_sets(
     let mut prev_colors = Vec::with_capacity(n);
     let mut prev_labels = Vec::with_capacity(n);
     let mut id_to_label: HashMap<u32, u32> = HashMap::new();
+    let mut final_regions = Vec::<(u32, usize)>::new();
+    let mut region_faces: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut moved = 0usize;
     for f in 0..n {
         let rid = region[f];
         let label = *id_to_label
             .entry(rid)
             .or_insert_with(|| mesh.alloc_manual_label());
+        region_faces.entry(rid).or_default().push(f as u32);
         let fi = f as u32;
         prev_labels.push((fi, mesh.segment_labels[f]));
         prev_colors.push((fi, mesh.face_colors[f]));
@@ -300,6 +376,24 @@ pub fn fuse_region_sets(
         mesh.segment_labels[f] = label;
         mesh.face_colors[f] = MeshModel::manual_label_color(label);
     }
+    for (rid, faces) in &region_faces {
+        final_regions.push((*rid, faces.len()));
+    }
+    final_regions.sort_by(|a, b| b.1.cmp(&a.1));
+    let median_face: usize = final_regions
+        .get(final_regions.len() / 2)
+        .map(|(_, c)| *c)
+        .unwrap_or(0);
+    let min_face = final_regions.last().map(|(_, c)| *c).unwrap_or(0);
+    let max_face = final_regions.first().map(|(_, c)| *c).unwrap_or(0);
+    log::info!(
+        "[fuse] post_merge regions={} min={:?} median={} max={:?} top5={:?}",
+        final_regions.len(),
+        final_regions.last().map(|(_, c)| *c),
+        median_face,
+        final_regions.first().map(|(_, c)| *c),
+        final_regions.iter().take(5).collect::<Vec<_>>()
+    );
     mesh.history
         .record(OpKind::ManualRegion, None, &prev_colors, &prev_labels);
     mesh.rebuild_segments();
@@ -309,6 +403,11 @@ pub fn fuse_region_sets(
         segment_labels: mesh.segment_labels.clone(),
         moved_faces: moved,
         region_count: id_to_label.len(),
+        edge_total: Some(edge_total),
+        edge_cut: Some(edge_cut),
+        region_size_min: min_face,
+        region_size_max: max_face,
+        region_size_median: median_face,
     })
 }
 

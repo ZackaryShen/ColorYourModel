@@ -869,6 +869,30 @@ pub async fn fuse_segmentation(
         result.region_count,
         result.moved_faces
     );
+    // Surface a structured breakdown to the UI so the user can read *why* the
+    // button produced e.g. 535 regions on a smooth model and tweak the knobs.
+    // Also written to the log; emitted on `fused-debug` (camelCase) for the
+    // frontend to pick up.
+    let _ = app.emit(
+        "fuse-debug",
+        serde_json::json!({
+            "stage": "fuse-done",
+            "channels": {
+                "planar": planar_sets.len(),
+                "multiview": multiview_sets.len(),
+                "dihedral": dihedral_sets.len(),
+                "eye": eye_sets.len(),
+            },
+            "cutThreshold": cut_threshold,
+            "minRegionFaces": min_region_faces,
+            "rawComponents": result.region_count,
+            "edgeTotal": result.edge_total.unwrap_or(0),
+            "edgeCut": result.edge_cut.unwrap_or(0),
+            "regionSizeMin": result.region_size_min,
+            "regionSizeMax": result.region_size_max,
+            "regionSizeMedian": result.region_size_median,
+        }),
+    );
 
     let labels = result.segment_labels.clone();
     let face_colors = flatten_face_colors(&mesh.face_colors);
