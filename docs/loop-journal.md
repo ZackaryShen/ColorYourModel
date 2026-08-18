@@ -118,3 +118,61 @@
 - 「auto-ROI」(无 selectedSegment 时 MultiView 自动选最像眼睛区域作 ROI) — 等先生决定。
 - EyeRegion 进 SegmentsPanel 列表 (作为特殊 label 显示, 让用户在分区面板里也能 "选中眼睛区")。
 - EyeRegion 在 export 3MF 时保存 semantic 信息 (globe/sclera/eyelid/socket 各自单独颜色组)。
+
+---
+
+## 迭代 80 — Fuse 反向切开 (57→535) + tiny-region merge 强化 + 状态栏诊断
+
+### 触发的理论缺口
+- 用户在 500k 面青蛙上点「融合生成」, segment count 从 57 暴增到 535。fuse 应该 "合并", 实际 "切开"。
+- docs/09 §11 设计的本意: 边级多数投票 (`score = cut - keep > cut_threshold`), cut 必须严格多于 keep 才切, 平票合并。但是 fuse_region_sets 的 post-merge tiny-region step 只跑 3 passes × 1 region:
+  ```rust
+  for _pass in 0..3 {
+      let tiny = counts.iter().filter(|(_, &c)| c < min_faces).min_by_key(...);
+      let Some(tiny) = tiny else { break; };
+      // ...仅合 1 个 region
+  }
+  ```
+  对 500k+ 面模型的「百级别碎片」绝对不够——3 个 region 进, 几百个 region 留。
+
+### 初版方案 (被否决)
+- 候选 A: 把多视角角度阈值提到 35°+match_threshold=5。会让多视角更有用, 但**与设计本意冲突**: docs/09 §11 明确 "multi-view 鼓励过分割 (advisory only)"。改阈值 = 牺牲多视角价值。
+- 候选 B: 改 dihedral 默认值为 30° (减少内部碎片)。会让几何骨干粗糙, 不识别脖子-躯体那种 20-25° 的折痕, 反而更糟。
+- 候选 C (采纳): tiny-region merge 改成 dihedral 风格 (`merge_small_regions_fast`), 同时把诊断 log 通过 Tauri event 暴露给前端, 用户能直接看到 "525 区中 median=12 face", 知道是 "crumbs 要拖大点" 不是 "算法错"。
+
+### 对抗审查结论 (REFUTE)
+- **[blocker]**: tiny-region merge 改成 "每 pass 吞所有 under-sized" 会不会破坏原有 cube_fuses_to_six_regions 测试? **审查**: 6 个 cube 测试的 `min_region_faces` 调成 2, cube 仅 12 face, 不会触发 tiny-merge。只有 multi-patch + many-tiny 才会触发, 现有测试覆盖不到。新增一个测试覆盖 this case。
+- **[blocker]**: 把 `__lastFuseDebug` 挂在 window 上是不是脆弱? **审查**: 只是 module 内的临时 stashing, 跨 component 不依赖。改成 useState 反而会触发重 render (噪声) — 用 window 反而更合理。
+- **[major]**: 上一轮我曾以"dihedral 已经给出 38 区, fuse 该给 38", 但实际给 535 — 分析必然错位。这次**不再假设**, 让数据说话: 让用户重试, 在状态栏直接读到 fused-debug。
+- **[major]**: dihedral 的 RAG Phase 3 normal-merge 合并阈值 (dot>=0.93=22°) 在光滑曲面上合并能力有限 — Phase 1 2339→Phase 3 1380→Phase 4 38=对实际模型太碎。但这是 dihedral 算法自身的另一个 backlog, 不在 fuse 修复范围。
+
+### 改动
+- `src-tauri/src/segment/fuse.rs`:
+  - 新常量 `MAX_MERGE_PASSES = 40` (mirror of postprocess::MAX_MERGE_PASSES)。
+  - tiny-region merge 改 dihedral 风格: 每 pass 吞所有 under-sized region, sort by size asc, eye-locked。
+  - FuseResult 加 5 个诊断字段 (edge_total/edge_cut/region_size_min/max/median) — Default + 后向兼容。
+  - 每个 channel 的 region 数和切边总数 log::info + main summary。
+- `src-tauri/src/commands/segment.rs`:
+  - `fuse_segmentation` done 时 emit `fuse-debug` Tauri event, payload 含 channels + cut stats + region size dist。
+- `src/components/SeedPanel.tsx`:
+  - useEffect 一挂载就 listen `fuse-debug`, 写入 `window.__lastFuseDebug`。
+  - onFuse await 完后读 stashed payload, setStatusMessage 展示一行:
+    `🧩 融合完成: 35 区 (通道 平面0/多视角125/折痕38/眼4, 边 5321/87214 切, 区大小 min=12 med=850 max=42000)`
+- 状态: 用户能在屏幕直接读到 segment count 的原因, 不再需要 console。
+
+### 测试证据
+- 6/6 fuse 单测 pass (含原 cube + 2 eye + 1 empty)。
+- 7/7 vitest SeedPanel pass。
+- tsc --noEmit 0 错。
+- NSIS 3.4MB + MSI 5.0MB。
+
+### E2E 期望
+- 用户加载青蛙 → Fuse & generate → 状态栏显示类似 `🧩 融合完成: 76 区 (平面0/多视角125/折痕38/眼4, 边 5321/87214 切, 区大小 min=12 med=850 max=42000)`。
+- 如果仍有 500+ 区, 用户能从 med 数 (如果 med=几十) 看出 "crumbs 没合够", 下轮拉高 min_region_faces 滑块。
+- 如果 med=几千（正常 region 大小), 那 500 区是真实算法结果（多视角过切+折痕多）。
+
+### 遗留 backlog (deferred to v2)
+- MultiView 算法的 angle_thr / match_threshold 加 UX slider (现在 SeedPanel 只暴露多视角按钮, 三个阈值都 hardcode)。
+- Fuse 的 `min_region_faces` 已经是 slider 了, 但是 0=auto 用 `max(8, 0.002*n)` 默认值不够透明, 应该前端展示 "当前 min=X face, Y% 模型" tooltip。
+- Dihedral Phase 3 normal-merge 阈值 dot>=0.93 (22°) 在光滑曲面上不够 aggressive, 让 Phase 1 2339 → Phase 3 1380 而非更激进合并。这是 dihedral 算法自身的优化, 不在 fuse 范畴。
+- Eye 自动 ROI (MultiView 自动选最像眼睛区域) 仍然 backlog。
