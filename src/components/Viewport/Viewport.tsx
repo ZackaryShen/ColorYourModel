@@ -733,6 +733,7 @@ function MeshDisplay() {
   const meshData = useAppStore((s) => s.meshData);
   const segmentView = useAppStore((s) => s.segmentView);
   const selectedSegment = useAppStore((s) => s.selectedSegment);
+  const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
   const hoveredSegment = useAppStore((s) => s.hoveredSegment);
   const setHoveredSegment = useAppStore((s) => s.setHoveredSegment);
   const activeTool = useAppStore((s) => s.activeTool);
@@ -748,6 +749,8 @@ function MeshDisplay() {
   const seedEraseMode = useAppStore((s) => s.seedEraseMode);
   const removeSeedPoint = useAppStore((s) => s.removeSeedPoint);
   const setSeedEraseMode = useAppStore((s) => s.setSeedEraseMode);
+  const seedPickMode = useAppStore((s) => s.seedPickMode);
+  const setSeedPickMode = useAppStore((s) => s.setSeedPickMode);
   const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
   const acceptSuggestedSeed = useAppStore((s) => s.acceptSuggestedSeed);
 const planarRegions = useAppStore((s) => s.planarRegions);
@@ -803,8 +806,15 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // partition hover: gating it off means no segmentLabels lookup, no
   // setHoveredSegment store churn, and the shader uniform stays at -1 (a no-op)
   // on every frame — this is what removed the all-tools stutter the user hit.
+  //
+  // Iteration 78: seed tool joins the highlight club so the user can SEE which
+  // partition the next click will pick / place into. The hover label itself
+  // doubles as the live preview for the new Pick-for-Eye sub-mode: whatever
+  // glows under the cursor is what a click would commit. Performance is
+  // unaffected because the gate key was already non-trivial in segmentView.
   const isHighlightTool =
-    activeTool === "fill" || activeTool === "picker" || activeTool === "segment";
+    activeTool === "fill" || activeTool === "picker" || activeTool === "segment" ||
+    activeTool === "seed";
   const [lassoPoints, setLassoPoints] = useState<THREE.Vector3[]>([]);
   const [lassoPreview, setLassoPreview] = useState<THREE.Vector3 | null>(null);
   const [lassoClosing, setLassoClosing] = useState(false);
@@ -858,7 +868,13 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // Set canvas cursor based on active tool
   useEffect(() => {
     const canvas = gl.domElement;
-    if (isBrushTool && !segmentView) {
+    // Iteration 78: Pick-for-Eye sub-mode wins over the seed tool's default
+    // cursor so the user can tell at a glance that the next mesh click will
+    // SELECT a partition rather than place a seed. Cursor update needs both
+    // sub-mode flags; the tool class alone is ambiguous.
+    if (isSeedTool && seedPickMode) {
+      canvas.style.cursor = "pointer";
+    } else if (isBrushTool && !segmentView) {
       canvas.style.cursor = "crosshair";
     } else if (isSegmentTool) {
       canvas.style.cursor = "cell";
@@ -870,7 +886,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.style.cursor = "default";
     }
     return () => { canvas.style.cursor = "default"; };
-  }, [gl, isBrushTool, isSegmentTool, isLassoTool, segmentView, activeTool]);
+  }, [gl, isBrushTool, isSegmentTool, isLassoTool, isSeedTool, segmentView, seedPickMode, activeTool]);
 
   const geometry = useMemo(() => {
     log.info("MeshDisplay", "Building geometry", { segmentView });
@@ -1477,6 +1493,32 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       if (e.button !== 0) return;
       // View mode or Alt held → let OrbitControls handle it (rotate); never paint.
       if (isViewTool || _altHeld) return;
+      // Iteration 78: Pick-for-Eye sub-mode intercepts clicks BEFORE the
+      // seed-tool branch so a pick-mode click cannot accidentally also place
+      // a seed (or erase one). Auto-exits on first committed hit — repeat
+      // picking requires re-arming the button — so a Pick-active state
+      // never lingers across more than the one click the user actually wanted.
+      if (isSeedTool && seedPickMode) {
+        const hit = getLocalHit(e.clientX, e.clientY);
+        if (!hit || hit.faceIndex == null || !meshData?.segmentLabels) {
+          // Off-model or unsegmented hit → clear the (stale) selection and
+          // stay in pick mode for another try. Setting null here matches the
+          // existing convention used by Fill in the same condition.
+          setSelectedSegment(null);
+          setStatusMessage(t("seed.pickMiss"));
+          return;
+        }
+        const lbl = meshData.segmentLabels[hit.faceIndex];
+        if (lbl === undefined || !segmentIds.has(lbl)) {
+          setStatusMessage(t("seed.pickMiss"));
+          return;
+        }
+        setSelectedSegment(lbl);
+        setSeedPickMode(false); // one-shot — see comment above
+        log.info("Viewport", "seed pick-mode: selected partition", { lbl });
+        setStatusMessage(t("seed.picked", lbl));
+        return;
+      }
       if (isLassoTool) {
         setHoveredSegment(null);
         const local = getLocalHit(e.clientX, e.clientY);
@@ -1896,7 +1938,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, suggestedSeeds, acceptSuggestedSeed]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {

@@ -1,19 +1,64 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { PaintTool } from "../types/mesh";
 import { useTauriCommand } from "../hooks/useTauriCommand";
 import { useT } from "../i18n";
 import { log } from "../utils/logger";
 
+const POS_KEY = "cym.seedPanelPos";
+const PANEL_WIDTH = 360;
+// At-rest anchor: bottom-center with a sensible offset from the bottom toolbar.
+const DEFAULT_POS = (): { x: number; y: number } => ({
+  x: Math.max(16, Math.round((window.innerWidth - PANEL_WIDTH) / 2)),
+  y: Math.max(16, window.innerHeight - 460),
+});
+
+function loadPos(): { x: number; y: number } {
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { x?: number; y?: number };
+      if (typeof parsed.x === "number" && typeof parsed.y === "number") {
+        return clampPos(parsed.x, parsed.y);
+      }
+    }
+  } catch {
+    /* corrupt entry — fall through to default */
+  }
+  return DEFAULT_POS();
+}
+
+function clampPos(x: number, y: number): { x: number; y: number } {
+  const maxX = Math.max(16, window.innerWidth - 200);
+  const maxY = Math.max(16, window.innerHeight - 80);
+  return {
+    x: Math.min(Math.max(16, x), maxX),
+    y: Math.min(Math.max(16, y), maxY),
+  };
+}
+
 /// Seeded-watershed control panel (iteration 50). Shown while the Seed tool is
 /// active. The user places seed points on the mesh (handled in Viewport), and
 /// this panel tunes the barrier angle, toggles the optimizer, and triggers grow.
+///
+/// Drift history: iteration 78 — panel is now a movable / draggable overlay
+/// (title bar = drag handle; double-click title = reset position) so users can
+/// move it out of the way of the 3D viewport they are trying to inspect.
+///
+/// Drift history: iteration 78 — adds a "Pick a partition" sub-mode
+/// (mutually exclusive with the existing erase sub-mode). While ON, clicking a
+/// face on the mesh sets `selectedSegment` to that face's label and
+/// auto-exits pick mode — the direct in-context path for "select this region
+/// and run eye detect", replacing the old "open SegmentsPanel and click a
+/// row" detour.
 export function SeedPanel() {
   const t = useT();
   const seedPoints = useAppStore((s) => s.seedPoints);
   const clearSeedPoints = useAppStore((s) => s.clearSeedPoints);
   const seedEraseMode = useAppStore((s) => s.seedEraseMode);
   const setSeedEraseMode = useAppStore((s) => s.setSeedEraseMode);
+  const seedPickMode = useAppStore((s) => s.seedPickMode);
+  const setSeedPickMode = useAppStore((s) => s.setSeedPickMode);
   const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
   const setSuggestedSeeds = useAppStore((s) => s.setSuggestedSeeds);
   const clearSuggestedSeeds = useAppStore((s) => s.clearSuggestedSeeds);
@@ -51,12 +96,14 @@ export function SeedPanel() {
   // restores the in-progress workflow.
   const closePanel = () => {
     log.info("SeedPanel", "closePanel → View");
+    setSeedPickMode(false); // disarm before unmount so re-entering Seed tool doesn't start in Pick
     setActiveTool(PaintTool.View);
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         log.info("SeedPanel", "Esc pressed → View");
+        setSeedPickMode(false); // same disarm reason as closePanel
         setActiveTool(PaintTool.View);
       }
     };
@@ -76,6 +123,146 @@ export function SeedPanel() {
   const [fusing, setFusing] = useState(false);
   const [dihedralDeg, setDihedralDeg] = useState(15);
   const [resetting, setResetting] = useState(false);
+
+  // ── Drag-to-move (iteration 78) ────────────────────────────────────────
+  // Position is a React state so styles/persistence see the final value, but
+  // we drive the actual motion via direct DOM writes + a window listener so
+  // the panel tracks the cursor at full frame rate without React re-renders.
+  // Persistence happens once on pointerup, not on every move.
+  const [pos, setPos] = useState<{ x: number; y: number }>(() => loadPos());
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startPanelX: number;
+    startPanelY: number;
+  } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const ds = dragRef.current;
+      if (!ds || e.pointerId !== ds.pointerId) return;
+      const dx = e.clientX - ds.startClientX;
+      const dy = e.clientY - ds.startClientY;
+      const nx = Math.min(Math.max(16, ds.startPanelX + dx), Math.max(16, window.innerWidth - 200));
+      const ny = Math.min(Math.max(16, ds.startPanelY + dy), Math.max(16, window.innerHeight - 80));
+      const el = panelRef.current;
+      if (el) {
+        el.style.left = `${nx}px`;
+        el.style.top = `${ny}px`;
+        el.style.transform = "none";
+      }
+    };
+    const onUp = (e: PointerEvent) => {
+      const ds = dragRef.current;
+      if (!ds || e.pointerId !== ds.pointerId) return;
+      const el = panelRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const final = clampPos(rect.left, rect.top);
+        setPos(final);
+        try {
+          localStorage.setItem(POS_KEY, JSON.stringify(final));
+        } catch {
+          /* private mode etc — not critical */
+        }
+      }
+      dragRef.current = null;
+      setDragging(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+
+  // Re-clamp on viewport resize so a saved position never escapes the window
+  // when the user shrinks the browser after re-opening the app.
+  useEffect(() => {
+    const onResize = () => {
+      setPos((prev) => {
+        const next = clampPos(prev.x, prev.y);
+        if (next.x === prev.x && next.y === prev.y) return prev;
+        try {
+          localStorage.setItem(POS_KEY, JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const onTitlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return; // left button only
+    // Don't capture if the user is interacting with the close/reset buttons —
+    // those are positioned inside the title row but use a child-stop propagation.
+    if ((e.target as HTMLElement).closest("button")) return;
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startPanelX: rect.left,
+      startPanelY: rect.top,
+    };
+    setDragging(true);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* not critical */
+    }
+    e.preventDefault();
+  };
+
+  const resetPosition = () => {
+    const def = DEFAULT_POS();
+    setPos(def);
+    try {
+      localStorage.setItem(POS_KEY, JSON.stringify(def));
+    } catch {
+      /* ignore */
+    }
+    const el = panelRef.current;
+    if (el) {
+      el.style.left = `${def.x}px`;
+      el.style.top = `${def.y}px`;
+      el.style.transform = "none";
+    }
+    log.info("SeedPanel", "panel position reset", def);
+  };
+
+  // ── Sub-mode toggles (iteration 78) ────────────────────────────────────
+  // Pick and Erase are mutually exclusive — turning one on auto-clears the
+  // other. Without the auto-clear, both styles fight on the title row and the
+  // user can't tell which sub-mode is active.
+  const onToggleErase = () => {
+    const next = !seedEraseMode;
+    setSeedEraseMode(next);
+    if (next) setSeedPickMode(false);
+  };
+  const onTogglePick = () => {
+    const next = !seedPickMode;
+    setSeedPickMode(next);
+    if (next) setSeedEraseMode(false);
+  };
+
+  // Switching out of the Seed tool (Esc / ×) must not leave Pick mode armed —
+  // otherwise re-entering Seed tool would silently start in pick mode and the
+  // next mesh click would silently set selectedSegment without the user
+  // asking for it. (Disarm also happens in closePanel / Esc handler above.)
+  useEffect(() => {
+    return () => setSeedPickMode(false);
+  }, []);
 
   const onRecommend = async () => {
     setRecommending(true);
@@ -165,9 +352,9 @@ export function SeedPanel() {
   };
 
   // Layer 5 (docs/10): eye-region semantic decomposition. The ROI is the set of
-  // faces belonging to the CURRENTLY SELECTED partition — the user first boxes
-  // an eye area with any algorithm or the lasso, selects that partition, then
-  // clicks here. We derive the ROI faces from `segmentLabels` (the per-face
+  // faces belonging to the CURRENTLY SELECTED partition — set either by clicking
+  // a row in SegmentsPanel or (iteration 78) by the new Pick-for-Eye sub-mode
+  // of the Seed tool. We derive the ROI faces from `segmentLabels` (the per-face
   // partition id array) intersected with `selectedSegment`; no extra backend
   // round-trip needed. The eye detector is read-only, so its regions are stored
   // purely for the Viewport overlay (like Layer 1/2/3).
@@ -180,7 +367,7 @@ export function SeedPanel() {
     // the exact reason without staring at the panel).
     const md = meshData;
     if (selectedSegment === null || !md || !md.segmentLabels) {
-      const msg = `[eye] no selected partition (selectedSegment=${selectedSegment}, mesh=${md ? "ok" : "null"}, labels=${md?.segmentLabels ? "ok" : "null"}). Use Lasso or Fuse to select an eye-adjacent partition first.`;
+      const msg = `[eye] no selected partition (selectedSegment=${selectedSegment}, mesh=${md ? "ok" : "null"}, labels=${md?.segmentLabels ? "ok" : "null"}). Click \"Pick a partition\" then click the eye-bounding region on the model.`;
       log.error("SeedPanel", "onDetectEye blocked: no selected partition", {
         selectedSegment,
         hasMesh: !!md,
@@ -251,6 +438,7 @@ export function SeedPanel() {
       clearSeedPoints();
       clearSuggestedSeeds();
       setSeedEraseMode(false);
+      setSeedPickMode(false);
       setStatusMessage("✅ 已清空分区（恢复导入时的干净状态）");
     } catch {
       // status already surfaced via useTauriCommand
@@ -310,10 +498,53 @@ export function SeedPanel() {
     }
   };
 
+  // The body of the hint switches based on whichever view / overlay / sub-mode
+  // is currently relevant. Iteration 78: pick mode now owns its own line in
+  // the priority list — the user has to see that "clicking now picks" BEFORE
+  // they would otherwise read "clicking now places a seed".
+  const hint = (() => {
+    if (seedPickMode) return t("seed.eyePickHint");
+    if (seedEraseMode) return t("seed.eraseHint");
+    if (eyeRegions.length > 0) return t("seed.eyeHint");
+    if (crossSectionRegions.length > 0) return t("seed.crossSectionHint");
+    if (multiviewRegions.length > 0) return t("seed.multiviewHint");
+    if (planarRegions.length > 0) return t("seed.planarHint");
+    if (suggestedSeeds.length > 0) return t("seed.suggestHint");
+    return t("seed.hint");
+  })();
+
   return (
-    <div style={styles.panel}>
-      <div style={styles.titleRow}>
+    <div
+      ref={panelRef}
+      style={{
+        ...styles.panel,
+        left: pos.x,
+        top: pos.y,
+        transform: "none",
+        boxShadow: dragging
+          ? "0 12px 36px rgba(0,0,0,0.55)"
+          : "0 4px 20px rgba(0,0,0,0.4)",
+      }}
+    >
+      <div
+        onPointerDown={onTitlePointerDown}
+        onDoubleClick={resetPosition}
+        style={{
+          ...styles.titleRow,
+          cursor: dragging ? "grabbing" : "grab",
+          userSelect: "none",
+        }}
+        title={t("seed.pickPanelTitle")}
+      >
         <span style={styles.title}>🌱 {t("tool.seed")}</span>
+        <button
+          onClick={resetPosition}
+          style={styles.resetBtn}
+          title={t("seed.panelResetTitle")}
+          aria-label={t("seed.panelResetTitle")}
+        >
+          {t("seed.panelReset")}
+        </button>
         <button
           onClick={closePanel}
           style={styles.closeBtn}
@@ -323,32 +554,29 @@ export function SeedPanel() {
           ×
         </button>
       </div>
-      <div style={styles.hint}>
-        {seedEraseMode
-          ? t("seed.eraseHint")
-          : eyeRegions.length > 0
-            ? t("seed.eyeHint")
-            : crossSectionRegions.length > 0
-              ? t("seed.crossSectionHint")
-              : multiviewRegions.length > 0
-                ? t("seed.multiviewHint")
-                : planarRegions.length > 0
-                  ? t("seed.planarHint")
-                  : suggestedSeeds.length > 0
-                    ? t("seed.suggestHint")
-                    : t("seed.hint")}
-      </div>
+      <div style={styles.hint}>{hint}</div>
 
       <div style={styles.row}>
         <span style={styles.label}>{t("seed.count", seedPoints.length)}</span>
         <button
-          onClick={() => setSeedEraseMode(!seedEraseMode)}
+          onClick={onToggleErase}
           style={{
-            ...styles.clear,
-            ...(seedEraseMode ? { borderColor: "#ff4d4f", color: "#ff4d4f" } : {}),
+            ...styles.subMode,
+            ...(seedEraseMode ? styles.subModeActiveErase : {}),
           }}
+          title={t("seed.eraseHint")}
         >
           🩹 {t("seed.eraseMode")}
+        </button>
+        <button
+          onClick={onTogglePick}
+          style={{
+            ...styles.subMode,
+            ...(seedPickMode ? styles.subModeActivePick : {}),
+          }}
+          title={seedPickMode ? t("seed.pickModeActive") : t("seed.pickMode")}
+        >
+          {seedPickMode ? "✓" : "🖱"} {t("seed.pickMode")}
         </button>
       </div>
 
@@ -528,8 +756,10 @@ export function SeedPanel() {
 
       {/* Persistent red hint that explains why Eye detect is inert — the
           status-bar toast gets overwritten by other commands, but this is
-          unmistakable and only disappears once a partition is selected. */}
-      {selectedSegment === null && eyeRegions.length === 0 && (
+          unmistakable. Iteration 78 also routes the user to the new Pick mode
+          (when no segment is selected AND pick mode isn't already active),
+          instead of forcing them to hunt for the SegmentsPanel row. */}
+      {selectedSegment === null && eyeRegions.length === 0 && !seedPickMode && (
         <div
           style={{
             marginTop: 6,
@@ -589,7 +819,7 @@ export function SeedPanel() {
         </button>
       </div>
 
-      {/* Geometry backbone for the fusion: dihedral crease angle. On smooth /
+      {/* Geometry backbone for the fusion: dihedral crease angle. on smooth /
           single-colour meshes the planar + multiview channels have no signal,
           so this is what actually splits the model into parts. Lower = more,
           finer regions; higher = fewer, coarser parts. */}
@@ -673,10 +903,7 @@ export function SeedPanel() {
 
 const styles: Record<string, React.CSSProperties> = {
   panel: {
-    position: "absolute",
-    bottom: 16,
-    left: "50%",
-    transform: "translateX(-50%)",
+    position: "fixed",
     background: "var(--bg-panel, #2d2d2d)",
     border: "1px solid var(--border, #555)",
     borderRadius: 10,
@@ -686,7 +913,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 360,
     maxWidth: "92vw",
     boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
-    zIndex: 20,
+    zIndex: 30,
   },
   title: { fontWeight: 700, fontSize: 13, marginBottom: 4 },
   titleRow: {
@@ -694,6 +921,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 4,
+    gap: 6,
   },
   closeBtn: {
     width: 22,
@@ -709,6 +937,23 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
+  },
+  resetBtn: {
+    width: 22,
+    height: 22,
+    border: "1px solid var(--border, #555)",
+    borderRadius: 11,
+    background: "transparent",
+    color: "var(--text-2, #ccc)",
+    cursor: "pointer",
+    fontSize: 10,
+    lineHeight: "20px",
+    padding: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   hint: { color: "var(--text-3, #aaa)", fontSize: 11, lineHeight: 1.5, marginBottom: 8 },
   row: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 },
@@ -775,5 +1020,29 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontSize: 12,
     flex: 1,
+  },
+  // Sub-mode buttons (Place / Erase / Pick). When inactive they look like the
+  // other secondary buttons; when active the colour signals which sub-mode is
+  // armed so a single glance tells the user what the next mesh click will do.
+  subMode: {
+    flex: 1,
+    padding: "5px 8px",
+    borderRadius: 6,
+    border: "1px solid var(--border, #555)",
+    background: "transparent",
+    color: "var(--text-2, #ccc)",
+    cursor: "pointer",
+    fontSize: 11,
+    fontWeight: 500,
+  },
+  subModeActiveErase: {
+    borderColor: "#ff4d4f",
+    color: "#ff4d4f",
+    background: "rgba(255, 77, 79, 0.08)",
+  },
+  subModeActivePick: {
+    borderColor: "#c084fc",
+    color: "#c084fc",
+    background: "rgba(192, 132, 252, 0.10)",
   },
 };

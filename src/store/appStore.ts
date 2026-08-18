@@ -141,6 +141,13 @@ interface AppStore {
   seedEraseMode: boolean;
   removeSeedPoint: (index: number) => void;
   setSeedEraseMode: (v: boolean) => void;
+  /** Pick-for-Eye sub-mode of the Seed tool. While ON, LEFT-click on the mesh
+   *  sets `selectedSegment` to the hit face's partition label (and auto-exits
+   *  pick mode) instead of placing a seed. Empty-space click clears selection.
+   *  Replaces the previous "open SegmentsPanel and click a row" path for users
+   *  who want to run eye-detect. Transient: NOT persisted (see partialize). */
+  seedPickMode: boolean;
+  setSeedPickMode: (v: boolean) => void;
   /** Iteration 52: advisory seed suggestions from the backend (weighted FPS over
    *  face centroids, biased to region interiors). Shown as ghost markers; the
    *  user accepts one by clicking it (moves to `seedPoints`) or ignores it. They
@@ -515,6 +522,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   removeSeedPoint: (index) =>
     set((s) => ({ seedPoints: s.seedPoints.filter((_, i) => i !== index) })),
   setSeedEraseMode: (v) => set({ seedEraseMode: v }),
+  seedPickMode: false,
+  setSeedPickMode: (v) => set({ seedPickMode: v }),
   suggestedSeeds: [],
   setSuggestedSeeds: (seeds) => {
     log.info("store", "setSuggestedSeeds", { count: seeds.length, first: seeds[0] });
