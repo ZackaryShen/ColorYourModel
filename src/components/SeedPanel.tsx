@@ -174,8 +174,20 @@ export function SeedPanel() {
   const onDetectEye = async () => {
     setDetectingEye(true);
     log.info("SeedPanel", "onDetectEye click", { selectedSegment });
+    // Loud-without-flicker: surface the pre-condition failure to BOTH the JS
+    // console AND the status bar (the status bar message gets overwritten by
+    // other commands, but the console log is permanent and lets a user paste
+    // the exact reason without staring at the panel).
     const md = meshData;
     if (selectedSegment === null || !md || !md.segmentLabels) {
+      const msg = `[eye] no selected partition (selectedSegment=${selectedSegment}, mesh=${md ? "ok" : "null"}, labels=${md?.segmentLabels ? "ok" : "null"}). Use Lasso or Fuse to select an eye-adjacent partition first.`;
+      log.error("SeedPanel", "onDetectEye blocked: no selected partition", {
+        selectedSegment,
+        hasMesh: !!md,
+        hasLabels: !!(md && md.segmentLabels),
+      });
+      // eslint-disable-next-line no-console
+      console.error(msg);
       setStatusMessage(t("seed.eyeNeedSegment"));
       setDetectingEye(false);
       return;
@@ -476,7 +488,20 @@ export function SeedPanel() {
       </div>
 
       <div style={styles.row}>
-        <button onClick={onDetectEye} disabled={detectingEye} style={styles.grow}>
+        <button
+          onClick={onDetectEye}
+          disabled={detectingEye || selectedSegment === null}
+          style={{
+            ...styles.grow,
+            // Visual cue that the button is unusable because nothing is selected
+            opacity: selectedSegment === null ? 0.5 : 1,
+          }}
+          title={
+            selectedSegment === null
+              ? t("seed.eyeNeedSegmentShort")
+              : t("seed.eyeTitle")
+          }
+        >
           {detectingEye ? "…" : t("seed.eye")}
         </button>
         <button
@@ -500,6 +525,26 @@ export function SeedPanel() {
           ×
         </button>
       </div>
+
+      {/* Persistent red hint that explains why Eye detect is inert — the
+          status-bar toast gets overwritten by other commands, but this is
+          unmistakable and only disappears once a partition is selected. */}
+      {selectedSegment === null && eyeRegions.length === 0 && (
+        <div
+          style={{
+            marginTop: 6,
+            padding: "6px 10px",
+            background: "#3b0a14",
+            color: "#fecaca",
+            border: "1px solid #f87171",
+            borderRadius: 6,
+            fontSize: 12,
+            lineHeight: 1.4,
+          }}
+        >
+          {t("seed.eyeNeedSegmentHint")}
+        </div>
+      )}
 
       {/* Solo / all toggles — quick way to show only one layer */}
       <div style={styles.row}>

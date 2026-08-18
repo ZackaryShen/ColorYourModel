@@ -111,6 +111,8 @@ const dict: Record<string, Record<Lang, string>> = {
   },
   "seed.eyeNeedSegment": { zh: "请先在分区面板选中一个包围眼睛的分区", en: "Select a partition that bounds an eye first" },
   "seed.eyeNeedFaces": { zh: "该分区面数过少，无法识别眼睛", en: "This partition has too few faces to detect an eye" },
+  "seed.eyeNeedSegmentShort": { zh: "请先选中一个包围眼睛的分区（先 Fuse 一次再点其中一块高亮）", en: "Select an eye-adjacent partition first (Fuse then click one region to highlight it)" },
+  "seed.eyeNeedSegmentHint": { zh: "👁 眼睛识别需要先有一个「选中分区」：先点「Fuse & generate」得到几个区域，再用鼠标点其中接近眼睛的那一块让它高亮，最后回来点「眼睛识别」就能跑。", en: "👁 Eye detect needs a selected partition: click \"Fuse & generate\" first, then click any one region in the viewport to highlight it as selected, then click \"Eye detect\" here." },
   "seed.soloEye": { zh: "只显 Layer 5 眼睛", en: "Solo: Layer 5 eye only" },
 
   // BrushSettings
