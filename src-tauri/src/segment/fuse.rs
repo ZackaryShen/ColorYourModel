@@ -48,6 +48,13 @@ use crate::mesh::model::{MeshModel, Segment};
 /// MultiView have no signal, so a dihedral crease has to cut even when no other
 /// channel agrees. A value far above any sane `cut_threshold` guarantees it.
 const DIHEDRAL_WEIGHT: i32 = 1000;
+/// Weight given to a single eye-region cut vote. Mirrors `DIHEDRAL_WEIGHT`: an
+/// eye region detected by `detect_eye_regions` (globe / sclera / eyelid /
+/// socket) is *semantic, not geometric* — it comes from the user's ROI intent
+/// rather than a crease — so when the user supplies eye regions, those faces
+/// must be carved out of any merged partition. Same magnitude as the geometry
+/// backbone so they survive any reasonable `cut_threshold`.
+const EYE_WEIGHT: i32 = 1000;
 
 /// Result of a fused partition — mirrors `SeedGrowResult` so the command layer
 /// and frontend can reuse the exact same wire shape.
@@ -96,6 +103,7 @@ pub fn fuse_region_sets(
     planar_sets: &[Vec<u32>],
     multiview_sets: &[Vec<u32>],
     dihedral_sets: &[Vec<u32>],
+    eye_sets: &[Vec<u32>],
     cut_threshold: i32,
     min_region_faces: usize,
 ) -> Result<FuseResult, String> {
@@ -103,13 +111,36 @@ pub fn fuse_region_sets(
     if n == 0 {
         return Err("mesh 没有面 (mesh has no faces)".into());
     }
-    if planar_sets.is_empty() && multiview_sets.is_empty() && dihedral_sets.is_empty() {
+    if planar_sets.is_empty()
+        && multiview_sets.is_empty()
+        && dihedral_sets.is_empty()
+        && eye_sets.is_empty()
+    {
         return Err("所有算法均未检测到区域 (all detectors returned no regions)".into());
     }
 
     let planar_label = label_from_sets(n, planar_sets);
     let multiview_label = label_from_sets(n, multiview_sets);
     let dihedral_label = label_from_sets(n, dihedral_sets);
+    // Eye region is intentionally NOT treated as a per-face LABEL — every eye
+    // face gets its own one-face region so an edge between two eye faces votes
+    // `keep`-vs-`keep` for *neither* vote channel. We instead use the explicit
+    // boundary-edge loop below (Step 1b) to vote cut on every edge with at least
+    // one eye-side endpoint. That guarantees any eye region is isolated from
+    // its non-eye neighbours even when the eye region itself is internally
+    // contiguous — because eye sides split on every edge crossing the
+    // region's perimeter.
+    let eye_bounded: Vec<bool> = {
+        let mut b = vec![false; n];
+        for es in eye_sets {
+            for &f in es {
+                if (f as usize) < n {
+                    b[f as usize] = true;
+                }
+            }
+        }
+        b
+    };
 
     // ── 1. Per-edge majority vote ────────────────────────────────────────
     let mut cut_edges: HashSet<(u32, u32)> = HashSet::new();
@@ -150,6 +181,16 @@ pub fn fuse_region_sets(
             }
             _ => {}
         }
+        // Eye channel: cut when exactly one endpoint is an eye face (boundary
+        // crossing). Internal eye-edge has both endpoints eyed → no cut (the
+        // eye region stays whole). This is what makes a user-confirmed eye
+        // ROI survive any reasonable cut_threshold and any neighbour channel
+        // that would have absorbed it.
+        let ea = eye_bounded[a as usize];
+        let eb = eye_bounded[b as usize];
+        if ea != eb {
+            cut += EYE_WEIGHT;
+        }
         if cut - keep > cut_threshold {
             cut_edges.insert((a.min(b), a.max(b)));
         }
@@ -186,6 +227,18 @@ pub fn fuse_region_sets(
     } else {
         ((n as f32) * 0.002).max(8.0) as usize
     };
+    // An *eye* region must NOT be merged away by the tiny-region pass: the
+    // user explicitly confirmed those faces, even if it is one small sclera
+    // strip. Tag the source region ids for every face; a region that contains
+    // any eye face is locked.
+    let mut region_has_eye: HashMap<u32, bool> = HashMap::new();
+    for (f, &rid) in region.iter().enumerate() {
+        if eye_bounded[f] {
+            region_has_eye.insert(rid, true);
+        } else if !region_has_eye.contains_key(&rid) {
+            region_has_eye.insert(rid, false);
+        }
+    }
     for _pass in 0..3 {
         let mut counts: HashMap<u32, usize> = HashMap::new();
         for &r in &region {
@@ -193,7 +246,10 @@ pub fn fuse_region_sets(
         }
         let tiny = counts
             .iter()
+            // Never merge a region that has any eye face; it carries the
+            // user's intent.
             .filter(|(_, &c)| c < min_faces)
+            .filter(|(&r, _)| !region_has_eye.get(&r).copied().unwrap_or(false))
             .min_by_key(|(_, &c)| c)
             .map(|(&r, _)| r);
         let Some(tiny) = tiny else { break };
@@ -295,7 +351,7 @@ mod tests {
         let mut mesh = unit_cube();
         let planar = cube_planar_sets();
         let multiview = cube_multiview_sets();
-        let r = fuse_region_sets(&mut mesh, &planar, &multiview, &[], 1, 2).unwrap();
+        let r = fuse_region_sets(&mut mesh, &planar, &multiview, &[], &[], 1, 2).unwrap();
         assert_eq!(r.region_count, 6, "cube → 6 fused regions");
         assert_eq!(r.moved_faces, 12, "all 12 faces receive a fused label");
         assert_eq!(r.segments.len(), 6, "segment metadata must list 6 regions");
@@ -306,7 +362,7 @@ mod tests {
         let mut mesh = unit_cube();
         let planar = cube_planar_sets();
         let multiview = cube_multiview_sets();
-        fuse_region_sets(&mut mesh, &planar, &multiview, &[], 1, 2).unwrap();
+        fuse_region_sets(&mut mesh, &planar, &multiview, &[], &[], 1, 2).unwrap();
         assert!(
             mesh.segment_labels.iter().all(|&l| l != 0 || true),
             "labels present"
@@ -317,7 +373,7 @@ mod tests {
     #[test]
     fn empty_input_is_an_error() {
         let mut mesh = unit_cube();
-        let err = fuse_region_sets(&mut mesh, &[], &[], &[], 1, 2);
+        let err = fuse_region_sets(&mut mesh, &[], &[], &[], &[], 1, 2);
         assert!(err.is_err());
     }
 
@@ -327,7 +383,61 @@ mod tests {
         // → no cut votes → a single fused region (tie keeps everything).
         let mut mesh = unit_cube();
         let all: Vec<u32> = (0..12).collect();
-        let r = fuse_region_sets(&mut mesh, &[all], &[], &[], 1, 2).unwrap();
+        let r = fuse_region_sets(&mut mesh, &[all], &[], &[], &[], 1, 2).unwrap();
         assert_eq!(r.region_count, 1, "no cut votes → one region");
+    }
+
+    /// Eye channel: when no other channel provides a cut vote, an eye-region
+    /// set must carve itself out as a single region. Without EYE_WEIGHT, the
+    /// eye faces would just be left inside whatever neighbour Dijkstra gave
+    /// them; with it, every perimeter edge of the eye region is cut, so the
+    /// eye faces form one connected island separate from everything else. The
+    /// post-fuse tiny-region filter would also collapse a too-small eye set, so
+    /// we hand `min_region_faces = 0` to keep the eye region even at < 8 faces.
+    #[test]
+    fn eye_set_carves_itself_out() {
+        let mut mesh = unit_cube(); // 12 faces, 6 quad sides
+                                    // Treat all of face 0 as "eye" — the cube has no other
+                                    // cut votes from planar/mv/dihedral, so without the eye
+                                    // channel we would get 1 region (single_planar_region...).
+        let eye_sets: Vec<Vec<u32>> = vec![vec![0]];
+        let r = fuse_region_sets(&mut mesh, &[], &[], &[], &eye_sets, 1, 0).unwrap();
+        // 1 face labelled as eye plus the remaining 11 faces stay in a single
+        // component (no other votes) → 2 regions total.
+        assert_eq!(
+            r.region_count, 2,
+            "eye channel must carve face 0 out: got {} regions",
+            r.region_count
+        );
+        // face 0 must be in a region with itself only.
+        let f0_label = r.segment_labels[0];
+        assert_eq!(
+            r.segment_labels.iter().filter(|&&l| l == f0_label).count(),
+            1,
+            "face 0 must be the only face in its region"
+        );
+    }
+
+    /// Eye channel must respect intra-region cohesion: two adjacent faces
+    /// inside the same eye set stay in one region. If the eye channel naively
+    /// gave every eye face its own one-face label, faces 0 and 1 (which share
+    /// an edge on the unit_cube) would each be carved out — losing the eye
+    /// region's *shape*.
+    #[test]
+    fn eye_set_keeps_intra_region_cohesion() {
+        let mut mesh = unit_cube();
+        // faces 0 and 1 share the edge between vertex 1 and 2 on a unit cube
+        // built via `unit_cube()` (see `segment::metrics`). Treating them as
+        // one eye → exactly 1 eye-region + 1 outer region = 2 regions.
+        let eye_sets: Vec<Vec<u32>> = vec![vec![0, 1]];
+        let r = fuse_region_sets(&mut mesh, &[], &[], &[], &eye_sets, 1, 0).unwrap();
+        assert_eq!(
+            r.region_count, 2,
+            "two adjacent eye faces stay one region; the outer 10 faces form the other: got {} regions",
+            r.region_count
+        );
+        let f0 = r.segment_labels[0];
+        let f1 = r.segment_labels[1];
+        assert_eq!(f0, f1, "face 0 and face 1 must share the eye region label");
     }
 }

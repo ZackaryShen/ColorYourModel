@@ -767,14 +767,16 @@ pub async fn fuse_segmentation(
     cut_threshold: i32,
     min_region_faces: u32,
     dihedral_deg: f32,
+    eye_face_indices: Option<Vec<Vec<u32>>>,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<SegmentResult, String> {
     log::info!(
-        "[cmd:fuse_segmentation] cut_threshold={} min_region_faces={} dihedral_deg={:.1}",
+        "[cmd:fuse_segmentation] cut_threshold={} min_region_faces={} dihedral_deg={:.1} eye_sets={}",
         cut_threshold,
         min_region_faces,
-        dihedral_deg
+        dihedral_deg,
+        eye_face_indices.as_ref().map(|v| v.len()).unwrap_or(0)
     );
 
     // Take the mesh out for the whole compute (mirror auto_segment_v2) so a
@@ -841,12 +843,18 @@ pub async fn fuse_segmentation(
         .iter()
         .map(|r| r.face_indices.clone())
         .collect();
+    // Layer 4.5: user-confirmed semantic eye regions (`detect_eye_regions`).
+    // The frontend passes the regions it has on screen; each is a per-semantic
+    // list of face indices (globe / sclera / eyelid / socket). Empty / missing
+    // means "no eye regions in scope" — the fuse stays a 3-channel vote.
+    let eye_sets: Vec<Vec<u32>> = eye_face_indices.unwrap_or_default();
 
     let result = fuse_region_sets(
         &mut mesh,
         &planar_sets,
         &multiview_sets,
         &dihedral_sets,
+        &eye_sets,
         cut_threshold,
         min_region_faces as usize,
     )

@@ -643,18 +643,25 @@ export function useTauriCommand() {
   const fuseSegmentation = async (
     cutThreshold: number = 1,
     minRegionFaces: number = 0,
-    dihedralDeg: number = 15
+    dihedralDeg: number = 15,
+    eyeFaceIndices?: number[][]
   ): Promise<SegmentResult> => {
     log.info(
       "useTauriCommand",
-      `fuseSegmentation(cutThreshold=${cutThreshold}, minRegionFaces=${minRegionFaces}, dihedralDeg=${dihedralDeg})`
+      `fuseSegmentation(cutThreshold=${cutThreshold}, minRegionFaces=${minRegionFaces}, dihedralDeg=${dihedralDeg}, eyeSets=${eyeFaceIndices?.length ?? 0})`
     );
     try {
       setStatusMessage("融合生成分区中…");
+      // The backend parameter is `eye_face_indices` (snake_case). Tauri 2
+      // converts top-level invoke keys but the nested `Vec<Vec<u32>>` shape is
+      // already what serde expects, so we pass through as-is. When the caller
+      // has no eye regions (most of the time) we send an empty array so the
+      // backend falls into the original 3-channel vote.
       const result = await invoke<SegmentResult>("fuse_segmentation", {
         cutThreshold,
         minRegionFaces,
         dihedralDeg,
+        eyeFaceIndices: eyeFaceIndices ?? [],
       });
       updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
       setStatusMessage(`融合分区完成：${result.segments.length} 个区域`);

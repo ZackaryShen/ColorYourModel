@@ -1,25 +1,42 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
-import { PaintTool } from "../types/mesh";
+import { PaintTool, SeedPoint } from "../types/mesh";
 import { useTauriCommand } from "../hooks/useTauriCommand";
 import { useT } from "../i18n";
 import { log } from "../utils/logger";
 
 const POS_KEY = "cym.seedPanelPos";
 const PANEL_WIDTH = 360;
-// At-rest anchor: bottom-center with a sensible offset from the bottom toolbar.
-const DEFAULT_POS = (): { x: number; y: number } => ({
-  x: Math.max(16, Math.round((window.innerWidth - PANEL_WIDTH) / 2)),
-  y: Math.max(16, window.innerHeight - 460),
-});
+const PANEL_HEIGHT_ESTIMATE = 580; // fallback when the DOM has not measured yet
+const PANEL_MARGIN = 16;
 
-function loadPos(): { x: number; y: number } {
+/// At-rest anchor (iteration 79): bottom-right with a sensible inset. The
+/// bottom-of-window placement was wrong on tall / multi-monitor windows — the
+/// panel always ended up in the lower-mid area, which on a 4K display is well
+/// away from where the user is currently looking (which is the model, dead
+/// centre). Bottom-right anchors near the action area but never hides the
+/// canvas centre.
+const DEFAULT_POS = (): { x: number; y: number } => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  // Prefer the right edge, leaving a small inset so the close button is not
+  // under the OS scrollbar/chrome. If the window is so narrow the panel
+  // wouldn't fit, fall back to the centred x.
+  const x = Math.max(
+    PANEL_MARGIN,
+    Math.round(w - PANEL_WIDTH - PANEL_MARGIN),
+  );
+  const y = Math.max(PANEL_MARGIN, Math.round(h - PANEL_HEIGHT_ESTIMATE - PANEL_MARGIN));
+  return { x, y };
+};
+
+function loadPos(panelEl?: HTMLElement | null): { x: number; y: number } {
   try {
     const raw = localStorage.getItem(POS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as { x?: number; y?: number };
       if (typeof parsed.x === "number" && typeof parsed.y === "number") {
-        return clampPos(parsed.x, parsed.y);
+        return clampPos(parsed.x, parsed.y, panelEl);
       }
     }
   } catch {
@@ -28,12 +45,23 @@ function loadPos(): { x: number; y: number } {
   return DEFAULT_POS();
 }
 
-function clampPos(x: number, y: number): { x: number; y: number } {
-  const maxX = Math.max(16, window.innerWidth - 200);
-  const maxY = Math.max(16, window.innerHeight - 80);
+function clampPos(
+  x: number,
+  y: number,
+  panelEl?: HTMLElement | null,
+): { x: number; y: number } {
+  // Measure the live panel when available so a saved corner never escapes a
+  // later-shrunken window AND a tall panel never overflows the bottom. When
+  // the DOM hasn't measured yet (first paint), fall back to the static
+  // PANEL_WIDTH/PANEL_HEIGHT_ESTIMATE so the layout doesn't jump.
+  const rect = panelEl?.getBoundingClientRect();
+  const w = rect?.width ?? PANEL_WIDTH;
+  const h = rect?.height ?? PANEL_HEIGHT_ESTIMATE;
+  const maxX = Math.max(PANEL_MARGIN, window.innerWidth - w - PANEL_MARGIN);
+  const maxY = Math.max(PANEL_MARGIN, window.innerHeight - h - PANEL_MARGIN);
   return {
-    x: Math.min(Math.max(16, x), maxX),
-    y: Math.min(Math.max(16, y), maxY),
+    x: Math.min(Math.max(PANEL_MARGIN, x), maxX),
+    y: Math.min(Math.max(PANEL_MARGIN, y), maxY),
   };
 }
 
@@ -129,8 +157,15 @@ export function SeedPanel() {
   // we drive the actual motion via direct DOM writes + a window listener so
   // the panel tracks the cursor at full frame rate without React re-renders.
   // Persistence happens once on pointerup, not on every move.
-  const [pos, setPos] = useState<{ x: number; y: number }>(() => loadPos());
+  //
+  // Iteration 79: live drag clamp uses the panel's *measured* rect width/height
+  // (not `window.innerWidth-200 / window.innerHeight-80` like before), so a
+  // tall panel can never drift past the bottom of a short window and a wide
+  // one past the right.
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ x: number; y: number }>(() =>
+    loadPos(null),
+  );
   const dragRef = useRef<{
     pointerId: number;
     startClientX: number;
@@ -140,14 +175,64 @@ export function SeedPanel() {
   } | null>(null);
   const [dragging, setDragging] = useState(false);
 
+  // Live dimensions of the panel, refreshed on every render once it has
+  // mounted. Falls back to the static PANEL_* constants until then.
+  const liveRect = panelRef.current?.getBoundingClientRect();
+  const liveW = liveRect?.width ?? PANEL_WIDTH;
+  const liveH = liveRect?.height ?? PANEL_HEIGHT_ESTIMATE;
+  const clampLive = (x: number, y: number) => {
+    const maxX = Math.max(
+      PANEL_MARGIN,
+      window.innerWidth - liveW - PANEL_MARGIN,
+    );
+    const maxY = Math.max(
+      PANEL_MARGIN,
+      window.innerHeight - liveH - PANEL_MARGIN,
+    );
+    return {
+      x: Math.min(Math.max(PANEL_MARGIN, x), maxX),
+      y: Math.min(Math.max(PANEL_MARGIN, y), maxY),
+    };
+  };
+
+  // First-mount re-clamp (iteration 79). Position was computed from the
+  // static PANEL_* fallback constants; once the panel mounts and React commits
+  // the real DOM, re-clamp against the measured rect so the saved corner
+  // does not leak past the actual panel right/bottom.
+  useEffect(() => {
+    if (!panelRef.current) return;
+    const r = panelRef.current.getBoundingClientRect();
+    if (r.width === liveW && r.height === liveH && liveRect) {
+      // Already using live dimensions; nothing to do.
+      return;
+    }
+    setPos((prev) => {
+      const next = clampLive(prev.x, prev.y);
+      if (next.x === prev.x && next.y === prev.y) return prev;
+      try {
+        localStorage.setItem(POS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveW, liveH]);
+
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const ds = dragRef.current;
       if (!ds || e.pointerId !== ds.pointerId) return;
       const dx = e.clientX - ds.startClientX;
       const dy = e.clientY - ds.startClientY;
-      const nx = Math.min(Math.max(16, ds.startPanelX + dx), Math.max(16, window.innerWidth - 200));
-      const ny = Math.min(Math.max(16, ds.startPanelY + dy), Math.max(16, window.innerHeight - 80));
+      const nx = Math.min(
+        Math.max(PANEL_MARGIN, ds.startPanelX + dx),
+        Math.max(PANEL_MARGIN, window.innerWidth - liveW - PANEL_MARGIN),
+      );
+      const ny = Math.min(
+        Math.max(PANEL_MARGIN, ds.startPanelY + dy),
+        Math.max(PANEL_MARGIN, window.innerHeight - liveH - PANEL_MARGIN),
+      );
       const el = panelRef.current;
       if (el) {
         el.style.left = `${nx}px`;
@@ -161,7 +246,7 @@ export function SeedPanel() {
       const el = panelRef.current;
       if (el) {
         const rect = el.getBoundingClientRect();
-        const final = clampPos(rect.left, rect.top);
+        const final = clampLive(rect.left, rect.top);
         setPos(final);
         try {
           localStorage.setItem(POS_KEY, JSON.stringify(final));
@@ -180,26 +265,37 @@ export function SeedPanel() {
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, []);
+  }, [liveW, liveH]);
 
   // Re-clamp on viewport resize so a saved position never escapes the window
-  // when the user shrinks the browser after re-opening the app.
+  // when the user shrinks the browser after re-opening the app. Iteration 79:
+  // rAF-throttled so a fast resize doesn't fire 30 setState calls per second,
+  // and uses the live panel rect (so a recently-grown or shrunk panel is
+  // measured, not assumed to be the static default).
   useEffect(() => {
+    let raf = 0;
     const onResize = () => {
-      setPos((prev) => {
-        const next = clampPos(prev.x, prev.y);
-        if (next.x === prev.x && next.y === prev.y) return prev;
-        try {
-          localStorage.setItem(POS_KEY, JSON.stringify(next));
-        } catch {
-          /* ignore */
-        }
-        return next;
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        setPos((prev) => {
+          const next = clampLive(prev.x, prev.y);
+          if (next.x === prev.x && next.y === prev.y) return prev;
+          try {
+            localStorage.setItem(POS_KEY, JSON.stringify(next));
+          } catch {
+            /* ignore */
+          }
+          return next;
+        });
       });
     };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [liveW, liveH]);
 
   const onTitlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return; // left button only
@@ -225,7 +321,15 @@ export function SeedPanel() {
   };
 
   const resetPosition = () => {
-    const def = DEFAULT_POS();
+    // Iteration 79: anchor the panel using its measured rect when available,
+    // so reset always lands the panel *fully visible* in the current window.
+    // Without this, a panel that's wider than the assumed PANEL_WIDTH (e.g.
+    // after font-size scaling) would reset to a clipped or out-of-bounds
+    // position on tall / multi-monitor setups.
+    const def = clampLive(
+      window.innerWidth - liveW - PANEL_MARGIN,
+      window.innerHeight - liveH - PANEL_MARGIN,
+    );
     setPos(def);
     try {
       localStorage.setItem(POS_KEY, JSON.stringify(def));
@@ -408,10 +512,24 @@ export function SeedPanel() {
   // (1 = a cut must outvote keep; ties merge to suppress over-splitting).
   const onFuse = async () => {
     setFusing(true);
-    log.info("SeedPanel", "onFuse click");
+    log.info("SeedPanel", "onFuse click", {
+      eyeRegions: eyeRegions.length,
+    });
     try {
-      const result = await fuseSegmentation(1, 0, dihedralDeg);
-      log.info("SeedPanel", "onFuse done", { segments: result.segments.length });
+      // Iteration 79: feed any user-confirmed eye regions into the fuse as a
+      // 5th channel. Without this the eye-region boundary lines on the
+      // viewport are *visualisation only* — on the next fuse or seedGrow run
+      // the eye faces get merged into whatever neighbour wins the
+      // geodesic-nearest race. With this, every perimeter edge of an eye
+      // region votes cut (weight 1000, same magnitude as the dihedral
+      // backbone), so the eye region stays its own manual label even when the
+      // fuse pass would otherwise absorb it.
+      const eyeSets = eyeRegions.map((r) => r.faceIndices);
+      const result = await fuseSegmentation(1, 0, dihedralDeg, eyeSets);
+      log.info("SeedPanel", "onFuse done", {
+        segments: result.segments.length,
+        eyeChannels: eyeSets.length,
+      });
     } catch {
       // error already surfaced via status message in fuseSegmentation
     } finally {
@@ -451,6 +569,7 @@ export function SeedPanel() {
     log.info("SeedPanel", "onGrow click", {
       seedPoints: seedPoints.length,
       suggested: suggestedSeeds.length,
+      eyeRegions: eyeRegions.length,
       barrierDeg,
       optimizer,
     });
@@ -466,14 +585,59 @@ export function SeedPanel() {
     // adds more manual seeds and re-grows. They are two views of the same
     // working set. To grow with only manual seeds, the user explicitly clicks
     // "Clear suggestions" first.
-    const seeds = [...seedPoints, ...suggestedSeeds];
+    //
+    // Iteration 79: also include one auto-seed per detected EyeRegion (anchor
+    // at the median face of the region). Without this, seedGrow's geodesic
+    // nearest-seed Voronoi would happily reassign every eye face to the
+    // nearest body / face seed — that's exactly the "eye regions vanish after
+    // grow" failure mode the user reported. An eye-region seed reserves its
+    // label the same way a manual click would, so the eye boundary lines on
+    // the viewport survive the grow without surprising the user with extra
+    // ghost markers they have to click-and-accept.
+    const eyeSeeds: SeedPoint[] = eyeRegions
+      .map((r): SeedPoint | null => {
+        if (!r.faceIndices.length) return null;
+        // Median face inside the region. Not strictly a centroid but always
+        // interior for a connected EyeRegion (the only kind the detector
+        // emits), which is enough to anchor Dijkstra without falling on a
+        // boundary edge.
+        const f = r.faceIndices[Math.floor(r.faceIndices.length / 2)];
+        const md = meshData;
+        if (!md) return null;
+        // meshData.faces / vertices are flat float arrays: each face is 3
+        // consecutive vertex indices, each vertex is xyz. Index into the flat
+        // arrays the same way `MeshModel::face_centroid` does on the backend.
+        const i = f * 3;
+        const v0 = md.faces[i];
+        const v1 = md.faces[i + 1];
+        const v2 = md.faces[i + 2];
+        const j0 = v0 * 3;
+        const j1 = v1 * 3;
+        const j2 = v2 * 3;
+        const vs = md.vertices;
+        if (
+          j0 + 2 >= vs.length ||
+          j1 + 2 >= vs.length ||
+          j2 + 2 >= vs.length
+        ) {
+          return null;
+        }
+        return {
+          x: (vs[j0] + vs[j1] + vs[j2]) / 3,
+          y: (vs[j0 + 1] + vs[j1 + 1] + vs[j2 + 1]) / 3,
+          z: (vs[j0 + 2] + vs[j1 + 2] + vs[j2 + 2]) / 3,
+          faceIndex: f,
+        };
+      })
+      .filter((s): s is SeedPoint => s !== null);
+    const seeds = [...seedPoints, ...suggestedSeeds, ...eyeSeeds];
     if (seeds.length === 0) {
       setStatusMessage(t("seed.needOne"));
       return;
     }
     setGrowing(true);
     setStatusMessage(
-      `🌱 准备生长（${seeds.length} 个种子，barrier=${barrierDeg}°，optimizer=${optimizer}）…`,
+      `🌱 准备生长（${seeds.length} 个种子（手 ${seedPoints.length} + 推 ${suggestedSeeds.length} + 眼 ${eyeSeeds.length}），barrier=${barrierDeg}°，optimizer=${optimizer}）…`,
     );
     try {
       const result = await seedGrow(seeds, barrierDeg, optimizer);
