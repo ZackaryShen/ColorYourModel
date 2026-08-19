@@ -19,7 +19,7 @@ use crate::segment::planar::{
     detect_planar_regions as backend_detect_planar_regions, PlanarParams, PlanarRegion,
 };
 use crate::segment::eye::{
-    detect_eye_regions as backend_detect_eye_regions, EyeRegion,
+    detect_eye_regions as backend_detect_eye_regions, EyeParams, EyeRegion,
 };
 use crate::segment::multiview::{
     detect_multiview_regions as backend_detect_multiview_regions, MultiViewParams, MultiViewRegion,
@@ -663,7 +663,7 @@ pub fn detect_eye_regions(roi_faces: Vec<u32>, state: State<AppState>) -> Result
     log::info!("[cmd:detect_eye_regions] roi_faces={}", roi_faces.len());
     let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
-    let regions = backend_detect_eye_regions(mesh, &roi_faces);
+    let regions = backend_detect_eye_regions(mesh, &roi_faces, &EyeParams::default());
     log::info!(
         "[cmd:detect_eye_regions] done: {} eye regions",
         regions.len()

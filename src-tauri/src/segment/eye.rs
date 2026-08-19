@@ -70,18 +70,37 @@ const R_SPHERE: f32 = 0.5;
 /// REVISE #2: a spherical face whose normalised centre distance `dn >=` this sits
 /// on the outer ring → sclera (the white of the eye); below it → globe (body).
 const BAND_SCLERA: f32 = 0.85;
-/// REVISE #5: floor on the globe+sclera count below which the eye is treated
-/// as closed. The effective threshold scales with the ROI size (see
-/// `detect_eye_regions`) so a small but real eye is not mis-dropped.
-const CLOSED_EYE_MIN_GLOBE: usize = 8;
-/// docs/10 §5: floor on region size; the effective minimum scales with the ROI
-/// (a 50-face absolute cap silently culls every sub-region of a small eye ROI,
-/// leaving only the largest patch — the "only 1 partition" regression).
-const MIN_REGION_FACES_FLOOR: u32 = 8;
 /// Dihedral peak threshold for an eyelid crease (empirical). A face whose
 /// maximum dihedral crease exceeds this is a *sharp* fold, not the smooth
 /// curved surface of an eyeball — see the classification in `detect_eye_regions`.
 const CREASE_PEAK_DEG: f32 = 30.0;
+
+/// Tunable thresholds for eye-region detection.
+///
+/// The defaults preserve the historical constants while exposing the ROI-relative
+/// ratios so callers can adapt to different mesh densities / eye sizes.
+#[derive(Debug, Clone, Copy)]
+pub struct EyeParams {
+    /// Absolute floor on the globe+sclera count used by the closed-eye fallback.
+    pub closed_eye_min_globe: usize,
+    /// Ratio of ROI faces that triggers the closed-eye fallback.
+    pub closed_eye_ratio: f32,
+    /// Absolute floor on the size of an output region.
+    pub min_region_faces_floor: usize,
+    /// Ratio of ROI faces used as the minimum region size.
+    pub min_region_ratio: f32,
+}
+
+impl Default for EyeParams {
+    fn default() -> Self {
+        Self {
+            closed_eye_min_globe: 8,
+            closed_eye_ratio: 1.0 / 20.0,
+            min_region_faces_floor: 8,
+            min_region_ratio: 1.0 / 25.0,
+        }
+    }
+}
 
 /// Vertex topology rebuilt from faces: vertex → incident face indices.
 /// Private copy of `concavity::build_vertex_faces` (that one is module-private
@@ -286,7 +305,7 @@ fn fit_sphere(points: &[[f32; 3]]) -> ([f32; 3], f32) {
 /// `roi_faces` is the set of face indices the user believes bound an eye. The
 /// function never mutates `mesh` (read-only, like `detect_planar_regions`), so
 /// it can run behind a shared `&MeshModel` lock.
-pub fn detect_eye_regions(mesh: &MeshModel, roi_faces: &[u32]) -> Vec<EyeRegion> {
+pub fn detect_eye_regions(mesh: &MeshModel, roi_faces: &[u32], params: &EyeParams) -> Vec<EyeRegion> {
     if roi_faces.is_empty() {
         return Vec::new();
     }
@@ -374,6 +393,7 @@ pub fn detect_eye_regions(mesh: &MeshModel, roi_faces: &[u32]) -> Vec<EyeRegion>
     // score ball_ratio ≈ 0.5, but the cube is riddled with 90° creases. The
     // crease is the precomputed signal from step 3.
     let mut eyeball_smooth = vec![false; n];
+    let mut crease_max_face = vec![0.0f32; n];
 
     for &f in roi_faces {
         let fi = f as usize;
@@ -443,6 +463,7 @@ pub fn detect_eye_regions(mesh: &MeshModel, roi_faces: &[u32]) -> Vec<EyeRegion>
             }
         }
         eyeball_smooth[fi] = crease_max < CREASE_PEAK_DEG;
+        crease_max_face[fi] = crease_max;
 
         // Concavity: >= 2 of the 3 vertices concave → concave face.
         let tri = mesh.faces[fi];
@@ -536,7 +557,8 @@ pub fn detect_eye_regions(mesh: &MeshModel, roi_faces: &[u32]) -> Vec<EyeRegion>
     // Step 7: closed-eye fallback — too few spherical faces ⇒ discard globe/sclera.
     // The threshold scales with the ROI: a real eye should make up a meaningful
     // fraction of the selected partition, not an absolute 30 faces.
-    let closed_eye_min = (roi_faces.len() / 20).max(CLOSED_EYE_MIN_GLOBE);
+    let closed_eye_min = ((roi_faces.len() as f32 * params.closed_eye_ratio).ceil() as usize)
+        .max(params.closed_eye_min_globe);
     let globe_sclera_faces: usize = regions_raw
         .iter()
         .filter(|(c, v)| (*c == EyeLabel::Globe || *c == EyeLabel::Sclera) && !v.is_empty())
@@ -551,10 +573,28 @@ pub fn detect_eye_regions(mesh: &MeshModel, roi_faces: &[u32]) -> Vec<EyeRegion>
         raw_counts[*cls as usize] += 1;
     }
 
+    // Per-component diagnostics before size filtering.
+    for (cls, comp) in &regions_raw {
+        let mean_br = comp.iter().map(|&f| ball_ratios[f as usize]).sum::<f32>()
+            / comp.len().max(1) as f32;
+        let max_crease = comp
+            .iter()
+            .map(|&f| crease_max_face[f as usize])
+            .fold(0.0f32, |a, b| a.max(b));
+        log::info!(
+            "[eye:component] label={:?} faces={} mean_ball_ratio={:.3} max_crease={:.1}°",
+            cls,
+            comp.len(),
+            mean_br,
+            max_crease,
+        );
+    }
+
     // Steps 8-10: filter, build regions, sort by size.
     // `min_region_faces` is ROI-relative (floor 8) so a small eye ROI keeps its
     // sub-regions instead of being culled to a single blob.
-    let min_region_faces = (roi_faces.len() / 25).max(MIN_REGION_FACES_FLOOR as usize) as u32;
+    let min_region_faces = ((roi_faces.len() as f32 * params.min_region_ratio).ceil() as usize)
+        .max(params.min_region_faces_floor) as u32;
     let mut out: Vec<EyeRegion> = Vec::new();
     for (cls, comp) in regions_raw {
         if closed_eye && (cls == EyeLabel::Globe || cls == EyeLabel::Sclera) {
@@ -695,14 +735,14 @@ mod tests {
     #[test]
     fn empty_roi_returns_nothing() {
         let mesh = build_sphere(1.0, 24, 24);
-        assert!(detect_eye_regions(&mesh, &vec![]).is_empty());
+        assert!(detect_eye_regions(&mesh, &vec![], &EyeParams::default()).is_empty());
     }
 
     #[test]
     fn sphere_roi_finds_globe() {
         let mesh = build_sphere(1.0, 24, 24);
         let roi: Vec<u32> = (0..mesh.faces.len() as u32).collect();
-        let regions = detect_eye_regions(&mesh, &roi);
+        let regions = detect_eye_regions(&mesh, &roi, &EyeParams::default());
         let globe = regions.iter().find(|r| r.semantic == EyeLabel::Globe);
         assert!(
             globe.is_some(),
@@ -715,7 +755,7 @@ mod tests {
     fn cube_roi_has_no_globe() {
         let mesh = unit_cube();
         let roi: Vec<u32> = (0..mesh.faces.len() as u32).collect();
-        let regions = detect_eye_regions(&mesh, &roi);
+        let regions = detect_eye_regions(&mesh, &roi, &EyeParams::default());
         // A cube is planar (ball_ratio < R_SPHERE) → it triggers the closed-eye
         // fallback (or produces only tiny eyelid fragments): no Globe, no Sclera.
         assert!(
@@ -735,10 +775,15 @@ mod tests {
         // split into Globe + Sclera — protects against MIN_REGION_FACES or
         // the closed-eye fallback inadvertently culling both on a partial ROI.
         let mesh = build_sphere(1.0, 24, 24);
-        let n = mesh.faces.len();
-        let half = n / 2;
-        let roi: Vec<u32> = (0..half as u32).collect();
-        let regions = detect_eye_regions(&mesh, &roi);
+        // Use a geometric hemisphere (y >= 0) instead of face-index slicing so the
+        // test does not silently break if build_sphere changes face ordering.
+        let centers: Vec<[f32; 3]> =
+            (0..mesh.faces.len()).map(|f| mesh.face_center(f as u32)).collect();
+        let centroid_y = centers.iter().map(|c| c[1]).sum::<f32>() / centers.len() as f32;
+        let roi: Vec<u32> = (0..mesh.faces.len() as u32)
+            .filter(|&f| centers[f as usize][1] >= centroid_y - 1e-4)
+            .collect();
+        let regions = detect_eye_regions(&mesh, &roi, &EyeParams::default());
         let has_globe = regions.iter().any(|r| r.semantic == EyeLabel::Globe);
         let has_sclera = regions.iter().any(|r| r.semantic == EyeLabel::Sclera);
         assert!(
@@ -757,7 +802,7 @@ mod tests {
     fn sclera_is_heuristic_low_confidence() {
         let mesh = build_sphere(1.0, 24, 24);
         let roi: Vec<u32> = (0..mesh.faces.len() as u32).collect();
-        let regions = detect_eye_regions(&mesh, &roi);
+        let regions = detect_eye_regions(&mesh, &roi, &EyeParams::default());
         if let Some(s) = regions.iter().find(|r| r.semantic == EyeLabel::Sclera) {
             assert!(
                 s.confidence <= 0.5,
@@ -812,7 +857,7 @@ mod tests {
     fn hemisphere_roi_yields_globe_and_sclera() {
         let mesh = build_hemisphere(1.0, 24, 24);
         let roi: Vec<u32> = (0..mesh.faces.len() as u32).collect();
-        let regions = detect_eye_regions(&mesh, &roi);
+        let regions = detect_eye_regions(&mesh, &roi, &EyeParams::default());
         let globe = regions.iter().filter(|r| r.semantic == EyeLabel::Globe).count();
         let sclera = regions.iter().filter(|r| r.semantic == EyeLabel::Sclera).count();
         assert!(
