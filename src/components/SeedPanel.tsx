@@ -179,8 +179,17 @@ export function SeedPanel() {
         dihedral?: number;
         eye?: number;
       };
+      rawComponents?: number;
+      cutThreshold?: number;
+      minRegionFaces?: number;
       edgeTotal?: number;
       edgeCut?: number;
+      planarVoteEdges?: number;
+      planarCutVotes?: number;
+      multiviewVoteEdges?: number;
+      multiviewCutVotes?: number;
+      dihedralCutVotes?: number;
+      eyeCutVotes?: number;
       regionSizeMin?: number;
       regionSizeMax?: number;
       regionSizeMedian?: number;
@@ -192,10 +201,28 @@ export function SeedPanel() {
         const { listen } = await import("@tauri-apps/api/event");
         if (cancelled) return;
         const h = await listen<FuseDebugPayload>("fuse-debug", (e) => {
+          const p = e.payload;
+          // Iteration 82: ship the structured breakdown into the in-app
+          // debug-log ring buffer (renders in the purple DebugLogViewer
+          // panel) AND the browser console. The transient status bar line
+          // scrolls away on the next action, so a durable, copyable log
+          // entry is the only way to read *why* the button produced e.g.
+          // 535 regions on a smooth model.
+          const c = p.channels ?? {};
+          const msg =
+            `[fuse-debug] regions=${p.rawComponents} ` +
+            `channels[planar=${c.planar} multiview=${c.multiview} dihedral=${c.dihedral} eye=${c.eye}] ` +
+            `edges(cut/total)=${p.edgeCut}/${p.edgeTotal} ` +
+            `votes[planar cut=${p.planarCutVotes}/${p.planarVoteEdges} ` +
+            `multiview cut=${p.multiviewCutVotes}/${p.multiviewVoteEdges} ` +
+            `dihedral=${p.dihedralCutVotes} eye=${p.eyeCutVotes}] ` +
+            `regionSizes[min=${p.regionSizeMin} med=${p.regionSizeMedian} max=${p.regionSizeMax}] ` +
+            `cutThreshold=${p.cutThreshold} minRegionFaces=${p.minRegionFaces}`;
+          log.info("fuse-debug", msg, p);
           // Latest-write-wins; the post-fuse status is read after `await fuse...`
           // resolves.
           (window as unknown as { __lastFuseDebug?: FuseDebugPayload }).__lastFuseDebug =
-            e.payload;
+            p;
         });
         unlisten = h;
       } catch {
@@ -566,7 +593,13 @@ export function SeedPanel() {
       // backbone), so the eye region stays its own manual label even when the
       // fuse pass would otherwise absorb it.
       const eyeSets = eyeRegions.map((r) => r.faceIndices);
-      const result = await fuseSegmentation(1, 0, dihedralDeg, eyeSets);
+      // Iteration 84: cut-threshold default raised 1 → 2 (true majority on the
+      // weak channels). On this model the dominant cutters are the weighted
+      // dihedral/eye channels (WEIGHT = 1000), which ignore this threshold, so
+      // the visible de-fragmentation comes from the rewritten tiny-region merge
+      // in fuse.rs — not from this number. Kept at 2 per the "C" plan so a lone
+      // planar/multiview vote (weight 1) still never cuts on its own.
+      const result = await fuseSegmentation(2, 0, dihedralDeg, eyeSets);
       log.info("SeedPanel", "onFuse done", {
         segments: result.segments.length,
         eyeChannels: eyeSets.length,

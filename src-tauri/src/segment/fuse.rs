@@ -44,12 +44,15 @@ use crate::mesh::history::OpKind;
 use crate::mesh::model::{MeshModel, Segment};
 
 /// Max tiny-region merge passes — mirror of [`postprocess::MAX_MERGE_PASSES`].
-/// Each pass absorbs *every* under-sized region (≥1 face below `min_faces`)
+/// Each pass absorbs *every* under-sized region (faces below `min_faces`)
 /// instead of a single minimum; without this a 500k-face model with 500 small
 /// fragments would exit the loop after 3 passes with hundreds of crumbs still
 /// standing. The cap exists only to make termination provable; in practice the
-/// loop converges when no under-sized region remains.
-const MAX_MERGE_PASSES: u32 = 40;
+/// loop converges when no under-sized region remains. Iteration 84 raised this
+/// from 40 → 200 because the giant-absorption strategy (below) collapses long
+/// crumb chains in O(chain length) passes; 200 is a safe ceiling for a 500k
+/// mesh while staying well under a second of work.
+const MAX_MERGE_PASSES: u32 = 200;
 
 /// Weight given to a single dihedral-crease cut vote. The geometry backbone
 /// must be *authoritative*: on smooth / single-colour meshes planar and
@@ -84,6 +87,20 @@ pub struct FuseResult {
     pub region_size_min: usize,
     pub region_size_max: usize,
     pub region_size_median: usize,
+    // ── Iteration 83: per-channel vote counters ──────────────────────────
+    // Surfaced so the user can see *which* channel actually drove the cuts.
+    // On a smooth / single-colour model the planar and multiview channels
+    // each cast a single `cut` vote per disagreement edge (weight 1), while
+    // dihedral and eye cast `WEIGHT = 1000`. With `cut_threshold = 1` the
+    // decision test is `cut - keep > 1`, so a lone planar/multiview vote
+    // (cut=1, keep=0 → 1 > 1 is false) NEVER cuts — which is why the
+    // multiview detector can return 125 regions yet contribute 0 cuts.
+    pub planar_vote_edges: u64,
+    pub planar_cut_votes: u64,
+    pub multiview_vote_edges: u64,
+    pub multiview_cut_votes: u64,
+    pub dihedral_cut_votes: u64,
+    pub eye_cut_votes: u64,
 }
 
 /// Build a per-face optional label from a set of regions. Each region is a list
@@ -166,6 +183,14 @@ pub fn fuse_region_sets(
     let mut cut_edges: HashSet<(u32, u32)> = HashSet::new();
     let mut edge_total = 0u64;
     let mut edge_cut = 0u64;
+    // Iteration 83: per-channel vote tallies so the debug payload can reveal
+    // *which* channel actually drove the cut decision.
+    let mut planar_vote_edges = 0u64;
+    let mut planar_cut_votes = 0u64;
+    let mut multiview_vote_edges = 0u64;
+    let mut multiview_cut_votes = 0u64;
+    let mut dihedral_cut_votes = 0u64;
+    let mut eye_cut_votes = 0u64;
     for e in mesh.face_adjacency.edge_references() {
         let a = e.source().index() as u32;
         let b = e.target().index() as u32;
@@ -177,20 +202,24 @@ pub fn fuse_region_sets(
         edge_total += 1;
         match (planar_label[a as usize], planar_label[b as usize]) {
             (Some(x), Some(y)) => {
+                planar_vote_edges += 1;
                 if x == y {
                     keep += 1;
                 } else {
                     cut += 1;
+                    planar_cut_votes += 1;
                 }
             }
             _ => {}
         }
         match (multiview_label[a as usize], multiview_label[b as usize]) {
             (Some(x), Some(y)) => {
+                multiview_vote_edges += 1;
                 if x == y {
                     keep += 1;
                 } else {
                     cut += 1;
+                    multiview_cut_votes += 1;
                 }
             }
             _ => {}
@@ -200,6 +229,7 @@ pub fn fuse_region_sets(
                 // Geometry backbone is authoritative: a dihedral crease cuts
                 // regardless of the feature channels (which have no signal on
                 // smooth / single-colour meshes). Weighted above any threshold.
+                dihedral_cut_votes += 1;
                 cut += DIHEDRAL_WEIGHT;
             }
             _ => {}
@@ -212,6 +242,7 @@ pub fn fuse_region_sets(
         let ea = eye_bounded[a as usize];
         let eb = eye_bounded[b as usize];
         if ea != eb {
+            eye_cut_votes += 1;
             cut += EYE_WEIGHT;
         }
         if cut - keep > cut_threshold {
@@ -299,20 +330,29 @@ pub fn fuse_region_sets(
         }
         // Sort by size ascending so smaller crumbs merge first.
         tiny.sort_by_key(|&r| counts[&r]);
+        // Iteration 84 — the global-largest region ("giant") is the crumb
+        // sink. Preferring it as the merge target guarantees every small
+        // region eventually flows INTO the giant instead of stalling in a
+        // chain of other small regions (the failure mode that left hundreds of
+        // 1–3 face islands behind in iter80–83). As crumbs merge into the
+        // giant, the giant's id is stable, so once a crumb touches the grown
+        // giant it is pulled in on the next pass and its former neighbours
+        // become adjacent to the giant too — chains collapse in O(length)
+        // passes.
+        let giant = counts.iter().max_by_key(|(_, &c)| c).map(|(&r, _)| r);
         let mut merged_this_pass = 0usize;
-        // Merge each small region into its largest neighbour (by shared
-        // boundary edge count). Compute the neighbour table once per small
-        // region; the inner pass is over its faces and their neighbours
-        // (≪ all edges).
         for small_id in tiny {
+            // Already absorbed earlier this pass (its id now points at a
+            // target) — skip so we don't re-scan a vanished region.
+            if !counts.contains_key(&small_id) {
+                continue;
+            }
             // Build neighbour of `small_id` by face-level scan (only the
             // faces whose `region[f] == small_id` are inspected, plus their
             // adjacent neighbours — linear in the size of the small region).
+            // Scans ALL adjacency edges (including cut edges) so a crumb can
+            // merge across a boundary it shares with a larger region.
             let mut neighbour: HashMap<u32, usize> = HashMap::new();
-            let still_exists = counts.contains_key(&small_id);
-            if !still_exists {
-                continue;
-            }
             for f in 0..n {
                 if region[f] != small_id {
                     continue;
@@ -328,20 +368,29 @@ pub fn fuse_region_sets(
                     }
                 }
             }
-            if let Some((&target, _)) = neighbour.iter().max_by_key(|(_, &c)| c) {
-                if target == small_id {
-                    continue;
-                }
-                for f in 0..n {
-                    if region[f] == small_id {
-                        region[f] = target;
-                    }
-                }
-                merged_this_pass += 1;
-                counts.remove(&small_id);
-            } else {
-                break; // isolated (no neighbour) — stop trying
+            if neighbour.is_empty() {
+                // Truly isolated (no adjacency at all) — skip it and keep
+                // processing the rest of the list. The old code `break`ed here,
+                // which could abort the whole pass and leave every other crumb
+                // standing.
+                continue;
             }
+            // Prefer the giant if it touches this crumb; otherwise the largest
+            // local neighbour.
+            let target = match giant {
+                Some(g) if neighbour.contains_key(&g) => g,
+                _ => *neighbour.iter().max_by_key(|(_, &c)| c).unwrap().0,
+            };
+            if target == small_id {
+                continue;
+            }
+            for f in 0..n {
+                if region[f] == small_id {
+                    region[f] = target;
+                }
+            }
+            counts.remove(&small_id);
+            merged_this_pass += 1;
         }
         log::info!(
             "[fuse] tiny-merge pass {}: merged {} small regions (min_faces={})",
@@ -408,6 +457,12 @@ pub fn fuse_region_sets(
         region_size_min: min_face,
         region_size_max: max_face,
         region_size_median: median_face,
+        planar_vote_edges,
+        planar_cut_votes,
+        multiview_vote_edges,
+        multiview_cut_votes,
+        dihedral_cut_votes,
+        eye_cut_votes,
     })
 }
 
