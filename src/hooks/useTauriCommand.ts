@@ -632,6 +632,45 @@ export function useTauriCommand() {
     }
   };
 
+  /// Stage 1: global eye detection without a user-supplied ROI. Scans the whole
+  /// mesh for symmetric eye-like bumps and returns EyeRegions that can be fed
+  /// straight into the fusion path.
+  const detectEyeRegionsAuto = async (): Promise<EyeRegion[]> => {
+    log.info("useTauriCommand", "detectEyeRegionsAuto()");
+    try {
+      setStatusMessage("正在自动识别眼睛…");
+      const raw = await invoke<
+        Array<{
+          semantic: EyeRegion["semantic"];
+          faceIndices: number[];
+          boundaryEdges: number[][][];
+          center: [number, number, number];
+          confidence: number;
+        }>
+      >("detect_eye_regions_auto");
+      const regions: EyeRegion[] = (raw ?? []).map((r) => ({
+        semantic: r.semantic,
+        faceIndices: r.faceIndices,
+        boundaryEdges: r.boundaryEdges,
+        center: r.center,
+        confidence: r.confidence,
+      }));
+      const tally: Record<string, number> = {};
+      for (const r of regions) {
+        tally[r.semantic] = (tally[r.semantic] ?? 0) + 1;
+      }
+      const parts = ["globe", "sclera", "eyelid", "socket"]
+        .map((k) => `${k}:${tally[k] ?? 0}`)
+        .join(" ");
+      setStatusMessage(`自动识别到 ${regions.length} 个眼睛子区域 (${parts})`);
+      return regions;
+    } catch (e) {
+      log.error("useTauriCommand", "detectEyeRegionsAuto failed", { error: String(e) });
+      setStatusMessage(`自动眼睛识别失败：${e}`);
+      return [];
+    }
+  };
+
   /**
    * Layer 4 (docs/09): fuse the planar (Layer 1) + multiview (Layer 3) region
    * *memberships* into one partition via edge-level majority vote and commit it
@@ -689,6 +728,7 @@ export function useTauriCommand() {
     detectMultiViewRegions,
     detectCrossSectionRegions,
     detectEyeRegions,
+    detectEyeRegionsAuto,
     fuseSegmentation,
     resetSegmentation,
     manualRegionAddPoint,

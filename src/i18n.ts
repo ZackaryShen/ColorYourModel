@@ -103,6 +103,8 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.accepted": { zh: "已接受推荐种子（共 {0} 个）", en: "Accepted suggestion ({0} seeds total)" },
   "seed.acceptDup": { zh: "该推荐点附近已有种子，已忽略", en: "A seed already exists near this suggestion; ignored" },
   "seed.eye": { zh: "👁 眼睛识别", en: "👁 Eye detect" },
+  "seed.eyeAuto": { zh: "👁 自动识别眼睛", en: "👁 Auto eye detect" },
+  "seed.eyeAutoTitle": { zh: "Stage 1: 全网格扫描对称的眼睛凸起并自动分区", en: "Stage 1: scan the whole mesh for symmetric eye bumps" },
   "seed.clearEye": { zh: "清空眼睛 ({0})", en: "Clear eye ({0})" },
   "seed.eyeTitle": { zh: "清空 Layer 5 眼睛语义区域", en: "Clear Layer 5 eye regions" },
   "seed.eyeHint": {

@@ -314,7 +314,7 @@ pub fn fuse_region_sets(
     };
     // Iteration 85: merge diagnostics so the user can see whether the merge
     // phase actually ran and why it stopped.
-    let mut merge_diagnostics = {
+    let merge_diagnostics = {
         let mut counts: HashMap<u32, usize> = HashMap::new();
         for &r in &region {
             *counts.entry(r).or_insert(0) += 1;

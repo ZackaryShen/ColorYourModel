@@ -21,6 +21,9 @@ use crate::segment::planar::{
 use crate::segment::eye::{
     detect_eye_regions as backend_detect_eye_regions, EyeParams, EyeRegion,
 };
+use crate::segment::template::{
+    detect_eyes_global as backend_detect_eyes_global, TemplateParams,
+};
 use crate::segment::multiview::{
     detect_multiview_regions as backend_detect_multiview_regions, MultiViewParams, MultiViewRegion,
 };
@@ -666,6 +669,23 @@ pub fn detect_eye_regions(roi_faces: Vec<u32>, state: State<AppState>) -> Result
     let regions = backend_detect_eye_regions(mesh, &roi_faces, &EyeParams::default());
     log::info!(
         "[cmd:detect_eye_regions] done: {} eye regions",
+        regions.len()
+    );
+    Ok(regions)
+}
+
+/// Global eye-region detection (Stage 1): scan the whole mesh for symmetric
+/// eye-like bumps without requiring a user-supplied ROI. Returns the same
+/// `EyeRegion` structure as the ROI-based path so the frontend can render and
+/// fuse them uniformly.
+#[tauri::command]
+pub fn detect_eye_regions_auto(state: State<'_, AppState>) -> Result<Vec<EyeRegion>, String> {
+    log::info!("[cmd:detect_eye_regions_auto] start");
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    let regions = backend_detect_eyes_global(mesh, &TemplateParams::default());
+    log::info!(
+        "[cmd:detect_eye_regions_auto] done: {} eye regions",
         regions.len()
     );
     Ok(regions)

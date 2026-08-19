@@ -37,6 +37,7 @@ pub fn run() {
             commands::segment::recommend_seeds,
             commands::segment::detect_planar_regions,
             commands::segment::detect_eye_regions,
+            commands::segment::detect_eye_regions_auto,
             commands::segment::detect_multiview_regions,
             commands::segment::detect_cross_section_features,
             commands::segment::fuse_segmentation,

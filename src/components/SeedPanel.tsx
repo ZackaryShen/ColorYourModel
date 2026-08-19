@@ -115,7 +115,7 @@ export function SeedPanel() {
   const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setActiveTool = useAppStore((s) => s.setActiveTool);
-  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions, detectEyeRegions, fuseSegmentation, resetSegmentation } = useTauriCommand();
+  const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions, detectEyeRegions, detectEyeRegionsAuto, fuseSegmentation, resetSegmentation } = useTauriCommand();
 
   // Iteration 66: give the panel an obvious "I'm done here" exit affordance.
   // The × button on the title row and the Esc key both switch back to View —
@@ -578,6 +578,22 @@ export function SeedPanel() {
     }
   };
 
+  // Stage 1: global eye detection without a user-supplied ROI. The result is
+  // stored in the same `eyeRegions` slot and participates in fusion / growth.
+  const onDetectEyeAuto = async () => {
+    setDetectingEye(true);
+    log.info("SeedPanel", "onDetectEyeAuto click");
+    try {
+      const regions = await detectEyeRegionsAuto();
+      log.info("SeedPanel", "onDetectEyeAuto received", { regions: regions.length });
+      setEyeRegions(regions);
+    } catch {
+      // error already surfaced via status message in detectEyeRegionsAuto
+    } finally {
+      setDetectingEye(false);
+    }
+  };
+
   // Layer 4 (docs/09): fuse Layer 1 planar + Layer 3 MultiView region
   // *membership* into one partition via edge-level majority vote, then commit
   // it — the fix for "the algorithms sketch useful regions but the real
@@ -980,6 +996,20 @@ export function SeedPanel() {
           title={t("seed.clearCrossSectionTitle")}
         >
           ×
+        </button>
+      </div>
+
+      <div style={styles.row}>
+        <button
+          onClick={onDetectEyeAuto}
+          disabled={detectingEye}
+          style={{
+            ...styles.grow,
+            background: "#2a1a4a",
+          }}
+          title={t("seed.eyeAutoTitle")}
+        >
+          {detectingEye ? "…" : t("seed.eyeAuto")}
         </button>
       </div>
 

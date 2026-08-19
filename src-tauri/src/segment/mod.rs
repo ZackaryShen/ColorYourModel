@@ -17,7 +17,9 @@ pub mod planar;
 pub mod eye;
 pub mod multiview;
 pub mod cross_section;
+pub mod face_frame;
 pub mod fuse;
+pub mod template;
 
 use serde::{Deserialize, Serialize};
 
