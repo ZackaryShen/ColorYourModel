@@ -193,6 +193,11 @@ export function SeedPanel() {
       regionSizeMin?: number;
       regionSizeMax?: number;
       regionSizeMedian?: number;
+      regionsBeforeMerge?: number;
+      regionsAfterMerge?: number;
+      mergePasses?: number;
+      minFaces?: number;
+      tinyRegionsBeforeMerge?: number;
     };
     let unlisten: (() => void) | null = null;
     let cancelled = false;
@@ -217,6 +222,7 @@ export function SeedPanel() {
             `multiview cut=${p.multiviewCutVotes}/${p.multiviewVoteEdges} ` +
             `dihedral=${p.dihedralCutVotes} eye=${p.eyeCutVotes}] ` +
             `regionSizes[min=${p.regionSizeMin} med=${p.regionSizeMedian} max=${p.regionSizeMax}] ` +
+            `merge[before=${p.regionsBeforeMerge} after=${p.regionsAfterMerge} passes=${p.mergePasses} tiny=${p.tinyRegionsBeforeMerge} minFaces=${p.minFaces}] ` +
             `cutThreshold=${p.cutThreshold} minRegionFaces=${p.minRegionFaces}`;
           log.info("fuse-debug", msg, p);
           // Latest-write-wins; the post-fuse status is read after `await fuse...`

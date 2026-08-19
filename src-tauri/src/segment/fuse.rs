@@ -101,6 +101,12 @@ pub struct FuseResult {
     pub multiview_cut_votes: u64,
     pub dihedral_cut_votes: u64,
     pub eye_cut_votes: u64,
+    // ── Iteration 85: merge diagnostics ───────────────────────────────────
+    pub regions_before_merge: usize,
+    pub regions_after_merge: usize,
+    pub merge_passes: u32,
+    pub min_faces: usize,
+    pub tiny_regions_before_merge: usize,
 }
 
 /// Build a per-face optional label from a set of regions. Each region is a list
@@ -226,11 +232,20 @@ pub fn fuse_region_sets(
         }
         match (dihedral_label[a as usize], dihedral_label[b as usize]) {
             (Some(x), Some(y)) if x != y => {
-                // Geometry backbone is authoritative: a dihedral crease cuts
-                // regardless of the feature channels (which have no signal on
-                // smooth / single-colour meshes). Weighted above any threshold.
-                dihedral_cut_votes += 1;
-                cut += DIHEDRAL_WEIGHT;
+                // Iteration 85: do NOT let the geometry backbone cut *inside*
+                // an eye-bounded region. The eye detector already carves the
+                // eye ROI out with EYE_WEIGHT; dihedral creases inside the
+                // eyeball/eyelid/socket would otherwise shred the semantic eye
+                // region into dozens of tiny locked fragments, which then
+                // survive tiny-region merge and destroy the median size.
+                if !eye_bounded[a as usize] && !eye_bounded[b as usize] {
+                    // Geometry backbone is authoritative: a dihedral crease
+                    // cuts regardless of the feature channels (which have no
+                    // signal on smooth / single-colour meshes). Weighted above
+                    // any threshold.
+                    dihedral_cut_votes += 1;
+                    cut += DIHEDRAL_WEIGHT;
+                }
             }
             _ => {}
         }
@@ -297,6 +312,24 @@ pub fn fuse_region_sets(
     } else {
         ((n as f32) * 0.002).max(8.0) as usize
     };
+    // Iteration 85: merge diagnostics so the user can see whether the merge
+    // phase actually ran and why it stopped.
+    let mut merge_diagnostics = {
+        let mut counts: HashMap<u32, usize> = HashMap::new();
+        for &r in &region {
+            *counts.entry(r).or_insert(0) += 1;
+        }
+        (
+            region_count as usize,
+            counts
+                .values()
+                .filter(|&&c| c < min_faces)
+                .count(),
+        )
+    };
+    let regions_before_merge = merge_diagnostics.0;
+    let tiny_regions_before_merge = merge_diagnostics.1;
+    let mut merge_passes = 0u32;
     // An *eye* region must NOT be merged away by the tiny-region pass: the
     // user explicitly confirmed those faces, even if it is one small sclera
     // strip. Tag the source region ids for every face; a region that contains
@@ -310,6 +343,7 @@ pub fn fuse_region_sets(
         }
     }
     for pass in 0..MAX_MERGE_PASSES {
+        merge_passes = pass + 1;
         // Build per-region face counts and accumulate per-pass statistics.
         let mut counts: HashMap<u32, usize> = HashMap::new();
         for &r in &region {
@@ -403,6 +437,15 @@ pub fn fuse_region_sets(
         }
     }
 
+    // ── 3b. Merge diagnostics ─────────────────────────────────────────────
+    let regions_after_merge = {
+        let mut ids = HashSet::new();
+        for &r in &region {
+            ids.insert(r);
+        }
+        ids.len()
+    };
+
     // ── 4. Commit: fresh manual label per region + colour + one undo entry ─
     let mut prev_colors = Vec::with_capacity(n);
     let mut prev_labels = Vec::with_capacity(n);
@@ -463,6 +506,11 @@ pub fn fuse_region_sets(
         multiview_cut_votes,
         dihedral_cut_votes,
         eye_cut_votes,
+        regions_before_merge,
+        regions_after_merge,
+        merge_passes,
+        min_faces,
+        tiny_regions_before_merge,
     })
 }
 
@@ -593,5 +641,29 @@ mod tests {
         let f0 = r.segment_labels[0];
         let f1 = r.segment_labels[1];
         assert_eq!(f0, f1, "face 0 and face 1 must share the eye region label");
+    }
+
+    /// Dihedral creases must NOT cut inside an eye-bounded region. Otherwise
+    /// a low dihedral threshold would shred the semantic eye ROI into many
+    /// tiny locked fragments that survive tiny-region merge and destroy the
+    /// median region size.
+    #[test]
+    fn dihedral_does_not_cut_inside_eye_region() {
+        let mut mesh = unit_cube();
+        // faces 0 and 1 are adjacent and both eye-bounded. A dihedral detector
+        // that labels them as two different regions would normally cut the
+        // shared edge; with the iter85 fix that cut is suppressed because both
+        // endpoints are eye faces.
+        let eye_sets: Vec<Vec<u32>> = vec![vec![0, 1]];
+        let dihedral_sets: Vec<Vec<u32>> = vec![vec![0], vec![1]];
+        let r = fuse_region_sets(&mut mesh, &[], &[], &dihedral_sets, &eye_sets, 1, 0).unwrap();
+        assert_eq!(
+            r.region_count, 2,
+            "dihedral must not split the eye region internally: got {} regions",
+            r.region_count
+        );
+        let f0 = r.segment_labels[0];
+        let f1 = r.segment_labels[1];
+        assert_eq!(f0, f1, "eye faces 0 and 1 must stay together");
     }
 }

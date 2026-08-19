@@ -897,6 +897,11 @@ pub async fn fuse_segmentation(
             "regionSizeMin": result.region_size_min,
             "regionSizeMax": result.region_size_max,
             "regionSizeMedian": result.region_size_median,
+            "regionsBeforeMerge": result.regions_before_merge,
+            "regionsAfterMerge": result.regions_after_merge,
+            "mergePasses": result.merge_passes,
+            "minFaces": result.min_faces,
+            "tinyRegionsBeforeMerge": result.tiny_regions_before_merge,
         }),
     );
 
