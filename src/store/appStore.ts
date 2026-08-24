@@ -490,7 +490,24 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
     }
   },
 
-  setActiveTool: (tool) => set({ activeTool: tool }),
+  // Tools are mutually exclusive. Switching tools must also wipe every
+  // tool-local side-flag so a stale `seedPickMode=true` / `seedEraseMode=true`
+  // can never route the next pointer event through the wrong handler (this was
+  // the iteration-X bug where clicking Lasso / Seed after exiting Seed with
+  // Pick still armed looked like "the Fill state leaked"). Logging the old→new
+  // transition makes future "multiple tools look active" reports debuggable
+  // from the in-app purple DebugLogViewer (F12 has no DevTools in release).
+  setActiveTool: (tool) => {
+    const prev = get().activeTool;
+    if (prev === tool) return; // idempotent — no-op on repeated clicks
+    log.info("store", "setActiveTool", { from: prev, to: tool });
+    set({
+      activeTool: tool,
+      // Disarm every tool-local flag so the destination tool starts clean.
+      seedPickMode: false,
+      seedEraseMode: false,
+    });
+  },
   setBrushRadius: (r) => set({ brushRadius: clamp(r, 0.5, 200) }),
   // M3: clamp to the BrushSettings slider range so a persisted/scripted value
   // can never produce a thumb position the user cannot reproduce by dragging.

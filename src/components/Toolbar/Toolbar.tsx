@@ -167,7 +167,13 @@ export function Toolbar() {
           return (
             <button
               key={item.tool}
-              onClick={() => setActiveTool(item.tool)}
+              onClick={(e) => {
+                e.currentTarget.blur(); // drop focus so the just-clicked button
+                // doesn't keep a focus-ring + hover filter together with the
+                // newly-active tool's border (looked like "two tools active").
+                log.info("Toolbar", "tool click", { tool: item.tool, from: activeTool });
+                setActiveTool(item.tool);
+              }}
               className="cym-btn"
               style={{
                 ...styles.toolButton,
@@ -263,6 +269,11 @@ const styles: Record<string, React.CSSProperties> = {
   toolActive: {
     borderColor: "var(--accent, #4a9eff)",
     background: "var(--bg-active, #3a5a7a)",
+    // Inset shadow + outer glow so the active state stays clearly distinct
+    // from the hover state (a 1.15× brightness filter on a neighbour button
+    // could otherwise read as "two tools active at once").
+    boxShadow:
+      "inset 0 0 0 2px var(--accent, #4a9eff), 0 0 0 2px var(--accent, #4a9eff)",
   },
   divider: {
     width: "80%",
