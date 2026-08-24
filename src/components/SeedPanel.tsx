@@ -586,6 +586,15 @@ export function SeedPanel() {
     try {
       const regions = await detectEyeRegionsAuto();
       log.info("SeedPanel", "onDetectEyeAuto received", { regions: regions.length });
+      // REFUTE: do NOT stack eye-region seeds on top of a large suggestion set
+      // (e.g. 125 MultiView seeds). `seed_grow` is a global geodesic Voronoi;
+      // 125 + 4 seeds = ~128 tiny regions covering the whole mesh, which is
+      // exactly the "碎成彩虹" failure in the user report. Eye regions are
+      // semantic constraints for fusion / per-region commitment, not generic
+      // watershed seeds, so we clear the advisory suggestion pool first.
+      clearSuggestedSeeds();
+      clearPlanarRegions();
+      clearMultiviewRegions();
       setEyeRegions(regions);
     } catch {
       // error already surfaced via status message in detectEyeRegionsAuto
@@ -750,6 +759,18 @@ export function SeedPanel() {
         };
       })
       .filter((s): s is SeedPoint => s !== null);
+
+    // Eye seeds are semantic "reservations", not generic watershed seeds. If
+    // they are the ONLY seeds, seed_grow would assign every face in the mesh to
+    // the nearest eye centre (wrong: body/limbs become eye labels). Only let
+    // them join the pool when there are real body seeds (manual or suggested)
+    // to grow from; otherwise nudge the user toward the correct tool.
+    const hasBodySeeds = seedPoints.length > 0 || suggestedSeeds.length > 0;
+    if (eyeSeeds.length > 0 && !hasBodySeeds) {
+      setStatusMessage(t("seed.eyeNeedBodySeeds"));
+      return;
+    }
+
     const seeds = [...seedPoints, ...suggestedSeeds, ...eyeSeeds];
     if (seeds.length === 0) {
       setStatusMessage(t("seed.needOne"));
