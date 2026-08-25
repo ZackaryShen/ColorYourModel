@@ -87,6 +87,8 @@ export function SeedPanel() {
   const setSeedEraseMode = useAppStore((s) => s.setSeedEraseMode);
   const seedPickMode = useAppStore((s) => s.seedPickMode);
   const setSeedPickMode = useAppStore((s) => s.setSeedPickMode);
+  const segmentMode = useAppStore((s) => s.segmentMode);
+  const setSegmentMode = useAppStore((s) => s.setSegmentMode);
   const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
   const setSuggestedSeeds = useAppStore((s) => s.setSuggestedSeeds);
   const clearSuggestedSeeds = useAppStore((s) => s.clearSuggestedSeeds);
@@ -861,7 +863,35 @@ export function SeedPanel() {
       </div>
       <div style={styles.hint}>{hint}</div>
 
-      <div style={styles.row}>
+      {/* Iteration B: explicit two-technique switcher. `auto` = fuse (global
+          edge-vote, one click, no seeds); `manual` = grow (geodesic watershed
+          from seed points / suggested seeds). They SHARE the eye-region
+          reservation but are otherwise disjoint: planar / multiview /
+          cross-section detectors feed the manual seed pool, the dihedral slider
+          feeds fuse only. */}
+      <div style={styles.modeTabs}>
+        <button
+          onClick={() => setSegmentMode("auto")}
+          style={{ ...styles.modeTab, ...(segmentMode === "auto" ? styles.modeTabActive : {}) }}
+          title={t("seed.modeAutoTitle")}
+        >
+          🧩 {t("seed.modeAuto")}
+        </button>
+        <button
+          onClick={() => setSegmentMode("manual")}
+          style={{ ...styles.modeTab, ...(segmentMode === "manual" ? styles.modeTabActive : {}) }}
+          title={t("seed.modeManualTitle")}
+        >
+          🌱 {t("seed.modeManual")}
+        </button>
+      </div>
+      <div style={styles.modeHint}>
+        {segmentMode === "auto" ? t("seed.modeAutoHint") : t("seed.modeManualHint")}
+      </div>
+
+      {segmentMode === "manual" && (
+        <>
+        <div style={styles.row}>
         <span style={styles.label}>{t("seed.count", seedPoints.length)}</span>
         <button
           onClick={onToggleErase}
@@ -1019,6 +1049,8 @@ export function SeedPanel() {
           ×
         </button>
       </div>
+        </>
+      )}
 
       <div style={styles.row}>
         <button
@@ -1138,32 +1170,36 @@ export function SeedPanel() {
         </button>
       </div>
 
-      {/* Geometry backbone for the fusion: dihedral crease angle. on smooth /
-          single-colour meshes the planar + multiview channels have no signal,
-          so this is what actually splits the model into parts. Lower = more,
-          finer regions; higher = fewer, coarser parts. */}
-      <div style={styles.row}>
-        <span style={styles.label} title={t("seed.fuseDihedralHint")}>
-          {t("seed.fuseDihedral")}
-        </span>
-        <input
-          type="range"
-          min={5}
-          max={35}
-          value={dihedralDeg}
-          onChange={(e) => setDihedralDeg(Number(e.target.value))}
-          style={{ flex: 1 }}
-        />
-        <span style={styles.val}>{dihedralDeg}°</span>
-      </div>
+      {segmentMode === "auto" && (
+        <>
+          {/* Geometry backbone for the fusion: dihedral crease angle. on smooth /
+              single-colour meshes the planar + multiview channels have no signal,
+              so this is what actually splits the model into parts. Lower = more,
+              finer regions; higher = fewer, coarser parts. */}
+          <div style={styles.row}>
+            <span style={styles.label} title={t("seed.fuseDihedralHint")}>
+              {t("seed.fuseDihedral")}
+            </span>
+            <input
+              type="range"
+              min={5}
+              max={35}
+              value={dihedralDeg}
+              onChange={(e) => setDihedralDeg(Number(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={styles.val}>{dihedralDeg}°</span>
+          </div>
 
-      {/* Layer 4 fusion — one click turns the algorithm regions into the
-          actual partition, no seed placement required. */}
-      <div style={styles.row}>
-        <button onClick={onFuse} disabled={fusing} style={styles.fuse} title={t("seed.fuseTitle")}>
-          {fusing ? "…" : t("seed.fuse")}
-        </button>
-      </div>
+          {/* Layer 4 fusion — one click turns the algorithm regions into the
+              actual partition, no seed placement required. */}
+          <div style={styles.row}>
+            <button onClick={onFuse} disabled={fusing} style={styles.fuse} title={t("seed.fuseTitle")}>
+              {fusing ? "…" : t("seed.fuse")}
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Reset partition — wipes meshData.segmentLabels + faceColors + history
           and clears every algorithm overlay. Indispensable since the previous
@@ -1179,43 +1215,47 @@ export function SeedPanel() {
         </button>
       </div>
 
-      <div style={styles.row}>
-        <span style={styles.label}>{t("seed.barrier")}</span>
-        <input
-          type="range"
-          min={10}
-          max={90}
-          value={barrierDeg}
-          onChange={(e) => setBarrierDeg(Number(e.target.value))}
-          style={{ flex: 1 }}
-        />
-        <span style={styles.val}>{barrierDeg}°</span>
-      </div>
-      <div style={styles.row}>
-        <span style={styles.label} title={t("seed.barrierHint")}>
-          {t("seed.barrierHint")}
-        </span>
-      </div>
+      {segmentMode === "manual" && (
+        <>
+          <div style={styles.row}>
+            <span style={styles.label}>{t("seed.barrier")}</span>
+            <input
+              type="range"
+              min={10}
+              max={90}
+              value={barrierDeg}
+              onChange={(e) => setBarrierDeg(Number(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={styles.val}>{barrierDeg}°</span>
+          </div>
+          <div style={styles.row}>
+            <span style={styles.label} title={t("seed.barrierHint")}>
+              {t("seed.barrierHint")}
+            </span>
+          </div>
 
-      <div style={styles.row}>
-        <label style={{ ...styles.label, display: "flex", alignItems: "center", gap: 6 }}>
-          <input
-            type="checkbox"
-            checked={optimizer}
-            onChange={(e) => setOptimizer(e.target.checked)}
-          />
-          {t("seed.optimizer")}
-        </label>
-      </div>
+          <div style={styles.row}>
+            <label style={{ ...styles.label, display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={optimizer}
+                onChange={(e) => setOptimizer(e.target.checked)}
+              />
+              {t("seed.optimizer")}
+            </label>
+          </div>
 
-      <div style={styles.buttonRow}>
-        <button onClick={onGrow} disabled={growing} style={styles.grow}>
-          {growing ? "…" : t("seed.grow")}
-        </button>
-        <button onClick={clearSeedPoints} disabled={seedPoints.length === 0} style={styles.clear}>
-          {t("seed.clear")}
-        </button>
-      </div>
+          <div style={styles.buttonRow}>
+            <button onClick={onGrow} disabled={growing} style={styles.grow}>
+              {growing ? "…" : t("seed.grow")}
+            </button>
+            <button onClick={clearSeedPoints} disabled={seedPoints.length === 0} style={styles.clear}>
+              {t("seed.clear")}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1235,6 +1275,38 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 30,
   },
   title: { fontWeight: 700, fontSize: 13, marginBottom: 4 },
+  modeTabs: {
+    display: "flex",
+    gap: 6,
+    marginBottom: 4,
+  },
+  modeTab: {
+    flex: 1,
+    padding: "6px 8px",
+    border: "1px solid var(--border, #555)",
+    borderRadius: 6,
+    background: "#2a2a2a",
+    color: "#aaa",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  modeTabActive: {
+    borderColor: "var(--accent, #4a9eff)",
+    background: "#3a5a7a",
+    color: "#fff",
+    boxShadow: "inset 0 0 0 1px var(--accent, #4a9eff)",
+  },
+  modeHint: {
+    fontSize: 11,
+    lineHeight: 1.35,
+    color: "#9aa",
+    background: "#22262b",
+    border: "1px solid #3a3f47",
+    borderRadius: 6,
+    padding: "5px 8px",
+    marginBottom: 8,
+  },
   titleRow: {
     display: "flex",
     alignItems: "center",

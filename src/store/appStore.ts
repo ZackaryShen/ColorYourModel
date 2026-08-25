@@ -148,6 +148,16 @@ interface AppStore {
    *  who want to run eye-detect. Transient: NOT persisted (see partialize). */
   seedPickMode: boolean;
   setSeedPickMode: (v: boolean) => void;
+  /** Iteration B (adversarial loop): the SeedPanel exposes two explicit
+   *  partitioning techniques. `auto` = fuse (global edge-vote, one click, no
+   *  seeds needed); `manual` = grow (geodesic watershed from seed points /
+   *  suggested seeds). The two SHARE the eye-region reservation but are
+   *  otherwise disjoint: planar/multiview/cross-section detectors feed the
+   *  manual seed pool, the dihedral slider feeds fuse only. Default `auto`
+   *  because fuse is the lower-friction path for a fresh model. Transient: NOT
+   *  persisted (see partialize whitelist). */
+  segmentMode: "auto" | "manual";
+  setSegmentMode: (m: "auto" | "manual") => void;
   /** Iteration 52: advisory seed suggestions from the backend (weighted FPS over
    *  face centroids, biased to region interiors). Shown as ghost markers; the
    *  user accepts one by clicking it (moves to `seedPoints`) or ignores it. They
@@ -541,6 +551,11 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setSeedEraseMode: (v) => set({ seedEraseMode: v }),
   seedPickMode: false,
   setSeedPickMode: (v) => set({ seedPickMode: v }),
+  segmentMode: "auto",
+  setSegmentMode: (m) => {
+    log.info("store", "setSegmentMode", { mode: m });
+    set({ segmentMode: m });
+  },
   suggestedSeeds: [],
   setSuggestedSeeds: (seeds) => {
     log.info("store", "setSuggestedSeeds", { count: seeds.length, first: seeds[0] });
