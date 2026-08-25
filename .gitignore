@@ -46,3 +46,6 @@ dist_bak*/
 # Ad-hoc cargo target dirs used when the main target dir lock is stuck (Windows orphan handles)
 .cargo-target*/
 .cargo-probe/
+
+# isolated cargo target used for fast incremental checks
+src-tauri/target_dev_rust/

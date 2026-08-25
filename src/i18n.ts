@@ -201,7 +201,11 @@ const dict: Record<string, Record<Lang, string>> = {
   "theme.light": { zh: "☀️ 浅色", en: "☀️ Light" },
 
   // Export dialog (preset library)
-  "export.title": { zh: "导出为 3MF", en: "Export as 3MF" },
+  "export.title": { zh: "导出模型", en: "Export Model" },
+  "export.format": { zh: "格式", en: "Format" },
+  "export.format3mf": { zh: "3MF（切片软件）", en: "3MF (slicer)" },
+  "export.formatObj": { zh: "OBJ（带颜色）", en: "OBJ (with colour)" },
+  "export.objNote": { zh: "OBJ 直接写入每面 RGB 颜色（.obj + .mtl），无需选择机型/工艺。", en: "OBJ writes per-face RGB directly (.obj + .mtl), no machine/process needed." },
   "export.machine": { zh: "厂商 / 机型", en: "Vendor / Machine" },
   "export.nozzle": { zh: "喷嘴直径", en: "Nozzle diameter" },
   "export.process": { zh: "工艺（打印参数）", en: "Process (print profile)" },
@@ -213,6 +217,9 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.cancel": { zh: "取消", en: "Cancel" },
   "export.confirm": { zh: "选择保存位置并导出", en: "Choose location & export" },
   "export.exporting": { zh: "导出中…", en: "Exporting…" },
+  "export.success": { zh: "导出成功：{0}", en: "Exported: {0}" },
+  "export.successObj": { zh: "导出成功（含 .mtl 材质）：{0}", en: "Exported (with .mtl): {0}" },
+  "export.failure": { zh: "导出失败：{0}", en: "Export failed: {0}" },
 
   // Intelligent segmentation panel
   "segmentPanel.toolbar": { zh: "🤖 智能分区", en: "🤖 Segment" },

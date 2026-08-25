@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { useT } from "../i18n";
 import { useAppStore } from "../store/appStore";
 import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
@@ -6,6 +7,7 @@ import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/s
 import { log } from "../utils/logger";
 
 export function useTauriCommand() {
+  const t = useT();
   const setMeshData = useAppStore((s) => s.setMeshData);
   const updateSegmentLabels = useAppStore((s) => s.updateSegmentLabels);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
@@ -266,12 +268,40 @@ export function useTauriCommand() {
     log.info("useTauriCommand", `export3mf("${path}")`, { selection });
     try {
       setStatusMessage("Exporting...");
-      await invoke("export_3mf_command", { path, selection: selection ?? null });
-      log.info("useTauriCommand", "export3mf complete");
+      const msg: string = await invoke("export_3mf_command", {
+        path,
+        selection: selection ?? null,
+      });
+      log.info("useTauriCommand", "export3mf complete", { msg });
       setStatusMessage("Export complete");
+      setToast(t("export.success", msg.replace(/^Exported to /, "")));
+      return msg;
     } catch (e) {
       log.error("useTauriCommand", "export3mf failed", { error: String(e) });
       setStatusMessage(`Export failed: ${e}`);
+      setToast(t("export.failure", String(e)));
+      throw e;
+    }
+  };
+
+  /**
+   * Export the current mesh as a `.obj` + `.mtl` carrying per-face colour.
+   * No machine / process selection is involved, so the only argument is the
+   * output path the save dialog produced.
+   */
+  const exportObj = async (path: string) => {
+    log.info("useTauriCommand", `exportObj("${path}")`);
+    try {
+      setStatusMessage("Exporting...");
+      const msg: string = await invoke("export_obj_command", { path });
+      log.info("useTauriCommand", "exportObj complete", { msg });
+      setStatusMessage("Export complete");
+      setToast(t("export.successObj", msg.replace(/^Exported to /, "")));
+      return msg;
+    } catch (e) {
+      log.error("useTauriCommand", "exportObj failed", { error: String(e) });
+      setStatusMessage(`Export failed: ${e}`);
+      setToast(t("export.failure", String(e)));
       throw e;
     }
   };
@@ -716,6 +746,7 @@ export function useTauriCommand() {
     loadModel,
     autoSegmentV2,
     export3mf,
+    exportObj,
     paintSegmentFace,
     finalizeSegment,
     renameSegment,

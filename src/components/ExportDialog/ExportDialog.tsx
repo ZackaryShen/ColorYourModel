@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useT } from "../../i18n";
 import { useAppStore } from "../../store/appStore";
@@ -22,10 +23,15 @@ import { log } from "../../utils/logger";
  */
 export function ExportDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
-  const { export3mf } = useTauriCommand();
+  const { export3mf, exportObj } = useTauriCommand();
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const lastSelection = useAppStore((s) => s.lastExportSelection);
   const setLastExportSelection = useAppStore((s) => s.setLastExportSelection);
+
+  // 3MF carries colours through a slicer profile; OBJ writes RGB directly and
+  // needs none of the machine / process / filament pickers.
+  const [format, setFormat] = useState<"3mf" | "obj">("3mf");
+  const [progress, setProgress] = useState(0);
 
   const [machines, setMachines] = useState<MachineSummary[]>([]);
   const [palette, setPalette] = useState<string[]>([]);
@@ -35,6 +41,21 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [filamentNames, setFilamentNames] = useState<string[]>([]);
   const [targetSlicer, setTargetSlicer] = useState("snapmaker_orca");
   const [exporting, setExporting] = useState(false);
+
+  // Live progress from the backend's `export-progress` events. Mounted once so
+  // the listener survives the whole export; the command runs off the webview
+  // thread, so these arrive in real time instead of being batched at the end.
+  useEffect(() => {
+    const unlisten = listen<{ progress: number; stage: string }>(
+      "export-progress",
+      (e) => {
+        setProgress(e.payload.progress);
+      }
+    );
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +145,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   }, [palette.length, filaments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doExport = async () => {
-    if (!machine || !processName) return;
+    if (format === "3mf" && (!machine || !processName)) return;
     const selection: ExportSelection = {
       machineId,
       nozzleDiameter: nozzle,
@@ -133,18 +154,25 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       targetSlicer,
     };
     setExporting(true);
+    setProgress(0);
     try {
+      const ext = format === "obj" ? "obj" : "3mf";
       const path = await save({
-        filters: [{ name: "3MF", extensions: ["3mf"] }],
-        defaultPath: "model.3mf",
+        filters: [{ name: format === "obj" ? "OBJ" : "3MF", extensions: [ext] }],
+        defaultPath: `model.${ext}`,
       });
-      if (path) {
-        // Tauri's save dialog does NOT auto-append the extension, so a user
-        // who types "mymodel" would otherwise get a file named "mymodel"
-        // with no suffix — invisible when filtering for *.3mf. Force it.
-        const outPath = path.toLowerCase().endsWith(".3mf")
-          ? path
-          : `${path}.3mf`;
+      if (!path) return; // user cancelled the save dialog
+
+      // Tauri's save dialog does NOT auto-append the extension, so a user who
+      // types "mymodel" would otherwise get a suffix-less file — invisible
+      // when filtering for *.3mf / *.obj. Force it.
+      const outPath = path.toLowerCase().endsWith(`.${ext}`)
+        ? path
+        : `${path}.${ext}`;
+
+      if (format === "obj") {
+        await exportObj(outPath);
+      } else {
         await export3mf(outPath, selection);
         setLastExportSelection({
           machineId,
@@ -153,8 +181,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
           filamentNames,
           targetSlicer,
         });
-        onClose();
       }
+      onClose();
     } catch (e) {
       log.error("ExportDialog", "export failed", { error: String(e) });
       setStatusMessage(`导出失败：${e}`);
@@ -173,111 +201,150 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       >
         <div style={styles.header}>{t("export.title")}</div>
 
-        {/* Machine */}
-        <label style={styles.label}>{t("export.machine")}</label>
-        <select
-          style={styles.select}
-          value={machineId}
-          onChange={(e) => setMachineId(e.target.value)}
-        >
-          {machines.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.vendor} — {m.name}
-            </option>
-          ))}
-        </select>
+        {/* Format toggle — 3MF needs a slicer profile; OBJ writes colour
+            directly and hides the machine / process / filament pickers. */}
+        <label style={styles.label}>{t("export.format")}</label>
+        <div style={styles.row}>
+          <button
+            className="cym-btn"
+            style={{
+              ...styles.fmtBtn,
+              ...(format === "3mf" ? styles.fmtActive : {}),
+            }}
+            onClick={() => setFormat("3mf")}
+          >
+            {t("export.format3mf")}
+          </button>
+          <button
+            className="cym-btn"
+            style={{
+              ...styles.fmtBtn,
+              ...(format === "obj" ? styles.fmtActive : {}),
+            }}
+            onClick={() => setFormat("obj")}
+          >
+            {t("export.formatObj")}
+          </button>
+        </div>
 
-        {/* Nozzle */}
-        {nozzles.length > 1 && (
+        {format === "3mf" ? (
           <>
-            <label style={styles.label}>{t("export.nozzle")}</label>
-            <div style={styles.row}>
-              {nozzles.map((n) => (
-                <button
-                  key={n}
-                  className="cym-btn"
-                  style={{
-                    ...styles.nozzleBtn,
-                    ...(n === nozzle ? styles.nozzleActive : {}),
-                  }}
-                  onClick={() => setNozzle(n)}
-                >
-                  {n}mm
-                </button>
+            {/* Machine */}
+            <label style={styles.label}>{t("export.machine")}</label>
+            <select
+              style={styles.select}
+              value={machineId}
+              onChange={(e) => setMachineId(e.target.value)}
+            >
+              {machines.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.vendor} — {m.name}
+                </option>
               ))}
-            </div>
+            </select>
+
+            {/* Nozzle */}
+            {nozzles.length > 1 && (
+              <>
+                <label style={styles.label}>{t("export.nozzle")}</label>
+                <div style={styles.row}>
+                  {nozzles.map((n) => (
+                    <button
+                      key={n}
+                      className="cym-btn"
+                      style={{
+                        ...styles.nozzleBtn,
+                        ...(n === nozzle ? styles.nozzleActive : {}),
+                      }}
+                      onClick={() => setNozzle(n)}
+                    >
+                      {n}mm
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Process */}
+            <label style={styles.label}>{t("export.process")}</label>
+            <select
+              style={styles.select}
+              value={processName}
+              onChange={(e) => setProcessName(e.target.value)}
+              disabled={processes.length === 0}
+            >
+              {processes.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                  {p.layerHeight ? ` (${p.layerHeight}mm)` : ""}
+                </option>
+              ))}
+            </select>
+
+            {/* Filament per slot */}
+            <label style={styles.label}>
+              {t("export.filament")} ({palette.length}{t("export.slots")})
+            </label>
+            {palette.map((colour, i) => {
+              const slotFilament = filamentNames[i] ?? filaments[0]?.name ?? "";
+              return (
+                <div key={i} style={styles.slotRow}>
+                  <span
+                    style={{ ...styles.swatch, background: colour }}
+                    title={colour}
+                  />
+                  <select
+                    style={styles.select}
+                    value={slotFilament}
+                    onChange={(e) => {
+                      setFilamentNames((prev) => {
+                        const next = [...prev];
+                        next[i] = e.target.value;
+                        return next;
+                      });
+                    }}
+                  >
+                    {filaments.map((f) => (
+                      <option key={f.name} value={f.name}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+
+            {/* Target slicer */}
+            <label style={styles.label}>{t("export.target")}</label>
+            <select
+              style={styles.select}
+              value={targetSlicer}
+              onChange={(e) => setTargetSlicer(e.target.value)}
+            >
+              <option value="snapmaker_orca">{t("export.targetSnapmaker")}</option>
+              <option value="orcaslicer">{t("export.targetOrca")}</option>
+            </select>
           </>
+        ) : (
+          <div style={styles.note}>{t("export.objNote")}</div>
         )}
 
-        {/* Process */}
-        <label style={styles.label}>{t("export.process")}</label>
-        <select
-          style={styles.select}
-          value={processName}
-          onChange={(e) => setProcessName(e.target.value)}
-          disabled={processes.length === 0}
-        >
-          {processes.map((p) => (
-            <option key={p.name} value={p.name}>
-              {p.name}
-              {p.layerHeight ? ` (${p.layerHeight}mm)` : ""}
-            </option>
-          ))}
-        </select>
-
-        {/* Filament per slot */}
-        <label style={styles.label}>
-          {t("export.filament")} ({palette.length}{t("export.slots")})
-        </label>
-        {palette.map((colour, i) => {
-          const slotFilament = filamentNames[i] ?? filaments[0]?.name ?? "";
-          return (
-            <div key={i} style={styles.slotRow}>
-              <span
-                style={{ ...styles.swatch, background: colour }}
-                title={colour}
-              />
-              <select
-                style={styles.select}
-                value={slotFilament}
-                onChange={(e) => {
-                  setFilamentNames((prev) => {
-                    const next = [...prev];
-                    next[i] = e.target.value;
-                    return next;
-                  });
-                }}
-              >
-                {filaments.map((f) => (
-                  <option key={f.name} value={f.name}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          );
-        })}
-
-        {/* Target slicer */}
-        <label style={styles.label}>{t("export.target")}</label>
-        <select
-          style={styles.select}
-          value={targetSlicer}
-          onChange={(e) => setTargetSlicer(e.target.value)}
-        >
-          <option value="snapmaker_orca">{t("export.targetSnapmaker")}</option>
-          <option value="orcaslicer">{t("export.targetOrca")}</option>
-        </select>
+        {exporting && (
+          <div style={styles.progressWrap}>
+            <div style={{ ...styles.progressBar, width: `${Math.round(progress * 100)}%` }} />
+            <span style={styles.progressText}>{Math.round(progress * 100)}%</span>
+          </div>
+        )}
 
         <div style={styles.footer}>
-          <button className="cym-btn" style={styles.btn} onClick={onClose}>
+          <button className="cym-btn" style={styles.btn} onClick={onClose} disabled={exporting}>
             {t("export.cancel")}
           </button>
           <button
             className="cym-btn"
             style={{ ...styles.btn, ...styles.btnPrimary }}
             onClick={doExport}
-            disabled={exporting || !machine || !processName}
+            disabled={exporting || (format === "3mf" && (!machine || !processName))}
           >
             {exporting ? t("export.exporting") : t("export.confirm")}
           </button>
@@ -345,6 +412,53 @@ const styles: Record<string, React.CSSProperties> = {
   nozzleActive: {
     borderColor: "var(--accent, #4a9eff)",
     background: "var(--bg-active, #3a5a7a)",
+  },
+  fmtBtn: {
+    flex: 1,
+    padding: "6px 8px",
+    border: "1px solid var(--border, #555)",
+    background: "var(--bg-elevated, #3a3a3a)",
+    color: "var(--text-1, #eee)",
+    borderRadius: 6,
+    cursor: "pointer",
+    fontSize: 13,
+  },
+  fmtActive: {
+    borderColor: "var(--accent, #4a9eff)",
+    background: "var(--bg-active, #3a5a7a)",
+  },
+  note: {
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "var(--text-2, #aaa)",
+    background: "var(--bg-elevated, #3a3a3a)",
+    border: "1px solid var(--border, #555)",
+    borderRadius: 6,
+    padding: "8px 10px",
+    margin: "8px 0",
+  },
+  progressWrap: {
+    position: "relative",
+    height: 18,
+    background: "var(--bg-elevated, #3a3a3a)",
+    border: "1px solid var(--border, #555)",
+    borderRadius: 6,
+    overflow: "hidden",
+    margin: "12px 0 4px",
+  },
+  progressBar: {
+    height: "100%",
+    background: "var(--accent, #4a9eff)",
+    transition: "width 0.15s linear",
+  },
+  progressText: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 11,
+    color: "var(--text-1, #eee)",
   },
   slotRow: {
     display: "flex",

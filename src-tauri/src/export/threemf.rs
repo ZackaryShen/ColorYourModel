@@ -51,6 +51,7 @@ pub fn export_3mf(
     mesh: &MeshModel,
     output_path: &Path,
     selection: Option<&ExportSelection>,
+    progress: &dyn Fn(f32, &str),
 ) -> Result<(), String> {
     // An unpainted mesh (face_colors empty) still deserves to export — emit a
     // single neutral slot for every face instead of hard-erroring. A painted
@@ -84,8 +85,10 @@ pub fn export_3mf(
     };
 
     let model_xml = build_model_xml(mesh, &quantized.face_slots)?;
+    progress(0.55, "3mf:model");
     let project_config =
         build_project_settings_config(&quantized.palette, resolved.as_ref());
+    progress(0.65, "3mf:config");
     let content_types = build_content_types();
     let rels = build_rels();
 
@@ -132,6 +135,7 @@ pub fn export_3mf(
         }
     }
 
+    progress(0.7, "3mf:zip");
     for (path, body) in &entries {
         zip.start_file(path.as_str(), options)
             .map_err(|e| format!("Failed to create {} entry: {}", path, e))?;
@@ -141,6 +145,7 @@ pub fn export_3mf(
 
     zip.finish()
         .map_err(|e| format!("Failed to finalize ZIP: {}", e))?;
+    progress(0.97, "3mf:zip");
 
     Ok(())
 }
@@ -360,7 +365,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("roundtrip.3mf");
 
-        export_3mf(&mesh, &path, None).expect("export must succeed");
+        export_3mf(&mesh, &path, None, &|_, _| {}).expect("export must succeed");
 
         let file = std::fs::File::open(&path).unwrap();
         let mut archive = zip::ZipArchive::new(file).expect("output must be a valid zip");
@@ -413,7 +418,7 @@ mod tests {
             target_slicer: "orcaslicer".into(),
         };
 
-        export_3mf(&mesh, &path, Some(&sel)).expect("selected export must succeed");
+        export_3mf(&mesh, &path, Some(&sel), &|_, _| {}).expect("selected export must succeed");
 
         let file = std::fs::File::open(&path).unwrap();
         let mut archive = zip::ZipArchive::new(file).expect("output must be a valid zip");
@@ -507,7 +512,7 @@ mod tests {
             filament_names: vec!["Generic PLA".into()],
             target_slicer: "orcaslicer".into(),
         };
-        export_3mf(&mesh, path, Some(&sel)).expect("sample export must succeed");
+        export_3mf(&mesh, path, Some(&sel), &|_, _| {}).expect("sample export must succeed");
         println!("wrote sample to {}", path.display());
     }
 }
