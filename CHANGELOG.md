@@ -6,6 +6,21 @@
 
 ## [Unreleased]
 
+### Verified — 3MF 导出端到端验证（2026-08-27）
+
+- 真实 STL 走通完整链路：CYM 分区/种子上色 → 导出 3MF → **Snapmaker Orca (U1)** 导入，多耗材颜色正确、工艺下拉框正确出现内嵌预设 `0.20 Standard @Snapmaker U1 (0.4 nozzle)`。先生确认"当前的3mf导出是合理的"
+- 证据：`samples/梁圣/example01*.png`；[docs/04](docs/04-缺陷与遗留问题清单.md) P0-4 就此关闭。P0-1/2/3（fill 路由簇）随 `a7700df` 修复，待真机复验后关闭
+
+### Added — 文档骨架 + 双语 README（2026-08-27）
+
+- 新增 `docs/algorithms/`（算法原理）、`docs/technical/`（工程机制）、`docs/cases/`（案例展示，含 TEMPLATE）三个子目录与 `docs/README.md` 索引；与既有 01-10 编号中文工作文档分工：**源码为权威，01-10 为历史研究记录**
+- README 重写为英文默认（`README.md`）+ 中文对照（`README.zh-CN.md`），状态同步至 `a7700df` 合入后的主线：多算法分割 v2、种子 grow/fuse、eye 检测、统一撤销/重做、导出预设库、OBJ 导出、崩溃诊断；修正「GPU 拾取」旧描述（实为 three-mesh-bvh CPU 射线）
+
+### Changed — 许可证 MIT → AGPL-3.0-only（2026-08-27）
+
+- 开源后需防止闭源滥用（含 SaaS 形态），AGPL-3.0 的 copyleft 保留作者双重许可空间；预防性考虑：仓库内 `src-tauri/resources/presets/snapmaker_u1.json` 萃取自 OrcaSlicer（AGPL）vendor 树，按派生数据处理
+- 同步：`pyproject.toml` license 字段与 classifier；README 徽章与许可证章节
+
 ### Fixed — 填充目标区域权威化（2026-08-27）
 
 - **修复"填 C 同色时 A 反而变色"的互斥缺陷**：填充工具的目标分区恒为点击面自身所属分区（`segmentLabels[faceId]`），不再优先取 hover 快照，也不再回退到 `lastValidHoveredSegmentRef` 陈旧缓存（iter29 偏好与 v5 兜底整体退役）。颜色不参与区域判定，两个分区可以安全共用同一颜色

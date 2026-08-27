@@ -1,179 +1,162 @@
 # ColorYourModel 🎨
 
-> 为 3D 打印白模 STL 提供智能分块上色解决方案，一键导出 3MF 彩色模型
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+> Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.
 
-## 背景与问题
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
+![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 
-在 3D 打印领域，许多精美的模型（如手办、建筑、机械零件）以白模 STL 格式提供。STL 格式本质上是一堆**独立的三角形面片**，没有"零件"或"区域"的概念。
+**ColorYourModel (CYM)** is a desktop app (Tauri 2 + React + Three.js frontend, Rust backend) that solves a practical 3D-printing problem: white-model STL files are just a pile of unstructured triangles — no "regions", no colour. Painting such a model triangle-by-triangle in a slicer is hopeless for anything detailed.
 
-当用户在 OrcaSlicer 等切片软件中尝试为模型上色时，面临以下痛点：
-
-- 🔺 **面片散落**：每个三角形都是独立的，无法按"逻辑区域"（如盔甲、皮肤、底座）批量选区
-- 🖌️ **手动上色低效**：只能逐面片或逐层涂色，对高细节模型几乎不可行
-- 📦 **格式限制**：STL 不支持颜色信息，需要导出为 3MF 才能携带颜色数据
-
-**ColorYourModel** 旨在解决这个问题：自动识别模型中的逻辑区域，提供交互式上色界面，最终导出带颜色的 3MF 文件，直接送入切片软件打印。
-
-## 工作流程
+CYM automatically segments the mesh into semantic regions (helmet, skin, base…), lets you refine and paint them with region-aware tools, and exports a standards-compliant **3MF with per-region colours** that imports into Snapmaker Orca / OrcaSlicer as real filament assignments — verified end-to-end on real hardware (Aug 2026, Snapmaker U1).
 
 ```
-STL 白模导入
+STL white model
     ↓
-自动网格分割（二面角阈值 + 法线一致性合并 + 小分区吸收）
-    ↓  ← 分区画笔手动微调
-交互式上色（画笔 / 喷漆 / 智能笔 / 填充 / 橡皮）
+Auto segmentation (8 algorithms: dihedral / SDF / curvature k-means / graph-cut / …)
     ↓
-导出 3MF（带颜色）
+Seed tools: recommend seeds → manual grow / auto fuse (tiny-region merge) · eye-region detection
     ↓
-OrcaSlicer / BambuStudio 切片打印
+Manual refinement (merge / split / rename / resegment regions)
+    ↓
+Painting (brush / spray / smart brush / fill / eraser / picker) with unified undo & redo
+    ↓
+Export 3MF (colour + machine presets) · Export OBJ (per-face colours)
+    ↓
+Snapmaker Orca / OrcaSlicer → slice & print
 ```
 
-## 功能特性
+## Features
 
-### 已完成 ✅
+### Working today ✅
 
-- [x] **STL 导入**：支持二进制 + ASCII STL，1.5M 面级别模型 4 秒内加载
-- [x] **自动网格分割**：三阶段算法（二面角分裂 → 法线一致性合并 → 小分区吸收），最终生成语义化区域
-- [x] **分区画笔**：拖拽涂选面，松开鼠标创建新分区（手动微调自动分割结果）
-- [x] **BVH 加速面拾取**：`three-mesh-bvh` 构建包围体层次 + CPU 射线求交，1.5M 面模型稳定命中（FR-VIEW-07 明令禁止 GPU 回读，避免渲染管线同步阻塞）
-- [x] **多种画笔工具**：普通笔 / 喷漆 / 智能笔（分区边界感知） / 填充 / 橡皮 / 吸管
-- [x] **分区视图**：一键切换分区彩色可视化，黄色边框高亮分区边界
-- [x] **Space 平移**：按住 Space 键切换为平移模式，松开恢复旋转
-- [x] **画笔光标**：3D 环形预览跟随鼠标，显示画笔半径
-- [x] **中英文 i18n**：界面全双语支持
-- [~] **3MF 导出**：导出管线已实现，但产出的 XML **尚未经切片软件端到端验证**，且源码级已发现命名空间/属性疑似不符规范（见 [docs/04](docs/04-缺陷与遗留问题清单.md) P0-4）
-- [x] **进度条**：加载模型和自动分割时显示进度事件
+- **STL import** — binary + ASCII, ~4 s for 1.5M-face-class models, with progress events
+- **Auto segmentation v2** — one unified backend interface (`SegmentationAlgorithm`) with 8 algorithms: dihedral split, shape-diameter SDF, curvature k-means, SDF graph-cut, concavity, convex decomposition, curve skeleton, FH graph. The UI panel exposes 3 of them with tunable, persisted parameters
+- **Seed-based segmentation** — recommended seeds (planar / multiview / cross-section / saliency), point-by-point manual grow, and auto fuse with tiny-region merging
+- **Eye-region detection** — one-click detection for figure models, global (no ROI needed)
+- **Region management** — merge / split / rename regions, resegment a single region
+- **Paint tools** — brush, spray, smart brush (region-boundary aware), fill, eraser, colour picker
+- **Label-authority fill** — fill targets strictly the region you clicked, so two regions can safely share the same colour (regression-tested)
+- **Unified undo / redo** — one timeline covering paint, fill, erase and manual edits
+- **Segment view** — region-coloured visualization with boundary outlines; hover highlight is a GPU shader (per-vertex label attribute, O(1) switch, on-demand rendering)
+- **BVH face picking** — `three-mesh-bvh` accelerated CPU raycasting; stable hits on 1.5M-face meshes
+- **Export 3MF** — verified end-to-end (2026-08): multi-filament colours import correctly into Snapmaker Orca; embedded machine preset makes the slicer show *Snapmaker U1 (0.4 nozzle)* out of the box. Export dialog: machine → nozzle → process → filament slots → target slicer, with multi-region selection and apply-all
+- **Export OBJ** — per-face colours via MTL material groups, quantized to at most 256 colours
+- **Ergonomics** — 3D brush-cursor ring, Space-to-pan, progress bars, crash diagnostics (JS error bridge)
+- **i18n** — Chinese (default) and English UI, choice persisted
 
-### 计划中 🗓
+### Planned 🗓
 
-- [ ] 选区合并 / 拆分 / 边界微调
-- [ ] 颜色调色板预设 + 历史记录
-- [ ] 批量处理同类模型
-- [ ] OrcaSlicer 插件集成
+- [ ] Colour palette presets + colour history
+- [ ] Batch processing of similar models
+- [ ] OrcaSlicer plugin-form integration
 
-## 技术栈
+## Tech stack
 
-| 层级 | 技术 | 说明 |
-|------|------|------|
-| **前端框架** | [React 18](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) | 声明式 UI，类型安全 |
-| **3D 渲染** | [Three.js](https://threejs.org/) + [@react-three/fiber](https://github.com/pmndrs/react-three-fiber) | WebGL 渲染 + React 集成 |
-| **桌面框架** | [Tauri 2](https://tauri.app/) | 原生窗口 + Rust 后端，替代 Electron |
-| **后端算法** | [Rust](https://www.rust-lang.org/) | STL 解析、网格分割、面拾取 |
-| **状态管理** | [Zustand](https://github.com/pmndrs/zustand) | 轻量级 React 状态管理 |
-| **构建工具** | [Vite 6](https://vitejs.dev/) | 快速开发服务器 + HMR |
-| **图形算法** | [petgraph](https://github.com/petgraph/petgraph) | 面邻接图（UnGraph）、BFS、图分割 |
-| **KD-Tree** | [kiddo](https://github.com/sdd/kiddo) | 面空间索引 |
-| **STL 解析** | [stl_io](https://crates.io/crates/stl_io) | 二进制 + ASCII STL 读取 |
-| **3MF 导出** | [quick-xml](https://github.com/tafia/quick-xml) + [zip](https://github.com/zip-rs/zip2) | XML 生成 + ZIP 打包 |
+| Layer | Tech | Notes |
+|-------|------|-------|
+| Frontend | React 18 + TypeScript | declarative UI |
+| 3D | Three.js + @react-three/fiber + three-mesh-bvh | rendering + accelerated picking |
+| State | Zustand (persist) | app state + preferences |
+| Desktop | Tauri 2 | native window + Rust backend |
+| Backend | Rust | mesh I/O, segmentation, painting, export |
+| Rust crates | nalgebra · parry3d · petgraph · kiddo · stl_io · quick-xml · zip | geometry, graphs, spatial index, parsing |
+| Build/Test | Vite 6 · Vitest + Testing Library · cargo test | `tsc --noEmit` / `vitest run` / `cargo test --lib` |
 
-### 架构示意
+### Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│  React (TypeScript)                         │
-│  ┌─────────┐ ┌──────────┐ ┌──────────────┐ │
-│  │ Toolbar │ │ Viewport │ │SegmentsPanel │ │
-│  └────┬────┘ └────┬─────┘ └──────┬───────┘ │
-│       │           │              │          │
-│  ┌────┴───────────┴──────────────┴────┐     │
-│  │  Zustand Store (appStore.ts)       │     │
-│  └────────────────┬───────────────────┘     │
-│                   │ Tauri invoke            │
-├───────────────────┼─────────────────────────┤
-│  Rust Backend     │                         │
-│  ┌────────────────┴───────────────────┐     │
-│  │  commands/  (mesh, segment, paint) │     │
-│  ├────────────────────────────────────┤     │
-│  │  mesh/     (loader, model, colors) │     │
-│  │  segment/  (dihedral, flood_fill)  │     │
-│  │  paint/    (brush, spray, fill)    │     │
-│  │  export/   (threemf)               │     │
-│  └────────────────────────────────────┘     │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  React (TypeScript)                                  │
+│  ┌─────────┐ ┌──────────┐ ┌────────────────────────┐ │
+│  │ Toolbar │ │ Viewport │ │ SeedPanel / ExportDlg  │ │
+│  │         │ │          │ │ SegmentsPanel / …      │ │
+│  └────┬────┘ └────┬─────┘ └───────────┬────────────┘ │
+│       │           │                   │              │
+│  ┌────┴───────────┴───────────────────┴───────────┐  │
+│  │  Zustand store (appStore.ts, persisted prefs)  │  │
+├──────────────────┼ Tauri invoke ────────────────────┤
+│  Rust backend    │                                  │
+│  ┌───────────────┴──────────────────────────────┐   │
+│  │  commands/  mesh · segment · paint · history │   │
+│  │             export · js_bridge               │   │
+│  ├──────────────────────────────────────────────┤   │
+│  │  mesh/       loader · model · kdtree         │   │
+│  │  segment/    8 algorithms + seeds/fuse/eye   │   │
+│  │  paint/      brush · spray · fill · eraser   │   │
+│  │  export/     threemf · obj · presets         │   │
+│  └──────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────┘
 ```
 
-## 项目结构
+## Project structure
 
 ```
 ColorYourModel/
-├── src/                           # React 前端 (TypeScript)
+├── src/                          # React frontend (TypeScript)
 │   ├── components/
-│   │   ├── Toolbar/               # 工具栏（画笔选择 + 参数）
-│   │   ├── Viewport/              # 3D 视口（Three.js 渲染 + GPU 拾取）
-│   │   ├── BrushSettings/         # 画笔参数面板
-│   │   ├── ColorPanel/            # 颜色选择
-│   │   ├── SegmentsPanel/         # 分区管理面板
-│   │   └── StatusBar/             # 状态栏
-│   ├── hooks/
-│   │   ├── useMesh.ts             # 几何体构建 + 颜色更新
-│   │   ├── usePaintTool.ts        # 画笔工具调用封装
-│   │   └── useTauriCommand.ts     # Tauri 命令封装层
-│   ├── store/
-│   │   └── appStore.ts            # Zustand 全局状态
-│   ├── types/
-│   │   └── mesh.ts                # 类型定义（MeshData, PaintTool, Segment）
-│   ├── utils/
-│   │   └── logger.ts              # 日志工具
-│   ├── i18n.ts                    # 中英文国际化
-│   ├── App.tsx                    # 根组件
-│   └── main.tsx                   # 入口
-├── src-tauri/                     # Rust 后端
+│   │   ├── Toolbar/              # tool selection + parameters
+│   │   ├── Viewport/             # 3D viewport (BVH picking, shader highlight)
+│   │   ├── BrushSettings/        # brush parameters
+│   │   ├── ColorPanel/           # colour selection
+│   │   ├── SegmentsPanel/        # region management
+│   │   ├── StatusBar/            # status + HUD diagnostics
+│   │   ├── ExportDialog/         # 3MF export wizard (presets)
+│   │   ├── SeedPanel.tsx         # seed segmentation: Auto (fuse) / Manual (grow)
+│   │   ├── IntelligentSegmentPanel.tsx  # auto-segmentation algorithms + params
+│   │   └── DebugLogViewer.tsx    # in-app crash diagnostics
+│   ├── hooks/                    # useMesh · usePaintTool · useTauriCommand · useHistory
+│   ├── store/appStore.ts         # Zustand global state (persisted)
+│   ├── types/                    # mesh · segment · export types
+│   ├── utils/                    # logger · segment palette
+│   ├── i18n.ts                   # zh (default) / en
+│   ├── App.tsx · main.tsx
+├── src-tauri/                    # Rust backend
 │   ├── src/
-│   │   ├── commands/              # Tauri 命令（IPC 接口层）
-│   │   │   ├── mesh.rs            # load_model, get_face_color
-│   │   │   ├── segment.rs         # auto_segment, paint_segment_face, finalize_segment
-│   │   │   ├── paint.rs           # brush_paint, spray_paint, fill_paint, ...
-│   │   │   └── mod.rs             # 模块注册
-│   │   ├── mesh/
-│   │   │   ├── loader.rs          # STL 加载（binary + ASCII）
-│   │   │   ├── model.rs           # MeshModel 结构体 + 面邻接图构建
-│   │   │   └── face_colors.rs     # 颜色计算（衰减函数等）
-│   │   ├── segment/
-│   │   │   ├── dihedral.rs        # 三阶段自动分割算法
-│   │   │   └── flood_fill.rs      # BFS 泛洪填充
-│   │   ├── paint/
-│   │   │   ├── brush.rs           # 画笔 + 喷漆 + 智能笔
-│   │   │   ├── fill.rs            # 区域填充 + 分区填充
-│   │   │   └── eraser.rs          # 橡皮擦
-│   │   ├── export/
-│   │   │   └── threemf.rs         # 3MF 格式导出
-│   │   └── lib.rs                 # Tauri Builder + 命令注册
+│   │   ├── commands/             # Tauri IPC layer (mesh/segment/paint/history/export)
+│   │   ├── mesh/                 # STL loader · model + adjacency · kdtree
+│   │   ├── segment/              # segmentation algorithms, seeds, fuse, eye detection
+│   │   ├── paint/                # brush · spray · fill · smart snap · eraser
+│   │   ├── export/               # 3MF · OBJ · slicer presets · quantize
+│   │   └── lib.rs                # Tauri builder + command registry
+│   ├── resources/presets/        # generated slicer presets (from OrcaSlicer vendor tree)
 │   └── Cargo.toml
-├── legacy/                        # 旧版 Python 实现（已废弃）
-├── index.html
-├── package.json
-├── vite.config.ts
-├── tsconfig.json
-└── README.md
+├── docs/                         # see docs/README.md for the index
+├── tools/                        # preset extraction & 3MF/fill verification scripts
+├── examples/                     # sample output (paint_color_sample.3mf)
+├── legacy/                       # deprecated Python prototype
+└── CHANGELOG.md
 ```
 
-## 快速开始
+## Getting started
 
-### 环境要求
+### Prerequisites
 
 - [Node.js](https://nodejs.org/) ≥ 18
 - [Rust](https://www.rust-lang.org/tools/install) ≥ 1.70 + Cargo
-- [Tauri 2 Prerequisites](https://v2.tauri.app/start/prerequisites/)（WebView2 等系统依赖）
+- [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) (WebView2 etc.)
 
-### 安装与运行
+### Run
 
 ```bash
-# 克隆仓库
-git clone https://github.com/yourname/ColorYourModel.git
+git clone https://github.com/ZackaryShen/ColorYourModel.git
 cd ColorYourModel
 
-# 安装前端依赖
 npm install
-
-# 启动开发模式（前端 HMR + Rust 后端编译）
-npm run tauri dev
+npm run tauri dev      # first run compiles the Rust backend (~2-3 min)
 ```
 
-首次启动会自动编译 Rust 后端（约 2-3 分钟），之后增量编译通常在 5 秒内完成。
+### Tests & checks
 
-### 启用调试日志
+```bash
+npx tsc --noEmit               # TypeScript
+npx vitest run                 # frontend unit tests
+cd src-tauri && cargo test --lib   # backend unit + regression tests
+```
+
+### Debug logging
 
 ```bash
 # Windows PowerShell
@@ -183,92 +166,34 @@ $env:RUST_LOG="debug"; npm run tauri dev
 RUST_LOG=debug npm run tauri dev
 ```
 
-## 核心算法
+## Documentation
 
-### 自动网格分割（三阶段）
+See [docs/README.md](docs/README.md) for the full index. Short version:
 
-1. **Phase 1 — 二面角分裂**：遍历所有共享边，二面角 > 阈值（默认 30°）处断开，生成初始碎片区域
-2. **Phase 3 — 法线一致性合并**：迭代合并法线方向相近的相邻区域，直到收敛
-3. **Phase 4 — 小分区吸收**：面数 < MIN_REGION_CAP（30）的小分区合并到最大相邻区域
+- [docs/algorithms/](docs/algorithms/) — segmentation & detection algorithms (math and principles)
+- [docs/technical/](docs/technical/) — engineering mechanisms (picking, highlight, undo/redo, export pipeline)
+- [docs/cases/](docs/cases/) — case showcase & verification records
+- `docs/01…10-*.md` — Chinese working documents (PRD, architecture, defects, roadmap, research notes)
+- [CHANGELOG.md](CHANGELOG.md) — per-iteration changelog
 
-### GPU 面拾取
+The project is developed with an adversarial development loop (`PLAN → REFUTE → REVISE → IMPLEMENT → TEST → RETROSPECT`); see the CHANGELOG for per-round records.
 
-每个面分配唯一 ID → 编码为 RGB 颜色 → 渲染到离屏 RenderTarget → 鼠标位置像素读取 → 解码为 face ID。避免 CPU 端 raycast 对大模型的 O(n) 开销。
+## Roadmap
 
-### 分区画笔（手动分区）
+> No release tags yet. Status is measured against PRD acceptance criteria, not "code exists".
 
-用户拖拽时逐面标记（`paint_segment_face`），前端维护 `Set<faceId>` 去重，松开鼠标时调用 `finalize_segment` 重建所有分区的元数据（面数、名称、颜色）。手动标签起始偏移 100,000，与自动分区标签空间隔离。
+- [x] **v0.1 core loop** — STL import → segmentation → painting → verified 3MF export (Aug 2026)
+  - 3MF export verified end-to-end on Snapmaker Orca (U1); fill routing regression-tested
+  - Remaining: real-machine re-verification of the fill cluster (see [docs/04](docs/04-缺陷与遗留问题清单.md))
+- [ ] **v0.2** — palette presets + colour history, UX polish
+- [ ] **v1.0** — batch processing, OrcaSlicer plugin-form integration
 
-## 3MF 颜色规范
+## Contributing
 
-3MF（3D Manufacturing Format）是 3MF Consortium 制定的开放标准，其 **Materials & Colors Extension** 支持：
+Issues and PRs welcome. Please follow [Conventional Commits](https://www.conventionalcommits.org/). By contributing you agree that your contributions are licensed under AGPL-3.0.
 
-- 逐面片（per-triangle）颜色指定
-- 基于顶点的颜色插值
-- 标准 sRGB 色彩空间
+## License
 
-本项目输出的 3MF 文件遵循该扩展规范，确保与主流切片软件（OrcaSlicer、PrusaSlicer、BambuStudio）兼容。
+This project is licensed under the [GNU AGPL-3.0](LICENSE).
 
-## 开发指南
-
-### 提交规范
-
-遵循 [Conventional Commits](https://www.conventionalcommits.org/)：
-
-```
-feat:     新功能
-fix:      Bug 修复
-docs:     文档更新
-refactor: 代码重构（不改变行为）
-test:     添加/修改测试
-perf:     性能优化
-chore:    构建、CI 等杂项
-```
-
-### 类型检查
-
-```bash
-# TypeScript（前端）
-npx tsc --noEmit
-
-# Rust（后端）
-cd src-tauri && cargo check
-```
-
-### 对抗式开发流程
-
-本项目采用对抗式自循环开发（Adversarial Development Loop），每轮迭代经过：
-
-```
-PLAN（找理论缺口）→ REFUTE（对抗证伪）→ REVISE（逐条修订）→ IMPLEMENT（最小改动）→ TEST（验证）→ RETROSPECT（复盘）
-```
-
-详见 [CHANGELOG.md](CHANGELOG.md) 中每轮迭代的详细记录。
-
-## 路线图
-
-> ⚠️ **仓库尚无任何 git tag，v0.1 未发布。** 下方状态以「是否达成 [PRD §6](docs/01-PRD-ColorYourModel.md) 验收门槛」为准，**不以「代码是否写完」为准**。
-
-- [ ] **v0.1（进行中）** — STL 导入 + 自动分割 + 画笔工具集 + 分区视图 + i18n + 3MF 导出
-  - 阻塞项（4×P0，见 [docs/04](docs/04-缺陷与遗留问题清单.md)）：Fill 范围与高亮不一致 / hover-fill 闸门不对称 / 陈旧 hover 无安全阀 / 3MF 未端到端验证
-  - 当前路线图与 backlog：[docs/05](docs/05-v0.1-路线图-backlog-2026-08-06.md)
-- [ ] **v0.2** — 分区合并/拆分 + 调色板 + 颜色历史
-- [ ] **v1.0** — 批量处理 + OrcaSlicer 插件形态集成
-
-## 相关工具参考
-
-| 工具 | 特点 | 适用场景 |
-|------|------|----------|
-| [BambuStudio](https://github.com/bambulab/BambuStudio) | 内置 STL 上色功能（按高度/角度） | 简单分色 |
-| [Paint3D (Windows)](https://apps.microsoft.com/detail/9NBLGGH5FV99) | 3D 模型绘画 | 艺术创作 |
-| [Meshmixer](https://www.meshmixer.com/) | 网格分割 + 区域上色 | 专业建模 |
-| [Nomad Sculpt](https://nomadsculpt.com/) | iPad 上的雕刻与上色 | 移动端 |
-| [Polychromatic](https://github.com/nicolai-wachenschwan/polychromatic) | 自动网格分割着色 | 3D打印上色 |
-
-## 许可证
-
-本项目采用 [MIT 许可证](LICENSE)。
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
+Copyleft keeps derivatives — including network-service deployments — open under the same terms, while every person and company remains free to use, study, modify and redistribute the software. Note: the bundled slicer presets are extracted from the OrcaSlicer (AGPL-3.0) vendor tree and are treated as AGPL-derived data. For alternative licensing, contact the maintainer.
