@@ -1,0 +1,128 @@
+/* ============================================================================
+ * ColorYourModel — global theme tokens (iteration 20)
+ *
+ * Two themes selected via `document.documentElement.dataset.theme`:
+ *   - "dark"  (default, also the bare `:root` fallback)
+ *   - "light"
+ *
+ * Design rules (from adversarial REFUTE, iteration 20):
+ *   - B4: every var() has a hard fallback `#xxxxxx` so a missing/garbage
+ *        `data-theme` degrades to the dark palette, never to transparent.
+ *   - B5 (SUPERSEDED in iteration 21): `--bg-canvas` used to stay dark in both
+ *        themes because unpainted faces were pure white and would vanish on a
+ *        light canvas. Iteration 21 changed the backend default face color to a
+ *        neutral mid grey (model.rs DEFAULT_FACE_COLOR = #8a8a8a — see the full
+ *        contrast table in that file), so the canvas can now follow the theme.
+ *        Remaining trade-off: a face the user *explicitly* paints white is low
+ *        contrast on the light canvas. Accepted — white-on-white is unambiguous
+ *        in the palette UI, and a light 3D area was the explicit request.
+ *   - M2/M3: html/body reset + `color-scheme` so native scrollbars / dropdowns
+ *        / color inputs follow the theme.
+ *   - M8: interactive-state utility classes (hover/disabled) since inline styles
+ *        cannot express pseudo-classes.
+ * ==========================================================================*/
+
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
+
+/* ── Dark theme (also the bare :root default — B4 fallback) ─────────────── */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-root: #1e1e1e;
+  --bg-panel: #2d2d2d;
+  --bg-elevated: #3a3a3a;
+  --bg-hover: #444444;
+  --bg-active: #3a5a7a;
+  --bg-canvas: #2a2a2a;
+
+  --text-1: #eeeeee;
+  --text-2: #bbbbbb;
+  --text-3: #888888;
+
+  --border: #555555;
+  --border-strong: #333333;
+
+  --accent: #4a9eff;
+  --accent-strong: #4a6fa5;
+  --accent-border: #6a9fd5;
+  --accent-text: #4a9eff; /* readable on dark */
+
+  --success: #9fe7a0;
+  --success-border: #2e7d32;
+
+  --toast-bg: rgba(34, 40, 48, 0.95);
+  --toast-text: #e8f0ff;
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+  --help-bg: rgba(0, 0, 0, 0.5);
+  --debug-bg: rgba(20, 24, 28, 0.85);
+  --debug-border: #2e7d32;
+  --gradient: linear-gradient(90deg, #4a9eff, #00d4ff);
+  --shadow: rgba(0, 0, 0, 0.3);
+}
+
+/* ── Light theme ─────────────────────────────────────────────────────────── */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-root: #f0f0f0;
+  --bg-panel: #ffffff;
+  --bg-elevated: #e8e8e8;
+  --bg-hover: #d8d8d8;
+  --bg-active: #bcd4ee;
+  --bg-canvas: #eef1f5; /* iteration 21: 3D canvas now follows the theme */
+
+  --text-1: #1a1a1a;
+  --text-2: #555555;
+  --text-3: #999999;
+
+  --border: #cccccc;
+  --border-strong: #dddddd;
+
+  --accent: #4a9eff;
+  --accent-strong: #2d7dd2;
+  --accent-border: #1565c0;
+  --accent-text: #1565c0; /* darker blue — 5.4:1 on white (M4) */
+
+  --success: #2e7d32;
+  --success-border: #1e6b34;
+
+  --toast-bg: rgba(245, 247, 250, 0.97);
+  --toast-text: #1a2a3a;
+  --overlay-bg: rgba(0, 0, 0, 0.45);
+  --help-bg: rgba(255, 255, 255, 0.72);
+  --debug-bg: rgba(245, 247, 250, 0.92);
+  --debug-border: #1e6b34;
+  --gradient: linear-gradient(90deg, #4a9eff, #00d4ff);
+  --shadow: rgba(0, 0, 0, 0.15);
+}
+
+/* ── Interactive-state utility classes (M8) ────────────────────────────────
+ * Inline styles cannot express :hover/:disabled, so interactive chrome that
+ * should react gets these classes alongside its inline base color. */
+.cym-btn {
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.cym-btn:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+.cym-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+.cym-toggle {
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.cym-toggle:hover {
+  filter: brightness(1.12);
+}

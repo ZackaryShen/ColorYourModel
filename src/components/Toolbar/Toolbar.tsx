@@ -1,13 +1,22 @@
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { PaintTool } from "../../types/mesh";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
+import { useUndoRedo } from "../../hooks/useHistory";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
+import { ExportDialog } from "../ExportDialog/ExportDialog";
+import { IntelligentSegmentPanel } from "../IntelligentSegmentPanel";
+import {
+  buildAlgorithm,
+  DEFAULT_ALGORITHM_PARAMS,
+  type AlgorithmKind,
+} from "../../types/segment";
 
 const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
+  { tool: PaintTool.View, icon: "🖐️", i18nKey: "tool.view" },
   { tool: PaintTool.Fill, icon: "🪣", i18nKey: "tool.fill" },
   { tool: PaintTool.Brush, icon: "🖌️", i18nKey: "tool.brush" },
   { tool: PaintTool.Spray, icon: "💨", i18nKey: "tool.spray" },
@@ -15,6 +24,8 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.Eyedropper, icon: "💧", i18nKey: "tool.eyedropper" },
   { tool: PaintTool.Eraser, icon: "🧹", i18nKey: "tool.eraser" },
   { tool: PaintTool.Segment, icon: "✂️", i18nKey: "tool.segment" },
+  { tool: PaintTool.Lasso, icon: "📍", i18nKey: "tool.lasso" },
+  { tool: PaintTool.Seed, icon: "🌱", i18nKey: "tool.seed" },
 ];
 
 export function Toolbar() {
@@ -26,9 +37,22 @@ export function Toolbar() {
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setLoading = useAppStore((s) => s.setLoading);
   const setImportProgress = useAppStore((s) => s.setImportProgress);
+  // Segment-progress listener writes to a separate slice so the ProgressBar
+  // can render the canonical "Stage X/Y" plan instead of the raw loader stage
+  // string. `loadingKind` lets the shared overlay pick which slice to read.
+  const setSegmentProgress = useAppStore((s) => s.setSegmentProgress);
+  const setLoadingKind = useAppStore((s) => s.setLoadingKind);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
-  const { loadModel, autoSegment, export3mf } = useTauriCommand();
+  const { loadModel, autoSegmentV2, undo, redo, historyState } = useTauriCommand();
+  const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [segmentPanelOpen, setSegmentPanelOpen] = useState(false);
+  // Persisted last segmentation choice: used both on import (so re-import
+  // auto-segments with the user's preferred algorithm instead of a hard-coded
+  // 30° dihedral) and when the panel is opened.
+  const lastAlgorithmParams = useAppStore((s) => s.lastAlgorithmParams);
+  const lastSegmentKind = useAppStore((s) => s.lastSegmentKind);
 
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {
@@ -37,20 +61,22 @@ export function Toolbar() {
       (e) => {
         log.debug("Toolbar", "import-progress", e.payload);
         setImportProgress(e.payload.progress, e.payload.stage);
+        setLoadingKind("import");
       }
     );
     const unlistenSegment = listen<{ progress: number; stage: string }>(
       "segment-progress",
       (e) => {
         log.debug("Toolbar", "segment-progress", e.payload);
-        setImportProgress(e.payload.progress, e.payload.stage);
+        setSegmentProgress(e.payload.progress, e.payload.stage);
+        setLoadingKind("segment");
       }
     );
     return () => {
       unlistenImport.then((fn) => fn());
       unlistenSegment.then((fn) => fn());
     };
-  }, [setImportProgress]);
+  }, [setImportProgress, setSegmentProgress, setLoadingKind]);
 
   const handleImport = async () => {
     log.info("Toolbar", "Import button clicked");
@@ -69,40 +95,55 @@ export function Toolbar() {
 
     try {
       await loadModel(selected);
-      await autoSegment(30.0);
-      setImportProgress(1, t("toolbar.importComplete"));
-      setStatusMessage(t("toolbar.importComplete"));
     } catch (e) {
       log.error("Toolbar", "Import failed", { error: String(e) });
       setStatusMessage(`${t("toolbar.importFailed")}: ${e}`);
+      return;
+    }
+
+    // Auto-segmentation failure must not be swallowed: the model IS loaded and
+    // usable, but with an empty segment list Fill has no partition to target
+    // and silently degrades to the brush (REFUTE, docs/06 §2.1 item 3). Say so
+    // explicitly instead of letting the user discover "Fill = brush" later.
+    try {
+      // Use the user's last chosen algorithm (persisted); default to curvatureKMeans
+      // to match the panel's default. Dihedral is fast but fails on smooth models
+      // (armor, organic shapes) where there are no sharp edges to split —
+      // curvatureKMeans + useSdf groups by intrinsic curvature and thickness,
+      // which handles smooth surfaces much better. The cost is a longer wall-clock
+      // run, but the async fix (06303ee) keeps the UI responsive and the new
+      // per-stage progress bar lets the user see it's working.
+      const segKind: AlgorithmKind = lastSegmentKind ?? "curvatureKMeans";
+      const segParams = lastAlgorithmParams ?? DEFAULT_ALGORITHM_PARAMS;
+      await autoSegmentV2(buildAlgorithm(segKind, segParams));
+      setImportProgress(1, t("toolbar.importComplete"));
+      setStatusMessage(t("toolbar.importComplete"));
+    } catch (e) {
+      log.error("Toolbar", "Auto-segment failed", { error: String(e) });
+      setStatusMessage(`${t("toolbar.segmentFailed")}: ${e}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleExport = async () => {
-    const selected = await save({
-      filters: [{ name: "3MF", extensions: ["3mf"] }],
-      defaultPath: "model.3mf",
-    });
-    if (selected) {
-      await export3mf(selected);
-    }
-  };
-
-  const handleSegment = async () => {
-    await autoSegment(30.0);
+  const handleExport = () => {
+    setExportDialogOpen(true);
   };
 
   return (
     <div style={styles.container}>
+      {exportDialogOpen && <ExportDialog onClose={() => setExportDialogOpen(false)} />}
+      {segmentPanelOpen && (
+        <IntelligentSegmentPanel onClose={() => setSegmentPanelOpen(false)} />
+      )}
       <div style={styles.section}>
-        <button onClick={handleImport} disabled={isLoading} style={styles.button} title={t("toolbar.import")}>
+        <button onClick={handleImport} disabled={isLoading} className="cym-btn" style={styles.button} title={t("toolbar.import")}>
           {isLoading ? "..." : "📂"}
         </button>
         <button
           onClick={handleExport}
           disabled={!isLoaded}
+          className="cym-btn"
           style={styles.button}
           title={t("toolbar.export")}
         >
@@ -126,7 +167,14 @@ export function Toolbar() {
           return (
             <button
               key={item.tool}
-              onClick={() => setActiveTool(item.tool)}
+              onClick={(e) => {
+                e.currentTarget.blur(); // drop focus so the just-clicked button
+                // doesn't keep a focus-ring + hover filter together with the
+                // newly-active tool's border (looked like "two tools active").
+                log.info("Toolbar", "tool click", { tool: item.tool, from: activeTool });
+                setActiveTool(item.tool);
+              }}
+              className="cym-btn"
               style={{
                 ...styles.toolButton,
                 ...(activeTool === item.tool ? styles.toolActive : {}),
@@ -143,12 +191,36 @@ export function Toolbar() {
 
       <div style={styles.section}>
         <button
-          onClick={handleSegment}
-          disabled={!isLoaded}
+          onClick={doUndo}
+          disabled={!canUndo}
+          className="cym-btn"
           style={styles.button}
-          title={t("toolbar.reSegment")}
+          title={t("toolbar.undo")}
         >
-          🔀
+          ↶
+        </button>
+        <button
+          onClick={doRedo}
+          disabled={!canRedo}
+          className="cym-btn"
+          style={styles.button}
+          title={t("toolbar.redo")}
+        >
+          ↷
+        </button>
+      </div>
+
+      <div style={styles.divider} />
+
+      <div style={styles.section}>
+        <button
+          onClick={() => setSegmentPanelOpen(true)}
+          disabled={!isLoaded}
+          className="cym-btn"
+          style={styles.button}
+          title={t("segmentPanel.toolbar")}
+        >
+          🤖
         </button>
       </div>
     </div>
@@ -161,7 +233,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 4,
     padding: 8,
-    background: "#2d2d2d",
+    background: "var(--bg-panel, #2d2d2d)",
     borderRadius: 8,
     minWidth: 56,
     alignItems: "center",
@@ -175,8 +247,8 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "6px 8px",
     border: "none",
     borderRadius: 6,
-    background: "#444",
-    color: "#eee",
+    background: "var(--bg-hover, #444444)",
+    color: "var(--text-1, #eeeeee)",
     cursor: "pointer",
     fontSize: 13,
     whiteSpace: "nowrap" as const,
@@ -186,8 +258,8 @@ const styles: Record<string, React.CSSProperties> = {
     height: 40,
     border: "2px solid transparent",
     borderRadius: 8,
-    background: "#3a3a3a",
-    color: "#eee",
+    background: "var(--bg-elevated, #3a3a3a)",
+    color: "var(--text-1, #eeeeee)",
     cursor: "pointer",
     fontSize: 18,
     display: "flex",
@@ -195,13 +267,18 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
   },
   toolActive: {
-    borderColor: "#4a9eff",
-    background: "#3a5a7a",
+    borderColor: "var(--accent, #4a9eff)",
+    background: "var(--bg-active, #3a5a7a)",
+    // Inset shadow + outer glow so the active state stays clearly distinct
+    // from the hover state (a 1.15× brightness filter on a neighbour button
+    // could otherwise read as "two tools active at once").
+    boxShadow:
+      "inset 0 0 0 2px var(--accent, #4a9eff), 0 0 0 2px var(--accent, #4a9eff)",
   },
   divider: {
     width: "80%",
     height: 1,
-    background: "#555",
+    background: "var(--border, #555555)",
     margin: "4px 0",
   },
 };

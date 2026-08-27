@@ -73,9 +73,17 @@ pub fn load_stl(path: &Path, on_progress: &ProgressFn) -> Result<MeshModel, Stri
 
     on_progress(0.60, "Initializing default colors...");
     model.init_default_colors();
+    // Initialize per-face segment labels to a valid length (all 0 = unsegmented
+    // background). Without this the vector is empty and any paint/segment/undo
+    // op that indexes `segment_labels[face_id]` panics (index out of bounds) and
+    // poisons the mesh Mutex — the real root cause of "分区笔点一下崩溃" and
+    // "undo 崩溃" (iteration 18, REFUTE B1/B4). `restore_paint_state`'s
+    // `assert_eq!(segment_labels.len(), faces.len())` also requires this length.
+    model.segment_labels = vec![0u32; model.faces.len()];
 
     on_progress(0.65, "Building spatial index (KD-Tree)...");
     model.build_kdtree();
+    model.build_vertex_kdtree();
 
     on_progress(0.75, "Building adjacency graph...");
     model.build_adjacency();

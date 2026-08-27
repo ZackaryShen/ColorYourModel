@@ -17,6 +17,10 @@ export function ColorPanel() {
 
   const hexColor = `#${currentColor[0].toString(16).padStart(2, "0")}${currentColor[1].toString(16).padStart(2, "0")}${currentColor[2].toString(16).padStart(2, "0")}`;
 
+  // Compute perceived brightness for UI contrast (ITU-R BT.709 luma)
+  const luma = (0.2126 * currentColor[0] + 0.7152 * currentColor[1] + 0.0722 * currentColor[2]) / 255;
+  const isDark = luma < 0.25;
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>{t("color.title")}</div>
@@ -25,8 +29,20 @@ export function ColorPanel() {
           style={{
             ...styles.preview,
             backgroundColor: hexColor,
+            borderColor: isDark ? "var(--accent, #4a9eff)" : "var(--border, #555555)",
+            borderWidth: isDark ? 2 : 1,
+            boxShadow: isDark ? "0 0 0 1px var(--bg-panel, #2d2d2d) inset" : "none",
           }}
+          title={`RGB(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`}
         />
+        <span style={{
+          fontSize: 11,
+          fontFamily: "monospace",
+          color: "var(--text-2, #aaaaaa)",
+          minWidth: 62,
+        }}>
+          {hexColor.toUpperCase()}
+        </span>
         <input
           type="color"
           value={hexColor}
@@ -50,10 +66,11 @@ export function ColorPanel() {
               onClick={() =>
                 setCurrentColor([entry.color[0], entry.color[1], entry.color[2], 255])
               }
+              className="cym-btn"
               style={{
                 ...styles.swatch,
                 backgroundColor: hex,
-                border: isActive ? "2px solid #4a9eff" : "1px solid #555",
+                border: isActive ? "2px solid var(--accent, #4a9eff)" : "1px solid var(--border, #555555)",
               }}
             />
           );
@@ -66,17 +83,17 @@ export function ColorPanel() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     padding: 10,
-    background: "#2d2d2d",
+    background: "var(--bg-panel, #2d2d2d)",
     borderRadius: 8,
   },
   header: {
-    color: "#ddd",
+    color: "var(--text-1, #dddddd)",
     fontSize: 14,
     fontWeight: 600,
     marginBottom: 8,
   },
   subheader: {
-    color: "#aaa",
+    color: "var(--text-2, #aaaaaa)",
     fontSize: 12,
     marginTop: 8,
     marginBottom: 4,
@@ -90,7 +107,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 32,
     height: 32,
     borderRadius: 6,
-    border: "1px solid #555",
+    border: "1px solid var(--border, #555555)",
   },
   colorInput: {
     width: 40,

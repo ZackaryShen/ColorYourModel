@@ -1,5 +1,7 @@
 /// Face color management utilities
 pub mod face_colors;
+/// Unified undo/redo history for colour and label mutations
+pub mod history;
 /// KD-Tree spatial index utilities
 pub mod kdtree;
 /// STL/OBJ file loader

@@ -1,14 +1,8 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useAppStore } from "../store/appStore";
 import { log } from "../utils/logger";
-
-// Segment color palette (matches SegmentsPanel SEGMENT_COLORS, as hex RGB)
-const SEGMENT_COLORS_RGB: [number, number, number][] = [
-  [231, 76, 60], [52, 152, 219], [46, 204, 113], [241, 196, 15], [155, 89, 182],
-  [230, 126, 34], [26, 188, 156], [233, 30, 99], [0, 188, 212], [139, 195, 74],
-  [255, 152, 0], [121, 85, 72], [96, 125, 139], [255, 87, 34], [103, 58, 183],
-];
+import { SEGMENT_COLORS_RGB } from "../utils/segmentPalette";
 
 /**
  * Hook for managing mesh geometry and Three.js BufferGeometry
@@ -18,91 +12,206 @@ export function useMesh() {
   const segmentView = useAppStore((s) => s.segmentView);
   const selectedSegment = useAppStore((s) => s.selectedSegment);
   const geometryRef = useRef<THREE.BufferGeometry | null>(null);
+  // Cache of the non-indexed geometry derived from `baseGeometry`. Built ONCE
+  // per base geometry (mesh load); subsequent view/selection toggles only copy
+  // the color array — preserving the iteration-9 lag fix while fixing the
+  // indexed/per-face-color mismatch (iteration 14, paint-elsewhere bug).
+  const nonIndexedRef = useRef<THREE.BufferGeometry | null>(null);
+  // Live handle on the memoized paint-view color buffer. `updateFaceColors`
+  // patches it incrementally so switching to the segment view and back does not
+  // repaint from a STALE buffer (the memo only recomputes when `meshData`
+  // changes, which an in-place paint deliberately avoids). O(k) per stroke.
+  const paintColorRef = useRef<Float32Array | null>(null);
 
-  const buildGeometry = useCallback((): THREE.BufferGeometry | null => {
+  // Base geometry: position + index + normals. Depends ONLY on meshData, so
+  // toggling the segment/paint view or selecting a region never reallocates
+  // buffers or recomputes normals (the previous source of view-switch lag).
+  const baseGeometry = useMemo(() => {
     if (!meshData) {
-      log.debug("useMesh", "buildGeometry: no meshData");
+      log.debug("useMesh", "buildBaseGeometry: no meshData");
       return null;
     }
-
-    log.info("useMesh", "buildGeometry start", {
+    log.info("useMesh", "buildBaseGeometry", {
       vertices: meshData.vertices.length / 3,
       faces: meshData.faces.length / 3,
-      faceColors: meshData.faceColors.length / 4,
-      segmentView,
-      hasLabels: meshData.segmentLabels.length > 0,
     });
-
     const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(new Float32Array(meshData.vertices), 3)
+    );
+    geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(meshData.faces), 1));
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+    // NOTE: `geometryRef` is deliberately NOT written here. It is contracted to
+    // hold the geometry that is actually RENDERED — the non-indexed expansion
+    // built in `buildGeometry` — and `updateFaceColors` bails out on anything
+    // without a `color` attribute, which this indexed base geometry never has.
+    // Writing it from a useMemo was also a render-phase side effect (P1-8).
+    return geometry;
+    // Deps are the STABLE sub-references (vertices/faces/bbox), NOT the whole
+    // `meshData` object. `updateSegmentLabels` spreads `meshData` (keeping these
+    // array refs) and only swaps `segmentLabels`/`faceColors`, so a label update
+    // no longer triggers a full geometry rebuild + normal recompute — the
+    // dominant cause of the "添加分区出现得较晚" lag (iteration 9, problem 2).
+  }, [meshData?.vertices, meshData?.faces, meshData?.bbox]);
 
-    // Vertices are flat [x0,y0,z0, x1,y1,z1, ...]
-    const posArray = new Float32Array(meshData.vertices);
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(posArray, 3));
-
-    // Face indices are flat [f0v0,f0v1,f0v2, ...]
-    const indexArray = new Uint32Array(meshData.faces);
-    geometry.setIndex(new THREE.BufferAttribute(indexArray, 1));
-
-    const faceCount = meshData.faceCount;
-    const colorArray = new Float32Array(faceCount * 3 * 3); // 3 verts * 3 channels
+  // Precompute the two full color buffers ONCE per (meshData / labels /
+  // selection). Toggling the segment/paint view then only performs a native
+  // typed-array copy (no per-face JS loop), eliminating the view-switch lag
+  // that came from recomputing colors on every toggle.
+  const paintColorArray = useMemo(() => {
+    if (!meshData) return null;
     const fc = meshData.faceColors;
+    const faceCount = meshData.faceCount;
+    const arr = new Float32Array(faceCount * 9);
+    for (let i = 0; i < faceCount; i++) {
+      const r = fc[i * 4] / 255;
+      const g = fc[i * 4 + 1] / 255;
+      const b = fc[i * 4 + 2] / 255;
+      for (let v = 0; v < 3; v++) {
+        arr[i * 9 + v * 3] = r;
+        arr[i * 9 + v * 3 + 1] = g;
+        arr[i * 9 + v * 3 + 2] = b;
+      }
+    }
+    return arr;
+  }, [meshData?.faceColors, meshData?.faceCount]);
+
+  // Publish the memoized buffer to the ref AFTER commit, not during render
+  // (P1-8). `useLayoutEffect` — not `useEffect` — because the only reader,
+  // `updateFaceColors`, runs from pointer handlers: a layout effect closes the
+  // window before the browser can dispatch one, so no stroke can ever patch a
+  // superseded buffer.
+  useLayoutEffect(() => {
+    paintColorRef.current = paintColorArray;
+  }, [paintColorArray]);
+
+  const segmentColorArray = useMemo(() => {
+    // Gate: paint view never reads this buffer (iteration 23, REFUTE B12).
+    // Skipping the 54MB Float32Array + 1.5M-face loop when unnecessary
+    // eliminates the dominant allocation spike on region finalize / undo.
+    if (!meshData || !segmentView) return null;
+    const faceCount = meshData.faceCount;
     const labels = meshData.segmentLabels;
     const hasLabels = labels && labels.length === faceCount;
-
-    // Choose color source: segment colors or face colors
-    if (segmentView && hasLabels) {
-      // Segment visualization mode
-      for (let i = 0; i < faceCount; i++) {
+    const arr = new Float32Array(faceCount * 9);
+    for (let i = 0; i < faceCount; i++) {
+      if (hasLabels) {
         const segId = labels[i];
         const ci = segId % SEGMENT_COLORS_RGB.length;
         let [r, g, b] = SEGMENT_COLORS_RGB[ci];
-
-        // Highlight selected segment (brighten by 30%)
+        // Highlight selected segment (brighten); dim the rest for contrast.
         if (selectedSegment !== null && segId === selectedSegment) {
           r = Math.min(255, r + 60);
           g = Math.min(255, g + 60);
           b = Math.min(255, b + 60);
         } else if (selectedSegment !== null) {
-          // Dim non-selected segments
           r = Math.floor(r * 0.4);
           g = Math.floor(g * 0.4);
           b = Math.floor(b * 0.4);
         }
-
-        const rf = r / 255, gf = g / 255, bf = b / 255;
         for (let v = 0; v < 3; v++) {
-          colorArray[i * 9 + v * 3 + 0] = rf;
-          colorArray[i * 9 + v * 3 + 1] = gf;
-          colorArray[i * 9 + v * 3 + 2] = bf;
+          arr[i * 9 + v * 3] = r / 255;
+          arr[i * 9 + v * 3 + 1] = g / 255;
+          arr[i * 9 + v * 3 + 2] = b / 255;
         }
-      }
-      log.info("useMesh", "Segment colors applied");
-    } else {
-      // Normal face color mode
-      for (let i = 0; i < faceCount; i++) {
-        const r = fc[i * 4] / 255;
-        const g = fc[i * 4 + 1] / 255;
-        const b = fc[i * 4 + 2] / 255;
-
+      } else {
+        // No segmentation yet: keep the paint colors so the view is not blank.
+        const r = meshData.faceColors[i * 4] / 255;
+        const g = meshData.faceColors[i * 4 + 1] / 255;
+        const b = meshData.faceColors[i * 4 + 2] / 255;
         for (let v = 0; v < 3; v++) {
-          colorArray[i * 9 + v * 3 + 0] = r;
-          colorArray[i * 9 + v * 3 + 1] = g;
-          colorArray[i * 9 + v * 3 + 2] = b;
+          arr[i * 9 + v * 3] = r;
+          arr[i * 9 + v * 3 + 1] = g;
+          arr[i * 9 + v * 3 + 2] = b;
         }
       }
     }
-    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colorArray, 3));
+    return arr;
+  }, [meshData, selectedSegment, segmentView]);
 
-    geometry.computeVertexNormals();
-    geometry.computeBoundingSphere();
+  // Per-face colors. The rendered geometry is NON-INDEXED: each face owns its
+  // own 3 consecutive vertices, so the per-vertex color attribute laid out as
+  // `[f0v0,f0v1,f0v2, f1v0,...]` (which `updateFaceColors` and the precomputed
+  // color arrays use) maps 1:1 to `faceIdx*3+v`. With an INDEXED geometry the
+  // position buffer holds shared vertices, so `faceIdx*3+v` landed on unrelated
+  // shared vertices and painted entirely the wrong faces ("ring at hand, red at
+  // the arm", iteration 14). `baseGeometry.toNonIndexed()` expands the indexed
+  // buffer into this flat layout while keeping the SAME triangle/face order, so
+  // the raycaster's `faceIndex` still equals the backend face index.
+  const buildGeometry = useCallback((): THREE.BufferGeometry | null => {
+    if (!baseGeometry || !meshData) {
+      log.debug("useMesh", "buildGeometry: no base geometry");
+      return null;
+    }
+    const faceCount = meshData.faceCount;
 
-    log.info("useMesh", "buildGeometry done", {
-      indexCount: geometry.index ? geometry.index.count : 0,
-    });
+    // Rebuild the non-indexed shell only when the underlying base geometry
+    // changes (mesh (re)load). Toggling segment/paint view or selection only
+    // refreshes the color array below — cheap, preserves the lag fix.
+    if (!nonIndexedRef.current || nonIndexedRef.current.userData.baseId !== baseGeometry.uuid) {
+      if (nonIndexedRef.current) nonIndexedRef.current.dispose();
+      const g = baseGeometry.toNonIndexed();
+      g.computeBoundingSphere();
+      g.userData.baseId = baseGeometry.uuid;
+      nonIndexedRef.current = g;
+    }
+    const geometry = nonIndexedRef.current;
 
-    geometryRef.current = geometry;
+    let colorAttr = geometry.getAttribute("color") as THREE.Float32BufferAttribute | undefined;
+    if (!colorAttr || colorAttr.count !== faceCount * 3) {
+      colorAttr = new THREE.Float32BufferAttribute(new Float32Array(faceCount * 9), 3);
+      geometry.setAttribute("color", colorAttr);
+    }
+
+    const src = segmentView && segmentColorArray ? segmentColorArray : paintColorArray;
+    if (src) {
+      (colorAttr.array as Float32Array).set(src);
+    }
+    colorAttr.needsUpdate = true;
+
+    // Per-vertex segment label for the shader-based hover/selection highlight
+    // (option B). The rendered geometry is non-indexed: face f owns vertices
+    // 3f, 3f+1, 3f+2, so all three share `segmentLabels[f]`. Rebuilt only when
+    // the labels array identity changes (auto-segment / manual partition), NOT
+    // on every view toggle, keeping the O(F) write off the interactive hot
+    // path. The sentinel -2 means "no segment" and never matches the shader's
+    // `uHighlightLabel` (which is -1 when nothing is highlighted).
+    const labels = meshData.segmentLabels;
+    const hasLabels = !!labels && labels.length === faceCount;
+    let segLabelAttr = geometry.getAttribute("aSegLabel") as THREE.Float32BufferAttribute | undefined;
+    if (!segLabelAttr || segLabelAttr.count !== faceCount * 3) {
+      segLabelAttr = new THREE.Float32BufferAttribute(new Float32Array(faceCount * 3), 1);
+      geometry.setAttribute("aSegLabel", segLabelAttr);
+    }
+    if (geometry.userData.segLabelId !== labels) {
+      const labArr = segLabelAttr.array as Float32Array;
+      for (let f = 0; f < faceCount; f++) {
+        const lab = hasLabels ? labels[f] : -2;
+        labArr[f * 3] = lab;
+        labArr[f * 3 + 1] = lab;
+        labArr[f * 3 + 2] = lab;
+      }
+      segLabelAttr.needsUpdate = true;
+      geometry.userData.segLabelId = labels;
+    }
+
+    // NOTE (P1-8): deliberately does NOT publish `geometryRef` here. Callers
+    // invoke `buildGeometry` from a render-phase `useMemo`, so writing the ref
+    // here would still be a render-phase side effect — one indirection deeper
+    // than the two removed in 550289e, and therefore easy to miss. The caller
+    // publishes via `publishGeometry` in a layout effect instead.
     return geometry;
-  }, [meshData, segmentView, selectedSegment]);
+  }, [baseGeometry, meshData, segmentView, segmentColorArray, paintColorArray]);
+
+  // Commit-phase publisher for `geometryRef`. Mirrors the `paintColorRef`
+  // treatment above: a layout effect closes the window before the browser can
+  // dispatch a pointer event, so `updateFaceColors` can never observe a
+  // geometry that was rendered but never committed.
+  const publishGeometry = useCallback((geometry: THREE.BufferGeometry | null) => {
+    geometryRef.current = geometry;
+  }, []);
 
   const updateFaceColors = useCallback(
     (updatedFaces: number[], updatedColors: number[][]) => {
@@ -111,10 +220,19 @@ export function useMesh() {
         return;
       }
 
-      log.debug("useMesh", "updateFaceColors", { count: updatedFaces.length });
-
       const colorAttr = geometryRef.current.getAttribute("color") as THREE.Float32BufferAttribute;
       if (!colorAttr) return;
+
+      log.debug("useMesh", "updateFaceColors", { count: updatedFaces.length });
+
+      // Track the touched vertex range so we upload ONLY that span, not the whole
+      // color buffer. The color buffer is `faceCount * 9` floats; on a 200k-face
+      // mesh a full re-upload is 7.2 MB every frame — the dominant steady-state GPU
+      // cost (iteration 16, REFUTE major-3). The renderer auto-clears updateRanges
+      // after each upload, so we only add the current batch here (no manual clear).
+      let vMin = Infinity;
+      let vMax = 0;
+      const cache = paintColorRef.current;
 
       for (let j = 0; j < updatedFaces.length; j++) {
         const faceIdx = updatedFaces[j];
@@ -124,14 +242,49 @@ export function useMesh() {
         const b = c[2] / 255;
 
         for (let v = 0; v < 3; v++) {
-          colorAttr.setXYZ(faceIdx * 3 + v, r, g, b);
+          const vi = faceIdx * 3 + v;
+          colorAttr.setXYZ(vi, r, g, b);
+          if (cache) {
+            const o = faceIdx * 9 + v * 3;
+            cache[o] = r;
+            cache[o + 1] = g;
+            cache[o + 2] = b;
+          }
+          if (vi < vMin) vMin = vi;
+          if (vi > vMax) vMax = vi;
         }
       }
 
+      // Write back to the store's canonical faceColors so undo snapshots,
+      // redo and `finalizeSegment` all see the CURRENT paint state. In-place
+      // mutation keeps the `meshData` reference stable (no camera reset, no
+      // geometry rebuild) — iteration 18, B2/B3.
+      useAppStore.getState().applyFaceColors(updatedFaces, updatedColors);
+
+      if (vMin !== Infinity) {
+        // addUpdateRange start/count are in ARRAY ELEMENTS (floats); vertex vi →
+        // offset vi*3, itemSize 3.
+        colorAttr.addUpdateRange(vMin * 3, (vMax - vMin + 1) * 3);
+      }
       colorAttr.needsUpdate = true;
+
+      // Iteration 28 diagnostic: read back the GPU buffer at the FIRST updated
+      // face to confirm the write actually landed. Pure black on screen with a
+      // non-black readback would mean the data is correct but something in the
+      // render/tonemapping path hides it; a black readback means the color
+      // source itself was ~0 (i.e. currentColor was black). This is the only
+      // information that can disambiguate the two without devtools.
+      if (updatedFaces.length > 0) {
+        const f0 = updatedFaces[0];
+        const r0 = colorAttr.array[f0 * 9];
+        const g0 = colorAttr.array[f0 * 9 + 1];
+        const b0 = colorAttr.array[f0 * 9 + 2];
+        return `#${Math.round(r0 * 255).toString(16).padStart(2, "0")}${Math.round(g0 * 255).toString(16).padStart(2, "0")}${Math.round(b0 * 255).toString(16).padStart(2, "0")}`.toUpperCase();
+      }
+      return null;
     },
     []
   );
 
-  return { buildGeometry, updateFaceColors, geometryRef };
+  return { buildGeometry, publishGeometry, updateFaceColors, geometryRef };
 }

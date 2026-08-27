@@ -5,9 +5,81 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ColorYourModel</title>
+    <!-- B2 (iteration 21): resolve the theme BEFORE first paint.
+         React writes <html data-theme> from a useEffect, which only runs after
+         the first paint. With a dark-only 3D canvas that produced a barely
+         visible border flash; now that --bg-canvas follows the theme it would
+         flash the ENTIRE window. Reading storage here removes the FOUC.
+         Precedence: cym-prefs (zustand persist) → cym-theme (legacy key) →
+         OS preference → dark. Any failure degrades to dark, which is also the
+         bare :root fallback in theme.css. -->
+    <script>
+      (function () {
+        var t = null;
+        try {
+          var raw = localStorage.getItem("cym-prefs");
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            var s = parsed && parsed.state;
+            if (s && (s.theme === "light" || s.theme === "dark")) t = s.theme;
+          }
+          if (!t) {
+            var legacy = localStorage.getItem("cym-theme");
+            if (legacy === "light" || legacy === "dark") t = legacy;
+          }
+          if (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+            t = "light";
+          }
+        } catch (e) {
+          /* storage or JSON unavailable — fall through to dark */
+        }
+        document.documentElement.setAttribute("data-theme", t || "dark");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <!-- Build-debug (2026-08-25): render any uncaught JS error or unhandled
+         promise rejection as a visible red box on top of the page. Without
+         this, a thrown exception during initial render of the React tree
+         produces a fully blank/black window with no feedback at all (the
+         user reported this exact symptom). The box is harmless in release
+         builds; remove once the offending error is identified. -->
+    <div id="boot-error" style="position:fixed;top:8px;left:8px;right:8px;max-height:60vh;overflow:auto;padding:12px 16px;background:#7a1a1a;color:#fff;font:13px/1.45 ui-monospace,Consolas,monospace;border:2px solid #ff6464;border-radius:6px;z-index:2147483647;white-space:pre-wrap;display:none;box-shadow:0 6px 20px rgba(0,0,0,0.5);"></div>
+    <script>
+      (function () {
+        var box = document.getElementById("boot-error");
+        // Forward any uncaught JS error to Rust so it survives headless /
+        // release builds (no DevTools console). Safe no-op outside Tauri.
+        function bridge(kind, text) {
+          try {
+            var t = window.__TAURI_INTERNALS__;
+            if (t && t.invoke) t.invoke("report_js_error", { msg: kind + " " + text });
+          } catch (e) { /* ignore */ }
+        }
+        function show(prefix, info) {
+          if (!box) return;
+          box.style.display = "block";
+          var prev = box.textContent || "";
+          var text =
+            (info && info.message ? info.message : String(info)) +
+            "\n" +
+            (info && info.stack ? info.stack : "");
+          box.textContent = prefix + " " + text + "\n\n----\n\n" + prev;
+          bridge(prefix, text);
+        }
+        window.addEventListener("error", function (ev) {
+          show("[error]", ev.error || ev.message);
+        });
+        window.addEventListener("unhandledrejection", function (ev) {
+          show("[promise]", ev.reason);
+        });
+        // Vite HMR error bridge (dev only) — production minifies, but harmless.
+        if (typeof window !== "undefined" && window.__vite_app_error__) {
+          show("[vite]", window.__vite_app_error__);
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -5,10 +5,24 @@ use crate::mesh::model::MeshModel;
 pub fn brush_hit(mesh: &MeshModel, center_face: u32, radius: f32) -> Vec<u32> {
     let center = mesh.face_center(center_face);
     let candidates = mesh.faces_within_radius(&center, radius);
-    candidates
+    let cand_count = candidates.len();
+    let results: Vec<u32> = candidates
         .into_iter()
         .filter(|&fid| distance(&center, &mesh.face_center(fid)) < radius)
-        .collect()
+        .collect();
+
+    // [DIAG-D] Log what the backend actually paints
+    log::info!(
+        "[DIAG-D] brush_hit: center_face={}, center=({:.1},{:.1},{:.1}), radius={:.2}, kdtree_candidates={}, filtered={}",
+        center_face, center[0], center[1], center[2], radius,
+        cand_count, results.len()
+    );
+    if !results.is_empty() {
+        let first5: Vec<u32> = results.iter().take(5).copied().collect();
+        log::info!("[DIAG-D]   first 5 face indices: {:?}", first5);
+    }
+
+    results
 }
 
 /// Compute falloff strength for a face at a given distance from brush center

@@ -36,3 +36,26 @@ Desktop.ini
 *.tar.gz
 *.zip
 !releases/*.zip
+
+# Local agent memory (project-specific, not for version control)
+.workbuddy/
+
+# Build backups created when bypassing the safe-delete shim (emptyOutDir:false)
+dist_bak*/
+
+# Ad-hoc cargo target dirs used when the main target dir lock is stuck (Windows orphan handles)
+.cargo-target*/
+.cargo-probe/
+
+# isolated cargo target used for fast incremental checks
+src-tauri/target_dev_rust/
+src-tauri/resources/orca_source/
+
+# isolated cargo build output (CARGO_TARGET_DIR override during packaging)
+.cargo-build/
+
+# user sample assets: keep models/data out, but track verification
+# screenshots (*.png) committed under samples/
+samples/**
+!samples/**/
+!samples/**/*.png
