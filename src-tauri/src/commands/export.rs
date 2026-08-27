@@ -50,6 +50,27 @@ fn export_progress(app: &AppHandle) -> impl Fn(f32, &str) {
     }
 }
 
+/// Normalize the output path's extension: the OS save dialog (notably Windows
+/// "Save As") appends the filter extension even when the user already typed it,
+/// producing "...model.3mf.3mf". Strip every trailing copy of the target
+/// extension, then add exactly one, so the user can name the file freely
+/// without producing an invisible double-extension file.
+fn with_normalized_extension(path: &str, ext: &str) -> PathBuf {
+    let mut p = PathBuf::from(path);
+    let norm_ext = format!(".{}", ext);
+    let mut name = p
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "model".to_string());
+    while name.to_lowercase().ends_with(&norm_ext) {
+        let cut = name.len().saturating_sub(norm_ext.len());
+        name.truncate(cut);
+    }
+    name.push_str(&norm_ext);
+    p.set_file_name(&name);
+    p
+}
+
 /// Export the loaded mesh as a `.3mf`.
 ///
 /// `selection` is optional. `None` keeps the original behaviour — a synthetic
@@ -66,26 +87,27 @@ pub async fn export_3mf_command(
     let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
 
-    let mut output_path = PathBuf::from(&path);
-    // suffix so the file is visible / openable as a 3MF (REF: export broken
-    // report — bytes were written but under a suffix-less name).
-    if output_path.extension().and_then(|e| e.to_str()) != Some("3mf") {
-        let mut name = output_path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "model".to_string());
-        if !name.to_lowercase().ends_with(".3mf") {
-            name.push_str(".3mf");
-        }
-        output_path.set_file_name(name);
-    }
+    let mut output_path = with_normalized_extension(&path, "3mf");
 
     let progress = export_progress(&app);
     progress(0.05, "3mf:start");
     export_3mf(mesh, &output_path, selection.as_ref(), &progress)?;
+    progress(0.97, "3mf:verify");
+
+    // Adversarial hardening: do NOT trust zip.finish()'s Ok. Confirm the file
+    // actually landed on disk and is non-empty, otherwise surface the real
+    // failure instead of leaving the user with "100% progress, no file".
+    let meta = std::fs::metadata(&output_path)
+        .map_err(|e| format!("3MF export finished but file missing: {}", e))?;
+    if meta.len() == 0 {
+        return Err("3MF export finished but the file is empty (0 bytes)".into());
+    }
+    let final_path = output_path
+        .canonicalize()
+        .unwrap_or_else(|_| output_path.clone());
     progress(1.0, "done");
 
-    Ok(format!("Exported to {}", output_path.display()))
+    Ok(format!("Exported to {}", final_path.display()))
 }
 
 /// Export the loaded mesh as a `.obj` + sibling `.mtl`, carrying per-face RGB
@@ -101,17 +123,7 @@ pub async fn export_obj_command(
     let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
 
-    let mut output_path = PathBuf::from(&path);
-    if output_path.extension().and_then(|e| e.to_str()) != Some("obj") {
-        let mut name = output_path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "model".to_string());
-        if !name.to_lowercase().ends_with(".obj") {
-            name.push_str(".obj");
-        }
-        output_path.set_file_name(name);
-    }
+    let mut output_path = with_normalized_extension(&path, "obj");
 
     let progress = export_progress(&app);
     progress(0.05, "obj:start");
@@ -129,4 +141,34 @@ pub async fn export_obj_command(
         output_path.display(),
         mtl_name
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_double_extension() {
+        assert_eq!(
+            with_normalized_extension("C:\\tmp\\mymodel.3mf.3mf", "3mf")
+                .to_string_lossy(),
+            "C:\\tmp\\mymodel.3mf"
+        );
+        assert_eq!(
+            with_normalized_extension("mymodel", "3mf").to_string_lossy(),
+            "mymodel.3mf"
+        );
+        assert_eq!(
+            with_normalized_extension("my.model.3mf", "3mf").to_string_lossy(),
+            "my.model.3mf"
+        );
+        assert_eq!(
+            with_normalized_extension("a.obj.3mf", "3mf").to_string_lossy(),
+            "a.obj.3mf"
+        );
+        assert_eq!(
+            with_normalized_extension("model.3MF", "3mf").to_string_lossy(),
+            "model.3mf"
+        );
+    }
 }

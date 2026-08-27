@@ -26,3 +26,24 @@ root.render(
     <App />
   )
 );
+
+// Diagnostic: confirm React mounted. Surfaces in headless/release builds via
+// the JS→Rust bridge (window.__TAURI_INTERNALS__) so a blank window is no
+// longer a silent mystery. Harmless in plain browsers (guard below).
+try {
+  const ti = (window as unknown as {
+    __TAURI_INTERNALS__?: { invoke?: (c: string, a?: unknown) => Promise<unknown> };
+  }).__TAURI_INTERNALS__;
+  const invoke = ti?.invoke;
+  if (typeof invoke === "function") {
+    setTimeout(() => {
+      try {
+        invoke("report_app_ready");
+      } catch {
+        /* ignore */
+      }
+    }, 1500);
+  }
+} catch {
+  /* ignore */
+}

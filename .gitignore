@@ -49,3 +49,10 @@ dist_bak*/
 
 # isolated cargo target used for fast incremental checks
 src-tauri/target_dev_rust/
+src-tauri/resources/orca_source/
+
+# isolated cargo build output (CARGO_TARGET_DIR override during packaging)
+.cargo-build/
+
+# user sample assets (binary data, not source)
+samples/

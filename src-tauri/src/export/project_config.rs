@@ -7,6 +7,9 @@
 //!   in the "user picked a machine" path**.
 //! - `Metadata/process_settings_1.config` — embedded process profile, **only
 //!   in the "user picked a machine" path**.
+//! - `Metadata/filament_settings_<slot>.config` — one embedded filament
+//!   profile per slot, **only in the "user picked a machine" path** (see the
+//!   updated note on REFUTE-7 below).
 //!
 //! ## Why the project file is one flat config (REFUTE-5)
 //!
@@ -47,27 +50,28 @@
 //! `tools/extract_orca_presets.py` carry the full flattened config (gcode
 //! macros included), which is what we emit.
 //!
-//! ## Why no embedded filament files (REFUTE-7)
+//! ## Embedded filament files (REFUTE-7, superseded)
 //!
-//! An earlier revision wrote `filament_settings_<n>.config` per slot with
-//! uniquified names (`Generic PLA @slot1..N`). Both halves were wrong:
+//! An earlier revision deliberately wrote **no** `filament_settings_<n>.config`
+//! files, for two sound reasons:
 //!
-//! - Colours never come from filament presets. The swatch reads
+//! - Colours never come from filament presets — the swatch reads
 //!   `project_config.filament_colour[extruder_idx]`
-//!   (`PresetComboBoxes.cpp:1273`, `Plater.cpp:6630`); `Plater::force_filament_colors_update`
-//!   is `#if 0`-ed out (`Plater.cpp:21932`). Same-named presets could never
-//!   collapse the palette.
-//! - Uniquified names match nothing installed, so `Preset.cpp:1523-1545`
-//!   cannot resolve a parent and degrades the preset to defaults.
+//!   (`PresetComboBoxes.cpp:1273`, `Plater.cpp:6630`), so embedding a filament
+//!   file could never change a slot's colour.
+//! - Embedding files with **uniquified** names (`Generic PLA @slot1..N`) matched
+//!   nothing installed, so `Preset.cpp:1523-1545` degraded them to defaults.
 //!
-//! And Orca itself writes **zero** filament preset files in our exact scenario
-//! ("stock filament, custom colours"): `_add_project_embedded_presets_to_archive`
-//! (`bbs_3mf.cpp:7489`) only iterates presets flagged `is_project_embedded`,
-//! which the importer only flags for presets extracted from embedded files.
-//! Matching that behaviour is strictly less risky, so this module emits
-//! machine + process embedded files and nothing else.
+//! That left the exported 3MF reliant on the *installed* vendor filament
+//! profile to resolve `project_settings.filament_settings_id`. When the user has
+//! not installed that profile the spool card ships incomplete — the requirement
+//! is that the file be self-contained. The fix keeps the real preset **name**
+//! (not a uniquified one) as both the file's `name`/`filament_settings_id` and
+//! the project file's `filament_settings_id[slot]`, so Orca resolves the
+//! embedded preset and the spool is complete even with no vendor profile
+//! installed. Colours still come from `filament_colour`, not from these files.
 
-use super::presets::ResolvedSelection;
+use super::presets::{FilamentPreset, ResolvedSelection};
 use serde_json::{Map, Value};
 use std::fmt::Write;
 
@@ -371,6 +375,76 @@ pub fn build_filament_profile_config(slot: u8, rgb: [u8; 3]) -> String {
     serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
 }
 
+/// Build `Metadata/filament_settings_<slot>.config` from the **real** vendor
+/// filament preset the user picked (selected path only).
+///
+/// The preset keeps its genuine vendor `name`/`filament_settings_id` so it lines
+/// up with `project_settings.filament_settings_id[slot]` and Orca resolves it as
+/// a project-embedded preset. Colours still come from
+/// `project_settings.filament_colour`; this file only supplies the *material*
+/// settings (type, temperatures, vendor) that make the spool card complete.
+pub fn build_selected_filament_config(
+    filament: &FilamentPreset,
+    slot: u8,
+    rgb: [u8; 3],
+) -> String {
+    let name = filament.name.clone();
+    let cfg_type = filament
+        .config
+        .get("filament_type")
+        .and_then(|v| scalarise_string(Some(v)))
+        .or_else(|| filament.material.clone())
+        .unwrap_or_else(|| "PLA".to_string());
+    let vendor = filament
+        .config
+        .get("filament_vendor")
+        .and_then(|v| scalarise_string(Some(v)))
+        .or_else(|| filament.vendor.clone())
+        .unwrap_or_else(|| "Generic".to_string());
+    let nozzle = filament
+        .config
+        .get("nozzle_temperature")
+        .and_then(|v| scalarise_string(Some(v)))
+        .unwrap_or_else(|| "210".to_string());
+    let bed = filament
+        .config
+        .get("hot_plate_temp")
+        .and_then(|v| scalarise_string(Some(v)))
+        .unwrap_or_else(|| "60".to_string());
+
+    let payload = serde_json::json!({
+        "name": name,
+        "from": "project",
+        "version": PROJECT_VERSION,
+
+        // Matches project_settings.filament_settings_id[slot] so Orca resolves
+        // this as a project-embedded preset instead of degrading to defaults.
+        "filament_settings_id": vec![name.clone()],
+
+        "filament_type": cfg_type,
+        "filament_vendor": vendor,
+        "filament_density": vec!["1.24".to_string()],
+        "filament_diameter": vec!["1.75".to_string()],
+        "filament_colour": vec![format_hex(rgb)],
+        "filament_cost": vec!["0".to_string()],
+        "filament_ids": vec![format!("F{}", slot)],
+        "filament_is_support": vec!["0".to_string()],
+        "filament_soluble": vec!["0".to_string()],
+        "filament_max_volumetric_speed": vec!["15".to_string()],
+        "filament_flow_ratio": vec!["1".to_string()],
+        "nozzle_temperature": vec![nozzle.clone()],
+        "nozzle_temperature_initial_layer": vec![nozzle.clone()],
+        "nozzle_temperature_range_high": vec!["240".to_string()],
+        "nozzle_temperature_range_low": vec!["190".to_string()],
+        "hot_plate_temp": vec![bed.clone()],
+        "hot_plate_temp_initial_layer": vec![bed.clone()],
+        "cool_plate_temp": vec!["35".to_string()],
+        "cool_plate_temp_initial_layer": vec!["35".to_string()],
+        "bed_temperature_difference": vec!["10".to_string()],
+    });
+    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
+}
+
 /// `Metadata/machine_settings_<n>.config` (1-based).
 pub const MACHINE_PRESET_PATH: &str = "Metadata/machine_settings_1.config";
 
@@ -418,6 +492,19 @@ fn scalarise(v: Option<&Value>) -> Value {
         Some(Value::Array(a)) => a.first().cloned().unwrap_or(Value::String(String::new())),
         Some(other) => other.clone(),
         None => Value::String(String::new()),
+    }
+}
+
+/// Like `scalarise` but yields an `Option<String>` so callers can fall back to
+/// another source (e.g. the preset's typed `material`/`vendor`) when the raw
+/// config key is absent.
+fn scalarise_string(v: Option<&Value>) -> Option<String> {
+    match v {
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(Value::Number(n)) => Some(n.to_string()),
+        Some(Value::Bool(b)) => Some(b.to_string()),
+        Some(Value::Array(a)) => a.first().and_then(Value::as_str).map(|s| s.to_string()),
+        _ => None,
     }
 }
 

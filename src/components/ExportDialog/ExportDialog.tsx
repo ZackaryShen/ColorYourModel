@@ -42,6 +42,20 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [targetSlicer, setTargetSlicer] = useState("snapmaker_orca");
   const [exporting, setExporting] = useState(false);
 
+  // Multi-select for batch filament assignment: tick the slots you want to
+  // repaint, then apply one filament to all of them at once.
+  const [selectedSlots, setSelectedSlots] = useState<Set<number>>(new Set());
+  const [bulkFilament, setBulkFilament] = useState("");
+
+  const toggleSlot = (i: number) => {
+    setSelectedSlots((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  };
+
   // Live progress from the backend's `export-progress` events. Mounted once so
   // the listener survives the whole export; the command runs off the webview
   // thread, so these arrive in real time instead of being batched at the end.
@@ -125,6 +139,25 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
     [machine, nozzle]
   );
 
+  // The filament the bulk control will apply; falls back to the first available
+  // one so "one-click switch" always has a target.
+  const bulkTarget = bulkFilament || filaments[0]?.name || "";
+  const applyBulk = () => {
+    if (!bulkTarget) return;
+    setFilamentNames((prev) => {
+      const next = [...prev];
+      // No slot ticked → apply to every slot (true one-click switch).
+      const targets =
+        selectedSlots.size > 0
+          ? selectedSlots
+          : new Set(palette.map((_c, i) => i));
+      targets.forEach((i) => {
+        if (i < next.length) next[i] = bulkTarget;
+      });
+      return next;
+    });
+  };
+
   // Reset process when nozzle changes (a process may not exist for the new nozzle).
   useEffect(() => {
     const first = processes[0];
@@ -132,15 +165,19 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   }, [nozzle, processes.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep one filament picker per palette slot; shorter arrays repeat the last
-  // entry on the backend, so a single choice covers every slot.
+  // entry on the backend, so a single choice covers every slot. An EMPTY slot
+  // (not just a missing one) must fall back to the first filament, otherwise a
+  // blank entry survives the `??` and the backend rejects an empty preset name.
   useEffect(() => {
+    const fill = filaments[0]?.name ?? "";
     setFilamentNames((prev) => {
-      const next = [...prev];
-      while (next.length < palette.length) {
-        const last = next[next.length - 1] ?? filaments[0]?.name ?? "";
-        next.push(last);
+      const next: string[] = [];
+      for (let i = 0; i < palette.length; i++) {
+        const existing = prev[i];
+        const chosen = existing && existing.length > 0 ? existing : fill;
+        next.push(chosen);
       }
-      return next.slice(0, palette.length);
+      return next;
     });
   }, [palette.length, filaments]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -163,12 +200,17 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       });
       if (!path) return; // user cancelled the save dialog
 
-      // Tauri's save dialog does NOT auto-append the extension, so a user who
-      // types "mymodel" would otherwise get a suffix-less file — invisible
-      // when filtering for *.3mf / *.obj. Force it.
-      const outPath = path.toLowerCase().endsWith(`.${ext}`)
-        ? path
-        : `${path}.${ext}`;
+      // Windows "Save As" appends the filter extension even when the user
+      // already typed it (e.g. "mymodel.3mf" -> "mymodel.3mf.3mf"), which would
+      // otherwise write an invisible "model.3mf.3mf". Strip every trailing copy
+      // of the target extension, then add exactly one, so the file can be named
+      // anything.
+      const normExt = `.${ext}`;
+      let base = path;
+      while (base.toLowerCase().endsWith(normExt)) {
+        base = base.slice(0, base.length - normExt.length);
+      }
+      const outPath = `${base}${normExt}`;
 
       if (format === "obj") {
         await exportObj(outPath);
@@ -285,10 +327,59 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
             <label style={styles.label}>
               {t("export.filament")} ({palette.length}{t("export.slots")})
             </label>
+
+            {/* Batch: pick one filament, apply it to every ticked slot at once
+                (or to all slots when none is ticked = one-click switch). */}
+            <div style={styles.bulkRow}>
+              <button
+                className="cym-btn"
+                style={styles.bulkBtn}
+                onClick={() =>
+                  setSelectedSlots(
+                    selectedSlots.size === palette.length
+                      ? new Set()
+                      : new Set(palette.map((_c, i) => i))
+                  )
+                }
+              >
+                {selectedSlots.size === palette.length
+                  ? t("export.deselectAll")
+                  : t("export.selectAll")}
+              </button>
+              <select
+                style={{ ...styles.select, flex: 1 }}
+                value={bulkTarget}
+                onChange={(e) => setBulkFilament(e.target.value)}
+              >
+                {filaments.map((f) => (
+                  <option key={f.name} value={f.name}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="cym-btn"
+                style={{ ...styles.bulkBtn, ...styles.bulkApply }}
+                onClick={applyBulk}
+              >
+                    {selectedSlots.size > 0
+                  ? t("export.applyToSelected", selectedSlots.size)
+                  : t("export.applyToAll")}
+              </button>
+            </div>
+
             {palette.map((colour, i) => {
               const slotFilament = filamentNames[i] ?? filaments[0]?.name ?? "";
+              const checked = selectedSlots.has(i);
               return (
                 <div key={i} style={styles.slotRow}>
+                  <input
+                    type="checkbox"
+                    style={styles.slotCheck}
+                    checked={checked}
+                    onChange={() => toggleSlot(i)}
+                    aria-label={t("export.slotSelect", i + 1)}
+                  />
                   <span
                     style={{ ...styles.swatch, background: colour }}
                     title={colour}
@@ -465,6 +556,34 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 8,
     marginBottom: 4,
+  },
+  bulkRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+    flexWrap: "wrap" as const,
+  },
+  bulkBtn: {
+    padding: "5px 9px",
+    border: "1px solid var(--border, #555)",
+    background: "var(--bg-elevated, #3a3a3a)",
+    color: "var(--text-1, #eee)",
+    borderRadius: 6,
+    cursor: "pointer",
+    fontSize: 12,
+    whiteSpace: "nowrap" as const,
+  },
+  bulkApply: {
+    borderColor: "var(--accent, #4a9eff)",
+    background: "var(--bg-active, #3a5a7a)",
+  },
+  slotCheck: {
+    width: 15,
+    height: 15,
+    accentColor: "var(--accent, #4a9eff)",
+    cursor: "pointer",
+    flexShrink: 0,
   },
   swatch: {
     width: 18,

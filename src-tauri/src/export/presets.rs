@@ -188,11 +188,19 @@ impl ExportSelection {
         for slot in 0..slot_count {
             // Fall back to the previous slot's choice, then to the first
             // filament compatible with this nozzle. A palette can have more
-            // entries than the dialog offered pickers for.
-            let name = self
+            // entries than the dialog offered pickers for. An empty string
+            // means "unselected" (the dialog leaves slots blank when the user
+            // picked no filament), so treat it like a missing entry instead of
+            // looking it up and failing with "unknown filament preset """.
+            let raw = self
                 .filament_names
                 .get(slot)
                 .or_else(|| self.filament_names.last());
+            let name = if raw.map_or(false, |n| n.trim().is_empty()) {
+                None
+            } else {
+                raw
+            };
             let preset = match name {
                 Some(n) => machine
                     .filament(n)
@@ -419,6 +427,24 @@ mod tests {
             target_slicer: "orcaslicer".into(),
         };
         assert!(sel.resolve(1).is_err());
+    }
+
+    #[test]
+    fn empty_filament_names_fall_back_to_default() {
+        let sel = ExportSelection {
+            machine_id: "snapmaker_u1".into(),
+            nozzle_diameter: "0.4".into(),
+            process_name: "0.08 Extra Fine @Snapmaker U1 (0.4 nozzle)".into(),
+            filament_names: vec!["".into(); 15],
+            target_slicer: "snapmaker_orca".into(),
+        };
+        let resolved = sel.resolve(15);
+        assert!(
+            resolved.is_ok(),
+            "blank filament slots must fall back to a default, got: {:?}",
+            resolved.err()
+        );
+        assert_eq!(resolved.unwrap().filaments.len(), 15);
     }
 
     #[test]

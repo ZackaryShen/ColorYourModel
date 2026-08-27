@@ -19,8 +19,9 @@ use super::paint_color::{encode_paint_color, MAX_EXTRUDER_SLOT};
 use super::presets::{ExportSelection, ResolvedSelection};
 use super::project_config::{
     build_filament_profile_config, build_machine_profile_config, build_process_profile_config,
-    build_project_settings_config, build_selected_machine_config, build_selected_process_config,
-    filament_preset_path, MACHINE_PRESET_PATH, PROCESS_PRESET_PATH,
+    build_project_settings_config, build_selected_filament_config,
+    build_selected_machine_config, build_selected_process_config, filament_preset_path,
+    MACHINE_PRESET_PATH, PROCESS_PRESET_PATH,
 };
 use super::quantize::{quantize_face_colors, Quantized};
 use crate::mesh::model::MeshModel;
@@ -116,6 +117,22 @@ pub fn export_3mf(
         Some(sel) => {
             entries.push((MACHINE_PRESET_PATH.to_string(), build_selected_machine_config(sel)));
             entries.push((PROCESS_PRESET_PATH.to_string(), build_selected_process_config(sel)));
+            // Self-contained filament presets: one per slot, named after the
+            // real vendor preset so it matches project_settings.filament_settings_id.
+            // Without these the spool card is incomplete unless the vendor
+            // profile happens to be installed (REFUTE-7, superseded).
+            for (i, (f, rgb)) in sel
+                .filaments
+                .iter()
+                .zip(quantized.palette.iter())
+                .enumerate()
+            {
+                let slot = (i + 1) as u8;
+                entries.push((
+                    filament_preset_path(slot),
+                    build_selected_filament_config(f, slot, [rgb[0], rgb[1], rgb[2]]),
+                ));
+            }
         }
         // Generic path: keep the original 1 + N layout (machine + process +
         // one filament preset per slot).
@@ -424,15 +441,30 @@ mod tests {
         let mut archive = zip::ZipArchive::new(file).expect("output must be a valid zip");
         let names: Vec<String> = archive.file_names().map(|s| s.to_string()).collect();
 
-        // Selected path: machine + process embedded, NO per-slot filament
-        // files (REFUTE-7 — the project file's arrays feed the spool card).
-        for expected in [MACHINE_PRESET_PATH, PROCESS_PRESET_PATH] {
+        // Selected path: machine + process + one self-contained filament
+        // preset per slot (REFUTE-7 superseded — the file must be complete even
+        // without the vendor profile installed).
+        for expected in [
+            MACHINE_PRESET_PATH,
+            PROCESS_PRESET_PATH,
+            "Metadata/filament_settings_1.config",
+        ] {
             assert!(names.iter().any(|n| n == expected), "{} missing", expected);
         }
-        assert!(
-            !names.iter().any(|n| n.contains("filament_settings_")),
-            "selected path must not embed filament preset files"
-        );
+
+        // The embedded filament file uses the real vendor preset name, matching
+        // project_settings.filament_settings_id so Orca resolves it.
+        let mut body = String::new();
+        {
+            let mut f = archive
+                .by_name("Metadata/filament_settings_1.config")
+                .expect("filament preset must be present");
+            std::io::Read::read_to_string(&mut f, &mut body).unwrap();
+        }
+        let filament: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(filament["name"], "Generic PLA");
+        assert_eq!(filament["filament_settings_id"], serde_json::json!(["Generic PLA"]));
+        assert_eq!(filament["filament_type"], "PLA");
 
         let mut body = String::new();
         {
@@ -456,6 +488,15 @@ mod tests {
         }
         let project: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(project["printer_settings_id"], "Snapmaker U1 (0.4 nozzle)");
+        // The project's filament reference must match the embedded file's name.
+        assert!(
+            project["filament_settings_id"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == "Generic PLA"),
+            "project filament_settings_id must reference the embedded preset"
+        );
 
         let _ = std::fs::remove_file(&path);
     }

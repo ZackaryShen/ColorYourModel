@@ -59,6 +59,8 @@ pub fn run() {
             commands::export::export_obj_command,
             commands::export::list_export_presets,
             commands::export::export_palette_preview,
+            commands::js_bridge::report_js_error,
+            commands::js_bridge::report_app_ready,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
