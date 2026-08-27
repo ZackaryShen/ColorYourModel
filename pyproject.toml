@@ -7,7 +7,7 @@ name = "coloryourmodel"
 version = "0.1.0"
 description = "智能分块上色工具：为 3D 打印白模 STL 提供自动网格分割与彩色 3MF 导出"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "AGPL-3.0-only"}
 requires-python = ">=3.10"
 authors = [
     {name = "ColorYourModel Contributors"}
@@ -17,7 +17,7 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: End Users/Desktop",
     "Intended Audience :: Manufacturing",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
