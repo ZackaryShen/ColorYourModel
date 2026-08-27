@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Fixed — 填充目标区域权威化（2026-08-27）
+
+- **修复"填 C 同色时 A 反而变色"的互斥缺陷**：填充工具的目标分区恒为点击面自身所属分区（`segmentLabels[faceId]`），不再优先取 hover 快照，也不再回退到 `lastValidHoveredSegmentRef` 陈旧缓存（iter29 偏好与 v5 兜底整体退役）。颜色不参与区域判定，两个分区可以安全共用同一颜色
+- 后端 `fill_paint` / `fill_segment_paint` 核心抽为可测函数并新增回归测试：同色双区域填充不得改写第一区域任何字节；Shift+click flood 在两侧同色时仍止步于 label 边界（`commands::paint::fill_tests`）
+- 已知问题（先前即存在，与本修复无关）：`SeedPanel.test.tsx` 3 例失败——4ca9f71 拆分 Auto/Manual 模式后测试选择器未同步
+
 ### Added — 3MF 导出预设库 (2026-08-07, `2e4e070`)
 
 - **导出对话框**：导出前可选 厂商/机型 → 喷嘴直径 → 工艺 → 每槽耗材 → 目标切片器（Snapmaker Orca / OrcaSlicer），级联过滤 + 调色板槽位预览

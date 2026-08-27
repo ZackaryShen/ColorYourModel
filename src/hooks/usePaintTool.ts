@@ -104,36 +104,29 @@ export function usePaintTool() {
           //     share or realSegs count (iteration 21 fix: user explicitly drew
           //     this region and expects fill to cover it entirely).
           //
-          //   • **Hover-target preference** (iteration 29 fix): At segment
-          //     boundaries the click raycast often hits a neighboring seg=0
-          //     face while the hover highlights the intended manual segment.
-          //     Prefer the caller-supplied hoveredSegment (what the user SEES
-          //     as yellow highlight) over the clicked face's own label. Only
-          //     fall back to clicked-face label when no hover exists.
-          //
-          //   • **D2 (product ruling, 2026-08-06)**: a large partition (>80 %
-          //     share) is filled WHOLE, never degraded. The share thresholds
-          //     and the `realSegs.length > 1` gate that used to demote such
-          //     clicks to a local brush-radius blob were deleted (docs/06 §2.1
-          //     item 3). The old guard made "the whole model is one partition"
-          //     indistinguishable from "I clicked the background": hover
-          //     highlighted the partition but the fill only painted a blob of
-          //     `brushRadius`, which read as "Fill uses the brush diameter".
-          //     `!!seg` is kept deliberately — with an EMPTY segments list
-          //     (autoSegment failed or was skipped) there is no partition to
-          //     fill, and routing to fillSegment would flood the entire model
-          //     through label 0 (REFUTE, autoSegment-failure path).
+          //   • **Region authority (product ruling, 2026-08-27)**: the fill
+          //     target is ALWAYS the partition containing the CLICKED face —
+          //   `meshData.segmentLabels[faceId]`. The iter29 "hover preference"
+          //     and the iter29 v5 stale-cache fallback are retired: routing a
+          //     click through a hover snapshot (let alone one cached from an
+          //     earlier pointer position) is what let "fill C red" repaint a
+          //     different region entirely — the reported "colours repel each
+          //     other" defect. Region info is the single source of truth;
+          //     the shader highlight follows it because pointermove highlights
+          //     the region under the cursor through the same labels array.
           const md = useAppStore.getState().meshData;
-          const hovered = opts?.hoveredSegment ?? null;
-          const label = (hovered != null) ? hovered : (md?.segmentLabels?.[faceId] ?? undefined);
+          const label = md?.segmentLabels?.[faceId] ?? undefined;
           const segs = md?.segments ?? [];
+          // `!!seg` is deliberate: with an EMPTY segments list (autoSegment
+          // failed or was skipped) there is no partition to fill, and routing
+          // to fillSegment would flood the entire model through label 0.
           const seg = label !== undefined ? segs.find((s) => s.id === label) : undefined;
 
           // D2: any existing partition is fillable whole, regardless of share.
           const fillWholeSegment = !opts?.wholeRegion && !!seg && label !== undefined;
 
           log.info("usePaintTool", "fill routing", {
-            faceId, label, labelSrc: (hovered != null) ? "hover" : "click",
+            faceId, label, labelSrc: "click",
             mode: opts?.wholeRegion ? "whole-region" : fillWholeSegment ? "segment" : "local",
           });
 

@@ -1369,26 +1369,21 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // the stroke, so a lost pointerup can never merge two drags.
   const strokeCounterRef = useRef(0);
   const activeStrokeIdRef = useRef<number | null>(null);
-  // Last non-null hoveredSegment from pointermove (iter29 v5: the pointermove
-  // handler clears hoveredSegment to null when the cursor drifts onto a giant
-  // segment like seg=0 — but the user still sees the stale yellow highlight
-  // from React's pending render. Without this ref, enqueuePaint snapshots
-  // null and falls back to seg=0(click).)
-  const lastValidHoveredSegmentRef = useRef<number | null>(null);
+  // iter30-era stale-hover cache retired (2026-08-27): Fill routing now reads
+  // `segmentLabels[clickedFace]` directly (see usePaintTool), so a cached
+  // "last valid hover" no longer has any legitimate consumer. Keeping it around
+  // invited exactly the wrong-target fills it was once built to serve.
   const enqueuePaint = useCallback((faceId: number, wholeRegion = false) => {
     // Snapshot hoveredSegment AT ENQUEUE TIME (click/pointerdown), not at async
     // execution time. onPointerUp fires synchronously and clears it before the
     // async IIFE runs — causing a race condition where handleFacePicked always
-    // reads null (iter29 v1-v3 all failed due to this race).
-    // Fall back to lastValidHoveredSegmentRef when store is null (iter29 v5:
-    // pointermove clears hoveredSegment when cursor drifts onto a giant segment
-    // like seg=0, but user still sees stale yellow highlight from pending React
-    // render — they click expecting that highlight to be the target).
+    // reads null (iter29 v1-v3 all failed due to this race). The snapshot is a
+    // HUD diagnostic only now; it never steers the fill target.
     const snap = useAppStore.getState().hoveredSegment;
     dragPendingFaceRef.current = {
       faceId,
       wholeRegion,
-      hoveredSegment: snap ?? lastValidHoveredSegmentRef.current,
+      hoveredSegment: snap ?? null,
       // Gate 0a: what the screen was ACTUALLY highlighting when the click
       // landed. Kept separate from `hoveredSegment` on purpose — the gap
       // between the two is the defect under investigation, so collapsing them
@@ -1399,9 +1394,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       strokeId: activeStrokeIdRef.current,
     };
     // iter30 PROBE: at click time, capture exactly what we snapshot.
-    // snap = store hoveredSegment; ref = lastValidHoveredSegmentRef; final = what we pass down.
+    // snap = store hoveredSegment (diagnostic only; the fill target itself is
+    // now derived from segmentLabels[faceId] inside paintFace).
     setHoverProbe(
-      `[CLICK] face=${faceId} snap(store)=${snap ?? "null"} ref=${lastValidHoveredSegmentRef.current ?? "null"} ` +
+      `[CLICK] face=${faceId} snap(store)=${snap ?? "null"} ` +
       `→ final=${dragPendingFaceRef.current.hoveredSegment ?? "null"}`
     );
     if (paintDrainingRef.current) return; // busy → drop intermediate (covered by radius)
@@ -1805,9 +1801,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         const prevIsManual = prevHover != null && prevHover >= MANUAL_SEGMENT_OFFSET;
         // Default to null when the cursor is over no real segment (hit nothing, or
         // the face under it has no partition). This lets the highlight clear when
-        // you move off the model instead of freezing on the last segment — the
-        // last-valid hover is still cached in lastValidHoveredSegmentRef for Fill
-        // click targeting (iteration 35; supersedes the old "keep prevHover" hack).
+        // you move off the model instead of freezing on the last segment. The
+        // old last-valid hover cache is gone — fill targeting reads the clicked
+        // face's own label, so a null highlight can never redirect a fill.
         let nextHover: number | null = null;
         if (hits.length > 0 && hits[0].faceIndex != null) {
           const lbl = meshData.segmentLabels[hits[0].faceIndex];
@@ -1822,10 +1818,6 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
             const isCrumb = lbl < MANUAL_SEGMENT_OFFSET && (segmentFaceCount.get(lbl) ?? 0) < crumbFaceMax;
             nextHover = prevIsManual && isCrumb ? prevHover : lbl;
           }
-        }
-        // Track last valid (non-null) hovered segment for fill click targeting
-        if (nextHover != null) {
-          lastValidHoveredSegmentRef.current = nextHover;
         }
         if (useAppStore.getState().hoveredSegment !== nextHover) {
           setHoveredSegment(nextHover);
@@ -1895,7 +1887,6 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       }
       hoverInfoRef.current = null;
       setHoveredSegment(null);
-      lastValidHoveredSegmentRef.current = null; // iter29 v5: clear on model leave
       overModelRef.current = false; // iteration 22: reset so OrbitControls can rotate
       applyCameraButtons();
     };
