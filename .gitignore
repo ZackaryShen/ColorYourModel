@@ -54,5 +54,8 @@ src-tauri/resources/orca_source/
 # isolated cargo build output (CARGO_TARGET_DIR override during packaging)
 .cargo-build/
 
-# user sample assets (binary data, not source)
-samples/
+# user sample assets: keep models/data out, but track verification
+# screenshots (*.png) committed under samples/
+samples/**
+!samples/**/
+!samples/**/*.png
