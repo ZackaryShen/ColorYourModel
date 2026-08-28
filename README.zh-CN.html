@@ -203,6 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="README.html">Home (EN)</a></li>
 <li><a href="README.zh-CN.html" aria-current="page">首页（中文）</a></li>
 <li><a href="CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="docs/user-guide/getting-started.html">Getting Started</a></li>
+<li><a href="docs/user-guide/auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="docs/user-guide/seed-tools.html">Seed Tools</a></li>
+<li><a href="docs/user-guide/painting-tools.html">Painting Tools</a></li>
+<li><a href="docs/user-guide/exporting.html">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="docs/algorithms/README.html">Algorithms</a></li>
 <li><a href="docs/algorithms/segmentation.html">Mesh Segmentation</a></li>
 <li><a href="docs/algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -214,7 +219,10 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="docs/technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
 <li><a href="docs/technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
 <li><a href="docs/technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="docs/developer/ipc-reference.html">IPC Reference</a></li>
+<li><a href="docs/developer/development.html">Development Guide</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="docs/cases/README.html">Cases</a></li>
+<li><a href="docs/cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
 <li><a href="docs/cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="docs/01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="docs/02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
@@ -363,7 +371,7 @@ pre.mermaid.mermaid-offline::after {
 │   │   └── lib.rs                # Tauri Builder + 命令注册
 │   ├── resources/presets/        # 生成的切片器预设（源自 OrcaSlicer vendor 树）
 │   └── Cargo.toml
-├── docs/                         # 索引见 docs/README.md
+├── docs/                         # HTML 文档（可编辑 md 源在 docs/bak/）
 ├── tools/                        # 预设萃取与 3MF/fill 验证脚本
 ├── examples/                     # 示例产物（paint_color_sample.3mf）
 ├── legacy/                       # 已废弃的 Python 原型
@@ -396,12 +404,12 @@ $env:RUST_LOG=&quot;debug&quot;; npm run tauri dev
 RUST_LOG=debug npm run tauri dev
 </code></pre>
 <h2 id="文档">文档</h2>
-<p>完整索引见 <a href="docs/README.html">docs/README.md</a>。简版：</p>
+<p>Markdown 源文件在 <a href="docs/README.html"><code>docs/bak/</code></a>（与 docs 树镜像）；由它生成的 HTML 存档是正式的可读文档——本地双击任意 <code>*.html</code> 即可浏览，完整索引见 <a href="docs/README.html">docs/bak/README.md</a>。简版：</p>
 <ul>
 <li><a href="docs/algorithms/README.html">docs/algorithms/</a> —— 分割与检测算法（数学原理）</li>
 <li><a href="docs/technical/README.html">docs/technical/</a> —— 工程机制（拾取、高亮、撤销/重做、导出管线）</li>
 <li><a href="docs/cases/README.html">docs/cases/</a> —— 案例展示与验证记录</li>
-<li><code>docs/01…10-*.md</code> —— 中文工作文档（PRD、架构、缺陷清单、路线图、研究笔记）</li>
+<li><code>docs/bak/01…10-*.md</code> —— 中文工作文档（PRD、架构、缺陷清单、路线图、研究笔记）</li>
 <li><a href="CHANGELOG.html">CHANGELOG.md</a> —— 逐迭代变更记录</li>
 </ul>
 <p>本项目采用对抗式自循环开发（<code>PLAN → REFUTE → REVISE → IMPLEMENT → TEST → RETROSPECT</code>），各轮记录见 CHANGELOG。</p>
@@ -412,7 +420,7 @@ RUST_LOG=debug npm run tauri dev
 <ul>
 <li><input checked="" disabled="" type="checkbox"> <strong>v0.1 核心闭环</strong> —— STL 导入 → 分割 → 上色 → 已验证的 3MF 导出（2026-08）<ul>
 <li>3MF 已在 Snapmaker Orca (U1) 端到端验证；fill 路由有回归测试保护</li>
-<li>待办：fill 簇真机复验（见 <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.md">docs/04</a>）</li>
+<li>待办：fill 簇真机复验（见 <a href="docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">docs/04</a>）</li>
 </ul>
 </li>
 <li><input disabled="" type="checkbox"> <strong>v0.2</strong> —— 调色板预设 + 颜色历史、体验打磨</li>

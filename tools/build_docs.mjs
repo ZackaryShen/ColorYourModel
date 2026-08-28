@@ -1,11 +1,14 @@
 #!/usr/bin/env node
-//! Convert every documentation markdown file to a colocated HTML archive:
-//! `docs/X.md` → `docs/X.html`, `README.md` → `README.html`, same directory.
-//! The .html files are committed to the repo (the readable archive); the .md
-//! sources stay as the editable backup. Pages share the light theme with
-//! sidebar navigation, per-page TOC and mermaid rendering; links between
-//! pages are relative, so navigation works from a plain double-click
-//! (file://, no fetch, classic scripts only) and on GitHub Pages.
+//! Convert documentation markdown sources into the official HTML archives.
+//!
+//! Source layout: markdown lives in `docs/bak/` (a mirror of the `docs/`
+//! tree — editable sources/backup) plus the repo-root trio (README.md,
+//! README.zh-CN.md, CHANGELOG.md, which GitHub renders directly). Output is
+//! 1:1 with the bak/ segment stripped: `docs/bak/X/Y.md` → `docs/X/Y.html`,
+//! `README.md` → `README.html`. The HTML pages are the committed, readable
+//! documentation; links between pages are relative, so navigation works from
+//! a plain double-click (file://, no fetch, classic scripts only) and on
+//! GitHub Pages.
 //!
 //! Determinism: output contains no timestamps, no absolute paths, so
 //! `git status -- '*.html'` after a rebuild is a valid freshness check (CI).
@@ -24,7 +27,7 @@ const DOCS = join(ROOT, "docs");
 
 // ── Source collection ────────────────────────────────────────────────────────
 
-/** Walk `docs/` for .md sources. */
+/** Walk a directory for .md sources. */
 function collectDocs(dir) {
   const out = [];
   for (const entry of readdirSync(dir).sort()) {
@@ -38,16 +41,32 @@ function collectDocs(dir) {
   return out;
 }
 
+const BAK_POSIX = "docs/bak/";
+
 const SOURCES = [
   join(ROOT, "README.md"),
   join(ROOT, "README.zh-CN.md"),
   join(ROOT, "CHANGELOG.md"),
-  ...collectDocs(join(ROOT, "docs")),
+  ...collectDocs(join(ROOT, "docs", "bak")),
 ];
 
-// Output path (posix, relative to ROOT) for each source: same directory, same
-// basename, .html suffix — the 1:1 archive the user asked for.
-const outRel = (src) => relative(ROOT, src).split(sep).join("/").replace(/\.md$/, ".html");
+// Output path (posix, relative to ROOT) for a source md: the bak/ segment is
+// stripped so sources render to the official docs/ locations. Root files map
+// next to themselves (README.md → README.html).
+const outRel = (src) => {
+  let rel = relative(ROOT, src).split(sep).join("/");
+  if (rel.startsWith(BAK_POSIX)) rel = "docs/" + rel.slice(BAK_POSIX.length);
+  return rel.replace(/\.md$/, ".html");
+};
+
+// Canonical output for an arbitrary repo path referenced by a link: references
+// into docs/ (with or without the bak/ segment) both land on the official
+// archive location, so sources may cross-link either way.
+const outForAbs = (abs) => {
+  let rel = relative(ROOT, abs).split(sep).join("/");
+  if (rel.startsWith(BAK_POSIX)) rel = "docs/" + rel.slice(BAK_POSIX.length);
+  return rel.replace(/\.md$/, ".html");
+};
 
 // Map: absolute source path -> output posix path (relative to ROOT).
 // Directory entries map to their README page so sidebar/inline directory
@@ -121,36 +140,46 @@ function repoUrl() {
 
 const blob = (repoPath) => `${REPO_URL}/blob/main/${repoPath.replace(/\\/g, "/")}`;
 
+const safeDecode = (s) => {
+  try { return decodeURIComponent(s); } catch { return s; }
+};
+
 /** Rewrite relative hrefs in rendered HTML so navigation works inside the
- *  site: .md → mapped .html page, directories → their README page, stray
- *  repo files (LICENSE) → GitHub blob. Absolute/anchor/mailto untouched. */
+ *  archives. Links resolve against the page's OFFICIAL location (bak/
+ *  stripped), so authors write paths relative to the docs tree — the bak/
+ *  source prefix is transparent. .md targets map through outForAbs (bak/
+ *  stripped, .html suffix), directory targets map to their README page,
+ *  stray repo files (LICENSE) go to a GitHub blob URL. `#anchor` suffixes
+ *  are preserved. marked pre-encodes hrefs, so decode before resolving and
+ *  encode exactly once on output. Absolute/anchor/mailto/data untouched. */
 function rewriteLinks(html, src) {
-  const pageOut = OUT_MAP.get(src); // e.g. "docs/algorithms/segmentation.html"
+  const pageOut = OUT_MAP.get(src); // e.g. "docs/technical/fill-routing.html"
+  const baseDir = dirname(pageOut);
   return html.replace(/href="([^"]*)"/g, (full, href) => {
     if (/^(https?:|mailto:|#|data:)/.test(href)) return full;
 
-    let targetAbs; // absolute repo path of a source md or directory
-    if (href.endsWith(".md")) {
-      targetAbs = resolve(dirname(src), href);
-    } else if (!/\.[a-zA-Z0-9]+$/.test(href.replace(/[/?].*$/, "")) || href.endsWith("/")) {
-      // directory-style link (no file extension)
-      targetAbs = resolve(dirname(src), href);
-      if (!OUT_MAP.has(targetAbs) && !targetAbs.endsWith(".md")) {
-        return `href="${blob(relative(ROOT, targetAbs))}"`;
-      }
-    } else {
-      // non-markdown repo file (LICENSE, …) → GitHub blob
-      return `href="${blob(relative(ROOT, resolve(dirname(src), href)))}"`;
-    }
+    const hashIdx = href.indexOf("#");
+    const pathPart = hashIdx >= 0 ? href.slice(0, hashIdx) : href;
+    const anchor = hashIdx >= 0 ? href.slice(hashIdx) : "";
+    if (pathPart === "") return full;
 
-    const targetOut = OUT_MAP.get(targetAbs);
-    if (!targetOut) {
-      // Unknown markdown target — fall back to GitHub blob rather than a 404
-      // inside the site.
-      return `href="${blob(relative(ROOT, targetAbs))}"`;
+    const abs = resolve(baseDir, safeDecode(pathPart));
+    const relAbs = relative(ROOT, abs).split(sep).join("/");
+    if (relAbs.startsWith("..")) return full; // outside the repo — leave as-is
+
+    let outPath;
+    if (pathPart.endsWith(".md")) {
+      outPath = outForAbs(abs);
+    } else if (/\.[a-zA-Z0-9]+$/.test(pathPart)) {
+      return `href="${blob(relAbs)}${anchor}"`;
+    } else if (existsSync(abs) && statSync(abs).isDirectory()) {
+      outPath = outForAbs(join(abs, "README.md"));
+    } else {
+      // repo file without extension (LICENSE, …) → GitHub blob
+      return `href="${blob(relAbs)}${anchor}"`;
     }
-    const rel = relative(dirname(pageOut), targetOut).split(sep).join("/");
-    return `href="${encodeURI(rel)}"`;
+    const rel = relative(baseDir, outPath).split(sep).join("/");
+    return `href="${encodeURI(rel)}${anchor}"`;
   });
 }
 
@@ -158,13 +187,13 @@ function rewriteLinks(html, src) {
 
 const NAV_GROUPS = [
   ["Overview", ["README.md", "README.zh-CN.md", "CHANGELOG.md"]],
-  ["User Guide", ["docs/user-guide/getting-started.md", "docs/user-guide/auto-segmentation.md", "docs/user-guide/seed-tools.md", "docs/user-guide/painting-tools.md", "docs/user-guide/exporting.md"]],
-  ["Algorithms", ["docs/algorithms/README.md", "docs/algorithms/segmentation.md", "docs/algorithms/seed-grow-fuse.md", "docs/algorithms/eye-detection.md"]],
-  ["Technical", ["docs/technical/README.md", "docs/technical/bvh-face-picking.md", "docs/technical/shader-segment-highlight.md", "docs/technical/fill-routing.md", "docs/technical/undo-redo-history.md", "docs/technical/export-pipeline.md", "docs/technical/crash-diagnostics.md"]],
-  ["Developer", ["docs/developer/ipc-reference.md", "docs/developer/development.md"]],
-  ["Cases", ["docs/cases/README.md", "docs/cases/01-3mf-end-to-end.md", "docs/cases/TEMPLATE.md"]],
-  ["Working docs · 中文", SOURCES.filter((s) => /docs[/\\]0\d-/.test(s)).sort()],
-  ["Internal", ["docs/loop-journal.md"]],
+  ["User Guide", ["docs/bak/user-guide/getting-started.md", "docs/bak/user-guide/auto-segmentation.md", "docs/bak/user-guide/seed-tools.md", "docs/bak/user-guide/painting-tools.md", "docs/bak/user-guide/exporting.md"]],
+  ["Algorithms", ["docs/bak/algorithms/README.md", "docs/bak/algorithms/segmentation.md", "docs/bak/algorithms/seed-grow-fuse.md", "docs/bak/algorithms/eye-detection.md"]],
+  ["Technical", ["docs/bak/technical/README.md", "docs/bak/technical/bvh-face-picking.md", "docs/bak/technical/shader-segment-highlight.md", "docs/bak/technical/fill-routing.md", "docs/bak/technical/undo-redo-history.md", "docs/bak/technical/export-pipeline.md", "docs/bak/technical/crash-diagnostics.md"]],
+  ["Developer", ["docs/bak/developer/ipc-reference.md", "docs/bak/developer/development.md"]],
+  ["Cases", ["docs/bak/cases/README.md", "docs/bak/cases/01-3mf-end-to-end.md", "docs/bak/cases/TEMPLATE.md"]],
+  ["Working docs · 中文", SOURCES.filter((s) => /docs[/\\]bak[/\\]0\d-/.test(s)).sort()],
+  ["Internal", ["docs/bak/loop-journal.md"]],
 ];
 
 const PAGE_TITLES = new Map(
@@ -336,7 +365,8 @@ const walkHtml = (dir) => {
 walkHtml(DOCS);
 
 // Existence check: every in-tree relative href must resolve to a real file
-// (grep alone can't prove a rewritten link is alive).
+// (grep alone can't prove a rewritten link is alive). `#anchor` fragments are
+// stripped before the check.
 let broken = 0;
 for (const page of pages) {
   const html = readFileSync(join(ROOT, page), "utf8");
@@ -344,7 +374,9 @@ for (const page of pages) {
   for (const m of html.matchAll(/href="([^"]*)"/g)) {
     const href = m[1];
     if (/^(https?:|mailto:|#|data:)/.test(href)) continue;
-    const target = resolve(ROOT, pageDir, decodeURIComponent(href));
+    const pathOnly = decodeURIComponent(href.split("#")[0]);
+    if (pathOnly === "") continue;
+    const target = resolve(ROOT, pageDir, pathOnly);
     if (!existsSync(target)) {
       console.error(`BROKEN LINK: ${page} -> ${href}`);
       broken++;

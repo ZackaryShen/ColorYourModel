@@ -65,4 +65,4 @@ Frontend exceptions are captured by the JS bridge and viewable in the in-app **D
 |---------|---------------|
 | First run takes minutes | Normal — Rust compiles from scratch; later runs are incremental |
 | Model fails to load | Check the log; UV-sphere-style meshes with many coincident-axis vertices are supported since the kdtree fix (`69a17ea`) |
-| UI language is English by default? | No — the app starts in Chinese; switch in the UI, the choice is persisted (see [i18n note](../developer/development.md#i18n)) |
+| UI language is English by default? | No — the app starts in Chinese; switch in the UI, the choice is persisted (see [development guide, conventions](../developer/development.md#conventions)) |

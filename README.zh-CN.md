@@ -110,7 +110,7 @@ ColorYourModel/
 │   │   └── lib.rs                # Tauri Builder + 命令注册
 │   ├── resources/presets/        # 生成的切片器预设（源自 OrcaSlicer vendor 树）
 │   └── Cargo.toml
-├── docs/                         # 索引见 docs/README.md
+├── docs/                         # HTML 文档（可编辑 md 源在 docs/bak/）
 ├── tools/                        # 预设萃取与 3MF/fill 验证脚本
 ├── examples/                     # 示例产物（paint_color_sample.3mf）
 ├── legacy/                       # 已废弃的 Python 原型
@@ -155,12 +155,12 @@ RUST_LOG=debug npm run tauri dev
 
 ## 文档
 
-完整索引见 [docs/README.md](docs/README.md)。简版：
+Markdown 源文件在 [`docs/bak/`](docs/bak/README.md)（与 docs 树镜像）；由它生成的 HTML 存档是正式的可读文档——本地双击任意 `*.html` 即可浏览，完整索引见 [docs/bak/README.md](docs/bak/README.md)。简版：
 
-- [docs/algorithms/](docs/algorithms/) —— 分割与检测算法（数学原理）
-- [docs/technical/](docs/technical/) —— 工程机制（拾取、高亮、撤销/重做、导出管线）
-- [docs/cases/](docs/cases/) —— 案例展示与验证记录
-- `docs/01…10-*.md` —— 中文工作文档（PRD、架构、缺陷清单、路线图、研究笔记）
+- [docs/algorithms/](docs/bak/algorithms/) —— 分割与检测算法（数学原理）
+- [docs/technical/](docs/bak/technical/) —— 工程机制（拾取、高亮、撤销/重做、导出管线）
+- [docs/cases/](docs/bak/cases/) —— 案例展示与验证记录
+- `docs/bak/01…10-*.md` —— 中文工作文档（PRD、架构、缺陷清单、路线图、研究笔记）
 - [CHANGELOG.md](CHANGELOG.md) —— 逐迭代变更记录
 
 本项目采用对抗式自循环开发（`PLAN → REFUTE → REVISE → IMPLEMENT → TEST → RETROSPECT`），各轮记录见 CHANGELOG。
@@ -171,7 +171,7 @@ RUST_LOG=debug npm run tauri dev
 
 - [x] **v0.1 核心闭环** —— STL 导入 → 分割 → 上色 → 已验证的 3MF 导出（2026-08）
   - 3MF 已在 Snapmaker Orca (U1) 端到端验证；fill 路由有回归测试保护
-  - 待办：fill 簇真机复验（见 [docs/04](docs/04-缺陷与遗留问题清单.md)）
+  - 待办：fill 簇真机复验（见 [docs/04](docs/bak/04-缺陷与遗留问题清单.md)）
 - [ ] **v0.2** —— 调色板预设 + 颜色历史、体验打磨
 - [ ] **v1.0** —— 批量处理、OrcaSlicer 插件形态集成
 

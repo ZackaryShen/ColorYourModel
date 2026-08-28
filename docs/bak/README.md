@@ -2,16 +2,16 @@
 
 This is the documentation hub for **ColorYourModel (CYM)** — a desktop app that turns white-model STLs into region-based, multi-colour 3MFs for multi-material 3D printing. When any document disagrees with the code, **the source code is the authority**.
 
-Every page has a colocated HTML archive (`X.md` → `X.html`) committed next to it — the markdown is the editable source; after editing run `npm run docs:build`.
+**How the docs work**: markdown sources live in `bak/` — a mirror of the `docs/` tree (this file is `bak/README.md`). The committed `*.html` pages in `docs/` are generated from them and are the official, readable archive. To edit documentation: change the md under `bak/`, run `npm run docs:build`, commit both. CI fails if the HTML drifts out of sync.
 
 ```mermaid
 flowchart LR
-    H["📖 Wiki Home"] --> UG["User Guide<br/>getting started · segmentation<br/>seeds · painting · export"]
-    H --> AL["Algorithms<br/>segmentation · grow/fuse · eyes"]
-    H --> TE["Technical<br/>picking · highlight · fill routing<br/>undo/redo · export · diagnostics"]
-    H --> DV["Developer<br/>IPC reference · dev guide"]
-    H --> CA["Cases<br/>verification records"]
-    H --> WD["01…10 working docs<br/>中文 · historical"]
+    MD["bak/ markdown sources<br/>(editable)"] -->|"npm run docs:build"| HTML["docs/ HTML archives<br/>(official pages)"]
+    HTML --> UG["User Guide"]
+    HTML --> AL["Algorithms"]
+    HTML --> TE["Technical"]
+    HTML --> DV["Developer"]
+    HTML --> CA["Cases"]
 ```
 
 ## I want to…
@@ -30,15 +30,15 @@ flowchart LR
 
 ## Document map
 
-| Kind | Where | Language |
-|------|-------|----------|
-| User guide | [`user-guide/`](user-guide/getting-started.md) | EN |
-| Algorithms (math & principles) | [`algorithms/`](algorithms/README.md) | EN skeleton · EN/中文 content |
-| Engineering mechanisms | [`technical/`](technical/README.md) | EN skeleton · EN/中文 content |
-| Cases & verification records | [`cases/`](cases/README.md) | EN/中文 |
-| Developer reference | [`developer/`](developer/ipc-reference.md) | EN |
-| Numbered working documents | `01…10-*.md` | 中文 |
-| Iteration journal | [`loop-journal.md`](loop-journal.md) | 中文 |
+| Kind | Source (bak/) | HTML archive | Language |
+|------|---------------|--------------|----------|
+| User guide | [`bak/user-guide/`](user-guide/getting-started.md) | `docs/user-guide/` | EN |
+| Algorithms (math & principles) | [`bak/algorithms/`](algorithms/README.md) | `docs/algorithms/` | EN · 中文 content ok |
+| Engineering mechanisms | [`bak/technical/`](technical/README.md) | `docs/technical/` | EN · 中文 content ok |
+| Cases & verification records | [`bak/cases/`](cases/README.md) | `docs/cases/` | EN/中文 |
+| Developer reference | [`bak/developer/`](developer/ipc-reference.md) | `docs/developer/` | EN |
+| Numbered working documents | `bak/01…10-*.md` | `docs/` | 中文 |
+| Iteration journal | [`bak/loop-journal.md`](loop-journal.md) | `docs/loop-journal.html` | 中文 |
 
 ## Numbered series (working documents, 中文)
 

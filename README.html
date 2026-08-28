@@ -203,6 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="README.html" aria-current="page">Home (EN)</a></li>
 <li><a href="README.zh-CN.html">首页（中文）</a></li>
 <li><a href="CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="docs/user-guide/getting-started.html">Getting Started</a></li>
+<li><a href="docs/user-guide/auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="docs/user-guide/seed-tools.html">Seed Tools</a></li>
+<li><a href="docs/user-guide/painting-tools.html">Painting Tools</a></li>
+<li><a href="docs/user-guide/exporting.html">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="docs/algorithms/README.html">Algorithms</a></li>
 <li><a href="docs/algorithms/segmentation.html">Mesh Segmentation</a></li>
 <li><a href="docs/algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -214,7 +219,10 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="docs/technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
 <li><a href="docs/technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
 <li><a href="docs/technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="docs/developer/ipc-reference.html">IPC Reference</a></li>
+<li><a href="docs/developer/development.html">Development Guide</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="docs/cases/README.html">Cases</a></li>
+<li><a href="docs/cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
 <li><a href="docs/cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="docs/01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="docs/02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
@@ -363,7 +371,7 @@ pre.mermaid.mermaid-offline::after {
 │   │   └── lib.rs                # Tauri builder + command registry
 │   ├── resources/presets/        # generated slicer presets (from OrcaSlicer vendor tree)
 │   └── Cargo.toml
-├── docs/                         # see docs/README.md for the index
+├── docs/                         # HTML documentation (editable md sources in docs/bak/)
 ├── tools/                        # preset extraction &amp; 3MF/fill verification scripts
 ├── examples/                     # sample output (paint_color_sample.3mf)
 ├── legacy/                       # deprecated Python prototype
@@ -396,12 +404,12 @@ $env:RUST_LOG=&quot;debug&quot;; npm run tauri dev
 RUST_LOG=debug npm run tauri dev
 </code></pre>
 <h2 id="documentation">Documentation</h2>
-<p>See <a href="docs/README.html">docs/README.md</a> for the full index. Short version:</p>
+<p>Markdown sources live in <a href="docs/README.html"><code>docs/bak/</code></a> (mirroring the docs tree); the committed HTML archives they generate are the official, readable pages — open any <code>*.html</code> locally, or see <a href="docs/README.html">docs/bak/README.md</a> for the full index. Short version:</p>
 <ul>
 <li><a href="docs/algorithms/README.html">docs/algorithms/</a> — segmentation &amp; detection algorithms (math and principles)</li>
 <li><a href="docs/technical/README.html">docs/technical/</a> — engineering mechanisms (picking, highlight, undo/redo, export pipeline)</li>
 <li><a href="docs/cases/README.html">docs/cases/</a> — case showcase &amp; verification records</li>
-<li><code>docs/01…10-*.md</code> — Chinese working documents (PRD, architecture, defects, roadmap, research notes)</li>
+<li><code>docs/bak/01…10-*.md</code> — Chinese working documents (PRD, architecture, defects, roadmap, research notes)</li>
 <li><a href="CHANGELOG.html">CHANGELOG.md</a> — per-iteration changelog</li>
 </ul>
 <p>The project is developed with an adversarial development loop (<code>PLAN → REFUTE → REVISE → IMPLEMENT → TEST → RETROSPECT</code>); see the CHANGELOG for per-round records.</p>
@@ -412,7 +420,7 @@ RUST_LOG=debug npm run tauri dev
 <ul>
 <li><input checked="" disabled="" type="checkbox"> <strong>v0.1 core loop</strong> — STL import → segmentation → painting → verified 3MF export (Aug 2026)<ul>
 <li>3MF export verified end-to-end on Snapmaker Orca (U1); fill routing regression-tested</li>
-<li>Remaining: real-machine re-verification of the fill cluster (see <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.md">docs/04</a>)</li>
+<li>Remaining: real-machine re-verification of the fill cluster (see <a href="docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">docs/04</a>)</li>
 </ul>
 </li>
 <li><input disabled="" type="checkbox"> <strong>v0.2</strong> — palette presets + colour history, UX polish</li>

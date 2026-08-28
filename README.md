@@ -110,7 +110,7 @@ ColorYourModel/
 │   │   └── lib.rs                # Tauri builder + command registry
 │   ├── resources/presets/        # generated slicer presets (from OrcaSlicer vendor tree)
 │   └── Cargo.toml
-├── docs/                         # see docs/README.md for the index
+├── docs/                         # HTML documentation (editable md sources in docs/bak/)
 ├── tools/                        # preset extraction & 3MF/fill verification scripts
 ├── examples/                     # sample output (paint_color_sample.3mf)
 ├── legacy/                       # deprecated Python prototype
@@ -155,12 +155,12 @@ RUST_LOG=debug npm run tauri dev
 
 ## Documentation
 
-See [docs/README.md](docs/README.md) for the full index. Short version:
+Markdown sources live in [`docs/bak/`](docs/bak/README.md) (mirroring the docs tree); the committed HTML archives they generate are the official, readable pages — open any `*.html` locally, or see [docs/bak/README.md](docs/bak/README.md) for the full index. Short version:
 
-- [docs/algorithms/](docs/algorithms/) — segmentation & detection algorithms (math and principles)
-- [docs/technical/](docs/technical/) — engineering mechanisms (picking, highlight, undo/redo, export pipeline)
-- [docs/cases/](docs/cases/) — case showcase & verification records
-- `docs/01…10-*.md` — Chinese working documents (PRD, architecture, defects, roadmap, research notes)
+- [docs/algorithms/](docs/bak/algorithms/) — segmentation & detection algorithms (math and principles)
+- [docs/technical/](docs/bak/technical/) — engineering mechanisms (picking, highlight, undo/redo, export pipeline)
+- [docs/cases/](docs/bak/cases/) — case showcase & verification records
+- `docs/bak/01…10-*.md` — Chinese working documents (PRD, architecture, defects, roadmap, research notes)
 - [CHANGELOG.md](CHANGELOG.md) — per-iteration changelog
 
 The project is developed with an adversarial development loop (`PLAN → REFUTE → REVISE → IMPLEMENT → TEST → RETROSPECT`); see the CHANGELOG for per-round records.
@@ -171,7 +171,7 @@ The project is developed with an adversarial development loop (`PLAN → REFUTE 
 
 - [x] **v0.1 core loop** — STL import → segmentation → painting → verified 3MF export (Aug 2026)
   - 3MF export verified end-to-end on Snapmaker Orca (U1); fill routing regression-tested
-  - Remaining: real-machine re-verification of the fill cluster (see [docs/04](docs/04-缺陷与遗留问题清单.md))
+  - Remaining: real-machine re-verification of the fill cluster (see [docs/04](docs/bak/04-缺陷与遗留问题清单.md))
 - [ ] **v0.2** — palette presets + colour history, UX polish
 - [ ] **v1.0** — batch processing, OrcaSlicer plugin-form integration
 

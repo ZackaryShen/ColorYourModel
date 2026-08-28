@@ -21,13 +21,14 @@ Pre-commit convention: if tests fail, compare against a stash baseline to prove 
 
 ## Docs workflow (this wiki)
 
-Markdown is the source (`docs/**`, `README*.md`, `CHANGELOG.md`); HTML archives are generated **colocated** (`X.md` → `X.html`) and committed. After editing any doc:
+Markdown sources live in `docs/bak/` — a mirror of the `docs/` tree — plus the repo-root trio (`README.md`, `README.zh-CN.md`, `CHANGELOG.md`, which GitHub renders directly). The committed `*.html` pages under `docs/` (and the root `README.html` etc.) are generated from them and are the official, readable archive. After editing any md:
 
 ```bash
-npm run docs:build     # regenerates, prunes stale archives, asserts links
-git add *.html docs/   # include regenerated archives
+npm run docs:build     # regenerates archives, prunes stale ones, asserts links
+git add -A '*.html' docs/   # include regenerated archives
 ```
 
+- Never edit `*.html` by hand — the next build overwrites it; the md is the single source.
 - `.github/workflows/docs-check.yml` fails CI when archives are stale.
 - `.github/workflows/deploy-docs.yml` publishes the HTML to GitHub Pages (manual trigger; enable Pages with Source = "GitHub Actions" first).
 - Diagrams are Mermaid fenced blocks — rendered by GitHub and by the HTML archives alike.

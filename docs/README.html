@@ -240,14 +240,14 @@ pre.mermaid.mermaid-offline::after {
     <article>
 <h1 id="coloryourmodel-wiki">ColorYourModel Wiki</h1>
 <p>This is the documentation hub for <strong>ColorYourModel (CYM)</strong> — a desktop app that turns white-model STLs into region-based, multi-colour 3MFs for multi-material 3D printing. When any document disagrees with the code, <strong>the source code is the authority</strong>.</p>
-<p>Every page has a colocated HTML archive (<code>X.md</code> → <code>X.html</code>) committed next to it — the markdown is the editable source; after editing run <code>npm run docs:build</code>.</p>
+<p><strong>How the docs work</strong>: markdown sources live in <code>bak/</code> — a mirror of the <code>docs/</code> tree (this file is <code>bak/README.md</code>). The committed <code>*.html</code> pages in <code>docs/</code> are generated from them and are the official, readable archive. To edit documentation: change the md under <code>bak/</code>, run <code>npm run docs:build</code>, commit both. CI fails if the HTML drifts out of sync.</p>
 <pre class="mermaid">flowchart LR
-    H[&quot;📖 Wiki Home&quot;] --&gt; UG[&quot;User Guide&lt;br/&gt;getting started · segmentation&lt;br/&gt;seeds · painting · export&quot;]
-    H --&gt; AL[&quot;Algorithms&lt;br/&gt;segmentation · grow/fuse · eyes&quot;]
-    H --&gt; TE[&quot;Technical&lt;br/&gt;picking · highlight · fill routing&lt;br/&gt;undo/redo · export · diagnostics&quot;]
-    H --&gt; DV[&quot;Developer&lt;br/&gt;IPC reference · dev guide&quot;]
-    H --&gt; CA[&quot;Cases&lt;br/&gt;verification records&quot;]
-    H --&gt; WD[&quot;01…10 working docs&lt;br/&gt;中文 · historical&quot;]
+    MD[&quot;bak/ markdown sources&lt;br/&gt;(editable)&quot;] --&gt;|&quot;npm run docs:build&quot;| HTML[&quot;docs/ HTML archives&lt;br/&gt;(official pages)&quot;]
+    HTML --&gt; UG[&quot;User Guide&quot;]
+    HTML --&gt; AL[&quot;Algorithms&quot;]
+    HTML --&gt; TE[&quot;Technical&quot;]
+    HTML --&gt; DV[&quot;Developer&quot;]
+    HTML --&gt; CA[&quot;Cases&quot;]
 </pre>
 <h2 id="i-want-to">I want to…</h2>
 <table>
@@ -299,43 +299,51 @@ pre.mermaid.mermaid-offline::after {
 <thead>
 <tr>
 <th>Kind</th>
-<th>Where</th>
+<th>Source (bak/)</th>
+<th>HTML archive</th>
 <th>Language</th>
 </tr>
 </thead>
 <tbody><tr>
 <td>User guide</td>
-<td><a href="user-guide/getting-started.html"><code>user-guide/</code></a></td>
+<td><a href="user-guide/getting-started.html"><code>bak/user-guide/</code></a></td>
+<td><code>docs/user-guide/</code></td>
 <td>EN</td>
 </tr>
 <tr>
 <td>Algorithms (math &amp; principles)</td>
-<td><a href="algorithms/README.html"><code>algorithms/</code></a></td>
-<td>EN skeleton · EN/中文 content</td>
+<td><a href="algorithms/README.html"><code>bak/algorithms/</code></a></td>
+<td><code>docs/algorithms/</code></td>
+<td>EN · 中文 content ok</td>
 </tr>
 <tr>
 <td>Engineering mechanisms</td>
-<td><a href="technical/README.html"><code>technical/</code></a></td>
-<td>EN skeleton · EN/中文 content</td>
+<td><a href="technical/README.html"><code>bak/technical/</code></a></td>
+<td><code>docs/technical/</code></td>
+<td>EN · 中文 content ok</td>
 </tr>
 <tr>
 <td>Cases &amp; verification records</td>
-<td><a href="cases/README.html"><code>cases/</code></a></td>
+<td><a href="cases/README.html"><code>bak/cases/</code></a></td>
+<td><code>docs/cases/</code></td>
 <td>EN/中文</td>
 </tr>
 <tr>
 <td>Developer reference</td>
-<td><a href="developer/ipc-reference.html"><code>developer/</code></a></td>
+<td><a href="developer/ipc-reference.html"><code>bak/developer/</code></a></td>
+<td><code>docs/developer/</code></td>
 <td>EN</td>
 </tr>
 <tr>
 <td>Numbered working documents</td>
-<td><code>01…10-*.md</code></td>
+<td><code>bak/01…10-*.md</code></td>
+<td><code>docs/</code></td>
 <td>中文</td>
 </tr>
 <tr>
 <td>Iteration journal</td>
-<td><a href="loop-journal.html"><code>loop-journal.md</code></a></td>
+<td><a href="loop-journal.html"><code>bak/loop-journal.md</code></a></td>
+<td><code>docs/loop-journal.html</code></td>
 <td>中文</td>
 </tr>
 </tbody></table>
@@ -355,47 +363,47 @@ pre.mermaid.mermaid-offline::after {
 </tr>
 <tr>
 <td>02</td>
-<td><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.md">技术架构说明书</a></td>
+<td><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">技术架构说明书</a></td>
 <td>technical architecture</td>
 </tr>
 <tr>
 <td>03</td>
-<td><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.md">迭代复盘与工程经验沉淀</a></td>
+<td><a href="03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">迭代复盘与工程经验沉淀</a></td>
 <td>iteration retrospectives</td>
 </tr>
 <tr>
 <td>04</td>
-<td><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.md">缺陷与遗留问题清单</a></td>
+<td><a href="04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">缺陷与遗留问题清单</a></td>
 <td>defect tracker (P0/P1/P2 with evidence)</td>
 </tr>
 <tr>
 <td>05</td>
-<td><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.md">v0.1 路线图 backlog</a></td>
+<td><a href="05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">v0.1 路线图 backlog</a></td>
 <td>roadmap &amp; backlog</td>
 </tr>
 <tr>
 <td>06</td>
-<td><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.md">v0.1 开发路线图</a></td>
+<td><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">v0.1 开发路线图</a></td>
 <td>development roadmap</td>
 </tr>
 <tr>
 <td>07</td>
-<td><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.md">智能分区设计</a></td>
+<td><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区设计</a></td>
 <td>smart segmentation design</td>
 </tr>
 <tr>
 <td>08</td>
-<td><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.md">智能分区-算法参考与论文</a></td>
+<td><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区-算法参考与论文</a></td>
 <td>algorithm references &amp; papers</td>
 </tr>
 <tr>
 <td>09</td>
-<td><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.md">连续平面与边界-算法融合研究</a></td>
+<td><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面与边界-算法融合研究</a></td>
 <td>plane/boundary fusion research</td>
 </tr>
 <tr>
 <td>10</td>
-<td><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/10-%E7%9C%BC%E7%9D%9B%E5%8C%BA%E5%9F%9F%E8%AF%AD%E4%B9%89%E8%AF%86%E5%88%AB.md">眼睛区域语义识别</a></td>
+<td><a href="10-%E7%9C%BC%E7%9D%9B%E5%8C%BA%E5%9F%9F%E8%AF%AD%E4%B9%89%E8%AF%86%E5%88%AB.html">眼睛区域语义识别</a></td>
 <td>eye-region detection research</td>
 </tr>
 </tbody></table>
