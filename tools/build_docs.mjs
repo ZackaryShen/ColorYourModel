@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-//! Build the static HTML docs site from markdown sources.
-//!
-//! Markdown files remain the source of truth (GitHub renders them, including
-//! fenced ```mermaid blocks). This script renders every doc into a modern
-//! static page under `docs/site/` — browsable by double-click (file://, no
-//! fetch, classic scripts only) and deployable to GitHub Pages as-is.
+//! Convert every documentation markdown file to a colocated HTML archive:
+//! `docs/X.md` → `docs/X.html`, `README.md` → `README.html`, same directory.
+//! The .html files are committed to the repo (the readable archive); the .md
+//! sources stay as the editable backup. Pages share the light theme with
+//! sidebar navigation, per-page TOC and mermaid rendering; links between
+//! pages are relative, so navigation works from a plain double-click
+//! (file://, no fetch, classic scripts only) and on GitHub Pages.
 //!
 //! Determinism: output contains no timestamps, no absolute paths, so
-//! `git status docs/site` after a rebuild is a valid freshness check (CI).
+//! `git status -- '*.html'` after a rebuild is a valid freshness check (CI).
 //!
 //! Usage: npm run docs:build
 
@@ -19,18 +20,16 @@ import { Marked } from "marked";
 import GithubSlugger from "github-slugger";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const SITE = join(ROOT, "docs", "site");
-const SITE_REL_POSIX = "docs/site";
+const DOCS = join(ROOT, "docs");
 
 // ── Source collection ────────────────────────────────────────────────────────
 
-/** Walk `docs/` for .md sources, skipping the generated site itself. */
+/** Walk `docs/` for .md sources. */
 function collectDocs(dir) {
   const out = [];
   for (const entry of readdirSync(dir).sort()) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
-      if (full === SITE) continue;
       out.push(...collectDocs(full));
     } else if (entry.endsWith(".md")) {
       out.push(full);
@@ -46,16 +45,13 @@ const SOURCES = [
   ...collectDocs(join(ROOT, "docs")),
 ];
 
-// Output path (posix, relative to SITE) for each source. README.md becomes the
-// site index; every other file keeps its relative path with a .html suffix.
-const outRel = (src) => {
-  const relFromRoot = relative(ROOT, src).split(sep).join("/");
-  if (relFromRoot === "README.md") return "index.html";
-  return relFromRoot.replace(/\.md$/, ".html");
-};
+// Output path (posix, relative to ROOT) for each source: same directory, same
+// basename, .html suffix — the 1:1 archive the user asked for.
+const outRel = (src) => relative(ROOT, src).split(sep).join("/").replace(/\.md$/, ".html");
 
-// Map: absolute source path -> output posix path. Directory entries map to
-// their README page so sidebar/inline directory links stay inside the site.
+// Map: absolute source path -> output posix path (relative to ROOT).
+// Directory entries map to their README page so sidebar/inline directory
+// links stay inside the archived HTML tree.
 const OUT_MAP = new Map(SOURCES.map((src) => [src, outRel(src)]));
 for (const src of SOURCES) {
   const dir = dirname(src);
@@ -248,7 +244,7 @@ ${pageCss()}
 <body>
 <header id="topbar">
   <button id="menu-btn" aria-label="Toggle navigation">☰</button>
-  <a class="brand" href="${encodeURI(relative(dirname(OUT_MAP.get(src)), "index.html"))}">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <a class="brand" href="${encodeURI(relative(dirname(OUT_MAP.get(src)), "README.html"))}">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
   <div class="topbar-right">
     ${langToggle(src)}
     <a class="gh-link" href="${REPO_URL}" title="GitHub repository">GitHub ↗</a>
@@ -297,28 +293,56 @@ window.addEventListener("DOMContentLoaded", function () {
 `;
 }
 
-// ── Build & validate ─────────────────────────────────────────────────────────
+// ── Build, prune & validate ──────────────────────────────────────────────────
 
-rmSync(SITE, { recursive: true, force: true });
 const pages = [];
 for (const src of SOURCES) {
   const article = rewriteLinks(renderArticle(src), src);
-  const outPath = join(SITE, OUT_MAP.get(src));
+  const outPath = join(ROOT, OUT_MAP.get(src));
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, renderPage(src, article, extractToc(article)));
   pages.push(OUT_MAP.get(src));
 }
 
-// Existence check: every in-site relative href must resolve to a produced
-// file (grep alone can't prove a rewritten link is alive).
+// Prune generated html whose markdown source is gone (renames/deletions) so
+// the archive never drifts into stale pages. Strictly bounded: the repo root
+// only ever yields the three known root archives (the Vite entry index.html
+// lives there too and must never be touched); under docs/ every html file is
+// generator-owned.
+const generated = new Set(pages);
+const ROOT_ARCHIVES = new Set(["README.html", "README.zh-CN.html", "CHANGELOG.html"]);
+for (const entry of readdirSync(ROOT)) {
+  if (ROOT_ARCHIVES.has(entry) && !generated.has(entry)) {
+    rmSync(join(ROOT, entry));
+    console.log(`pruned stale archive: ${entry}`);
+  }
+}
+const walkHtml = (dir) => {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      walkHtml(full);
+    } else if (entry.endsWith(".html")) {
+      const rel = relative(ROOT, full).split(sep).join("/");
+      if (!generated.has(rel)) {
+        rmSync(full);
+        console.log(`pruned stale archive: ${rel}`);
+      }
+    }
+  }
+};
+walkHtml(DOCS);
+
+// Existence check: every in-tree relative href must resolve to a real file
+// (grep alone can't prove a rewritten link is alive).
 let broken = 0;
 for (const page of pages) {
-  const html = readFileSync(join(SITE, page), "utf8");
+  const html = readFileSync(join(ROOT, page), "utf8");
   const pageDir = dirname(page);
   for (const m of html.matchAll(/href="([^"]*)"/g)) {
     const href = m[1];
     if (/^(https?:|mailto:|#|data:)/.test(href)) continue;
-    const target = resolve(join(SITE, pageDir), decodeURIComponent(href));
+    const target = resolve(ROOT, pageDir, decodeURIComponent(href));
     if (!existsSync(target)) {
       console.error(`BROKEN LINK: ${page} -> ${href}`);
       broken++;
@@ -327,12 +351,12 @@ for (const page of pages) {
 }
 
 const mermaidPages = pages.filter((p) =>
-  readFileSync(join(SITE, p), "utf8").includes('class="mermaid"'),
+  readFileSync(join(ROOT, p), "utf8").includes('class="mermaid"'),
 ).length;
 
 if (broken) {
-  console.error(`\n${broken} broken link(s) — site NOT valid.`);
+  console.error(`\n${broken} broken link(s) — archive NOT valid.`);
   process.exit(1);
 }
-console.log(`OK: ${pages.length} pages, ${mermaidPages} pages with mermaid diagrams, 0 broken links.`);
-console.log(`Open ${SITE_REL_POSIX}${sep}index.html in a browser.`);
+console.log(`OK: ${pages.length} HTML archives, ${mermaidPages} with mermaid diagrams, 0 broken links.`);
+console.log("Double-click README.html (or any doc) to browse.");

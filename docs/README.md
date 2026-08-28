@@ -2,7 +2,7 @@
 
 This directory mixes two kinds of documents. When they disagree, **the source code is the authority**.
 
-An HTML rendering of everything lives in [`site/`](site/index.html) — regenerate with `npm run docs:build`.
+Every document has a colocated HTML archive next to it (`README.md` → `README.html`, …) — the readable form, committed to the repo. The markdown files are the editable source/backup; after editing run `npm run docs:build` to regenerate.
 
 ```mermaid
 flowchart LR
