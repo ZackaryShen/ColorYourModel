@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ColorYourModel — 通往「可用 v0.1」路线图 · Backlog（对抗证伪快照） · ColorYourModel Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.lang-toggle, .gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="..%5CREADME.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../README.html">Home (EN)</a></li>
+<li><a href="../README.zh-CN.html">首页（中文）</a></li>
+<li><a href="../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="algorithms/README.html">Algorithms</a></li>
+<li><a href="algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="technical/README.html">Technical Mechanisms</a></li>
+<li><a href="technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="cases/README.html">Cases</a></li>
+<li><a href="cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html" aria-current="page">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="coloryourmodel--通往可用-v01路线图--backlog对抗证伪快照">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog（对抗证伪快照）</h1>
+<table>
+<thead>
+<tr>
+<th>文档日期</th>
+<th>2026-08-06</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>状态</td>
+<td><strong>PAUSED（已证伪，待 REVISE）</strong> — 用户断网前要求先记录 backlog</td>
+</tr>
+<tr>
+<td>方法</td>
+<td>Adversarial Development Loop：PLAN（候选路线图）→ REFUTE（独立子 agent 证伪）→ [REVISE 未做]</td>
+</tr>
+<tr>
+<td>当前分支</td>
+<td><code>feat_theme_persist_paint_ux</code></td>
+</tr>
+<tr>
+<td>候选路线图</td>
+<td>见文末附录 A</td>
+</tr>
+<tr>
+<td>证伪结论</td>
+<td><strong>7 个 [blocker] + 6 个 [major] + 5 个 [minor]</strong>，路线图不能作为 v0.1 可靠路径</td>
+</tr>
+<tr>
+<td>实测基线</td>
+<td><code>npx tsc --noEmit</code> exit 0 ✅；<code>cargo test --lib</code> <strong>13 passed</strong>（全在 <code>segment::manual</code> 8 + <code>segment::sdf</code> 5，<strong>export/paint/mesh/commands 零覆盖</strong>）；<code>git tag -l</code> <strong>空</strong>（README 称 v0.1 已完成但无 tag 支撑）</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>⚠️ 本文件是「继续开发」的接棒点。恢复时从 <strong>§0 五个待裁决项</strong> 与 <strong>§2 修正后顺序</strong> 开工，不要从被推翻的候选路线图续。</p>
+</blockquote>
+<hr>
+<h2 id="一五个必须先行裁决的产品prd-项不裁决则后续全部不可达">一、五个必须先行裁决的产品/PRD 项（不裁决则后续全部不可达）</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>裁决内容</th>
+<th>关联 blocker</th>
+<th>现状</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>D1</td>
+<td><code>FR-PNT-03</code>：Fill 目标<strong>优先取 hover</strong>，还是<strong>高亮跟随 click 命中分区</strong>？</td>
+<td>B5 / P0-3</td>
+<td>未决。若改 click 权威，则删 <code>lastValidHoveredSegmentRef</code> 整条通路，P0-3 与 B4 一并根治</td>
+</tr>
+<tr>
+<td>D2</td>
+<td>PRD 待确认 #1：默认大分区（如 seg=0 占 150 万面）上 Fill 的期望语义（整段填充 / 半径降级 / 禁用提示）</td>
+<td>B2 / A4</td>
+<td>未决。不裁决则 A4 字面判据「所填==高亮」按降级路径必挂</td>
+</tr>
+<tr>
+<td>D3</td>
+<td>PRD 待确认 #3：A9 验收基线切片软件（OrcaSlicer / BambuStudio / PrusaSlicer 选哪个矩阵）</td>
+<td>B6 / A9</td>
+<td>未决。不裁决 A9 无判据</td>
+</tr>
+<tr>
+<td>D4</td>
+<td>PRD 待确认 #5：分区合并/拆分优先级是否高于 P0 修复</td>
+<td>M4</td>
+<td>未决（路线图误写成「明确排除」，实为待确认）</td>
+</tr>
+<tr>
+<td>D5</td>
+<td>手动区豁免统一到「无条件豁免」还是「≤0.95 上限」</td>
+<td>M1-1</td>
+<td>未决。这是产品决策不是重构</td>
+</tr>
+</tbody></table>
+<p><strong>同步动作（M3）</strong>：在裁决/任何代码改动前，先改 <code>README.md</code> 三行错误前提，否则后续 REFUTE 会按错前提取证：</p>
+<ul>
+<li><code>README.md:40</code>「GPU 面拾取：颜色编码 ID 渲染到 RenderTarget」→ 实际 iter4 已换射线拾取（FR-VIEW-07 明令禁止 GPU 回读）</li>
+<li><code>README.md:250</code> <code>[x] v0.1 — ... + 3MF 导出</code> → A9 从未验证，且这是仓库第一个 tag</li>
+<li><code>README.md:251</code> <code>[x] v0.2 — GPU 拾取</code> → 同上失真</li>
+</ul>
+<hr>
+<h2 id="二修正后的开发顺序取代被推翻的候选路线图">二、修正后的开发顺序（取代被推翻的候选路线图）</h2>
+<pre><code>Phase -1  裁决门（D1–D5 + 改 README 三行）— 必须先于任何代码改动，书面结论进 journal
+Phase 0   三线并行，全部不依赖 P0 修复
+  0a 校准仪器 (B1)：HUD highlighted 改为与渲染同源取值，增打 renderedHover= / fillTarget= 两字段
+  0b A9 前置   (B6)：补 export::threemf 单测导出 XML 逐条对规范；最小 STL 真机导出送切片软件
+  0c A6 前置   (B7)：150 万面 + Fill 大分区，实测 10 次撤销/重做的内存与 IPC 耗时
+  EXIT：0a 通过前，任何 Fill 相关读数一律不采信
+Phase 1   P0-2 统一闸门（签名至少 (segId, segments, total)；同时统一 v7 sticky — fill 侧无对应物）
+Phase 2   P0-1 复验（在校准后的仪器上）+ 按 D2 结论重写 A4 判据
+Phase 3   P0-3：按 D1 — 若判 click 权威则删 lastValidHoveredSegmentRef（根治）；若判保留 hover 优先，先修 B4 永久钉死再做安全阀
+Phase 4   A9 收口（0b 已排格式风险，此处做真实模型规模验证）
+Phase 5   收口 + 打 tag v0.1.0（注意是仓库第一个 tag）
+</code></pre>
+<blockquote>
+<p>B3（NSIS 构建）在 journal 已多次成功（低风险），应归入「每次提交必跑」例行项，不与 A9 捆绑（M6）。</p>
+</blockquote>
+<hr>
+<h2 id="三blocker-级发现必须解决附-fileline">三、[blocker] 级发现（必须解决，附 file:line）</h2>
+<h3 id="b1--phase-0-的判据仪器hud与屏幕不同源六次决定性证据全是仪器读数">B1 — Phase 0 的判据仪器（HUD）与屏幕不同源，六次&quot;决定性证据&quot;全是仪器读数</h3>
+<ul>
+<li>HUD highlighted：<code>Viewport.tsx:1183</code> ← <code>facesBySeg.get(targetLbl).length</code>，<code>targetLbl = opts.hoveredSegment ?? clickedLbl</code>（:1182）</li>
+<li>屏幕黄色高亮：<code>Viewport.tsx:1786</code> 条件 <code>hoveredSegment !== null &amp;&amp; !giantSegmentIds.has(hoveredSegment)</code>，渲染源是 <strong>store 的 <code>hoveredSegment</code></strong>（:1788）</li>
+<li>三重分叉：① HUD 用 <code>targetLbl</code>（含 click 回退 + <code>lastValidHoveredSegmentRef</code> 复活值），屏幕用 store 值；② HUD <strong>不过 <code>giantSegmentIds</code></strong>，屏幕过；③ hover=null 时屏幕渲染 0 面，HUD 报 clickedLbl 全量。</li>
+<li>推论：journal 六条 <code>seg=0(click)</code> 读数意味着 store <code>hoveredSegment</code> 恒为 null → <code>:1786</code> 高亮组件根本没渲染 → 屏幕高亮面数=<strong>0 不是 1498252</strong>；且主诉是&quot;Fill <strong>&gt;</strong> 高亮&quot;（溢出），HUD 数据 <code>12 &lt;&lt; 1498252</code> 方向相反。七版修复建立在自相矛盾的读数上。</li>
+<li>whole-segment 路径下 HUD 是同义反复：后端返回该 label 全部面，HUD 再拿 <code>facesBySeg.get(同 label)</code> 比 → 恒 ✓，测不出&quot;填的与看到的是否一致&quot;；陈旧 hover 填错区时给<strong>假 ✓</strong>。</li>
+<li><strong>违反 C3「取证优先于修改」</strong>。修正：Phase 0 前插 iter31a 校准仪器。</li>
+</ul>
+<h3 id="b2--闸门统一后-a4-按字面判据仍必挂隐性-blocker">B2 — 闸门统一后 A4 按字面判据仍必挂（隐性 blocker）</h3>
+<p>点 seg=0（share≈1.0）：hover 侧 giant→不高亮→0 面；fill 侧降级 <code>fill_paint(radius)</code>（usePaintTool.ts:146-150）→12 面；12≠0→仍 MISMATCH。降级是 FR-PNT-02 有意设计，闸门统一只让&quot;决策一致&quot;≠&quot;面集一致&quot;。叠加 D2 未决 → &quot;整段填充&quot;语义未定义。</p>
+<h3 id="b3--顺序与-docs04-既有结论冲突且两出口都错">B3 — 顺序与 docs/04 既有结论冲突且两出口都错</h3>
+<p><code>docs/04:128</code> 顺序 <code>P0-2→P0-1→P0-3</code>，<code>docs/04:139</code> 明写「P0-2 是 P0-1 结构性成因」。候选路线图 Phase0=验 P0-1、Phase1=P0-2 <strong>顺序颠倒且未说明为何推翻</strong>。两 EXIT 都失效：收敛只证&quot;这次没降级&quot;；不收敛极可能是 B1 假阳性。</p>
+<h3 id="b4--v7-sticky-引入永久-hover-钉死活体缺陷">B4 — v7 sticky 引入&quot;永久 hover 钉死&quot;活体缺陷</h3>
+<ul>
+<li><code>Viewport.tsx:1477</code> <code>let nextHover = prevHover</code>（miss 时不清）</li>
+<li><code>Viewport.tsx:1484</code> <code>if (!(prevIsManual &amp;&amp; lbl &lt; MANUAL_SEGMENT_OFFSET)) nextHover = lbl</code> — manual 入驻后任何 auto 段永远无法覆写</li>
+<li>唯一清除点：<code>:1585</code>（pointerleave）与 <code>:1328</code>（切套索）；fill 优先取 hover（usePaintTool.ts:107）</li>
+<li>→ 用户 hover 过一次手动区后，只要指针不离开画布，之后在模型任意位置点 Fill 都填那个手动区。Phase 0 回归脚本<strong>必须含反例</strong>：hover 手动区 A → 移到模型另一端 auto 区 B → 点 Fill，预期填 B，实测填 A。</li>
+</ul>
+<h3 id="b5--p0-3-把治标当治本根治会撞-prd-铁律">B5 — P0-3 把治标当治本，根治会撞 PRD 铁律</h3>
+<ul>
+<li>fill 取 hover：<code>usePaintTool.ts:107</code> <code>const label = (hovered != null) ? hovered : (md?.segmentLabels?.[faceId] ?? undefined)</code></li>
+<li>陈旧 hover 是刻意实现：<code>Viewport.tsx:1236-1237</code> <code>hoveredSegment: snap ?? lastValidHoveredSegmentRef.current</code> — store 空时主动复活历史值（iter29 v5）</li>
+<li>在此加 TTL 安全阀三重无效：① pointermove 不记时间戳，TTL 无基准；② &quot;面数上限&quot;是第三套闸门，与 P0-2 要统一的两套再次分叉；③ 修不了 B4（钉死的是&quot;新鲜&quot;值）。</li>
+<li><strong>根治</strong>：fill 改以 click 命中面的 segment 为准，删 <code>lastValidHoveredSegmentRef</code> 整条通路。但与 <code>FR-PNT-03</code> 冲突 → 属 PRD 级变更，须先裁决 D1。</li>
+</ul>
+<h3 id="b6--3mf-不兼容风险源码级已可判定绝不能等到-phase-4">B6 — 3MF 不兼容风险源码级已可判定，绝不能等到 Phase 4</h3>
+<p><code>src-tauri/src/export/threemf.rs</code>：</p>
+<ul>
+<li><code>:84</code> <code>m:basematerials</code>、<code>:95</code> <code>m:base</code> 属核心规范默认命名空间，不属 Materials 扩展（<code>xmlns:m</code>）</li>
+<li><code>:112</code> <code>(&quot;m:basematerials&quot;,&quot;1&quot;)</code> 两规范都不存在此属性；核心规范用 <code>pid</code>/<code>pindex</code></li>
+<li><code>:149-150</code> 三角形 <code>pid=&quot;1&quot; p1=&quot;...&quot;</code> 引用的 resource id=1 因上条未注册成功 → <strong>悬空引用</strong></li>
+<li><code>&lt;build&gt;&lt;item objectid=&quot;2&quot;/&gt;</code>（:174-185）存在 → 几何体会显示，颜色极可能整体丢失或报错。</li>
+<li><strong>export 模块零单测</strong>（docs/04 称&quot;fixture 单测&quot;不准确，实际一个都没有）。修正：A9 前移并行，先补单测打 XML 对规范逐条比。</li>
+</ul>
+<h3 id="b7--a6-从未在目标规模验证p0-3-前提不成立">B7 — A6 从未在目标规模验证，P0-3 前提不成立</h3>
+<ul>
+<li>快照：<code>Viewport.tsx:1351-1354</code> <code>pushUndo(...)</code> 每次 pointerdown <strong>同步</strong>执行；150 万面→单次快照 ≈12MB，栈上限 <code>appStore.ts:343</code> <code>slice(-19)</code>→20 层→常驻约 240MB</li>
+<li>回滚 IPC：<code>useTauriCommand.ts:189</code> → 后端 <code>restore_face_colors</code>（segment.rs:272-276），Tauri 把两数组序列化为 JSON 数字数组 → 单次撤销传 600 万+150 万个十进制数；A6 要求 10 次撤销+重做=20 次往返</li>
+<li>P0-3 立论（&quot;撤销栈可能不足以完全回滚&quot;）依赖 A6，而 A6 本身可能是独立 blocker。A6 必须与 Phase 0 并行验证，用例须 150 万面 + Fill 大分区。</li>
+</ul>
+<hr>
+<h2 id="四major-级发现">四、[major] 级发现</h2>
+<h3 id="m1--闸门不对称真实存在但候选方案描述与签名都错">M1 — 闸门不对称真实存在，但候选方案描述与签名都错</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>hover <code>giantSegmentIds</code>（Viewport.tsx:1028-1040）</th>
+<th>fill <code>fillWholeSegment</code>（usePaintTool.ts:125-130）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>人口</td>
+<td><code>autoSegs = segs.filter(id&lt;100000)</code>（:1033）</td>
+<td><code>realSegs = segs.filter(faceCount&gt;0)</code>（:122）<strong>含手动区</strong></td>
+</tr>
+<tr>
+<td>数量分支</td>
+<td><code>autoSegs.length&lt;=1</code>→静音全部 auto（:1034-1036）</td>
+<td><code>realSegs.length&gt;1</code> 才允许整段（:129）</td>
+</tr>
+<tr>
+<td>占比阈值</td>
+<td><code>faceCount &gt; total*0.8</code>（:1038-1039）</td>
+<td><code>share &lt;= 0.8</code>（:129）</td>
+</tr>
+<tr>
+<td>手动区</td>
+<td><code>id&gt;=100000</code> <strong>无条件豁免</strong>（:1033/:1039）</td>
+<td>豁免但受 0.95 上限（:128）</td>
+</tr>
+<tr>
+<td>额外闸门</td>
+<td>v7 sticky <code>!(prevIsManual &amp;&amp; lbl&lt;100000)</code>（:1484）</td>
+<td><strong>无对应物</strong></td>
+</tr>
+<tr>
+<td>常量可见性</td>
+<td>仅 <code>WHOLE_SEGMENT_MAX_SHARE</code>、<code>MANUAL_SEGMENT_OFFSET</code>（:7）</td>
+<td><code>MANUAL_REGION_MAX_SHARE</code> 仅 usePaintTool.ts:16/128</td>
+</tr>
+</tbody></table>
+<ul>
+<li>M1-1：手动区豁免两侧语义不同（hover 无条件 / fill ≤0.95）→ 统一到哪侧是产品决策（D5）。</li>
+<li>M1-2：拟议签名 <code>shouldWholeSegmentFill(segId, share)</code> 表达不足——<code>autoSegs.length&lt;=1</code> 与 <code>realSegs.length&gt;1</code> 需完整 segments 列表，至少需 <code>(segId, segments, total)</code>；否则会静默丢掉数量分支制造新不对称。</li>
+<li>M1-3（docs/04-P0-2 未记载的第三处不对称）：<code>autoSegs.length&lt;=1</code> vs <code>realSegs.length&gt;1</code>。反例：1 auto + 2 manual → hover 静音该 auto（length=1），fill 却允许整段（length=3）→ 填 N 面/高亮 0 面。</li>
+<li>M1-4：REFUTE 目标应改为&quot;同一 <code>(segId, segments, total)</code> 输入下返回同一布尔值&quot;，非&quot;字节一致&quot;。</li>
+</ul>
+<h3 id="m2--p1-6-应写成条件门非无条件放-phase-6">M2 — P1-6 应写成条件门，非无条件放 Phase 6</h3>
+<p><code>appStore.ts:418</code> <code>version:1</code> 无 <code>migrate</code> 属实；<code>:435</code> <code>merge: mergePrefs</code>、<code>:124-126</code> 范围校验、<code>:198</code> <code>clamp</code> 已在 → FR-PRF-04 满足。真风险：Phase1 若把 0.8/0.95 做成偏好项或 Phase3 安全阀阈值进 <code>partialize</code>，存量用户升级后旧值覆盖新默认 → A7 表面过但行为回退。⚠️ 反论据：<code>:110-115</code> B1 注释明写「不要用 migrate」——仅针对 legacy <code>cym-theme</code> 键，补 migrate 前须在 journal 限定该注释范围（同类 P1-3 陷阱）。<strong>条件门</strong>：若 v0.1 未改 <code>partialize</code> 8 项默认值→留 Phase6；一旦触碰→升级为发版前必做。</p>
+<h3 id="m3--p2-8-放-phase-5-让-v01-定义自相矛盾且自伤">M3 — P2-8 放 Phase 5 让 v0.1 定义自相矛盾且自伤</h3>
+<p>见 §一 D 同步动作（README:40/:250/:251）。另：CHANGELOG 实际停在 Round 3-4，docs/04:94 记&quot;Round 7-8&quot;清单自身也漂。</p>
+<h3 id="m4--排除项与-prd-待确认-5-冲突状态标错">M4 — 排除项与 PRD 待确认 #5 冲突，状态标错</h3>
+<p>路线图写「明确排除 v0.1」把 PRD:198 待确认写成已决。改两栏：「已确认排除：调色板历史 / 批量处理 / OrcaSlicer 插件形态集成」/「<strong>待用户确认</strong>排除：分区合并/拆分（PRD 待确认 #5）」。</p>
+<h3 id="m5--phase-1-是同一思路第-8-次c3-铁律被架空">M5 — Phase 1 是同一思路第 8 次，C3 铁律被架空</h3>
+<p>iter25-30 已 7 轮同思路（追 <code>hoveredSegment</code> 传递链路）变体。必须显式写明&quot;换角度&quot;：(i) 放弃 hover 优先改 click 权威（B5）；或 (ii) 后端返回本次实际填充面集，前端用<strong>同一面集</strong>渲染高亮，从根消灭&quot;两个面集&quot;概念。</p>
+<h3 id="m6--phase-4-把-a9-与-b3-捆绑失败模式不同">M6 — Phase 4 把 A9 与 B3 捆绑，失败模式不同</h3>
+<p>B3（NSIS）已多次成功低风险；A9 零验证零单测源码级已见格式问题。B3 归「每次提交必跑」例行项，A9 单独立项前移。</p>
+<hr>
+<h2 id="五minor-级">五、[minor] 级</h2>
+<ul>
+<li>m1 行号漂移：闸门实际 <code>Viewport.tsx:1028-1040</code>，只引 <code>1033-1039</code> 漏掉 <code>autoSegs.length&lt;=1</code> 早退（:1034-1036），正是 M1-3 所在。</li>
+<li>m2 「P0-1 最终收敛」预设结论，违反 C3 精神，改中性「P0-1 复验」。</li>
+<li>m3 <code>P2-8 README同步</code> 同时出现在 Phase5 与 Phase6，职责不清。</li>
+<li>m4 「cargo test 13」须加限定：全在 manual(8)+sdf(5)，paint/export/mesh/commands 0 覆盖，当工程护栏会高估强度。</li>
+<li>m5 排除项「OrcaSlicer 插件」与 A9「产物在 OrcaSlicer 打开」措辞近易误读，改「OrcaSlicer <strong>插件形态集成</strong>（不影响 A9 导出兼容性验证）」。</li>
+</ul>
+<hr>
+<h2 id="六恢复开发时的下一步revise-阶段">六、恢复开发时的下一步（REVISE 阶段）</h2>
+<ol>
+<li>与用户确认 D1–D5 五个裁决项（最可能是一次对话/留言敲定）。</li>
+<li>按裁决改 <code>README.md</code> 三行（M3），提交。</li>
+<li>派 REFUTE 重做 iter31a 仪器校准方案（B1），确保 HUD 与渲染同源。</li>
+<li>按 §二顺序逐 Phase 走完 PLAN→REFUTE→REVISE→IMPLEMENT→TEST→RETROSPECT，每轮追加 loop-journal 条目。</li>
+<li>同步把状态回填到项目「计划」待办（P0-2/P0-3/P0-4 + 新增 A6/A9 前置 + README 校正），断网恢复后再用 wb-issues 工具同步。</li>
+</ol>
+<hr>
+<h2 id="附录-a--被证伪的候选路线图原始">附录 A — 被证伪的候选路线图（原始）</h2>
+<pre><code>定义&quot;可用 v0.1&quot;门槛 = PRD §6.1 A1–A9 全过 + §6.2 B1–B3。
+4 个 P0 必须清零：A4(Fill一致性)、A9(3MF E2E)、P0-2(闸门不对称)、P0-3(陈旧hover安全阀)。
+Phase 0 验证闸门(iter31)：真机回归 iter30 v7 ... EXIT 收敛→A4过 / 不收敛→重新取证
+Phase 1 P0-2 统一闸门(iter32)：抽纯函数 shouldWholeSegmentFill(segId,share) 供 hover/fill 共用
+Phase 2 P0-1 最终收敛(iter33)
+Phase 3 P0-3 陈旧 hover 安全阀 + A6 撤销(iter34)
+Phase 4 P0-4 3MF E2E(iter35)：导出→OrcaSlicer验色 + NSIS安装包
+Phase 5 收口：打 tag v0.1.0；校正 README/CHANGELOG/PRD
+Phase 6(发版后) P1-3/P1-8/P1-6/P1-7/P2-8
+Phase 7(技术债) P1-4/P1-1/2/P2-9/P2-10
+明确排除：选区合并/拆分、调色板历史、批量处理、OrcaSlicer 插件
+</code></pre>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#一五个必须先行裁决的产品prd-项不裁决则后续全部不可达">一、五个必须先行裁决的产品/PRD 项（不裁决则后续全部不可达）</a></li><li class="toc-h2"><a href="#二修正后的开发顺序取代被推翻的候选路线图">二、修正后的开发顺序（取代被推翻的候选路线图）</a></li><li class="toc-h2"><a href="#三blocker-级发现必须解决附-fileline">三、[blocker] 级发现（必须解决，附 file:line）</a></li><li class="toc-h3"><a href="#b1--phase-0-的判据仪器hud与屏幕不同源六次决定性证据全是仪器读数">B1 — Phase 0 的判据仪器（HUD）与屏幕不同源，六次"决定性证据"全是仪器读数</a></li><li class="toc-h3"><a href="#b2--闸门统一后-a4-按字面判据仍必挂隐性-blocker">B2 — 闸门统一后 A4 按字面判据仍必挂（隐性 blocker）</a></li><li class="toc-h3"><a href="#b3--顺序与-docs04-既有结论冲突且两出口都错">B3 — 顺序与 docs/04 既有结论冲突且两出口都错</a></li><li class="toc-h3"><a href="#b4--v7-sticky-引入永久-hover-钉死活体缺陷">B4 — v7 sticky 引入"永久 hover 钉死"活体缺陷</a></li><li class="toc-h3"><a href="#b5--p0-3-把治标当治本根治会撞-prd-铁律">B5 — P0-3 把治标当治本，根治会撞 PRD 铁律</a></li><li class="toc-h3"><a href="#b6--3mf-不兼容风险源码级已可判定绝不能等到-phase-4">B6 — 3MF 不兼容风险源码级已可判定，绝不能等到 Phase 4</a></li><li class="toc-h3"><a href="#b7--a6-从未在目标规模验证p0-3-前提不成立">B7 — A6 从未在目标规模验证，P0-3 前提不成立</a></li><li class="toc-h2"><a href="#四major-级发现">四、[major] 级发现</a></li><li class="toc-h3"><a href="#m1--闸门不对称真实存在但候选方案描述与签名都错">M1 — 闸门不对称真实存在，但候选方案描述与签名都错</a></li><li class="toc-h3"><a href="#m2--p1-6-应写成条件门非无条件放-phase-6">M2 — P1-6 应写成条件门，非无条件放 Phase 6</a></li><li class="toc-h3"><a href="#m3--p2-8-放-phase-5-让-v01-定义自相矛盾且自伤">M3 — P2-8 放 Phase 5 让 v0.1 定义自相矛盾且自伤</a></li><li class="toc-h3"><a href="#m4--排除项与-prd-待确认-5-冲突状态标错">M4 — 排除项与 PRD 待确认 #5 冲突，状态标错</a></li><li class="toc-h3"><a href="#m5--phase-1-是同一思路第-8-次c3-铁律被架空">M5 — Phase 1 是同一思路第 8 次，C3 铁律被架空</a></li><li class="toc-h3"><a href="#m6--phase-4-把-a9-与-b3-捆绑失败模式不同">M6 — Phase 4 把 A9 与 B3 捆绑，失败模式不同</a></li><li class="toc-h2"><a href="#五minor-级">五、[minor] 级</a></li><li class="toc-h2"><a href="#六恢复开发时的下一步revise-阶段">六、恢复开发时的下一步（REVISE 阶段）</a></li><li class="toc-h2"><a href="#附录-a--被证伪的候选路线图原始">附录 A — 被证伪的候选路线图（原始）</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+        lineColor: "#64748b", fontSize: "14px",
+        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>

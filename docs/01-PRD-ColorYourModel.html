@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ColorYourModel 产品需求文档（PRD） · ColorYourModel Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.lang-toggle, .gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="..%5CREADME.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../README.html">Home (EN)</a></li>
+<li><a href="../README.zh-CN.html">首页（中文）</a></li>
+<li><a href="../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="algorithms/README.html">Algorithms</a></li>
+<li><a href="algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="technical/README.html">Technical Mechanisms</a></li>
+<li><a href="technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="cases/README.html">Cases</a></li>
+<li><a href="cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="01-PRD-ColorYourModel.html" aria-current="page">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="coloryourmodel-产品需求文档prd">ColorYourModel 产品需求文档（PRD）</h1>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>ColorYourModel — 3D 打印白模智能分区上色工具</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>版本</td>
+<td>v0.3（基线：v0.1.0 已发布试玩版）</td>
+</tr>
+<tr>
+<td>文档日期</td>
+<td>2026-08-06</td>
+</tr>
+<tr>
+<td>当前分支</td>
+<td><code>feat_theme_persist_paint_ux</code></td>
+</tr>
+<tr>
+<td>状态</td>
+<td>需求基线已冻结，Fill 范围缺陷阻塞验收</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>文档来源</strong>：本 PRD 由代码现状（32 次提交、18 个 IPC 命令）、30 轮对抗式迭代记录、v0.1.0 发布说明反向提炼而成，用于校正已严重脱节的 README/CHANGELOG。凡与 README 冲突处，<strong>以本文档为准</strong>。</p>
+<p><strong>核对状态</strong>：2026-08-06 经独立 agent 逐条对照源码证伪。<strong>12 项功能断言全部找到实现证据，无虚构</strong>；持久化 8 键与 <code>partialize</code>（appStore.ts:425-434）逐字一致；经验依据类常量（<code>#8a8a8a</code>、non-indexed、54.74° 下界、<code>MANUAL_SEGMENT_OFFSET</code>、0.8/0.95 阈值、18 个 IPC、13 项后端单测）全部命中。仅 FR-PRF-01 措辞过严，已收紧。</p>
+</blockquote>
+<hr>
+<h2 id="一背景与问题">一、背景与问题</h2>
+<p>3D 打印领域大量精美模型（手办、建筑、机械零件）以白模 STL 分发。STL 在数据结构上只是<strong>一堆彼此独立的三角形面片</strong>，不携带任何&quot;零件&quot;或&quot;逻辑区域&quot;语义，也不支持颜色。</p>
+<p>用户希望给白模上色送进切片软件时，面临三个结构性痛点：</p>
+<ol>
+<li><strong>无法按逻辑区域选区</strong> — 三角面片彼此独立，&quot;盔甲&quot;&quot;皮肤&quot;&quot;底座&quot;这类概念在文件里不存在。</li>
+<li><strong>手动上色不可行</strong> — 只能逐面片涂色。以实测 150 万面模型计，人工逐面操作量级不具备可操作性。</li>
+<li><strong>格式断层</strong> — STL 无颜色通道，必须转为 3MF 才能携带逐面颜色数据进入切片流程。</li>
+</ol>
+<p><strong>产品定位</strong>：在 STL 与切片软件之间补上&quot;语义分区 + 交互上色 + 彩色导出&quot;这一段，输出符合 3MF Materials &amp; Colors Extension 规范的文件，直接对接 OrcaSlicer / BambuStudio / PrusaSlicer。</p>
+<hr>
+<h2 id="二目标用户与场景">二、目标用户与场景</h2>
+<table>
+<thead>
+<tr>
+<th>用户角色</th>
+<th>核心诉求</th>
+<th>典型场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>3D 打印爱好者</td>
+<td>把下载的白模手办打成多色</td>
+<td>导入 STL → 智能分区识别出头/身/底座 → 各区填色 → 导出 3MF</td>
+</tr>
+<tr>
+<td>多色打印机用户（AMS/AMX）</td>
+<td>色号必须匹配实际料盘</td>
+<td>使用 AMS 标准色板选色，包含合法纯黑</td>
+</tr>
+<tr>
+<td>模型设计者</td>
+<td>为自己的模型预设配色方案</td>
+<td>套索精细划分自定义区域 → 微调 → 交付带色 3MF</td>
+</tr>
+</tbody></table>
+<p><strong>非目标（明确排除）</strong>：纹理贴图、UV 展开、艺术级绘画、网格编辑与修复、切片本身。</p>
+<hr>
+<h2 id="三业务目标与成功指标">三、业务目标与成功指标</h2>
+<table>
+<thead>
+<tr>
+<th>目标</th>
+<th>指标</th>
+<th>当前实测</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>大模型可用</td>
+<td>150 万面模型可导入并交互</td>
+<td>已达成（导入 ~4 秒；BVH 加速拾取）</td>
+</tr>
+<tr>
+<td>分区自动化</td>
+<td>一次点击产出语义分区</td>
+<td>已达成（SDF / 二面角双算法）</td>
+</tr>
+<tr>
+<td>上色效率</td>
+<td>单个逻辑区域一次点击完成填色</td>
+<td><strong>未达成</strong> — Fill 范围溢出缺陷阻塞</td>
+</tr>
+<tr>
+<td>产物兼容</td>
+<td>导出 3MF 被主流切片软件正确识别</td>
+<td><strong>未验证</strong> — 尚无端到端真机测试</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="四用户故事">四、用户故事</h2>
+<ul>
+<li><strong>US-1</strong> 作为打印爱好者，我希望导入 STL 后系统自动识别出模型的语义部件，这样我不用手工划分区域。</li>
+<li><strong>US-2</strong> 作为打印爱好者，我希望点击一个区域就能整体填色，这样我不必逐面涂抹。</li>
+<li><strong>US-3</strong> 作为模型设计者，我希望在自动分区不理想时用套索手工圈出区域，这样我能获得精确控制。</li>
+<li><strong>US-4</strong> 作为多色打印机用户，我希望从 AMS 标准色板取色（含纯黑），这样打印结果与预期一致。</li>
+<li><strong>US-5</strong> 作为任何用户，我希望误操作可以撤销，这样我敢于尝试。</li>
+<li><strong>US-6</strong> 作为任何用户，我希望关掉软件再打开时我的主题、语言、笔刷参数还在，这样我不用反复设置。</li>
+<li><strong>US-7</strong> 作为任何用户，我希望导出的 3MF 能被 OrcaSlicer 直接打开并显示颜色。</li>
+</ul>
+<hr>
+<h2 id="五功能需求ears-规范">五、功能需求（EARS 规范）</h2>
+<blockquote>
+<p>EARS 句式：Ubiquitous（恒常）/ Event-driven（事件驱动）/ State-driven（状态驱动）/ Unwanted（异常）/ Optional（可选）</p>
+</blockquote>
+<h3 id="51-模型导入">5.1 模型导入</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>类型</th>
+<th>需求描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-IMP-01</td>
+<td>Event-driven</td>
+<td><strong>当</strong>用户选择一个 STL 文件时，系统<strong>应</strong>解析二进制与 ASCII 两种格式，完成顶点去重、面邻接图与 KD-Tree 空间索引构建。</td>
+</tr>
+<tr>
+<td>FR-IMP-02</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>将所有面的初始颜色设为 <code>#8a8a8a</code>（RGBA <code>[138,138,138,255]</code>）。<br><em>依据：纯白面在浅色画布下对比度仅 1.06:1，不可辨识。</em></td>
+</tr>
+<tr>
+<td>FR-IMP-03</td>
+<td>Event-driven</td>
+<td><strong>当</strong>模型加载进行中时，系统<strong>应</strong>通过 <code>import-progress</code> 事件持续上报进度与阶段。</td>
+</tr>
+<tr>
+<td>FR-IMP-04</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>在加载时按面数初始化 <code>segment_labels</code>（长度 == 面数，全 0）。<br><em>依据：曾因空向量导致索引越界 panic 并毒化 Mutex。</em></td>
+</tr>
+<tr>
+<td>FR-IMP-05</td>
+<td>Unwanted</td>
+<td><strong>若</strong> STL 解析失败，<strong>则</strong>系统<strong>应</strong>保持前一状态不变并向状态栏输出错误，不得使应用崩溃。</td>
+</tr>
+</tbody></table>
+<h3 id="52-自动分区">5.2 自动分区</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>类型</th>
+<th>需求描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-SEG-01</td>
+<td>Event-driven</td>
+<td><strong>当</strong>用户触发「智能分区」时，系统<strong>应</strong>执行 SDF（Shape Diameter Function）分割：法线一致化 → 内向锥形射线取中值厚度 → 对数归一化 → 一维 k-means 聚类 → 凹度合并。</td>
+</tr>
+<tr>
+<td>FR-SEG-02</td>
+<td>Event-driven</td>
+<td><strong>当</strong>用户触发「自动分区」时，系统<strong>应</strong>执行二面角分割：二面角分裂 → 法线一致性合并 → 小分区吸收。</td>
+</tr>
+<tr>
+<td>FR-SEG-03</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>在任一分区操作后，将分区元数据<strong>同时</strong>写入顶层 <code>segments</code> 与 <code>meshData.segments</code>。<br><em>依据：仅写顶层会使 Fill 路由与分区悬停高亮全量失效。</em></td>
+</tr>
+<tr>
+<td>FR-SEG-04</td>
+<td>Optional</td>
+<td><strong>在</strong>分区数需要控制的场景，系统<strong>应</strong>支持自动估计聚类数 k（直方图峰值，clamp 2–12）。</td>
+</tr>
+</tbody></table>
+<h3 id="53-手动分区套索">5.3 手动分区（套索）</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>类型</th>
+<th>需求描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-LAS-01</td>
+<td>State-driven</td>
+<td><strong>当</strong>处于套索模式且光标位于模型上时，系统<strong>应</strong>实时显示下一次点击将吸附到的顶点标记。</td>
+</tr>
+<tr>
+<td>FR-LAS-02</td>
+<td>Event-driven</td>
+<td><strong>当</strong>用户点击时，系统<strong>应</strong>将点吸附到命中面 1-ring 邻域内、法线夹角 ≤ 60° 的最近顶点。<br><em>依据：立方体角点夹角 arccos(1/√3)=54.74°，阈值须 &gt;54.74° 才不误杀。前后端阈值必须原子同步。</em></td>
+</tr>
+<tr>
+<td>FR-LAS-03</td>
+<td>Event-driven</td>
+<td><strong>当</strong>用户点回起点附近（距离阈值判定，非精确顶点匹配）且已有 ≥3 点时，系统<strong>应</strong>闭合环并生成新分区。<br><em>依据：精确顶点匹配在稠密网格下几乎不可达，会导致闭合永远无法触发。</em></td>
+</tr>
+<tr>
+<td>FR-LAS-04</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>用「顶点图 Dijkstra 加密环边 → 面图 BFS 跳过环边 → 取较小连通分量」实现区域切分。</td>
+</tr>
+<tr>
+<td>FR-LAS-05</td>
+<td>Ubiquitous</td>
+<td>手动分区标签<strong>应</strong>自 <code>MANUAL_SEGMENT_OFFSET = 100_000</code> 起始，与自动分区标签空间隔离。</td>
+</tr>
+<tr>
+<td>FR-LAS-06</td>
+<td>Event-driven</td>
+<td><strong>当</strong>用户按 <code>Esc</code> 时清空进行中套索；按 <code>Backspace</code> 时删除上一个点；按 <code>Ctrl+Z</code> 时——有进行中选点则删点，否则撤销上一个已完成的手动分区（LIFO）。</td>
+</tr>
+<tr>
+<td>FR-LAS-07</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>对手动区边界执行 1 遍形态学平滑（ERODE + DILATE），且<strong>任何情况下不得删除整个区域</strong>。</td>
+</tr>
+</tbody></table>
+<h3 id="54-上色工具">5.4 上色工具</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>类型</th>
+<th>需求描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-PNT-01</td>
+<td>Event-driven</td>
+<td><strong>当</strong>用户使用填充工具点击某面时，系统<strong>应</strong>对该面所属<strong>分区</strong>整体填色。</td>
+</tr>
+<tr>
+<td>FR-PNT-02</td>
+<td>Unwanted</td>
+<td><strong>若</strong>目标分区面数占比超过阈值（整段 0.8 / 手动区 0.95），<strong>则</strong>系统<strong>应</strong>降级为半径填充，不得对全模型染色。</td>
+</tr>
+<tr>
+<td>FR-PNT-03</td>
+<td>Ubiquitous</td>
+<td>填充目标<strong>应</strong>优先取悬停高亮所指示的分区，与用户所见黄色高亮范围保持一致。<br><em>依据：所填面集与所示高亮面集不一致是当前 P0 缺陷。</em></td>
+</tr>
+<tr>
+<td>FR-PNT-04</td>
+<td>Event-driven</td>
+<td><strong>当</strong>用户拖动笔刷时，系统<strong>应</strong>按 KD-Tree 半径命中并依 linear/smooth/step 衰减混合颜色。</td>
+</tr>
+<tr>
+<td>FR-PNT-05</td>
+<td>Ubiquitous</td>
+<td>智能笔<strong>应</strong>同时施加同分区约束与法线点积裁剪（<code>dot ≥ 0.5</code>），防止球查询穿透薄壁染到背面。</td>
+</tr>
+<tr>
+<td>FR-PNT-06</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>提供喷枪、橡皮、吸管工具。</td>
+</tr>
+<tr>
+<td>FR-PNT-07</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>串行化绘制请求（latest-wins，队列长度 ≤1）。<br><em>依据：并发 IPC 乱序返回会用旧结果覆盖新颜色。</em></td>
+</tr>
+<tr>
+<td>FR-PNT-08</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>允许选择包含纯黑 <code>[0,0,0]</code> 在内的任意 AMS 色板颜色，不得对合法黑色做提亮钳制。</td>
+</tr>
+</tbody></table>
+<h3 id="55-撤销--重做">5.5 撤销 / 重做</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>类型</th>
+<th>需求描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-UND-01</td>
+<td>Event-driven</td>
+<td><strong>当</strong>用户按 <code>Ctrl+Z</code> / <code>Ctrl+Y</code> 时，系统<strong>应</strong>全局恢复/重做上一次颜色状态。</td>
+</tr>
+<tr>
+<td>FR-UND-02</td>
+<td>Ubiquitous</td>
+<td>颜色快照<strong>应</strong>经后端 <code>restore_face_colors</code> 回滚，保证前后端状态一致。</td>
+</tr>
+</tbody></table>
+<h3 id="56-视图与交互">5.6 视图与交互</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>类型</th>
+<th>需求描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-VIEW-01</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>使用<strong>正交相机</strong>。<br><em>依据：透视投影下不同深度物体屏幕位移不同，平移必然产生视差错觉；该问题历经 5 轮（tilt 压低、target 修正、关闭阻尼）均无法根治，属投影方式的数学固有性质。</em></td>
+</tr>
+<tr>
+<td>FR-VIEW-02</td>
+<td>Ubiquitous</td>
+<td>缩放<strong>应</strong>通过 <code>camera.zoom</code> 实现，范围 <code>[0.1, 500]</code>。</td>
+</tr>
+<tr>
+<td>FR-VIEW-03</td>
+<td>State-driven</td>
+<td><strong>在</strong>视图模式下，左键<strong>应</strong>为旋转。</td>
+</tr>
+<tr>
+<td>FR-VIEW-04</td>
+<td>State-driven</td>
+<td><strong>在</strong>绘制/套索模式下，光标位于模型上时左键<strong>应</strong>执行工具操作；位于空白处时左键<strong>应</strong>为旋转。</td>
+</tr>
+<tr>
+<td>FR-VIEW-05</td>
+<td>Ubiquitous</td>
+<td>中键<strong>应</strong>为缩放，右键<strong>应</strong>为平移，<code>Alt+左键</code><strong>应</strong>强制旋转。</td>
+</tr>
+<tr>
+<td>FR-VIEW-06</td>
+<td>Ubiquitous</td>
+<td>任何新增工具<strong>必须</strong>在自身 pointermove 的命中与未命中两个分支同时刷新 <code>overModelRef</code>。<br><em>依据：漏刷会读到冻结旧值，使左键映射整体失效。</em></td>
+</tr>
+<tr>
+<td>FR-VIEW-07</td>
+<td>Ubiquitous</td>
+<td>面拾取<strong>应</strong>采用射线法（three-mesh-bvh 加速，<code>firstHitOnly</code>），<strong>不得</strong>使用 GPU 颜色编码回读。<br><em>依据：GPU 回读在 <code>rect ≠ size</code> 时整体错位；射线 NDC 由 rect 归一化，与 DPR/分辨率无关。此为全工具共享入口。</em></td>
+</tr>
+<tr>
+<td>FR-VIEW-08</td>
+<td>Ubiquitous</td>
+<td>几何体<strong>应</strong>为非索引（<code>toNonIndexed</code>）。<br><em>依据：逐顶点写色按 <code>faceIdx*3+v</code> 寻址，要求每面独占三顶点；索引几何共享顶点会导致&quot;涂 A 显 B&quot;。BVH 构建须用 <code>indirect: true</code>，否则会物理重排 index 复现该缺陷。</em></td>
+</tr>
+</tbody></table>
+<h3 id="57-主题国际化与偏好">5.7 主题、国际化与偏好</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>类型</th>
+<th>需求描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-PRF-01</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>支持 dark / light 双主题，全部颜色经 CSS 变量下发，<strong>不得存在脱离 CSS 变量的裸色值</strong>（<code>var(--x, #fallback)</code> 形式的兜底值合规，如 <code>App.tsx:54-55</code>、<code>BrushSettings.tsx:94-122</code>）。</td>
+</tr>
+<tr>
+<td>FR-PRF-02</td>
+<td>Event-driven</td>
+<td><strong>当</strong>应用启动时，系统<strong>应</strong>在首帧前应用已保存主题（内联脚本），不得出现 FOUC 闪白。</td>
+</tr>
+<tr>
+<td>FR-PRF-03</td>
+<td>Ubiquitous</td>
+<td>系统<strong>应</strong>持久化 8 项偏好：<code>theme, language, shadingMode, brushRadius, brushStrength, brushFalloff, currentColor, snapEnabled</code>。</td>
+</tr>
+<tr>
+<td>FR-PRF-04</td>
+<td>Unwanted</td>
+<td><strong>若</strong>读出的偏好越界或损坏，<strong>则</strong>系统<strong>应</strong>逐项校验并回退默认值，不得因脏数据启动失败。</td>
+</tr>
+<tr>
+<td>FR-PRF-05</td>
+<td>Unwanted</td>
+<td><strong>若</strong> localStorage 不可用，<strong>则</strong>系统<strong>应</strong>回退内存存储并正常运行。</td>
+</tr>
+<tr>
+<td>FR-PRF-06</td>
+<td>Ubiquitous</td>
+<td>界面<strong>应</strong>全量支持中英双语。</td>
+</tr>
+</tbody></table>
+<h3 id="58-导出">5.8 导出</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>类型</th>
+<th>需求描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-EXP-01</td>
+<td>Event-driven</td>
+<td><strong>当</strong>用户导出时，系统<strong>应</strong>生成符合 3MF Materials &amp; Colors Extension 的 zip 包，携带逐面颜色。</td>
+</tr>
+<tr>
+<td>FR-EXP-02</td>
+<td>Ubiquitous</td>
+<td>导出产物<strong>应</strong>能被 OrcaSlicer / BambuStudio / PrusaSlicer 正确读取并显示颜色。</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="六验收标准">六、验收标准</h2>
+<h3 id="61-功能验收端到端需真机-cargo-tauri-dev">6.1 功能验收（端到端，需真机 <code>cargo tauri dev</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>验收项</th>
+<th>通过判据</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A1</td>
+<td>大模型导入</td>
+<td>150 万面 STL 导入 &lt;6 秒，无卡死，默认灰面</td>
+</tr>
+<tr>
+<td>A2</td>
+<td>智能分区</td>
+<td>双立方体分出 2 段；块体+薄板凹接合处边界合理</td>
+</tr>
+<tr>
+<td>A3</td>
+<td>套索闭合</td>
+<td>吸附标记跟随流畅；点回起点必定闭合；不出现&quot;点完消失&quot;</td>
+</tr>
+<tr>
+<td>A4</td>
+<td><strong>Fill 一致性</strong></td>
+<td><strong>所填面集 == 黄色高亮面集</strong>（HUD 显示 <code>N filled / N highlighted</code>，无 MISMATCH）</td>
+</tr>
+<tr>
+<td>A5</td>
+<td>笔刷精度</td>
+<td>光标环所在位置即着色位置，无偏移</td>
+</tr>
+<tr>
+<td>A6</td>
+<td>撤销</td>
+<td>连续 10 次操作可逐级撤销并重做，颜色完全还原</td>
+</tr>
+<tr>
+<td>A7</td>
+<td>偏好持久化</td>
+<td>改主题/语言/笔刷后重启，设置全部保留</td>
+</tr>
+<tr>
+<td>A8</td>
+<td>主题无闪白</td>
+<td>深色主题下启动全程不出现白屏帧</td>
+</tr>
+<tr>
+<td>A9</td>
+<td>3MF 导出</td>
+<td>产物在 OrcaSlicer 中打开，颜色与软件内所见一致</td>
+</tr>
+</tbody></table>
+<h3 id="62-工程验收每次提交必跑须贴输出">6.2 工程验收（每次提交必跑，须贴输出）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>命令</th>
+<th>通过判据</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>B1</td>
+<td><code>npx tsc --noEmit</code></td>
+<td>exit code 0</td>
+</tr>
+<tr>
+<td>B2</td>
+<td><code>cargo test --lib</code></td>
+<td>13 项全通过</td>
+</tr>
+<tr>
+<td>B3</td>
+<td><code>npx tauri build --bundles nsis</code></td>
+<td>产出 setup.exe 与便携 exe</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="七已知约束与风险">七、已知约束与风险</h2>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>验证局限</strong></td>
+<td>headless Chromium 无 Tauri runtime，凡依赖模型加载（走 IPC）的功能<strong>无法自动化验证</strong>，只能人工回归。纯 CSS/UI 层可 E2E。</td>
+</tr>
+<tr>
+<td><strong>调试局限</strong></td>
+<td>Tauri release 包无 devtools（F12 失效），所有诊断探针必须打到 UI 层（DebugHud）。</td>
+</tr>
+<tr>
+<td><strong>测试覆盖</strong></td>
+<td>后端 13 项单测；<strong>前端零单测</strong>，仅靠类型检查 + 人工。</td>
+</tr>
+<tr>
+<td><strong>算法固有</strong></td>
+<td>分区边界呈几何锯齿（形态学平滑只能缓解）；模型有洞时射线会 miss。</td>
+</tr>
+<tr>
+<td><strong>构建环境</strong></td>
+<td>打包须 <code>unset NODE_OPTIONS</code>；须 <code>--bundles nsis</code> 显式限定，否则会尝试需联网的 WiX。</td>
+</tr>
+<tr>
+<td><strong>P0 阻塞</strong></td>
+<td>Fill 范围溢出缺陷经 7 版修复仍未确认收敛，阻塞 A4 与整体验收。</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="八待确认问题">八、待确认问题</h2>
+<ol>
+<li>Fill 在&quot;未分区模型&quot;上的期望语义是什么 —— 半径填充、整体填充，还是禁用并提示？</li>
+<li><code>MANUAL_REGION_MAX_SHARE = 0.95</code> 阈值缺乏出处，是否需要产品侧给出明确判据？</li>
+<li>3MF 导出的验收基线以哪个切片软件为准？是否需要覆盖多软件矩阵？</li>
+<li>偏好项新增/变更时是否需要版本迁移机制（当前改默认值对已持久化用户无效）？</li>
+<li>v0.3 路线图中「分区合并/拆分」优先级是否高于当前 P0 缺陷修复？</li>
+</ol>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#一背景与问题">一、背景与问题</a></li><li class="toc-h2"><a href="#二目标用户与场景">二、目标用户与场景</a></li><li class="toc-h2"><a href="#三业务目标与成功指标">三、业务目标与成功指标</a></li><li class="toc-h2"><a href="#四用户故事">四、用户故事</a></li><li class="toc-h2"><a href="#五功能需求ears-规范">五、功能需求（EARS 规范）</a></li><li class="toc-h3"><a href="#51-模型导入">5.1 模型导入</a></li><li class="toc-h3"><a href="#52-自动分区">5.2 自动分区</a></li><li class="toc-h3"><a href="#53-手动分区套索">5.3 手动分区（套索）</a></li><li class="toc-h3"><a href="#54-上色工具">5.4 上色工具</a></li><li class="toc-h3"><a href="#55-撤销--重做">5.5 撤销 / 重做</a></li><li class="toc-h3"><a href="#56-视图与交互">5.6 视图与交互</a></li><li class="toc-h3"><a href="#57-主题国际化与偏好">5.7 主题、国际化与偏好</a></li><li class="toc-h3"><a href="#58-导出">5.8 导出</a></li><li class="toc-h2"><a href="#六验收标准">六、验收标准</a></li><li class="toc-h3"><a href="#61-功能验收端到端需真机-cargo-tauri-dev">6.1 功能验收（端到端，需真机 cargo tauri dev）</a></li><li class="toc-h3"><a href="#62-工程验收每次提交必跑须贴输出">6.2 工程验收（每次提交必跑，须贴输出）</a></li><li class="toc-h2"><a href="#七已知约束与风险">七、已知约束与风险</a></li><li class="toc-h2"><a href="#八待确认问题">八、待确认问题</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+        lineColor: "#64748b", fontSize: "14px",
+        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>

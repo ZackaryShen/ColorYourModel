@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智能分区（Intelligent Segmentation）设计 · 初版方案（待 REFUTE） · ColorYourModel Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.lang-toggle, .gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="..%5CREADME.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../README.html">Home (EN)</a></li>
+<li><a href="../README.zh-CN.html">首页（中文）</a></li>
+<li><a href="../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="algorithms/README.html">Algorithms</a></li>
+<li><a href="algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="technical/README.html">Technical Mechanisms</a></li>
+<li><a href="technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="cases/README.html">Cases</a></li>
+<li><a href="cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html" aria-current="page">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="智能分区intelligent-segmentation设计--初版方案待-refute">智能分区（Intelligent Segmentation）设计 · 初版方案（待 REFUTE）</h1>
+<blockquote>
+<p>迭代目标（来自用户）：实现&quot;真正理解特征&quot;的多算法可配置分区；参考切片引擎与图形学找轮廓；
+做 3D 或 3→2→3 的真实特征识别；提供用户微调能力；以 golden samples 为验收标准。
+本文件为 PLAN 阶段初版，尚未实现。下一步交给对抗子 agent 证伪。</p>
+</blockquote>
+<h2 id="0-现有基础来自代码调研fileline-见-agent-报告">0. 现有基础（来自代码调研，file:line 见 agent 报告）</h2>
+<ul>
+<li><code>segment/mod.rs</code> 仅 4 行 <code>pub mod</code>，<strong>无统一 trait / 抽象</strong> —— 多算法调度的天然空位。</li>
+<li>已有两个 auto 命令：<code>auto_segment</code>（dihedral，<code>segment/dihedral.rs:75</code>）、<code>auto_segment_smart</code>（SDF，<code>sdf.rs:339</code>）。</li>
+<li>签名不统一：<code>segment_by_dihedral_angle(mesh, f32, &amp;ProgressFn)</code> vs <code>segment_by_sdf(mesh, u32)</code>（<strong>无 progress</strong>）。</li>
+<li><strong>真实 bug</strong>：<code>sdf.rs:30-72</code> 的 <code>consistent_normals</code> 会<strong>永久改写 <code>mesh.normals</code></strong>；之后若再跑 dihedral，法线已被翻转 → 多算法串联会污染。</li>
+<li><code>SegmentResult</code>（<code>commands/segment.rs:22-28</code>）已是通用返回体；前端 <code>updateSegmentLabels</code> / <code>aSegLabel</code> shader 高亮 / <code>SegmentsPanel</code> <strong>零改动</strong>即可复用。</li>
+<li>不变量：算法必须写 <code>mesh.segment_labels</code>（长度==faces.len()）并 <code>rebuild_segments()</code>；自动分割后 <code>mesh.history.clear()</code>；auto 标签 &lt; <code>MANUAL_SEGMENT_OFFSET</code>(100_000)；label 0 是合法分区。</li>
+<li>测试现状：dihedral <strong>0 测试</strong>；sdf 5 个；manual 9 个；无 <code>tests/</code> 目录（全内联 <code>#[cfg(test)]</code>）。</li>
+<li>依赖：<code>nalgebra 0.33</code>、<code>petgraph 0.6</code>、<code>kiddo 4</code>、<code>stl_io 0.7</code>（<strong>仅 STL</strong>）。<strong>无 OFF/OBJ loader，无 parry3d</strong>。</li>
+</ul>
+<h2 id="1-统一接口最小改动集">1. 统一接口（最小改动集）</h2>
+<p><code>segment/mod.rs</code> 新增：</p>
+<pre><code class="language-rust">pub enum SegmentationAlgorithm {
+    Dihedral { angle_threshold: f32 },          // 现有，包一层
+    ShapeDiameter { k: u32, cone_rays: u32, cone_half_angle: f32 }, // 现有 sdf，补 progress
+    CurvatureKMeans { k: u32, smoothing_iters: u32, use_sdf: bool }, // 新增
+    MultiView { views: u32, grid_res: u32, normal_tol: f32 },        // 新增 3→2→3
+    // ConcaveDecomp { .. }  // 推迟（需 parry3d/V-HACD，重依赖）
+}
+
+pub fn run_segmentation(
+    mesh: &amp;mut MeshModel,
+    algo: &amp;SegmentationAlgorithm,
+    on_progress: &amp;ProgressFn,
+) -&gt; Vec&lt;Segment&gt;;
+</code></pre>
+<ul>
+<li>两个旧命令保留（参数透传），新增 <code>auto_segment_v2(algorithm_json, params_json)</code> 复用 <code>SegmentResult</code>。</li>
+<li><code>ProgressFn = dyn Fn(f32, &amp;str) + Send + Sync</code>（沿用 <code>loader.rs:6</code>），<strong>所有算法必须 emit 进度</strong>（修 SDF 无进度）。</li>
+</ul>
+<h2 id="2-算法-adihedral保留现有仅包接口">2. 算法 A：Dihedral（保留现有，仅包接口）</h2>
+<p><code>dihedral.rs</code> 不动逻辑，仅让 <code>run_segmentation</code> 调用它。默认 <code>angle_threshold=30.0</code> 收口到一处（消除 <code>useTauriCommand.ts:41</code> / <code>Toolbar.tsx:89,105</code> 三处硬编码）。</p>
+<h2 id="3-算法-bshapediameter改进现有-sdf">3. 算法 B：ShapeDiameter（改进现有 SDF）</h2>
+<ul>
+<li>给 <code>segment_by_sdf</code> 加 <code>on_progress</code>，分 4 阶段 emit（锥形射线 / 空洞插补 / kmeans / 凹度合并）。</li>
+<li><strong>修副作用</strong>：<code>consistent_normals</code> 改为不写回 <code>mesh.normals</code>（返回 oriented 副本供 SDF 内部用），避免污染 dihedral 的后续调用。</li>
+<li>凹度合并阈值 <code>0.93</code> 提为命名常量 <code>SDF_CONCAVITY_DOT</code>。</li>
+<li>性能：删除 <code>sdf.rs:387</code> 在区域对循环内重复遍历 <code>edge_references()</code> 的 O(clusters²×E) 路径（改为预构建 RAG，与 dihedral 同构）。</li>
+</ul>
+<h2 id="4-算法-c新增curvaturekmeans--几何曲率特征聚类">4. 算法 C（新增）：CurvatureKMeans —— 几何/曲率特征聚类</h2>
+<p><strong>动机</strong>：dihedral 只看二面角（平/曲），无法区分&quot;厚装甲板 vs 细肢体&quot;&quot;凸球面 vs 平面&quot;。SDF 是厚度特征。把<strong>多特征</strong>联合聚类才能&quot;理解特征&quot;。</p>
+<ul>
+<li>逐面特征向量（全部归一化到 ~[0,1] 或 z-score）：
+<code>f = [mean_curvature, gaussian_curvature, |SDF|, normal·principalX, normal·principalY, normal·principalZ]</code><ul>
+<li>曲率用离散 Laplace-Beltrami（nalgebra 构造 cotangent 权重 Laplacian，<code>mesh.normals</code> + <code>face_adjacency</code>）。</li>
+<li>主方向用模型级 PCA（nalgebra <code>SymmetricEigen</code>）固定全局坐标系 → 法线投影稳定。</li>
+</ul>
+</li>
+<li><strong>可选</strong> <code>smoothing_iters</code>：Laplacian 平滑法线/曲率后再聚类（抗 STL 噪声；survey 指出曲率对噪声敏感）。</li>
+<li>K-means（Lloyd，20 轮，k-means++ 初始化：<code>k</code> 由用户配置，默认 6）。</li>
+<li><strong>连通性保证（关键）</strong>：纯 K-means 会产生空间不连通的&quot;碎片簇&quot;。后处理：用 <code>face_adjacency</code> 做区域邻接图（RAG），对每对相邻、但被分属不同簇的面，按&quot;特征距离 + 边界长度&quot;贪心合并小簇到大邻居（与 dihedral 的 <code>normal_consistency_merge</code> / <code>merge_small_regions_fast</code> 同构，复用其框架）。最终每个 label 是连通分量，匹配人类&quot;部件&quot;语义。</li>
+<li>阈值出处：合并 dot 阈值沿用 dihedral 的 <code>MERGE_NORMAL_DOT_THRESHOLD=0.93</code>（≈22°），与现有行为一致；<code>smoothing_iters</code> 默认 1（轻量）。</li>
+</ul>
+<h2 id="5-算法-d新增multiview-323--多视角投影分割">5. 算法 D（新增）：MultiView 3→2→3 —— 多视角投影分割</h2>
+<p><strong>动机</strong>：用户明确说&quot;先 3→2，处理，再 2→3&quot;。切片引擎（Orca/Prusa）靠&quot;可见性 + 投影&quot;做支撑/接缝绘制；SAMesh(2024) 用多视角渲染→SAM→回投→图社区检测得到部件分割。我们做<strong>经典版</strong>（无 SAM/PyTorch，纯 Rust）：</p>
+<ul>
+<li><strong>投影（3→2）</strong>：取 <code>views</code> 个相机（PCA 对齐后沿包围球均匀分布，如 6 或 12 方向；用 nalgebra 构造正交投影矩阵）。逐面质心投影到 (u,v)，记录 <code>depth</code>(沿视线)、<code>face_normal</code>、所属面 id。</li>
+<li><strong>2D 分割</strong>：对每个视角，把面按 (u,v) 落到 <code>grid_res×grid_res</code> 栅格；<strong>仅最近深度面</strong>占据该栅格单元（解决自遮挡歧义）。在同一单元及 8-邻域内、且法线夹角 &lt; <code>normal_tol</code> 的面聚为同一 2D 区域（连通分量标记）。</li>
+<li><strong>回投+融合（2→3）</strong>：每个面获得一组&quot;各视角 2D 区域 id&quot;。构建面图：若两面在<strong>任一</strong>视角同属一个 2D 区域则连边；对该图做 union-find / 轻量社区检测（petgraph）得到最终 3D 部件。</li>
+<li><strong>为什么有效</strong>：平面装甲板在多视角下投影稳定成大片连通 2D 区；球面在每个视角是圆盘；分叉肢体在多数视角被&quot;颈&quot;分开 → 多视角融合自然切出部件。与 SAMesh &quot;render→2D mask→match graph→community detection&quot; 架构一致，只是 2D 前端从 SAM 换成经典连通分量。</li>
+<li><strong>理论风险（待 REFUTE）</strong>：薄特征在少数视角被遮挡 → 该视角无标签；靠多视角覆盖 + 融合缓解。栅格分辨率与 <code>normal_tol</code> 是需调的旋钮。</li>
+</ul>
+<h2 id="6-concavedecompv-hacd-推迟">6. ConcaveDecomp（V-HACD）—— 推迟</h2>
+<ul>
+<li>parry3d 的 V-HACD 是&quot;近似凸分解&quot;，概念上最贴近&quot;把模型拆成可制造的部件（球体/护甲片）&quot;，但引入 parry3d 是<strong>重依赖</strong>（simba/crossbeam/大量几何代码），且 <code>vhacd-rs</code> 绑定陈旧(2017)。</li>
+<li><strong>决定</strong>：本轮不做，列入 backlog；若后续要&quot;工业级部件分解&quot;再单独评估（可能用 <code>vhacd-rs</code> 子仓库或自研体素分解）。</li>
+</ul>
+<h2 id="7-用户微调交互前端">7. 用户微调交互（前端）</h2>
+<ul>
+<li>新增 <code>IntelligentSegmentPanel</code>（参考 <code>BrushSettings.tsx</code> 的 docked 面板样式 + <code>appStore</code> 的 <code>brushRadius</code> 持久化模式）：<ul>
+<li>算法 <code>&lt;select&gt;</code>（Dihedral / ShapeDiameter / CurvatureKMeans / MultiView）。</li>
+<li>动态参数滑块：角度(dihedral)、k/rays( SDF)、k/smoothing(Curvature)、views/grid/tol(MultiView)。</li>
+<li>运行按钮 → <code>invoke(&quot;auto_segment_v2&quot;, {...})</code>。</li>
+</ul>
+</li>
+<li><strong>微调能力</strong>：分割后在 <code>SegmentsPanel</code> 支持&quot;合并选中分区&quot;&quot;拆分选中分区（按连通分量）&quot;&quot;重命名&quot;；并可调参后一键重跑（<code>mesh.history.clear()</code> 已处理撤销）。</li>
+<li>交互形态：用户说&quot;弹窗或直接切视口都行&quot; → 采用 <strong>docked 可折叠面板 + 高级参数 popover</strong>（非强制模态），与现有工具栏风格一致；不引入独立视口切换以免破坏 R3F 渲染状态。</li>
+</ul>
+<h2 id="8-验收标准golden-samples--psb-指标诚实评估非假满分">8. 验收标准：Golden Samples + PSB 指标（诚实评估，非假满分）</h2>
+<ul>
+<li><strong>新增最小 OFF loader</strong>（<code>mesh/load_off.rs</code>，OFF 是纯文本、约 40 行）：用于加载 PSB 黄金样本。</li>
+<li><strong>Golden samples</strong>：尝试从 Princeton Segmentation Benchmark 下载若干（19 类、人工 GT）；若沙箱下载受限，则<strong>确定性合成</strong>几个带已知 GT 的模型（双球融合=2 部件、球+盒、类人形）并明确标注为 synthetic。两者都进 <code>examples/golden/</code>。</li>
+<li><strong>PSB 指标实现</strong>（<code>segment/metrics.rs</code>）：<ul>
+<li>Rand Index（聚类一致性）</li>
+<li>Boundary Precision / Recall / F1（边界匹配，最关键，人类&quot;在哪切&quot;）</li>
+<li>Segmentation Consistency（对多份 GT 取均值，抗单一 GT 偏差）</li>
+</ul>
+</li>
+<li><strong>验收测试</strong>（<code>#[cfg(test)]</code> 或 <code>tests/accuracy.rs</code>）：每个算法跑 golden samples，打印并断言 <code>Boundary-F1 ≥ 基线</code>（基线由各算法在样本上的实测值回填，绝不预先拍脑袋写死通过阈值）。<strong>报告真实数值</strong>，不返回&quot;满分&quot;掩盖退化。</li>
+<li>离线 E2E 无法跑 Tauri 渲染，但 Rust 分割逻辑 + 指标可 <code>cargo test</code> 全绿；视觉验收仍由用户 <code>cargo tauri dev</code> 完成。</li>
+</ul>
+<h2 id="9-理论缺口清单提交-refute-的重点">9. 理论缺口清单（提交 REFUTE 的重点）</h2>
+<ul>
+<li>G1 <strong>连通性</strong>：K-means/Curvature 必产生不连通碎片，靠 RAG 合并；合并阈值拍错会过/欠分割 → 阈值需有出处 + 测试覆盖。</li>
+<li>G2 <strong>曲率噪声敏感</strong>：STL 噪声下曲率失效 → 需平滑，但平滑会抹掉真实锐边 → 迭代次数旋钮 + 默认保守。</li>
+<li>G3 <strong>MultiView 遮挡</strong>：薄特征单视角丢失 → 多视角 + 仅最近深度占格；<code>views/grid_res/normal_tol</code> 需调参协议。</li>
+<li>G4 <strong>重依赖</strong>：V-HACD 推迟，不阻塞。</li>
+<li>G5 <strong>假满分风险</strong>：golden GT 必须真实；synthetic 明确标注；指标阈值由实测回填，禁止 <code>!has_gt → 100</code>。</li>
+<li>G6 <strong>SDF 副作用 bug</strong>：先修 <code>consistent_normals</code> 不写回，否则多算法串联崩。</li>
+<li>G7 <strong>dihedral 递归 find 爆栈</strong>：超大网格风险，改为迭代式（backlog，本轮若顺手可修）。</li>
+<li>G8 <strong><code>seg_log()</code> 写源码目录</strong>：发布版会写文件，清理（backlog）。</li>
+</ul>
+<h2 id="10-实施分阶段最小改动优先">10. 实施分阶段（最小改动优先）</h2>
+<ol>
+<li>修 SDF 副作用 + 补 progress + 提常量（前置 bugfix，独立提交）。</li>
+<li>统一接口 <code>SegmentationAlgorithm</code> + <code>run_segmentation</code> + <code>auto_segment_v2</code>（行为不变，独立提交）。</li>
+<li>CurvatureKMeans（新算法 + 连通性合并 + 测试）。</li>
+<li>MultiView 3→2→3（新算法 + 测试）。</li>
+<li>OFF loader + golden samples + PSB 指标 + 验收测试。</li>
+<li>前端 <code>IntelligentSegmentPanel</code> + SegmentsPanel 微调（合并/拆分）。</li>
+<li>收口三处 <code>30.0</code> 硬编码；清理 <code>seg_log</code>。</li>
+</ol>
+<p>每步带测试，全套 <code>cargo test</code> 报告 &quot;X/X（原 N + K）&quot;。</p>
+<hr>
+<h2 id="99-refute-结论与修订对抗子-agent2026-08-09">99. REFUTE 结论与修订（对抗子 agent，2026-08-09）</h2>
+<p>子 agent 返回 <strong>7 个 blocker</strong>。逐条处置：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Blocker</th>
+<th>修订 / 处置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>SDF 性能误诊：真瓶颈在 <code>sdf.rs:172-174</code> kdtree 查询半径=全 bbox 对角线且放在射线循环内 → O(12·n²)；<code>:387</code> 处的 <code>edge_references()</code> 只是 k²·E≈3e8，差 5 个数量级</td>
+<td><strong>改</strong>：候选查询<strong>提出射线循环</strong>、且改用 <code>nearest_n(K)</code> 有界候选（<code>SDF_CANDIDATE_K=512</code>），成本降至 O(n·K·rays)。原 <code>:387</code> 全图重扫改为预构建 RAG（与 dihedral 同构）。</td>
+</tr>
+<tr>
+<td>2</td>
+<td>§4「RAG 贪心合并保证每个 label 连通」逻辑不可达：合并是单调运算，永不产生连通性</td>
+<td><strong>改</strong>：先对每个 k-means 簇做<strong>连通分量拆分</strong>（BFS over <code>face_adjacency</code>），再做小分量按<strong>特征距离</strong>合并。合并判据用特征欧氏距离，<strong>不复用</strong> dihedral 的 <code>0.93</code>（语义不同：区域平均法线 dot f64 vs 边界二面角 cos f32，且是 private const）。</td>
+</tr>
+<tr>
+<td>3</td>
+<td>§5 MultiView 融合算子方向反了：「任一视角同区即并查集连边」+ union-find 单调坍缩 → 视角越多越合并，传递闭包大概率并成 1 块；petgraph 0.6 无任何社区检测</td>
+<td><strong>砍掉本轮</strong>。正确版需带权 matching graph + 可切割算法（normalized cut / Louvain 自研），非最小改动。列入 backlog，附正确设计（见 §11）。用户说&quot;或者 3→2→3&quot;，3D 特征聚类（C+D）已满足&quot;真实特征识别&quot;。</td>
+</tr>
+<tr>
+<td>4</td>
+<td>§5 栅格占格 → 单例爆炸：多数面在所有视角无标签 → 各自成 label，击穿 <code>MANUAL_SEGMENT_OFFSET=100_000</code> 命名空间</td>
+<td>随 §5 砍掉而消解；若未来做，必须 cap label 数 &lt; 100_000。</td>
+</tr>
+<tr>
+<td>5</td>
+<td>标签命名空间被击穿：<code>rebuild_segments</code> 会把 ≥100_000 的 label 当手动分区改名+随机上色</td>
+<td>CurvatureKMeans 最终 label 数 = 最终连通分量数（k 小 + 小分量合并）→ 远 &lt; 100_000；加断言守卫。</td>
+</tr>
+<tr>
+<td>6</td>
+<td>§4 引入随机性（k-means++ 需 <code>rand</code>，但 <code>Cargo.toml</code> 无 <code>rand</code>；现有 <code>kmeans_1d</code> 明确 Deterministic）破坏确定性 → §8 断言 flaky</td>
+<td><strong>改</strong>：用<strong>确定性最远点播种</strong>（max 两两特征距离选种子，survey 提及），无 <code>rand</code> 依赖。</td>
+</tr>
+<tr>
+<td>7</td>
+<td>§8「基线由实测回填 + 断言 ≥ 基线」= 构造性绿灯（假满分换皮）；synthetic 双球/球+盒对 dihedral/SDF 平凡可分 → 四算法全 ~1.0，零区分度</td>
+<td><strong>改</strong>：阈值来自<strong>外部公开 PSB 基线</strong>（论文报告值）而非自测回填；synthetic 仅作 smoke（断言&quot;切出正确部件数&quot;这种非平凡拓扑事实，非假满分）；GT 缺失时测试 <code>skip</code>/<code>fail</code>，<strong>绝不计分</strong>。Rand 用列联表公式。</td>
+</tr>
+</tbody></table>
+<h3 id="其他-major-处置">其他 major 处置</h3>
+<ul>
+<li><strong>&quot;凹度合并&quot;名不副实</strong>：<code>sdf.rs:395</code> 的 <code>acos(dot)</code> 无符号，分不出凸/凹；§3 把 <code>0.93</code> 命名为 <code>SDF_CONCAVITY_DOT</code> 会把错误固化 → <strong>不命名常量</strong>，保留字面量并加注释说明其语义边界。</li>
+<li><strong>&quot;复用 dihedral 框架&quot;不成立</strong>：<code>normal_consistency_merge</code>/<code>merge_small_regions_fast</code> 是 private 且合并判据仍是法线 dot，曲率特征在合并阶段被丢弃 → CurvatureKMeans <strong>不调用</strong> dihedral 私有函数，自写&quot;连通拆分 + 特征距离合并&quot;。</li>
+<li><strong>PCA 特征非确定</strong>：主轴符号 ±、特征值简并（球/立方体）→ <code>normal·principalXYZ</code> 随机翻转，等于按朝向聚类 → <strong>特征向量剔除法线方向</strong>，只用 [曲率, |SDF|, 凸性] 内在描述子。</li>
+<li><strong>SDF 副作用修复会静默改行为</strong>：<code>consistent_normals</code> 不写回却不透传副本 → <code>segment_by_sdf_block_with_plate</code> 漂移 → <strong>改</strong>：<code>consistent_normals</code>→<code>oriented_normals(mesh)-&gt;Vec</code> 不写回；<code>compute_sdf</code>/<code>segment_by_sdf</code> 各自本地持有 oriented（新增 <code>compute_sdf_inner(mesh,&amp;oriented)</code>），<code>compute_sdf</code> 的 <code>pub</code> 签名与返回不变，测试不受影响。</li>
+<li><strong>&quot;一键重跑&quot;毁数据</strong>：<code>history.clear()</code> + 全量覆盖 labels，但 <code>face_colors</code> 保留手动色 → 颜色/标签失配且不可撤销 → 前端层面提示&quot;重跑将清除手动分区&quot;，后端重跑前 backup 当前 labels（backlog，本轮先不阻断）。</li>
+<li><strong>§8 指标命名</strong>：PSB 官方为 Cut Discrepancy / Hamming / Rand / Consistency Error；Boundary-F1 是派生代理，标注清楚。</li>
+<li><strong>OFF loader「40 行」低估</strong>：需 <code>.seg</code> GT 解析 + 面序对齐 + 复刻 <code>build_mesh</code> 全套前置 → 本轮不写 OFF loader；golden samples 用<strong>确定性合成 STL</strong>（双球/球+盒/类人形）写入 <code>examples/golden/</code>，并保留&quot;掉落真实 PSB .off 即自动启用&quot;的挂接点。</li>
+</ul>
+<h2 id="11-multiview-323-的正确设计backlog本轮不做">11. MultiView 3→2→3 的正确设计（backlog，本轮不做）</h2>
+<p>若未来做，必须：</p>
+<ol>
+<li>每个视角：面质心正交投影到 (u,v)，记录 depth + 2D 区域 id（仅最近深度面占栅格）。</li>
+<li>构建<strong>带权 match graph</strong>：边权 = 两面在<strong>多少个视角</strong>同属一个 2D 区域（≥T 视角才连边，T≥2，避免单视角巧合合并）。</li>
+<li>用<strong>可切割</strong>算法（normalized spectral cut 或自研 Louvain）切分，<strong>不是 union-find</strong>（union-find 单调不可切）。</li>
+<li>工业级替代：parry3d 的 V-HACD 近似凸分解（重依赖，单独评估）。</li>
+</ol>
+<h2 id="12-实现状态2026-08-07">12. 实现状态（2026-08-07）</h2>
+<h3 id="后端已全部落地b087c3c">后端（已全部落地，<code>b087c3c</code>）</h3>
+<ul>
+<li>§1 统一接口 <code>SegmentationAlgorithm</code>（serde 内部标签枚举，camelCase，契约由 <code>serde_wire_format_is_stable</code> 锁死）+ <code>run_segmentation</code> + <code>auto_segment_v2</code> 命令。</li>
+<li>§2 Dihedral、§3 ShapeDiameter（补 progress + 修 <code>consistent_normals</code> 不写回 <code>mesh.normals</code> 的副作用）、§4 CurvatureKMeans（确定性最远点播种 + 连通拆分 + 特征距离合并）。</li>
+<li>共享后处理 <code>postprocess.rs</code>：<code>split_connected_components</code> 沿棱角切割（特征∩棱角 交集，根治&quot;uniform 场聚一类&quot;），<code>merge_smooth_boundaries</code>（coplanar 必溶解 + 特征间距护栏），<code>min_region_faces(n)</code>（低面数模型不死坍），<code>finalize_segments</code>。</li>
+<li>验收：golden-sample harness 抓出 5 个真实 bug（cube 均匀场、SDF 噪声放大、共面对角、非传递 union、低面数溶解）；<code>cargo test --lib</code> <strong>74 passed / 0 failed</strong>。拓扑断言：cube→6（curv 双变体）、single_sphere→1（四算法）、two_spheres→2（四算法）；golden_eval 曲率(SDF) vs GT：Rand=1.000 / Boundary-F1=1.000 / Hamming=0.000。</li>
+</ul>
+<h3 id="前端本轮落地">前端（本轮落地）</h3>
+<ul>
+<li>§7 <code>IntelligentSegmentPanel</code> <strong>已实现</strong>，但形态为<strong>模态</strong>（沿用 ExportDialog overlay/dialog）而非原草案的 docked 面板——模态更低侵入、与 <code>appStore</code> persist 模式一致；算法集为 dihedral / shapeDiameter / curvatureKMeans（MultiView 按 §11 推迟）。</li>
+<li>收口 §2 / §10.7 三处 <code>30.0</code> 硬编码：导入自动分区改走 <code>autoSegmentV2(buildAlgorithm(持久化 or 默认 dihedral 30°, 参数))</code>；旧 <code>autoSegment</code> / <code>autoSegmentSmart</code> 钩子退役。</li>
+<li><code>appStore</code> 持久化 <code>lastAlgorithmParams</code>（<code>sanitizeAlgorithmParams</code> 值域校验）+ <code>lastSegmentKind</code>；<code>tsc --noEmit</code> 通过。</li>
+</ul>
+<h3 id="验收结论">验收结论</h3>
+<ul>
+<li><strong>诚实评估</strong>：后端 golden 拓扑断言全绿；但<strong>视觉/交互</strong>仍须先生 <code>cargo tauri dev</code> 手动复验（headless 无 Tauri runtime，依赖 IPC <code>invoke</code> 的模型加载/分区无法自动化）。</li>
+<li>推迟项（backlog）：MultiView 3→2→3（§11）、OFF loader + PSB 真实样本、SegmentsPanel 合并/拆分微调、dihedral 递归→迭代、重跑前 labels 备份。</li>
+</ul>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#0-现有基础来自代码调研fileline-见-agent-报告">0. 现有基础（来自代码调研，file:line 见 agent 报告）</a></li><li class="toc-h2"><a href="#1-统一接口最小改动集">1. 统一接口（最小改动集）</a></li><li class="toc-h2"><a href="#2-算法-adihedral保留现有仅包接口">2. 算法 A：Dihedral（保留现有，仅包接口）</a></li><li class="toc-h2"><a href="#3-算法-bshapediameter改进现有-sdf">3. 算法 B：ShapeDiameter（改进现有 SDF）</a></li><li class="toc-h2"><a href="#4-算法-c新增curvaturekmeans--几何曲率特征聚类">4. 算法 C（新增）：CurvatureKMeans —— 几何/曲率特征聚类</a></li><li class="toc-h2"><a href="#5-算法-d新增multiview-323--多视角投影分割">5. 算法 D（新增）：MultiView 3→2→3 —— 多视角投影分割</a></li><li class="toc-h2"><a href="#6-concavedecompv-hacd-推迟">6. ConcaveDecomp（V-HACD）—— 推迟</a></li><li class="toc-h2"><a href="#7-用户微调交互前端">7. 用户微调交互（前端）</a></li><li class="toc-h2"><a href="#8-验收标准golden-samples--psb-指标诚实评估非假满分">8. 验收标准：Golden Samples + PSB 指标（诚实评估，非假满分）</a></li><li class="toc-h2"><a href="#9-理论缺口清单提交-refute-的重点">9. 理论缺口清单（提交 REFUTE 的重点）</a></li><li class="toc-h2"><a href="#10-实施分阶段最小改动优先">10. 实施分阶段（最小改动优先）</a></li><li class="toc-h2"><a href="#99-refute-结论与修订对抗子-agent2026-08-09">99. REFUTE 结论与修订（对抗子 agent，2026-08-09）</a></li><li class="toc-h3"><a href="#其他-major-处置">其他 major 处置</a></li><li class="toc-h2"><a href="#11-multiview-323-的正确设计backlog本轮不做">11. MultiView 3→2→3 的正确设计（backlog，本轮不做）</a></li><li class="toc-h2"><a href="#12-实现状态2026-08-07">12. 实现状态（2026-08-07）</a></li><li class="toc-h3"><a href="#后端已全部落地b087c3c">后端（已全部落地，b087c3c）</a></li><li class="toc-h3"><a href="#前端本轮落地">前端（本轮落地）</a></li><li class="toc-h3"><a href="#验收结论">验收结论</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+        lineColor: "#64748b", fontSize: "14px",
+        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>

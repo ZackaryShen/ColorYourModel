@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>眼睛区域语义识别 — 研究储备与实现技术方案 · ColorYourModel Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.lang-toggle, .gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="..%5CREADME.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../README.html">Home (EN)</a></li>
+<li><a href="../README.zh-CN.html">首页（中文）</a></li>
+<li><a href="../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="algorithms/README.html">Algorithms</a></li>
+<li><a href="algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="technical/README.html">Technical Mechanisms</a></li>
+<li><a href="technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="cases/README.html">Cases</a></li>
+<li><a href="cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="眼睛区域语义识别--研究储备与实现技术方案">眼睛区域语义识别 — 研究储备与实现技术方案</h1>
+<blockquote>
+<p>配套：<code>docs/08</code> 既有算法、<code>docs/09</code> 三层融合研究、<code>docs/03</code> 复盘沉淀。
+本文档针对「在 cat.stl 类萌系模型上把眼睛拆成眼球/眼白/眼睑/眼眶 4 个语义区」这一具体需求，给出<strong>理论与实现路径</strong>。结论：<strong>不造新轮子，全部依赖现有几何基础设施（curvature / concavity / kdtree / adjacency）+ 一个新的「语义排序 + 形态聚类」轻量模块即可</strong>。
+范围：知识储备 + 集成架构 + 可落地方案（尚未实现代码；待先生审查后进入对抗 REFUTE）。</p>
+</blockquote>
+<hr>
+<h2 id="0-背景与定位">0. 背景与定位</h2>
+<h3 id="01-用户原话与图示">0.1 用户原话与图示</h3>
+<ul>
+<li>用户在 cat.stl（25 MB，单色，无 UV / 无 texture）上想识别：<ul>
+<li><strong>眼球（eyeball）</strong> — 球面/凸曲面，外面一层</li>
+<li><strong>眼白（sclera）</strong> — 球面的浅色区（因单色不可靠，<strong>v1 仅作提示标签，不强求</strong>）</li>
+<li><strong>眼睑 / 眼皮（eyelid）</strong> — 包住眼球的曲面，可能呈环状或月牙</li>
+<li><strong>眼眶（eye socket）</strong> — 凹陷的&quot;洞&quot;，包含整个眼部区域</li>
+</ul>
+</li>
+<li>角度敏感：cat 头像眼睛从正面/俯视/侧视形态变化大；算法应<strong>多视角一致</strong>。</li>
+</ul>
+<h3 id="02-为什么现有多层算法搞不定">0.2 为什么现有多层算法搞不定</h3>
+<table>
+<thead>
+<tr>
+<th>现有算法</th>
+<th>局限</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer1 planar（连续平面）</td>
+<td>眼睛曲面 = 高曲率非平面，根本不进平面区</td>
+</tr>
+<tr>
+<td>Layer3 MultiView（3→2→3）</td>
+<td>切到&quot;眼周&quot;为止，<strong>不会细到眼睑 vs 眼球</strong>——看截图绿色块实际是「前额+眉毛+上眼睑+鼻子」一坨</td>
+</tr>
+<tr>
+<td>Layer2 cross-section（截面特征）</td>
+<td>截面是平面证据，非面级，不能切出&quot;眼球曲面&quot;</td>
+</tr>
+<tr>
+<td>Layer4 edge vote</td>
+<td>取决于上游 planar/多层给的边界，眼部内部边界本来就缺</td>
+</tr>
+</tbody></table>
+<p>→ <strong>新增&quot;形态-语义&quot;层</strong>：用几何局部描述子（曲率符号 + 凹凸 + 局部拟合球度）做区域聚类，<strong>仅作用于「眼部候选 ROIs」</strong>——不替代 MultiView，而是 MultiView 之后的细精步骤。</p>
+<hr>
+<h2 id="1-知识储备眼睛在-3d-网格上的可识别特征">1. 知识储备：眼睛在 3D 网格上的可识别特征</h2>
+<h3 id="11-几何描述子可直接复用现有函数">1.1 几何描述子（可直接复用现有函数）</h3>
+<table>
+<thead>
+<tr>
+<th>描述子</th>
+<th>含义</th>
+<th>区分能力</th>
+<th>仓库函数</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>顶点高斯曲率 K</td>
+<td>离散化的 Gauss-Bonnet</td>
+<td>凸(K&gt;0) vs 凹(K&lt;0) vs 鞍(K&lt;0)</td>
+<td><code>concavity::vertex_gaussian_curvature</code></td>
+</tr>
+<tr>
+<td>顶点 concavity flag</td>
+<td>多数邻接 fold 内凹</td>
+<td>局部是否&quot;在凹处&quot;</td>
+<td><code>concavity::vertex_concavity</code></td>
+</tr>
+<tr>
+<td>面 concavity score</td>
+<td>三角面 concavity 占比</td>
+<td>面是否属于&quot;凹区&quot;</td>
+<td><code>recommend::face_concavity_scores</code></td>
+</tr>
+<tr>
+<td>顶点法向</td>
+<td>单位向量</td>
+<td>&quot;朝外&quot;</td>
+<td><code>mesh.normals</code> (派生)</td>
+</tr>
+<tr>
+<td>邻接 face → face</td>
+<td>face_adjacency</td>
+<td>邻接查询 O(1)</td>
+<td><code>mesh.face_adjacency</code></td>
+</tr>
+<tr>
+<td>kdtree 半径查询</td>
+<td>半径 r 内面/顶点</td>
+<td>局部聚类</td>
+<td><code>mesh.face_kdtree</code> / <code>mesh.vertex_kdtree</code></td>
+</tr>
+</tbody></table>
+<h3 id="12-形态学描述子需新增">1.2 形态学描述子（需新增）</h3>
+<table>
+<thead>
+<tr>
+<th>描述子</th>
+<th>算法</th>
+<th>含义</th>
+<th>适用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>局部球度</strong> <code>S(v)</code></td>
+<td>以 v 为中心取半径 r（≈ M·2，M = 平均边长）的面集合，最小二乘拟合球 → 残差 e，球度 <code>S = 1 / (1 + e/r²)</code></td>
+<td>1=完美球冠，0=平面/无规则</td>
+<td><strong>眼球/眼眶边缘检测</strong></td>
+</tr>
+<tr>
+<td><strong>二面角峰度</strong></td>
+<td>邻接 face 对的二面角分布 <code>mean / std</code></td>
+<td>高峰度=单方向急剧转折=眼睑折痕</td>
+<td>眼睑边缘</td>
+</tr>
+<tr>
+<td><strong>区域紧致度</strong></td>
+<td>区域 = ROI 的 face 集合；紧致度 = <code>area³ / (perimeter·... )</code></td>
+<td>紧凑球状 vs 扁环状</td>
+<td>眼球 vs 眼睑环</td>
+</tr>
+<tr>
+<td><strong>法向一致性</strong></td>
+<td>ROI 内 face_normal 在主轴上的标准差</td>
+<td>0=全朝外（凸），高=混乱</td>
+<td>眼球强一致，眼眶混乱</td>
+</tr>
+</tbody></table>
+<h3 id="13-语义排序眼球--眼白--眼睑--眼眶的判别规则">1.3 语义排序：眼球 / 眼白 / 眼睑 / 眼眶的判别规则</h3>
+<table>
+<thead>
+<tr>
+<th>区域</th>
+<th>局部球度</th>
+<th>concavity</th>
+<th>紧致度</th>
+<th>法向一致性</th>
+<th>典型大小</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>眼球</strong></td>
+<td>高（&gt;0.7）</td>
+<td>凸（≈0）</td>
+<td>高</td>
+<td>高</td>
+<td>较小（局部）</td>
+</tr>
+<tr>
+<td><strong>眼白</strong></td>
+<td>高（&gt;0.6）</td>
+<td>凸</td>
+<td>高</td>
+<td>高</td>
+<td>同眼球 / 包眼球外层</td>
+</tr>
+<tr>
+<td><strong>眼睑</strong></td>
+<td>中（0.3-0.7）</td>
+<td>边缘凹折</td>
+<td>中（环</td>
+<td>弧）</td>
+<td>中</td>
+</tr>
+<tr>
+<td><strong>眼眶</strong></td>
+<td>低（&lt;0.4）</td>
+<td>凹（&gt;0）</td>
+<td>低</td>
+<td>低</td>
+<td>较大（整体眼眶区）</td>
+</tr>
+</tbody></table>
+<h3 id="14-眼球-vs-眼白-区分v1迭代先生决策4-区都要">1.4 眼球 vs 眼白 区分（v1，迭代先生决策：4 区都要）</h3>
+<p><strong>几何观察</strong>：眼白是&quot;暴露在眼睑开口内的眼球外层&quot;，与眼球共享凸球面但<strong>位置更靠近 ROI 外缘</strong>（与眼睑折痕相邻）。</p>
+<p><strong>v1 区分策略</strong>（先生拍板）：</p>
+<ol>
+<li>ROI 内做局部 RANSAC 球拟合，识别出<strong>所有 S&gt;0.6 的凸面元组</strong> → 候选眼球集合。</li>
+<li>对每个候选凸面元组：<ul>
+<li><strong>到 ROI 边缘最短距离</strong> &lt; <code>d_innner_ratio * r_roi</code>（默认 0.6）→ 判为 <strong>眼球</strong>（被眼睑包住的内部球）</li>
+<li>反之，<strong>紧贴眼球、且与眼球法向一致（&lt;π/8 角度差）</strong>、单层厚度 → 判为 <strong>眼白</strong></li>
+</ul>
+</li>
+<li>单色模型无法靠&quot;白色&quot;判眼白，纯靠&quot;位置 + 法向&quot;——v1 接受偶尔误判。</li>
+</ol>
+<p><strong>退化方案</strong>：若 ROI 过小（候选凸面 &lt; 30 face），眼球与眼白合并为 <code>globe+</code> 一个区，状态消息告知先生手动 lasso 拆分。</p>
+<hr>
+<h2 id="2-算法框架候选对比">2. 算法框架（候选对比）</h2>
+<h3 id="候选-a多视角-roi-抽取--局部形态聚类推荐">候选 A：<strong>多视角 ROI 抽取 + 局部形态聚类</strong>（推荐）</h3>
+<pre><code>1. MultiView 找出&quot;眼周&quot;候选 face 集合（已有边界 ≈ 眼眶外轮廓）
+2. 对每个候选区域：
+   a. 半径 r 内拟合球，识别球冠 → label: globe/sclera
+   b. 球冠之外剩余区域：concavity &gt; 0.5 → socket；否则 → eyelid
+   c. 用 face_adjacency 的二面角峰度识别 eyelid 边缘折痕
+3. 输出 Vec&lt;EyeRegion&gt; 同 MultiViewRegion 结构
+</code></pre>
+<p><strong>优点</strong>：直接复用现有几何工具，几行新代码；MultiView 给 ROI 后筛 ROI 内子区，<strong>避免在 56 万面 mesh 上跑全量形态分析</strong>（性能关键）。
+<strong>缺点</strong>：依赖 MultiView 给的眼周 ROI 准确；若 MultiView 把眼周并入&quot;额头&quot;块就会漏——但这正是多层融合的动机（fuse 后再 eye-detect）。</p>
+<h3 id="候选-b全-mesh-形态聚类">候选 B：<strong>全 mesh 形态聚类</strong></h3>
+<p>对每个面算 (S, concavity, compactness) 三维描述子，k-means 聚类 → 标签按 (S, concavity) 映射。</p>
+<p><strong>优点</strong>：不依赖 MultiView，可独立运行。
+<strong>缺点</strong>：56 万面 → 1M+ 描述子 → 内存爆；k-means K=4 不知哪个簇是&quot;眼球&quot;，需后处理标签映射；跨模型无 anchor 不可靠。
+<strong>否决</strong>：性能与可解释性双重失败。</p>
+<h3 id="候选-c3dmm--深度学习meshcnnpointnet3d-semantic-segmentation">候选 C：<strong>3DMM / 深度学习</strong>（MeshCNN、PointNet++、3D semantic segmentation）</h3>
+<p><strong>否决</strong>：</p>
+<ol>
+<li>需要训练数据（人脸/猫脸 mesh 数据集稀缺）；</li>
+<li>Tauri 端引入 PyTorch/TensorFlow 模型 200MB+，违背&quot;轻量纯几何&quot;路线；</li>
+<li>论文级工程，与本项目&quot;算法融合层&quot;定位不匹配。</li>
+</ol>
+<hr>
+<h2 id="3-数据流与模块边界">3. 数据流与模块边界</h2>
+<h3 id="31-后端新模块">3.1 后端新模块</h3>
+<pre><code>src-tauri/src/segment/eye/
+  mod.rs             // pub fn detect_eye_regions(mesh, roi_faces: &amp;[u32]) -&gt; Vec&lt;EyeRegion&gt;
+  roi.rs             // 局部球拟合 RANSAC + 形态描述子
+  classify.rs        // 描述子 → 语义标签 (socket|eyelid|globe|sclera)
+</code></pre>
+<p><strong>复用</strong>：</p>
+<ul>
+<li><code>concavity::vertex_gaussian_curvature</code> / <code>vertex_concavity</code></li>
+<li><code>recommend::face_concavity_scores</code></li>
+<li><code>mesh.face_adjacency</code> / <code>face_kdtree</code></li>
+</ul>
+<p><strong>新增</strong>：</p>
+<ul>
+<li>局部 RANSAC 球拟合（~80 行）</li>
+<li>二面角峰度（~20 行）</li>
+<li>标签分类表（~30 行硬编码映射 + 出处注释）</li>
+</ul>
+<h3 id="32-输出结构与-multiviewregion-同构">3.2 输出结构（与 MultiViewRegion 同构）</h3>
+<pre><code class="language-rust">pub struct EyeRegion {
+    pub semantic: EyeLabel,       // Socket | Eyelid | Globe | Sclera
+    pub face_indices: Vec&lt;u32&gt;,   // 该区面成员（与 planar/multiview 一致，便于 fuse）
+    pub boundary_edges: Vec&lt;[[f32; 3]; 2]&gt;,
+    pub center: [f32; 3],         // 区域中心，便于&quot;眼睛1/眼睛2&quot;匹配
+    pub confidence: f32,          // 0..1，分类置信度
+}
+</code></pre>
+<h3 id="33-roi-输入接口先生决策multiview--lasso-兜底">3.3 ROI 输入接口（先生决策：MultiView + lasso 兜底）</h3>
+<pre><code class="language-rust">pub enum EyeRoiSource {
+    /// 由 MultiView 自动识别的&quot;眼周&quot;块名（v1 默认）：传入 MultiViewRegion 的 face_indices
+    FromMultiView { region_face_indices: Vec&lt;u32&gt; },
+    /// 先生手动 lasso 圈选（兜底）：传入面索引集合
+    FromLasso { selected_face_indices: Vec&lt;u32&gt; },
+    /// 全 mesh 扫描（候选 B，v1 不实现，留接口）
+    WholeMesh,
+}
+pub fn detect_eye_regions(mesh: &amp;MeshModel, roi: EyeRoiSource) -&gt; Vec&lt;EyeRegion&gt;;
+</code></pre>
+<h3 id="33-命令与前端">3.3 命令与前端</h3>
+<ul>
+<li>后端命令 <code>detect_eye_regions(roi_strategy: String) -&gt; Vec&lt;EyeRegion&gt;</code></li>
+<li>前端 <code>useTauriCommand</code> 加 <code>detectEyeRegions</code></li>
+<li>SeedPanel 新增「👁 眼睛识别」按钮（独立于现有三算法 / 融合按钮，<strong>避免误触</strong>）</li>
+<li>Viewport 用新颜色：眼球=<code>#fbbf24</code>(琥珀)、眼睑=<code>#ec4899</code>(粉)、眼眶=<code>#6366f1</code>(靛)</li>
+<li>标签直进 <code>suggestedSeeds</code>（v1 只作证据，与 Layer2 一致，不入裁决）</li>
+</ul>
+<h3 id="34-与-layer-4-融合的关系v2-视角">3.4 与 Layer 4 融合的关系（v2 视角）</h3>
+<p>未来：把 EyeRegion 也规约成&quot;边级投票&quot;加入 Layer 4 fuse。</p>
+<ul>
+<li>眼球曲面边界 → 投 cut</li>
+<li>眼眶凹区边界 → 投 cut</li>
+<li>平滑过渡 → 不投
+<strong>v1 不实现</strong>，避免一次引入两个新维度（&quot;ROI 输入 + 投票者&quot;），先验证&quot;算法层 ROI 内子区&quot;逻辑。</li>
+</ul>
+<hr>
+<h2 id="4-失败案例--退化输入">4. 失败案例 / 退化输入</h2>
+<table>
+<thead>
+<tr>
+<th>退化情形</th>
+<th>期望行为</th>
+<th>实际行为（v1）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>模型无眼睛（如纯几何 cube）</td>
+<td>返回空 Vec</td>
+<td>已检测到 roi_faces=空 → 早退，OK</td>
+</tr>
+<tr>
+<td>MultiView 错把眼睛并入额头</td>
+<td>眼睛漏识别</td>
+<td>v1 接受，v2 加 EyeRegion 投票补刀</td>
+</tr>
+<tr>
+<td>单只眼睛（猫侧视）</td>
+<td>识别 1 个 socket + 1 个 globe</td>
+<td>OK（数量自适应）</td>
+</tr>
+<tr>
+<td>闭眼（眼睑完全覆盖）</td>
+<td>仅识别 socket + eyelid，无 globe</td>
+<td>OK（globe 要求 S&gt;0.7 阈值下自然为空）</td>
+</tr>
+<tr>
+<td>卡通&quot;超大眼睛&quot;（与身体 1:1）</td>
+<td>可能把鼻子/嘴误识别成 eye</td>
+<td>v1 接受；先生在 SeedPanel 选 ROI 限定</td>
+</tr>
+<tr>
+<td>模型有 UV 但不用</td>
+<td>不依赖 UV，仅 mesh</td>
+<td>OK</td>
+</tr>
+<tr>
+<td>50 MB 大模型（cat.stl 25 MB）</td>
+<td>&lt;2s 跑完眼睛检测</td>
+<td>ROI 内（~2-5k face）做形态分析应 &lt;500ms</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="5-可调参数暴露给前端v2-再说">5. 可调参数（暴露给前端？v2 再说）</h2>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认</th>
+<th>出处 / 含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>ball_radius_ratio</code></td>
+<td>2.0 (×M 平均边长)</td>
+<td>RANSAC 邻域半径</td>
+</tr>
+<tr>
+<td><code>sphere_inlier_threshold</code></td>
+<td>0.15</td>
+<td>球拟合残差阈值（相对半径）</td>
+</tr>
+<tr>
+<td><code>concavity_threshold</code></td>
+<td>0.5</td>
+<td>判定眼眶的 concavity 下限</td>
+</tr>
+<tr>
+<td><code>compactness_threshold</code></td>
+<td>0.5</td>
+<td>判定眼睑环的紧致度下限</td>
+</tr>
+<tr>
+<td><code>min_region_faces</code></td>
+<td>50</td>
+<td>极小区域过滤</td>
+</tr>
+</tbody></table>
+<p>v1 全部固定写死，<strong>前端不可调</strong>（与现有 planar/multiview 行为一致——先生已接受 v1 固定阈值策略，v2 再暴露）。</p>
+<hr>
+<h2 id="6-测试计划">6. 测试计划</h2>
+<h3 id="61-单元必跑">6.1 单元（必跑）</h3>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Mesh</th>
+<th>期望</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>无眼 cube</td>
+<td>单 cube</td>
+<td>EyeRegion = []</td>
+</tr>
+<tr>
+<td>简单球体（模拟眼球）</td>
+<td>UV sphere R=1</td>
+<td>1 个 Globe（若 ROI 给定）；ROI 空时 []</td>
+</tr>
+<tr>
+<td>球+环面（模拟&quot;球+周围环&quot;）</td>
+<td>Sphere + Torus</td>
+<td>给 sphere 区域作 ROI → 1 Globe + 1 Eyelid（环）</td>
+</tr>
+<tr>
+<td>假 mesh：凹坑半球</td>
+<td>半球面</td>
+<td>1 Socket（凹区）或 1 Globe（凸区），取决于 concavity 阈值</td>
+</tr>
+</tbody></table>
+<h3 id="62-e2e手工先生做">6.2 E2E（手工，先生做）</h3>
+<p>先生装包后跑 cat.stl：</p>
+<ol>
+<li>先 MultiView → 看眼周是否被单独分块</li>
+<li>若 ROI 找不准：先生用 lasso 圈眼部 → 触发&quot;限定 ROI 模式&quot;的 eye 检测（v1 留口子）</li>
+<li>若 ROI 准：自动跑 → 检查眼睑/眼球标签是否合理</li>
+</ol>
+<h3 id="63-验收与-layer-4-fuse-联合">6.3 验收（与 Layer 4 fuse 联合）</h3>
+<p>先生反馈：</p>
+<ul>
+<li>眼睛各部分是否被正确区分？</li>
+<li>颜色标注是否可读？</li>
+<li>是否需要把 EyeRegion 加进 fuse？</li>
+</ul>
+<hr>
+<h2 id="7-范围与放弃">7. 范围与放弃</h2>
+<p><strong>v1 范围（首版）</strong>：</p>
+<ul>
+<li>后端 eye 模块 + detect_eye_regions 命令 + 单测</li>
+<li>前端「👁 眼睛识别」按钮 + Viewport 颜色标注</li>
+<li>不入 Layer 4 fuse、不暴露参数、不依赖 UV/纹理</li>
+</ul>
+<p><strong>显式 deferred（v2）</strong>：</p>
+<ul>
+<li>眼球/眼白区分（单色模型难以，仅作 label 提示）</li>
+<li>EyeRegion 加入 Layer 4 边级投票</li>
+<li>暴露参数面板</li>
+<li>闭眼状态特殊处理</li>
+<li>端到端 PSB/真实模型基准</li>
+</ul>
+<hr>
+<h2 id="8-风险与缓解">8. 风险与缓解</h2>
+<table>
+<thead>
+<tr>
+<th>风险</th>
+<th>概率</th>
+<th>影响</th>
+<th>缓解</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>MultiView ROI 不准导致漏识别</td>
+<td>高</td>
+<td>中</td>
+<td>留 lasso 限定 ROI 入口</td>
+</tr>
+<tr>
+<td>局部球拟合在密集三角形区域慢</td>
+<td>中</td>
+<td>低</td>
+<td>RANSAC 采样 face 不超过 200；邻域半径自适应</td>
+</tr>
+<tr>
+<td>法向一致性在凹区域失真</td>
+<td>中</td>
+<td>中</td>
+<td>仅在 concavity &lt; 0.3 区域计算，避免噪声</td>
+</tr>
+<tr>
+<td>先生对颜色不满</td>
+<td>低</td>
+<td>低</td>
+<td>颜色在 EyeRegion.semantic → hex 表硬编码，0 改动改一行</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="9-参考文献区别于-08--09">9. 参考文献（区别于 08 / 09）</h2>
+<ul>
+<li>局部球拟合：RANSAC sphere fitting, Schnabel et al. 2007 &quot;Efficient RANSAC for Point Cloud Shape Detection&quot;</li>
+<li>形态学描述子：Gal et al. 2007 &quot;Pose and Shape Recovery from Sparse 3D Data&quot;（局部 shape diameter / sphere fitting）</li>
+<li>眼睛分割数据集（v2 参考）：Daniilidis 2018 3D face landmark datasets</li>
+<li>3D 语义分割 baseline：Qi et al. 2017 PointNet++</li>
+</ul>
+<hr>
+<h2 id="10-决策点待先生审查">10. 决策点（待先生审查）</h2>
+<ol>
+<li><strong>方案 A vs B vs C</strong> — 选 A？</li>
+<li><strong>v1 范围</strong> — 是否同意&quot;眼球/眼白合并、仅作提示&quot;？</li>
+<li><strong>ROI 来源</strong> — v1 用 MultiView 自动 ROI，留 lasso 兜底，可接受？</li>
+<li><strong>Label 颜色</strong> — 琥珀/粉/靛 OK？还是要常规色（青/橙/绿）？</li>
+<li><strong>是否进入对抗 REFUTE 阶段</strong>（派独立 agent 证伪）？</li>
+</ol>
+<hr>
+<h2 id="11-对抗-refute-审查结论已收到先生决策后进入-revise">11. 对抗 REFUTE 审查结论（已收到，先生决策后进入 REVISE）</h2>
+<p>REFUTE agent 对 docs/10 v1 方案给出 <strong>3 blocker + 7 major + 4 minor</strong>。摘要：</p>
+<h3 id="blocker">Blocker</h3>
+<ol>
+<li>局部球度 <code>S = 1/(1+e/r²)</code> 对<strong>共面点退化</strong>（平面 RANSAC 球半径→∞、残差→0，S≈1）——平坦脸颊与球面眼球 S 均≈1，<strong>无法区分球 vs 平面</strong>，候选 A 主判别器作废。</li>
+<li><strong>眼球/眼白距离判据写反</strong>——&quot;到 ROI 边缘 &lt; 0.6·r_roi&quot; 应是&quot;外缘=眼白&quot;，方案写反成&quot;小距离=眼球&quot;。</li>
+<li><strong>MultiView ROI 前提虚假</strong>——MultiView 按法向一致（20°）生长，弯曲眼球法向跨 &gt;20° 必切碎、平坦额头跨眼部合并；<strong>实际产物是&quot;额头+眉毛+眼睑+鼻子&quot;一坨</strong>，不产生&quot;眼周 ROI&quot;。</li>
+</ol>
+<h3 id="major节选">Major（节选）</h3>
+<ol start="4">
+<li><code>face_concavity_scores</code> 返回离散 {0, .333, .667, 1.0}，<code>&gt;0.5</code> 等价&quot;≥2/3 顶点凹&quot;，与既有 concavity 语义错位。</li>
+<li>闭眼退化假设错误——折痕 S&gt;0.6 会产<strong>假 globe</strong>。</li>
+<li><code>compactness_threshold</code> 死参数（从未使用）。</li>
+<li>候选 B 否决理由&quot;内存爆&quot;虚假（1.5M 面 × 3 float ≈ 17MB）。</li>
+<li>v1 四区与&quot;单色不可靠&quot;自相矛盾。</li>
+<li><code>EyeRegion → suggestedSeeds</code> 接线未定义（<code>recommend_seeds</code> 消费 <code>SeedSuggestion</code>，需 adapter）。</li>
+</ol>
+<hr>
+<h2 id="12-revise--修订后的方案请先生审批">12. REVISE — 修订后的方案（请先生审批）</h2>
+<p><strong>核心转变</strong>：v1 不再依赖 MultiView 自动 ROI，<strong>入口改为先生手动 lasso 圈选眼睛</strong>——保留自动模式作 v2。</p>
+<h3 id="121-修订要点采纳反驳显式-deferred">12.1 修订要点（采纳/反驳/显式 deferred）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>类型</th>
+<th>处置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>采纳</td>
+<td>球度改用 <strong>球-平面 inlier 计数比</strong>：<code>R = sphere_inliers / (sphere_inliers + plane_inliers)</code>；face 与球心-半径模型 AND 与平面模型都拟合，取 inlier 数。R&gt;0.5 判凸球冠，否则不投。<strong>彻底消除平面退化</strong></td>
+</tr>
+<tr>
+<td>2</td>
+<td>采纳</td>
+<td>距离判据改：<strong>ROI 边缘 &lt; 0.4·r_roi 判眼白</strong>（外缘）、<strong>0.4~0.85 判眼球</strong>（中环）、<strong>&gt;0.85 判 socket 内部</strong>，单色模型简化为三层环带</td>
+</tr>
+<tr>
+<td>3</td>
+<td>采纳</td>
+<td><strong>v1 入口 = 仅 lasso</strong>（手动圈选）；先生点 SeedPanel「眼睛识别」按钮 → 在视口圈出眼部区域 → 触发检测。先生决策已包含&quot;lasso 兜底&quot;，现在反过来作为 v1 主入口</td>
+</tr>
+<tr>
+<td>4</td>
+<td>采纳</td>
+<td>concavity 改用<strong>绝对凹度</strong>：用 <code>concavity::vertex_concavity</code> 的 0/1 flag 做面投票（≥2/3 顶点凹 → 凹面）；折痕 vs 眼眶靠<strong>二面角峰度</strong>区分（折痕峰度高，眼眶广布低峰）</td>
+</tr>
+<tr>
+<td>5</td>
+<td>采纳</td>
+<td>闭眼路径：若 ROI 内凸球冠 &lt; 30 face，globe 标 <code>GlobeClosed = false</code>（v1 输出 Eyelid only 状态），先生状态栏提示&quot;未发现眼球，疑似闭眼&quot;</td>
+</tr>
+<tr>
+<td>6</td>
+<td>采纳</td>
+<td>删 <code>compactness_threshold</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td>反驳</td>
+<td>候选 B 否决理由改为&quot;全 mesh 形态聚类无簇锚点，跨模型不可靠&quot;（&quot;内存爆&quot;理由撤回）</td>
+</tr>
+<tr>
+<td>8</td>
+<td>采纳</td>
+<td>v1 sclera 标为 <strong>Heuristic label</strong>，confidence ≤ 0.5；先生若不满可手动 lasso 二次细分</td>
+</tr>
+<tr>
+<td>9</td>
+<td>采纳</td>
+<td>写代码前先<strong>实测 MultiView 在 cat.stl 上的 ROI 规模</strong>，作为 v2 自动入口的可行性证据（<strong>不算 v1 阻塞</strong>）</td>
+</tr>
+<tr>
+<td>10</td>
+<td>采纳</td>
+<td>EyeRegion → suggestedSeeds 走一个 adapter：<code>EyeRegion → (point, face_index) → SeedSuggestion</code>，先生点 ghost marker 可采纳</td>
+</tr>
+</tbody></table>
+<h3 id="122-v1-修订后的方案">12.2 v1 修订后的方案</h3>
+<pre><code>1. 入口：先生在 SeedPanel 点「👁 眼睛识别」→ 视口进入 lasso 模式 → 圈选眼睛 ROI
+2. ROI 输入：lasso 选中的 face_indices → EyeRoiSource::FromLasso
+3. ROI 内处理：
+   a. 顶点级球/平面 RANSAC inlier 比 → 凸球冠面集合 (R&gt;0.5)
+   b. 凸球冠 + ROI 距离分三环 → Sclera(外) / Globe(中) / Socket 内壁（环外）
+   c. ROI 内剩余非凸面：按 vertex_concavity 投票（≥2/3 顶点凹 → socket）/ 二面角峰度高 → Eyelid
+   d. 闭眼 fallback：凸球冠 &lt; 30 face → globe/sclera 标 absent，状态栏提示
+4. 输出 Vec&lt;EyeRegion&gt;，通过 adapter 转 SeedSuggestion 进 suggestedSeeds
+5. 先生可点 ghost marker 采纳 / 拒绝
+</code></pre>
+<h3 id="123-v1-范围修订后">12.3 v1 范围（修订后）</h3>
+<ul>
+<li>后端 <code>segment/eye/</code> 模块（mod.rs / roi.rs / classify.rs）</li>
+<li>球-平面 inlier 比 RANSAC（<strong>新算法</strong>，~80 行）</li>
+<li>EyeRoiSource::FromLasso 入口（<strong>主</strong>）；FromMultiView 入口保留为 v2</li>
+<li>4 区全部输出（sclera 为 Heuristic label）</li>
+<li>前端 SeedPanel「👁 眼睛识别」按钮（进入 lasso 模式）+ suggestedSeeds ghost marker</li>
+<li>单测：lasso 选球面 → 1 Globe + 1 Sclera；lasso 选凹半球 → 1 Socket；闭眼假 mesh → Eyelid only + 状态提示</li>
+<li>E2E：先生装包 → 圈 cat 眼睛 → 看标签</li>
+</ul>
+<h3 id="124-显式-deferredv2">12.4 显式 deferred（v2）</h3>
+<ul>
+<li>MultiView 自动 ROI（前提未验证）</li>
+<li>EyeRegion 入 Layer 4 fuse</li>
+<li>暴露参数面板</li>
+<li>端到端 PSB 基准</li>
+</ul>
+<hr>
+<p><em>本文件经先生审批 REVISE 后才会启动实现。</em></p>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#0-背景与定位">0. 背景与定位</a></li><li class="toc-h3"><a href="#01-用户原话与图示">0.1 用户原话与图示</a></li><li class="toc-h3"><a href="#02-为什么现有多层算法搞不定">0.2 为什么现有多层算法搞不定</a></li><li class="toc-h2"><a href="#1-知识储备眼睛在-3d-网格上的可识别特征">1. 知识储备：眼睛在 3D 网格上的可识别特征</a></li><li class="toc-h3"><a href="#11-几何描述子可直接复用现有函数">1.1 几何描述子（可直接复用现有函数）</a></li><li class="toc-h3"><a href="#12-形态学描述子需新增">1.2 形态学描述子（需新增）</a></li><li class="toc-h3"><a href="#13-语义排序眼球--眼白--眼睑--眼眶的判别规则">1.3 语义排序：眼球 / 眼白 / 眼睑 / 眼眶的判别规则</a></li><li class="toc-h3"><a href="#14-眼球-vs-眼白-区分v1迭代先生决策4-区都要">1.4 眼球 vs 眼白 区分（v1，迭代先生决策：4 区都要）</a></li><li class="toc-h2"><a href="#2-算法框架候选对比">2. 算法框架（候选对比）</a></li><li class="toc-h3"><a href="#候选-a多视角-roi-抽取--局部形态聚类推荐">候选 A：多视角 ROI 抽取 + 局部形态聚类（推荐）</a></li><li class="toc-h3"><a href="#候选-b全-mesh-形态聚类">候选 B：全 mesh 形态聚类</a></li><li class="toc-h3"><a href="#候选-c3dmm--深度学习meshcnnpointnet3d-semantic-segmentation">候选 C：3DMM / 深度学习（MeshCNN、PointNet++、3D semantic segmentation）</a></li><li class="toc-h2"><a href="#3-数据流与模块边界">3. 数据流与模块边界</a></li><li class="toc-h3"><a href="#31-后端新模块">3.1 后端新模块</a></li><li class="toc-h3"><a href="#32-输出结构与-multiviewregion-同构">3.2 输出结构（与 MultiViewRegion 同构）</a></li><li class="toc-h3"><a href="#33-roi-输入接口先生决策multiview--lasso-兜底">3.3 ROI 输入接口（先生决策：MultiView + lasso 兜底）</a></li><li class="toc-h3"><a href="#33-命令与前端">3.3 命令与前端</a></li><li class="toc-h3"><a href="#34-与-layer-4-融合的关系v2-视角">3.4 与 Layer 4 融合的关系（v2 视角）</a></li><li class="toc-h2"><a href="#4-失败案例--退化输入">4. 失败案例 / 退化输入</a></li><li class="toc-h2"><a href="#5-可调参数暴露给前端v2-再说">5. 可调参数（暴露给前端？v2 再说）</a></li><li class="toc-h2"><a href="#6-测试计划">6. 测试计划</a></li><li class="toc-h3"><a href="#61-单元必跑">6.1 单元（必跑）</a></li><li class="toc-h3"><a href="#62-e2e手工先生做">6.2 E2E（手工，先生做）</a></li><li class="toc-h3"><a href="#63-验收与-layer-4-fuse-联合">6.3 验收（与 Layer 4 fuse 联合）</a></li><li class="toc-h2"><a href="#7-范围与放弃">7. 范围与放弃</a></li><li class="toc-h2"><a href="#8-风险与缓解">8. 风险与缓解</a></li><li class="toc-h2"><a href="#9-参考文献区别于-08--09">9. 参考文献（区别于 08 / 09）</a></li><li class="toc-h2"><a href="#10-决策点待先生审查">10. 决策点（待先生审查）</a></li><li class="toc-h2"><a href="#11-对抗-refute-审查结论已收到先生决策后进入-revise">11. 对抗 REFUTE 审查结论（已收到，先生决策后进入 REVISE）</a></li><li class="toc-h3"><a href="#blocker">Blocker</a></li><li class="toc-h3"><a href="#major节选">Major（节选）</a></li><li class="toc-h2"><a href="#12-revise--修订后的方案请先生审批">12. REVISE — 修订后的方案（请先生审批）</a></li><li class="toc-h3"><a href="#121-修订要点采纳反驳显式-deferred">12.1 修订要点（采纳/反驳/显式 deferred）</a></li><li class="toc-h3"><a href="#122-v1-修订后的方案">12.2 v1 修订后的方案</a></li><li class="toc-h3"><a href="#123-v1-范围修订后">12.3 v1 范围（修订后）</a></li><li class="toc-h3"><a href="#124-显式-deferredv2">12.4 显式 deferred（v2）</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+        lineColor: "#64748b", fontSize: "14px",
+        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>

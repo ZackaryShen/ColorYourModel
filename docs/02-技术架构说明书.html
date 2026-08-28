@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ColorYourModel 技术架构说明书 · ColorYourModel Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.lang-toggle, .gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="..%5CREADME.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../README.html">Home (EN)</a></li>
+<li><a href="../README.zh-CN.html">首页（中文）</a></li>
+<li><a href="../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="algorithms/README.html">Algorithms</a></li>
+<li><a href="algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="technical/README.html">Technical Mechanisms</a></li>
+<li><a href="technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="cases/README.html">Cases</a></li>
+<li><a href="cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html" aria-current="page">ColorYourModel 技术架构说明书</a></li>
+<li><a href="03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="coloryourmodel-技术架构说明书">ColorYourModel 技术架构说明书</h1>
+<table>
+<thead>
+<tr>
+<th>技术栈</th>
+<th>Tauri 2 + React 18 + TypeScript + Three.js / React-Three-Fiber + Rust</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>文档日期</td>
+<td>2026-08-06</td>
+</tr>
+<tr>
+<td>基线分支</td>
+<td><code>feat_theme_persist_paint_ux</code></td>
+</tr>
+<tr>
+<td>说明</td>
+<td>所有行数经 <code>wc -l</code> 实测；本文档取代 README 中已过时的架构描述</td>
+</tr>
+<tr>
+<td>核对状态</td>
+<td>2026-08-06 经两路独立 agent 逐条对照源码证伪。<strong>已修订 5 处 blocker</strong>：<code>MeshModel.segments</code> 类型、<code>smart_brush_paint</code> 参数、<code>finalize_manual_region</code> 参数、<code>export_3mf_command</code> 返回类型、<code>logger.ts</code> 路径。行数（33 个文件）、常量数值（11 项）、IPC 调用点（18 处）、架构约束（2 条）经实测<strong>零偏差</strong></td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="一总体数据流">一、总体数据流</h2>
+<pre><code>用户选择 STL
+   │
+   ▼  invoke(&quot;load_model&quot;)
+[Rust] loader.rs 解析 → 顶点去重 → 面邻接图(petgraph) → KD-Tree(kiddo)
+        → face_colors 全量填 #8a8a8a → segment_labels = vec![0; face_count]
+   │
+   ▼  MeshDataDto (serde camelCase)
+[TS] useMesh.buildGeometry → toNonIndexed() → BufferGeometry → zustand
+   │
+   ├─► 自动分区：invoke(&quot;auto_segment_smart&quot; | &quot;auto_segment&quot;)
+   │      [Rust] sdf.rs / dihedral.rs → SegmentResult
+   │      → updateSegmentLabels 双写 segments + meshData.segments
+   │
+   ├─► 手动分区：invoke(&quot;manual_region_add_point&quot;) × N
+   │      → invoke(&quot;finalize_manual_region&quot;)
+   │      [Rust] manual.rs Dijkstra 加密 + 障碍 BFS + 形态学平滑
+   │
+   ├─► 上色：usePaintTool.paintFace 分派
+   │      → invoke(&quot;fill_paint&quot; | &quot;brush_paint&quot; | &quot;spray_paint&quot; | ...)
+   │      [Rust] KD-Tree 命中 + mix_color → PaintResult{updatedFaces, updatedColors}
+   │      → useMesh.updateFaceColors 增量写 GPU（不重建几何）
+   │
+   ├─► 撤销：invoke(&quot;restore_face_colors&quot;)
+   │
+   ▼  invoke(&quot;export_3mf_command&quot;)
+[Rust] threemf.rs → quick-xml 生成 + zip 打包 → 3MF 文件
+   │
+   ▼
+OrcaSlicer / BambuStudio 切片打印
+</code></pre>
+<hr>
+<h2 id="二模块清单">二、模块清单</h2>
+<h3 id="21-rust-后端src-taurisrc">2.1 Rust 后端（<code>src-tauri/src</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>路径</th>
+<th>职责</th>
+<th align="right">行数</th>
+<th>关键导出</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>lib.rs</code></td>
+<td>注册 AppState 与 18 个命令</td>
+<td align="right">44</td>
+<td><code>run()</code></td>
+</tr>
+<tr>
+<td><code>commands/mesh.rs</code></td>
+<td>模型加载、单面查色</td>
+<td align="right">84</td>
+<td><code>load_model</code>, <code>get_face_color</code>, <code>AppState{Mutex&lt;Option&lt;MeshModel&gt;&gt;}</code></td>
+</tr>
+<tr>
+<td><code>commands/paint.rs</code></td>
+<td>7 类绘制命令</td>
+<td align="right">214</td>
+<td><code>PaintResult</code>, <code>brush_paint</code>, <code>fill_paint</code>, <code>fill_segment_paint</code>, <code>spray_paint</code>, <code>smart_brush_paint</code>, <code>erase_paint</code>, <code>pick_color</code></td>
+</tr>
+<tr>
+<td><code>commands/segment.rs</code></td>
+<td>自动/手动分割命令</td>
+<td align="right">346</td>
+<td><code>SegmentResult</code>, <code>auto_segment</code>, <code>auto_segment_smart</code>, <code>paint_segment_face</code>, <code>finalize_segment</code>, <code>manual_region_add_point</code>, <code>finalize_manual_region</code>, <code>manual_region_undo</code>, <code>restore_face_colors</code></td>
+</tr>
+<tr>
+<td><code>commands/export.rs</code></td>
+<td>导出入口</td>
+<td align="right">17</td>
+<td><code>export_3mf_command</code></td>
+</tr>
+<tr>
+<td><code>mesh/model.rs</code></td>
+<td>核心网格结构与方法</td>
+<td align="right">417</td>
+<td><code>MeshModel</code>, <code>Segment</code>, <code>BoundingBox</code>, <code>ManualRegionSnapshot</code>, <code>MeshDataDto</code></td>
+</tr>
+<tr>
+<td><code>mesh/loader.rs</code></td>
+<td>STL 解析、去重、建索引</td>
+<td align="right">102</td>
+<td><code>load_stl</code>（接收 <code>&amp;ProgressFn</code> 回调；<code>import-progress</code> 事件实际在 <code>commands/mesh.rs:41,53</code> 发射）</td>
+</tr>
+<tr>
+<td><code>mesh/kdtree.rs</code></td>
+<td>空间索引封装</td>
+<td align="right">10</td>
+<td><code>distance</code></td>
+</tr>
+<tr>
+<td><code>mesh/face_colors.rs</code></td>
+<td>颜色混合</td>
+<td align="right">13</td>
+<td><code>mix_color</code></td>
+</tr>
+<tr>
+<td><code>segment/sdf.rs</code></td>
+<td>SDF 形状直径分割</td>
+<td align="right">620</td>
+<td><code>compute_sdf</code>, <code>segment_by_sdf</code>, <code>estimate_k</code>, <code>kmeans_1d</code></td>
+</tr>
+<tr>
+<td><code>segment/dihedral.rs</code></td>
+<td>二面角分割与合并</td>
+<td align="right">503</td>
+<td><code>segment_by_dihedral_angle</code>, <code>normal_consistency_merge</code>, <code>merge_small_regions_fast</code></td>
+</tr>
+<tr>
+<td><code>segment/manual.rs</code></td>
+<td>套索环、吸附、快照</td>
+<td align="right">892</td>
+<td><code>region_from_loop</code>, <code>snap_point_to_vertex_on_face</code>, <code>finalize_manual_region</code>, <code>smooth_region_boundary</code></td>
+</tr>
+<tr>
+<td><code>segment/flood_fill.rs</code></td>
+<td>BFS 泛洪</td>
+<td align="right">51</td>
+<td><code>flood_fill</code></td>
+</tr>
+<tr>
+<td><code>paint/brush.rs</code></td>
+<td>笔刷命中与衰减</td>
+<td align="right">43</td>
+<td><code>brush_hit</code>, <code>falloff_strength</code></td>
+</tr>
+<tr>
+<td><code>paint/fill.rs</code></td>
+<td>填充实现</td>
+<td align="right">26</td>
+<td><code>fill_region</code>, <code>fill_segment</code></td>
+</tr>
+<tr>
+<td><code>paint/spray.rs</code></td>
+<td>喷枪（LCG PRNG 采样）</td>
+<td align="right">55</td>
+<td><code>spray_hit</code></td>
+</tr>
+<tr>
+<td><code>paint/smart_snap.rs</code></td>
+<td>智能笔法线裁剪</td>
+<td align="right">64</td>
+<td><code>smart_brush_hit</code></td>
+</tr>
+<tr>
+<td><code>export/threemf.rs</code></td>
+<td>3MF 写出</td>
+<td align="right">211</td>
+<td><code>export_3mf</code></td>
+</tr>
+</tbody></table>
+<p>上表为 18 个<strong>实现文件</strong>。后端 <code>.rs</code> 文件实际共 <strong>24 个</strong>，另 6 个为纯声明文件，无实现逻辑：<code>main.rs</code>(6)、<code>commands/mod.rs</code>(4)、<code>export/mod.rs</code>(1)、<code>mesh/mod.rs</code>(8)、<code>paint/mod.rs</code>(4)、<code>segment/mod.rs</code>(4)。</p>
+<blockquote>
+<p><strong>README 勘误</strong>：README 中列出的 <code>paint/eraser.rs</code> 实际不存在（橡皮在 <code>commands/paint.rs</code> 内实现）；README 未列出 <code>segment/sdf.rs</code>、<code>segment/manual.rs</code>、<code>mesh/kdtree.rs</code>、<code>paint/smart_snap.rs</code>、<code>paint/spray.rs</code>。</p>
+</blockquote>
+<h3 id="22-react-前端src">2.2 React 前端（<code>src</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>路径</th>
+<th>职责</th>
+<th align="right">行数</th>
+<th>关键导出</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>components/Viewport/Viewport.tsx</code></td>
+<td>渲染、交互、相机、拾取</td>
+<td align="right">2141</td>
+<td><code>overModelRef</code>, <code>applyCameraButtons</code>, <code>CameraFit</code>, <code>MeshDisplay</code>, <code>ControlsBridge</code></td>
+</tr>
+<tr>
+<td><code>store/appStore.ts</code></td>
+<td>zustand + persist 全局态</td>
+<td align="right">437</td>
+<td><code>mergePrefs</code>, <code>applyFaceColors</code>, <code>updateSegmentLabels</code></td>
+</tr>
+<tr>
+<td><code>hooks/useTauriCommand.ts</code></td>
+<td>IPC 封装层</td>
+<td align="right">289</td>
+<td><code>loadModel</code>, <code>autoSegment</code>, <code>export3mf</code> 等</td>
+</tr>
+<tr>
+<td><code>hooks/useMesh.ts</code></td>
+<td>几何构建与增量更新</td>
+<td align="right">245</td>
+<td><code>buildGeometry</code>, <code>updateFaceColors</code></td>
+</tr>
+<tr>
+<td><code>hooks/usePaintTool.ts</code></td>
+<td>工具分派</td>
+<td align="right">217</td>
+<td><code>paintFace</code></td>
+</tr>
+<tr>
+<td><code>components/Toolbar/Toolbar.tsx</code></td>
+<td>工具栏</td>
+<td align="right">225</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>components/BrushSettings/BrushSettings.tsx</code></td>
+<td>笔刷参数面板</td>
+<td align="right">146</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>components/ColorPanel/ColorPanel.tsx</code></td>
+<td>颜色选择</td>
+<td align="right">131</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>components/SegmentsPanel/SegmentsPanel.tsx</code></td>
+<td>分区管理</td>
+<td align="right">105</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>components/StatusBar/StatusBar.tsx</code></td>
+<td>状态栏 + DebugHud</td>
+<td align="right">91</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>types/mesh.ts</code></td>
+<td>TS 类型定义</td>
+<td align="right">83</td>
+<td><code>MeshData</code>, <code>Segment</code>, <code>PaintResult</code>, <code>PaintTool</code>, <code>AMS_PALETTE</code></td>
+</tr>
+<tr>
+<td><code>i18n.ts</code></td>
+<td>中英文案</td>
+<td align="right">100</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>theme.css</code></td>
+<td>主题 CSS 变量</td>
+<td align="right">128</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>utils/logger.ts</code></td>
+<td>日志</td>
+<td align="right">53</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>App.tsx</code> / <code>main.tsx</code></td>
+<td>外壳 / 入口</td>
+<td align="right">84 / 10</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<p><strong>Viewport.tsx 已达 2141 行，是明确的重构候选</strong>（相机控制、拾取、套索覆盖层、高亮覆盖层、HUD 探针混杂于单文件）。</p>
+<hr>
+<h2 id="三前后端通信契约18-个-tauri-命令">三、前后端通信契约（18 个 Tauri 命令）</h2>
+<p>多数 DTO 采用 <code>#[serde(rename_all = &quot;camelCase&quot;)]</code>（<code>Segment</code> — model.rs:14、<code>MeshDataDto</code> — model.rs:99），前端 key 为小驼峰。<strong>例外：<code>BoundingBox</code>（model.rs:7）未加该属性</strong>，因其字段名 <code>min</code>/<code>max</code> 为单词，恰好无对齐问题。二进制数组直接映射 <code>Uint8Array</code> / <code>Uint32Array</code>，无额外转码层。</p>
+<p>下表<strong>入参列已省略 Tauri 自动注入的 <code>state: State&lt;AppState&gt;</code> 与 <code>app: AppHandle</code></strong>，只列前端必须传递的参数（名称为 Rust 侧蛇形名，前端发送时用小驼峰）。</p>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>定义</th>
+<th>前端调用点</th>
+<th>入参</th>
+<th>返回</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>load_model</code></td>
+<td>mesh.rs:22</td>
+<td><code>useTauriCommand:18</code></td>
+<td><code>path: String</code></td>
+<td><code>MeshDataDto</code></td>
+<td>STL → 网格 DTO</td>
+</tr>
+<tr>
+<td><code>get_face_color</code></td>
+<td>mesh.rs:74</td>
+<td><strong>前端无调用</strong></td>
+<td><code>face_id: u32</code></td>
+<td><code>[u8;4]</code></td>
+<td>死接口，建议移除或接入吸管</td>
+</tr>
+<tr>
+<td><code>brush_paint</code></td>
+<td>paint.rs:21</td>
+<td><code>usePaintTool:155</code></td>
+<td><code>center_face, radius, strength, falloff_mode, color</code></td>
+<td><code>PaintResult</code></td>
+<td>笔刷</td>
+</tr>
+<tr>
+<td><code>fill_paint</code></td>
+<td>paint.rs:68</td>
+<td><code>usePaintTool:146</code></td>
+<td><code>face_id, color, radius</code>（radius 0 → flood）</td>
+<td><code>PaintResult</code></td>
+<td>填充 / 半径填充</td>
+</tr>
+<tr>
+<td><code>fill_segment_paint</code></td>
+<td>paint.rs:116</td>
+<td><code>usePaintTool:46</code></td>
+<td><code>segment_id, color</code></td>
+<td><code>PaintResult</code></td>
+<td>整段填充</td>
+</tr>
+<tr>
+<td><code>spray_paint</code></td>
+<td>paint.rs:134</td>
+<td><code>usePaintTool:165</code></td>
+<td><code>center_face, radius, strength, color, density</code></td>
+<td><code>PaintResult</code></td>
+<td>喷枪</td>
+</tr>
+<tr>
+<td><code>smart_brush_paint</code></td>
+<td>paint.rs:155</td>
+<td><code>usePaintTool:175</code></td>
+<td>与 <code>brush_paint</code> <strong>完全同参</strong></td>
+<td><code>PaintResult</code></td>
+<td>智能笔</td>
+</tr>
+<tr>
+<td><code>erase_paint</code></td>
+<td>paint.rs:176</td>
+<td><code>usePaintTool:185</code></td>
+<td><code>center_face, radius</code></td>
+<td><code>PaintResult</code></td>
+<td>橡皮</td>
+</tr>
+<tr>
+<td><code>pick_color</code></td>
+<td>paint.rs:204</td>
+<td><code>usePaintTool:192</code></td>
+<td><code>face_id: u32</code></td>
+<td><code>[u8;4]</code></td>
+<td>吸管</td>
+</tr>
+<tr>
+<td><code>auto_segment</code></td>
+<td>segment.rs:33</td>
+<td><code>useTauriCommand:45</code></td>
+<td><code>angle_threshold: f32</code></td>
+<td><code>SegmentResult</code></td>
+<td>二面角分割</td>
+</tr>
+<tr>
+<td><code>auto_segment_smart</code></td>
+<td>segment.rs:317</td>
+<td><code>useTauriCommand:149</code></td>
+<td><code>k: u32</code></td>
+<td><code>SegmentResult</code></td>
+<td>SDF 分割</td>
+</tr>
+<tr>
+<td><code>paint_segment_face</code></td>
+<td>segment.rs:89</td>
+<td><code>useTauriCommand:243</code></td>
+<td><code>face_id: u32, segment_label: Option&lt;u32&gt;</code></td>
+<td><code>PaintSegmentFaceResult</code></td>
+<td>分区笔刷面</td>
+</tr>
+<tr>
+<td><code>finalize_segment</code></td>
+<td>segment.rs:144</td>
+<td><code>useTauriCommand:263</code></td>
+<td><code>segment_label: u32</code></td>
+<td><code>FinalizeSegmentResult</code></td>
+<td>重建分区元数据</td>
+</tr>
+<tr>
+<td><code>manual_region_add_point</code></td>
+<td>segment.rs:187</td>
+<td><code>useTauriCommand:73</code></td>
+<td><code>point: [f32;3], face_index: u32</code></td>
+<td><code>ManualPointResult</code></td>
+<td>套索加点</td>
+</tr>
+<tr>
+<td><code>finalize_manual_region</code></td>
+<td>segment.rs:214</td>
+<td><code>useTauriCommand:93</code></td>
+<td><code>points: Vec&lt;[f32;3]&gt;, face_indices: Vec&lt;u32&gt;</code></td>
+<td><code>SegmentResult</code></td>
+<td>套索闭合</td>
+</tr>
+<tr>
+<td><code>manual_region_undo</code></td>
+<td>segment.rs:244</td>
+<td><code>useTauriCommand:127</code></td>
+<td><strong>无参</strong></td>
+<td><code>SegmentResult</code></td>
+<td>撤销手动区（LIFO）</td>
+</tr>
+<tr>
+<td><code>restore_face_colors</code></td>
+<td>segment.rs:271</td>
+<td><code>useTauriCommand:189</code></td>
+<td><code>face_colors: Vec&lt;u8&gt;, segment_labels: Vec&lt;u32&gt;</code>（两者长度均被校验）</td>
+<td><code>SegmentResult</code></td>
+<td>撤销/重做重绘</td>
+</tr>
+<tr>
+<td><code>export_3mf_command</code></td>
+<td>export.rs:8</td>
+<td><code>useTauriCommand:167</code></td>
+<td><code>path: String</code></td>
+<td><code>String</code>（成功消息）</td>
+<td>导出 3MF</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong><code>smart_brush_paint</code> 的法线阈值不是入参</strong>。它是编译期常量 <code>SMART_NORMAL_MIN_DOT = 0.5</code>（smart_snap.rs:9），前端无法调节。按&quot;可传阈值&quot;实现会导致 Tauri 参数反序列化失败。</p>
+<p><strong><code>export_3mf_command</code> 返回 <code>Result&lt;String, String&gt;</code></strong>，成功时为 <code>format!(&quot;Exported to {}&quot;, ...)</code>。易与内层 <code>export::threemf::export_3mf</code>（threemf.rs:12，返回 <code>Result&lt;(), String&gt;</code>）混淆。当前前端忽略该返回值，问题被掩盖但契约本身如此。</p>
+</blockquote>
+<p><code>lib.rs:22-41</code> 的 <code>invoke_handler!</code> 注册 <strong>18 项，与 18 个 <code>#[tauri::command]</code> 宏一一对应</strong>，无未注册命令、无幽灵注册。</p>
+<p><strong>关键返回结构</strong></p>
+<pre><code class="language-rust">PaintResult   { updated_faces: Vec&lt;u32&gt;, updated_colors: Vec&lt;[u8; 4]&gt; }
+SegmentResult { segments, segment_labels, face_colors: Vec&lt;u8&gt; }
+</code></pre>
+<p>前端据 <code>PaintResult</code> 做<strong>增量</strong> GPU 写入，不重建几何体。<code>SegmentResult.face_colors</code> 常被忽略，但它是&quot;重新分区不丢失已有涂色&quot;的关键字段（segment.rs:24-28 / types/mesh.ts:43）。</p>
+<p><code>commands/segment.rs</code> 另定义三个返回结构：<code>PaintSegmentFaceResult</code>(:76)、<code>FinalizeSegmentResult</code>(:135)、<code>ManualPointResult</code>(:176)。</p>
+<hr>
+<h2 id="四核心数据结构">四、核心数据结构</h2>
+<h3 id="rustmeshmodelrs">Rust（<code>mesh/model.rs</code>）</h3>
+<pre><code class="language-rust">struct MeshModel {                          // model.rs:77
+    vertices, faces, normals,
+    face_colors,            // Vec&lt;[u8;4]&gt;，默认全 DEFAULT_FACE_COLOR
+    segment_labels,         // Vec&lt;u32&gt;，长度必须 == faces.len()
+    segments,               // HashMap&lt;u32, Segment&gt;，键 = segment label
+    manual_region_history,  // Vec&lt;ManualRegionSnapshot&gt;，支撑 LIFO 撤销
+    face_kdtree, vertex_kdtree, face_adjacency,
+    bbox, unit,             // unit 恒为 &quot;millimeter&quot;，全库无读取点（死字段）
+}
+
+struct MeshDataDto {                        // model.rs:99，跨 IPC 的 DTO
+    segments,               // Vec&lt;Segment&gt;  ← 注意与 MeshModel 不同
+    ...
+}
+
+struct Segment { id, name, color, face_count }  // serde → camelCase
+</code></pre>
+<blockquote>
+<p><strong><code>segments</code> 在两层的类型不同，这是刻意设计而非笔误。</strong> 内存模型 <code>MeshModel.segments</code> 是 <code>HashMap&lt;u32, Segment&gt;</code>（按 label 键索引），跨 IPC 的 <code>MeshDataDto.segments</code> 是 <code>Vec&lt;Segment&gt;</code>（序列化为 JSON 数组）。转换点统一写作 <code>mesh.segments.values().cloned().collect()</code>（segment.rs:158 / 233 / 256 / 308）。把内存层当 <code>Vec</code> 使用会直接编译失败。</p>
+</blockquote>
+<p><strong>全局常量</strong>（定义位置分散，不集中于 <code>model.rs</code>）</p>
+<table>
+<thead>
+<tr>
+<th>常量</th>
+<th>值</th>
+<th>定义位置</th>
+<th>含义与依据</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>DEFAULT_FACE_COLOR</code></td>
+<td><code>[138,138,138,255]</code></td>
+<td>model.rs:68</td>
+<td>中灰。纯白在浅色画布对比度仅 1.06:1（对比度表见 model.rs:44-58）</td>
+</tr>
+<tr>
+<td><code>MANUAL_SEGMENT_OFFSET</code></td>
+<td><code>100_000</code></td>
+<td>model.rs:37 <strong>且</strong> usePaintTool.ts:21</td>
+<td>手动分区标签起点。<strong>前后端各有一份定义，修改须原子同步</strong></td>
+</tr>
+<tr>
+<td><code>SMART_NORMAL_MIN_DOT</code></td>
+<td><code>0.5</code></td>
+<td>smart_snap.rs:9</td>
+<td>智能笔法线裁剪，防球查询穿透薄壁</td>
+</tr>
+<tr>
+<td><code>SDF_RAYS</code> / <code>SDF_CONE_HALF_ANGLE</code></td>
+<td><code>12</code> / <code>1.05</code></td>
+<td>sdf.rs:23-24</td>
+<td>SDF 采样射线数与锥半角</td>
+</tr>
+<tr>
+<td><code>MERGE_NORMAL_DOT_THRESHOLD</code></td>
+<td><code>0.93</code></td>
+<td>dihedral.rs:44</td>
+<td>法线一致性合并阈值</td>
+</tr>
+<tr>
+<td><code>MIN_REGION_CAP</code></td>
+<td><code>30</code></td>
+<td>dihedral.rs:37</td>
+<td>小分区吸收上限（<strong>对 150 万面模型过激，见遗留问题</strong>）</td>
+</tr>
+<tr>
+<td><code>SMOOTH_PASSES</code></td>
+<td><code>1</code></td>
+<td>manual.rs:307</td>
+<td>形态学平滑遍数</td>
+</tr>
+<tr>
+<td><code>WHOLE_SEGMENT_MAX_SHARE</code></td>
+<td><code>0.8</code></td>
+<td>usePaintTool.ts:15</td>
+<td>前端：超此占比不按整段填充</td>
+</tr>
+<tr>
+<td><code>MANUAL_REGION_MAX_SHARE</code></td>
+<td><code>0.95</code></td>
+<td>usePaintTool.ts:16</td>
+<td>前端：手动区上限（<strong>取值无注释依据</strong>）</td>
+</tr>
+<tr>
+<td><code>maxZoom</code> / <code>minZoom</code></td>
+<td><code>500</code> / <code>0.1</code></td>
+<td>Viewport.tsx:305 / 304</td>
+<td>正交相机缩放范围</td>
+</tr>
+</tbody></table>
+<p><strong>吸附参数是前后端各自独立的字面量，无编译期约束——这是一处真实风险：</strong></p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>前端</th>
+<th>后端</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>吸附半径系数</td>
+<td><code>SNAP_K</code>（Viewport.tsx:658，具名常量）</td>
+<td><code>let k = 1.5_f32</code>（manual.rs:80，<strong>函数内局部字面量</strong>）</td>
+<td><code>1.5</code></td>
+</tr>
+<tr>
+<td>同侧余弦阈值</td>
+<td><code>SNAP_COS_THRESH</code>（Viewport.tsx:696，具名常量）</td>
+<td><code>(60.0f32).to_radians().cos()</code>（manual.rs:92，<strong>局部字面量</strong>）</td>
+<td><code>cos 60° = 0.5</code></td>
+</tr>
+</tbody></table>
+<p>后端两处未提升为具名常量，无法通过 grep 保证与前端同步。</p>
+<blockquote>
+<p><strong>阈值角度的正确读法：实际取 60°，不是 54.74°。</strong> <code>arccos(1/√3) ≈ 54.7356°</code> 是立方体角点处顶点法线与面法线的夹角，构成<strong>理论下界</strong>；代码取 60° 是为该下界留约 5° 余量（论证原文见 manual.rs:87-90）。低于 54.74° 会与相邻面法向混淆。</p>
+</blockquote>
+<h3 id="typescripttypesmeshts">TypeScript（<code>types/mesh.ts</code>）</h3>
+<p><code>MeshData</code> 镜像 <code>MeshDataDto</code>；<code>PaintTool</code> 枚举含 View / Fill / Brush / Spray / SmartBrush / Eyedropper / Eraser / Segment / Lasso；<code>PaintSnapshot { faceColors: Uint8Array, segmentLabels: Uint32Array }</code>；<code>AMS_PALETTE</code> 为标准料盘色板。</p>
+<hr>
+<h2 id="五状态管理zustand--persist">五、状态管理（zustand + persist）</h2>
+<p><strong>完整 state</strong>：<code>meshData, isLoaded, activeTool, brushRadius, brushStrength, brushFalloff, shadingMode, theme, currentColor, segments, selectedSegment, hoveredSegment, snapEnabled, segmentView, toast, undoStack, redoStack, language, statusMessage, isLoading, importProgress, importStage, lastPaintDebug, hoverProbe</code></p>
+<p><strong>持久化白名单（<code>partialize</code>，共 8 键）</strong>
+<code>theme</code> · <code>language</code> · <code>shadingMode</code> · <code>brushRadius</code> · <code>brushStrength</code> · <code>brushFalloff</code> · <code>currentColor</code> · <code>snapEnabled</code></p>
+<p>存储键 <code>PREFS_KEY = &quot;cym-prefs&quot;</code>，兼容旧键 <code>LEGACY_THEME_KEY = &quot;cym-theme&quot;</code>。</p>
+<p><strong><code>mergePrefs</code> 校验规则</strong></p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>规则</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>theme</code></td>
+<td>∈ {dark, light}</td>
+</tr>
+<tr>
+<td><code>language</code></td>
+<td>∈ {zh, en}</td>
+</tr>
+<tr>
+<td><code>shadingMode</code></td>
+<td>∈ {flat, shaded}</td>
+</tr>
+<tr>
+<td><code>brushFalloff</code></td>
+<td>∈ {linear, smooth, step}</td>
+</tr>
+<tr>
+<td><code>brushRadius</code></td>
+<td>clamp(0.5, 200)</td>
+</tr>
+<tr>
+<td><code>brushStrength</code></td>
+<td>clamp(0.1, 1.0)</td>
+</tr>
+<tr>
+<td><code>snapEnabled</code></td>
+<td>布尔</td>
+</tr>
+<tr>
+<td><code>currentColor</code></td>
+<td>长度 4 且全有限 → round + clamp(0,255)；否则回退默认</td>
+</tr>
+</tbody></table>
+<p><code>pickStorage</code> 探测 localStorage 可用性，失败回退 memoryStorage。</p>
+<p><strong>关键模式：<code>applyFaceColors</code> 原地 mutate，不调 <code>set()</code></strong>
+更换 <code>meshData</code> 引用会触发 <code>paintColorArray</code> 从陈旧色重算并全量覆盖 GPU，还会重置相机。此模式已成为项目通用约定。</p>
+<p><strong>关键约定：<code>updateSegmentLabels</code> 必须双写</strong>
+同时写顶层 <code>segments</code> 与 <code>meshData.segments</code>。仅写顶层会使 Fill 路由与分区悬停高亮<strong>双双静默失效</strong>。</p>
+<hr>
+<h2 id="六关键算法">六、关键算法</h2>
+<table>
+<thead>
+<tr>
+<th>算法</th>
+<th>位置</th>
+<th>核心思路</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>SDF 智能分割</strong></td>
+<td><code>segment/sdf.rs</code></td>
+<td>法线一致化(BFS) → 内向锥形射线取中值厚度 → 对数归一化 → 一维 k-means（<code>estimate_k</code> 直方图峰值，clamp 2–12） → 凹度合并（<code>dot ≥ 0.93</code>）</td>
+</tr>
+<tr>
+<td><strong>二面角分割</strong></td>
+<td><code>segment/dihedral.rs</code></td>
+<td>共享边二面角 &gt;阈值处断裂 → 法线一致性迭代合并 → petgraph 小分区吸收</td>
+</tr>
+<tr>
+<td><strong>套索区域切分</strong></td>
+<td><code>segment/manual.rs</code></td>
+<td>顶点图 Dijkstra 加密环边（<code>front_faces</code> 按法线过滤，防穿隧背面）→ 面图 BFS 跳过环边 → 取较小连通分量</td>
+</tr>
+<tr>
+<td><strong>顶点吸附</strong></td>
+<td><code>manual.rs</code> + <code>Viewport.tsx</code></td>
+<td>命中面 1-ring 候选 → 法线同侧过滤(cos 60°) → 局部尺度半径(k×maxEdge) → 三级回退。<strong>前后端必须原子同步，否则预览与提交漂移</strong></td>
+</tr>
+<tr>
+<td><strong>边界平滑</strong></td>
+<td><code>manual.rs</code></td>
+<td>形态学 ERODE(<code>out &gt; 2*in</code>) + DILATE(<code>in &gt; 2*out</code>)，带 <code>in_c &gt; 0</code> 永不删区守卫</td>
+</tr>
+<tr>
+<td><strong>笔刷填充</strong></td>
+<td><code>paint/brush.rs</code> <code>paint/fill.rs</code></td>
+<td>KD-Tree 半径命中 + <code>falloff_strength</code>；<code>fill_paint</code> 依 <code>radius</code> 分流 flood / 半径盘</td>
+</tr>
+<tr>
+<td><strong>智能笔</strong></td>
+<td><code>paint/smart_snap.rs</code></td>
+<td>同分区约束 + 法线点积 ≥0.5 裁剪（廉价替代测地 BFS，O(k)）</td>
+</tr>
+<tr>
+<td><strong>喷枪</strong></td>
+<td><code>paint/spray.rs</code></td>
+<td>LCG PRNG 按密度采样 + 二次衰减 + jitter</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="七渲染与交互层viewporttsx">七、渲染与交互层（<code>Viewport.tsx</code>）</h2>
+<h3 id="相机">相机</h3>
+<ul>
+<li><strong>正交投影</strong>，经 <code>Canvas orthographic</code> prop 声明（R3F 在 resize 时自动按 <code>size</code> 重算 frustum；drei <code>&lt;OrthographicCamera&gt;</code> 需自行管理 frustum 易漏）。</li>
+<li><code>[50,50,50]</code> 只是 <code>&lt;Canvas camera={{position, zoom:1}}&gt;</code> 的<strong>初始 prop</strong>（Viewport.tsx:2102），<code>CameraFit</code> 并不使用它。</li>
+<li><code>CameraFit</code> 按包围盒<strong>动态求解</strong>：方向固定 <code>(0.4,0.4,1).normalize()</code>，距离 <code>viewDist = maxDim × 10</code>，位置 <code>center + dir × viewDist</code>（Viewport.tsx:180-182）；<code>zoom = min(fit × 0.88, 500)</code>（:193）。相机不是固定在 iso 角落。</li>
+<li><code>ControlsBridge</code>：<code>minZoom=0.1</code>、<code>maxZoom=500</code>、<strong><code>enableDamping=false</code></strong>（惯性积分会在右键平移期间继续施加旋转）。</li>
+</ul>
+<h3 id="鼠标映射applycamerabuttons">鼠标映射（<code>applyCameraButtons</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>上下文</th>
+<th>LEFT</th>
+<th>MIDDLE</th>
+<th>RIGHT</th>
+<th>Alt+LEFT</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>视图模式</td>
+<td>ROTATE</td>
+<td>DOLLY</td>
+<td>PAN</td>
+<td>ROTATE</td>
+</tr>
+<tr>
+<td>绘制/套索 + 光标在模型上</td>
+<td><code>MOUSE_NONE (-1)</code></td>
+<td>DOLLY</td>
+<td>PAN</td>
+<td>ROTATE</td>
+</tr>
+<tr>
+<td>绘制/套索 + 光标在空白</td>
+<td>ROTATE</td>
+<td>DOLLY</td>
+<td>PAN</td>
+<td>ROTATE</td>
+</tr>
+</tbody></table>
+<p><code>overModelRef</code> 为<strong>模块级共享 ref</strong>，驱动上述上下文切换。<strong>约定：任何新工具必须在自身 pointermove 的命中/未命中两个分支都刷新它</strong>，否则读到冻结旧值。</p>
+<h3 id="拾取">拾取</h3>
+<ul>
+<li>射线法 + <code>three-mesh-bvh</code>，<code>raycaster.firstHitOnly = true</code>。</li>
+<li>BVH 构建<strong>必须</strong> <code>computeBoundsTree({ indirect: true })</code> —— 默认模式会物理重排 <code>geometry.index</code>，破坏 faceIndex 与后端面索引的对应关系。</li>
+<li>构建移入 <code>setTimeout(0)</code> effect，未建树期自动回退暴力射线。</li>
+<li>几何体经 <code>toNonIndexed()</code>，保证 <code>faceIdx*3+v</code> 的逐顶点写色寻址成立。</li>
+</ul>
+<h3 id="高亮覆盖层">高亮覆盖层</h3>
+<p><code>SegmentOutline</code>（lineSegments 描边）、<code>SegmentHighlight</code>（<code>meshBasicMaterial</code>, opacity 0.35）、<code>LassoOverlay</code>；<code>OVERLAY_COLORS</code> 提供 dark/light 双套（满足 WCAG 对比度）。</p>
+<p><strong>已知副作用</strong>：所有 overlay 均 <code>depthTest = false</code>，恒绘制于最前，不被模型遮挡；面数 &gt;50k 时跳过 wireframe（20 万面同步构造线框会阻塞 1.5–4 秒）。</p>
+<h3 id="诊断">诊断</h3>
+<p>Tauri release 无 devtools，故诊断探针全部打到 UI：<code>DebugHud</code> 输出 <code>face= / seg= / hover= / color= / gpu= / shade= / N filled / M highlighted ⚠️ MISMATCH</code>，以及 <code>[HOVER]</code> <code>[CLICK]</code> <code>[FILL-RX]</code> 三级探针。</p>
+<hr>
+<h2 id="八构建与验证">八、构建与验证</h2>
+<pre><code class="language-bash">npx tsc --noEmit                    # 前端类型检查，须 exit 0
+cd src-tauri &amp;&amp; cargo test --lib    # 后端 13 项单测
+npx tauri build --bundles nsis      # 打包（须先 unset NODE_OPTIONS）
+</code></pre>
+<p><strong>产物</strong>：<code>ColorYourModel_x64-setup.exe</code>（~3.1 MB）、<code>color-your-model.exe</code>（~14 MB）</p>
+<p><strong>已知死代码</strong>：<code>MeshModel.unit</code> 字段（model.rs:94 声明，:128 赋值 <code>&quot;millimeter&quot;</code>，全库无读取点）。</p>
+<blockquote>
+<p>早期版本此处记为&quot;2 处 <code>dead_code</code> 警告，含 <code>apply_falloff</code>&quot;，该断言已被证伪：<code>apply_falloff</code> 在代码库中不存在（0 处命中）；真实存在的是 <code>falloff_strength</code>（brush.rs:29），且被 <code>commands/paint.rs:8,55</code> 与 <code>paint/smart_snap.rs:4,57</code> 三处调用，属热路径函数。具体警告条数须以 <code>cargo build</code> 输出为准，本文不再断言计数。</p>
+</blockquote>
+<p><strong>打包环境注意</strong></p>
+<ul>
+<li>必须 <code>unset NODE_OPTIONS</code>（沙箱 safe-delete shim 会破坏 vite 清 dist）</li>
+<li>必须 <code>--bundles nsis</code> 显式限定，<code>bundle.targets=&quot;all&quot;</code> 会尝试需联网的 WiX</li>
+<li>choco 安装 NSIS 后 <code>makensis</code> 不入 PATH，需手动软链</li>
+</ul>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#一总体数据流">一、总体数据流</a></li><li class="toc-h2"><a href="#二模块清单">二、模块清单</a></li><li class="toc-h3"><a href="#21-rust-后端src-taurisrc">2.1 Rust 后端（src-tauri/src）</a></li><li class="toc-h3"><a href="#22-react-前端src">2.2 React 前端（src）</a></li><li class="toc-h2"><a href="#三前后端通信契约18-个-tauri-命令">三、前后端通信契约（18 个 Tauri 命令）</a></li><li class="toc-h2"><a href="#四核心数据结构">四、核心数据结构</a></li><li class="toc-h3"><a href="#rustmeshmodelrs">Rust（mesh/model.rs）</a></li><li class="toc-h3"><a href="#typescripttypesmeshts">TypeScript（types/mesh.ts）</a></li><li class="toc-h2"><a href="#五状态管理zustand--persist">五、状态管理（zustand + persist）</a></li><li class="toc-h2"><a href="#六关键算法">六、关键算法</a></li><li class="toc-h2"><a href="#七渲染与交互层viewporttsx">七、渲染与交互层（Viewport.tsx）</a></li><li class="toc-h3"><a href="#相机">相机</a></li><li class="toc-h3"><a href="#鼠标映射applycamerabuttons">鼠标映射（applyCameraButtons）</a></li><li class="toc-h3"><a href="#拾取">拾取</a></li><li class="toc-h3"><a href="#高亮覆盖层">高亮覆盖层</a></li><li class="toc-h3"><a href="#诊断">诊断</a></li><li class="toc-h2"><a href="#八构建与验证">八、构建与验证</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+        lineColor: "#64748b", fontSize: "14px",
+        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>
