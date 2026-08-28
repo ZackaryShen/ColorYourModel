@@ -12,9 +12,9 @@ flowchart LR
     E --> W["write the case from TEMPLATE"]
 ```
 
-Suggested first entries:
+Suggested next entries:
 
-- [ ] 3MF end-to-end verification (2026-08-27, Snapmaker Orca / U1) — evidence exists in `samples/`; needs the written protocol (⚠️ before publishing: document the provenance/license of the model shown in `samples/`, or replace with a self-made model)
+- [x] 3MF end-to-end verification (2026-08-27, Snapmaker Orca / U1) — written: [`01-3mf-end-to-end.md`](01-3mf-end-to-end.md) (⚠️ model provenance in `samples/` still to document or replace before wide distribution)
 - [ ] A figure model with eye detection + seed fuse
 - [ ] A mechanical/planar model with auto segmentation only
 

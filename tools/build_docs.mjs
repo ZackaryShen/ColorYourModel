@@ -158,9 +158,11 @@ function rewriteLinks(html, src) {
 
 const NAV_GROUPS = [
   ["Overview", ["README.md", "README.zh-CN.md", "CHANGELOG.md"]],
+  ["User Guide", ["docs/user-guide/getting-started.md", "docs/user-guide/auto-segmentation.md", "docs/user-guide/seed-tools.md", "docs/user-guide/painting-tools.md", "docs/user-guide/exporting.md"]],
   ["Algorithms", ["docs/algorithms/README.md", "docs/algorithms/segmentation.md", "docs/algorithms/seed-grow-fuse.md", "docs/algorithms/eye-detection.md"]],
   ["Technical", ["docs/technical/README.md", "docs/technical/bvh-face-picking.md", "docs/technical/shader-segment-highlight.md", "docs/technical/fill-routing.md", "docs/technical/undo-redo-history.md", "docs/technical/export-pipeline.md", "docs/technical/crash-diagnostics.md"]],
-  ["Cases", ["docs/cases/README.md", "docs/cases/TEMPLATE.md"]],
+  ["Developer", ["docs/developer/ipc-reference.md", "docs/developer/development.md"]],
+  ["Cases", ["docs/cases/README.md", "docs/cases/01-3mf-end-to-end.md", "docs/cases/TEMPLATE.md"]],
   ["Working docs · 中文", SOURCES.filter((s) => /docs[/\\]0\d-/.test(s)).sort()],
   ["Internal", ["docs/loop-journal.md"]],
 ];

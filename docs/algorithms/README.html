@@ -203,6 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
 <li><a href="../../README.zh-CN.html">首页（中文）</a></li>
 <li><a href="../../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
+<li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
+<li><a href="../user-guide/painting-tools.html">Painting Tools</a></li>
+<li><a href="../user-guide/exporting.html">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="README.html" aria-current="page">Algorithms</a></li>
 <li><a href="segmentation.html">Mesh Segmentation</a></li>
 <li><a href="seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -214,7 +219,10 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="../technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
 <li><a href="../technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
 <li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
+<li><a href="../developer/development.html">Development Guide</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
 <li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
@@ -232,8 +240,9 @@ pre.mermaid.mermaid-offline::after {
     <article>
 <h1 id="algorithms">Algorithms</h1>
 <p>How CYM understands and partitions a mesh — the math and the principles.
-For engineering mechanisms (picking, highlight, undo/redo, export), see <a href="../technical/README.html">../technical/</a>.</p>
-<p><strong>Status:</strong> skeleton files with scopes; content is being written.
+For engineering mechanisms (picking, highlight, undo/redo, export), see <a href="../technical/README.html">../technical/</a>.
+For day-to-day usage, see the <a href="../user-guide/auto-segmentation.html">User Guide</a>.</p>
+<p><strong>Status:</strong> v1 written from verified sources; formula deep-dives are marked TODO in each page.
 <strong>Rule of thumb:</strong> the source code (<code>src-tauri/src/segment/</code>) is the authority; the numbered Chinese docs (<code>../07…10</code>) are historical research records.</p>
 <table>
 <thead>
@@ -246,17 +255,17 @@ For engineering mechanisms (picking, highlight, undo/redo, export), see <a href=
 <tbody><tr>
 <td><a href="segmentation.html">segmentation.md</a></td>
 <td>auto-segmentation: three-phase dihedral pipeline + v2 unified interface with 8 algorithms</td>
-<td>✍️ pending</td>
+<td>✅ v1</td>
 </tr>
 <tr>
 <td><a href="seed-grow-fuse.html">seed-grow-fuse.md</a></td>
 <td>seed recommendation, manual grow, auto fuse + tiny-region merge</td>
-<td>✍️ pending</td>
+<td>✅ v1</td>
 </tr>
 <tr>
 <td><a href="eye-detection.html">eye-detection.md</a></td>
 <td>eye-region semantic detection (global, template-based)</td>
-<td>✍️ pending</td>
+<td>✅ v1</td>
 </tr>
 </tbody></table>
 <p>Paper references live in <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.md"><code>../08-智能分区-算法参考与论文.md</code></a>.</p>

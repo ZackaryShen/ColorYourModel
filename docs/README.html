@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Documentation Index · ColorYourModel Docs</title>
+<title>ColorYourModel Wiki · ColorYourModel Docs</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
 <style>
 /* ColorYourModel docs site — light, modern, file://-safe (all inline). */
@@ -203,6 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../README.html">Home (EN)</a></li>
 <li><a href="../README.zh-CN.html">首页（中文）</a></li>
 <li><a href="../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="user-guide/getting-started.html">Getting Started</a></li>
+<li><a href="user-guide/auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="user-guide/seed-tools.html">Seed Tools</a></li>
+<li><a href="user-guide/painting-tools.html">Painting Tools</a></li>
+<li><a href="user-guide/exporting.html">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="algorithms/README.html">Algorithms</a></li>
 <li><a href="algorithms/segmentation.html">Mesh Segmentation</a></li>
 <li><a href="algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -214,7 +219,10 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
 <li><a href="technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
 <li><a href="technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="developer/ipc-reference.html">IPC Reference</a></li>
+<li><a href="developer/development.html">Development Guide</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="cases/README.html">Cases</a></li>
+<li><a href="cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
 <li><a href="cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
@@ -230,17 +238,63 @@ pre.mermaid.mermaid-offline::after {
   </aside>
   <main id="content">
     <article>
-<h1 id="documentation-index">Documentation Index</h1>
-<p>This directory mixes two kinds of documents. When they disagree, <strong>the source code is the authority</strong>.</p>
-<p>Every document has a colocated HTML archive next to it (<code>README.md</code> → <code>README.html</code>, …) — the readable form, committed to the repo. The markdown files are the editable source/backup; after editing run <code>npm run docs:build</code> to regenerate.</p>
+<h1 id="coloryourmodel-wiki">ColorYourModel Wiki</h1>
+<p>This is the documentation hub for <strong>ColorYourModel (CYM)</strong> — a desktop app that turns white-model STLs into region-based, multi-colour 3MFs for multi-material 3D printing. When any document disagrees with the code, <strong>the source code is the authority</strong>.</p>
+<p>Every page has a colocated HTML archive (<code>X.md</code> → <code>X.html</code>) committed next to it — the markdown is the editable source; after editing run <code>npm run docs:build</code>.</p>
 <pre class="mermaid">flowchart LR
-    R[&quot;docs/ README.md&lt;br/&gt;(this index)&quot;] --&gt; AL[&quot;algorithms/&lt;br/&gt;math &amp; principles&quot;]
-    R --&gt; TE[&quot;technical/&lt;br/&gt;engineering mechanisms&quot;]
-    R --&gt; CA[&quot;cases/&lt;br/&gt;showcase &amp; verification&quot;]
-    R --&gt; WD[&quot;01…10 numbered docs&lt;br/&gt;中文 working documents&quot;]
-    R --&gt; LJ[&quot;loop-journal.md&lt;br/&gt;iteration retrospectives&quot;]
-    WD -. historical research .-&gt; AL
+    H[&quot;📖 Wiki Home&quot;] --&gt; UG[&quot;User Guide&lt;br/&gt;getting started · segmentation&lt;br/&gt;seeds · painting · export&quot;]
+    H --&gt; AL[&quot;Algorithms&lt;br/&gt;segmentation · grow/fuse · eyes&quot;]
+    H --&gt; TE[&quot;Technical&lt;br/&gt;picking · highlight · fill routing&lt;br/&gt;undo/redo · export · diagnostics&quot;]
+    H --&gt; DV[&quot;Developer&lt;br/&gt;IPC reference · dev guide&quot;]
+    H --&gt; CA[&quot;Cases&lt;br/&gt;verification records&quot;]
+    H --&gt; WD[&quot;01…10 working docs&lt;br/&gt;中文 · historical&quot;]
 </pre>
+<h2 id="i-want-to">I want to…</h2>
+<table>
+<thead>
+<tr>
+<th>Goal</th>
+<th>Page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Build and run the app for the first time</td>
+<td><a href="user-guide/getting-started.html">Getting Started</a></td>
+</tr>
+<tr>
+<td>Understand / tune automatic segmentation</td>
+<td><a href="user-guide/auto-segmentation.html">Auto Segmentation</a></td>
+</tr>
+<tr>
+<td>Refine a figure model (seeds, grow, fuse, eyes)</td>
+<td><a href="user-guide/seed-tools.html">Seed Tools</a></td>
+</tr>
+<tr>
+<td>Paint, fill, undo, navigate</td>
+<td><a href="user-guide/painting-tools.html">Painting Tools</a></td>
+</tr>
+<tr>
+<td>Get a multi-colour printable file</td>
+<td><a href="user-guide/exporting.html">Exporting</a></td>
+</tr>
+<tr>
+<td>Know every Tauri command and signature</td>
+<td><a href="developer/ipc-reference.html">IPC Reference</a></td>
+</tr>
+<tr>
+<td>Contribute code or docs</td>
+<td><a href="developer/development.html">Development Guide</a></td>
+</tr>
+<tr>
+<td>See a real end-to-end result</td>
+<td><a href="cases/01-3mf-end-to-end.html">3MF verification case</a></td>
+</tr>
+<tr>
+<td>Read how an algorithm works inside</td>
+<td><a href="algorithms/README.html">Algorithms</a></td>
+</tr>
+</tbody></table>
+<h2 id="document-map">Document map</h2>
 <table>
 <thead>
 <tr>
@@ -250,23 +304,38 @@ pre.mermaid.mermaid-offline::after {
 </tr>
 </thead>
 <tbody><tr>
-<td>Deep dives — algorithms</td>
+<td>User guide</td>
+<td><a href="user-guide/getting-started.html"><code>user-guide/</code></a></td>
+<td>EN</td>
+</tr>
+<tr>
+<td>Algorithms (math &amp; principles)</td>
 <td><a href="algorithms/README.html"><code>algorithms/</code></a></td>
-<td>EN skeleton, content in EN or 中文</td>
+<td>EN skeleton · EN/中文 content</td>
 </tr>
 <tr>
-<td>Deep dives — engineering mechanisms</td>
+<td>Engineering mechanisms</td>
 <td><a href="technical/README.html"><code>technical/</code></a></td>
-<td>EN skeleton, content in EN or 中文</td>
+<td>EN skeleton · EN/中文 content</td>
 </tr>
 <tr>
-<td>Case showcase &amp; verification records</td>
+<td>Cases &amp; verification records</td>
 <td><a href="cases/README.html"><code>cases/</code></a></td>
-<td>EN or 中文, template provided</td>
+<td>EN/中文</td>
+</tr>
+<tr>
+<td>Developer reference</td>
+<td><a href="developer/ipc-reference.html"><code>developer/</code></a></td>
+<td>EN</td>
 </tr>
 <tr>
 <td>Numbered working documents</td>
 <td><code>01…10-*.md</code></td>
+<td>中文</td>
+</tr>
+<tr>
+<td>Iteration journal</td>
+<td><a href="loop-journal.html"><code>loop-journal.md</code></a></td>
 <td>中文</td>
 </tr>
 </tbody></table>
@@ -331,13 +400,11 @@ pre.mermaid.mermaid-offline::after {
 </tr>
 </tbody></table>
 <blockquote>
-<p>Note: 07/08/09/10 are historical research records. For current behaviour, read the code (<code>src-tauri/src/segment/</code>) and the deep-dive stubs under <code>algorithms/</code>.</p>
+<p>Note: 07/08/09/10 are historical research records. For current behaviour, read the code (<code>src-tauri/src/segment/</code>) and the wiki pages under <code>algorithms/</code>.</p>
 </blockquote>
-<h2 id="iteration-journal">Iteration journal</h2>
-<p><code>loop-journal.md</code> — per-iteration retrospectives of the adversarial development loop.</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#numbered-series-working-documents-中文">Numbered series (working documents, 中文)</a></li><li class="toc-h2"><a href="#iteration-journal">Iteration journal</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#i-want-to">I want to…</a></li><li class="toc-h2"><a href="#document-map">Document map</a></li><li class="toc-h2"><a href="#numbered-series-working-documents-中文">Numbered series (working documents, 中文)</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

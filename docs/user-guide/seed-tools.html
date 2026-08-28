@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Case: &lt;short title&gt; (template) · ColorYourModel Docs</title>
+<title>Seed Tools · ColorYourModel Docs</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
 <style>
 /* ColorYourModel docs site — light, modern, file://-safe (all inline). */
@@ -203,11 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
 <li><a href="../../README.zh-CN.html">首页（中文）</a></li>
 <li><a href="../../CHANGELOG.html">Changelog</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
-<li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
-<li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
-<li><a href="../user-guide/painting-tools.html">Painting Tools</a></li>
-<li><a href="../user-guide/exporting.html">Exporting</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="getting-started.html">Getting Started</a></li>
+<li><a href="auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="seed-tools.html" aria-current="page">Seed Tools</a></li>
+<li><a href="painting-tools.html">Painting Tools</a></li>
+<li><a href="exporting.html">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="../algorithms/README.html">Algorithms</a></li>
 <li><a href="../algorithms/segmentation.html">Mesh Segmentation</a></li>
 <li><a href="../algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -221,9 +221,9 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
 <li><a href="../developer/development.html">Development Guide</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="README.html">Cases</a></li>
-<li><a href="01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
-<li><a href="TEMPLATE.html" aria-current="page">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
+<li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
 <li><a href="../03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
@@ -238,61 +238,64 @@ pre.mermaid.mermaid-offline::after {
   </aside>
   <main id="content">
     <article>
-<h1 id="case-short-title">Case: <short title></h1>
+<h1 id="seed-tools">Seed Tools</h1>
 <blockquote>
-<p>Copy this file to <code>&lt;name&gt;.md</code> and fill it. Write in English or 中文.</p>
+<p>Part of the CYM wiki — seed-based segmentation: place seeds, grow regions, fuse results.
+Internals: <a href="../algorithms/seed-grow-fuse.html">Algorithms: Seed Grow &amp; Fuse</a>.</p>
 </blockquote>
-<h2 id="meta">Meta</h2>
+<p>The <strong>Seed panel</strong> gives fine-grained control on figure-type models where generic auto segmentation needs help. It has two modes:</p>
+<ul>
+<li><strong>Auto (fuse)</strong> — recommend seeds automatically, grow, then fuse with tiny-region cleanup</li>
+<li><strong>Manual (grow)</strong> — you place the seeds, the region grows from them</li>
+</ul>
+<pre class="mermaid">flowchart TD
+    R[&quot;Recommend seeds&lt;br/&gt;(or detect planar / multiview / cross-section / eyes)&quot;] --&gt; P[&quot;place / adjust seed points&quot;]
+    P --&gt; G[&quot;grow&lt;br/&gt;(barrier angle + optimizer)&quot;]
+    G --&gt; F[&quot;fuse + tiny-region merge&quot;]
+    F --&gt; REG[&quot;final regions&quot;]
+    EYE[&quot;Eye detection&quot;] -. eye regions are protected .-&gt; REG
+</pre>
+<h2 id="seed-recommendation">Seed recommendation</h2>
+<ul>
+<li><strong>Recommended seeds</strong> — saliency-based suggestions with sliders for <em>count</em>, <em>curvature weight</em> and <em>concavity weight</em>.</li>
+<li><strong>Planar regions</strong> — flat-area detection (angle threshold, distance factor, minimum faces).</li>
+<li><strong>Multiview</strong> — regions consistently seen from multiple views (view count, angle threshold, minimum faces, match threshold).</li>
+<li><strong>Cross-section</strong> — features found on slicing planes per axis.</li>
+<li><strong>Detect eyes</strong> — one click, global scan (no ROI needed); a ROI-mode also exists for developers (see <a href="../developer/ipc-reference.html">IPC Reference</a>).</li>
+</ul>
+<p>Suggestions are cleared automatically before a new eye detection so stale suggestions can&#39;t pollute results.</p>
+<h2 id="growing-regions">Growing regions</h2>
+<p>Each seed grows into a region bounded by the <strong>barrier angle</strong> — adjacent faces whose normals differ more than the barrier stop the growth. Toggle the <strong>optimizer</strong> to post-process the grown regions. Add or move seeds and grow again; regions you keep are preserved.</p>
+<h2 id="fusing">Fusing</h2>
+<p><strong>Fuse</strong> merges over-seeded fragments, with aggressive <strong>tiny-region merging</strong> (micro-regions are absorbed and a live size breakdown is shown in the status area) and a reverse-split guard against runaway merges. Eye regions detected earlier are protected — they survive internal cuts and merges.</p>
+<h2 id="when-to-use-what">When to use what</h2>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Value</th>
+<th>Situation</th>
+<th>Suggestion</th>
 </tr>
 </thead>
 <tbody><tr>
-<td>Date</td>
-<td>YYYY-MM-DD</td>
+<td>Figure with eyes/face</td>
+<td>Detect eyes first, then seed-grow the body parts</td>
 </tr>
 <tr>
-<td>Model</td>
-<td>file name + source + <strong>license/provenance</strong> (must be documented before publishing screenshots)</td>
+<td>Mechanical part</td>
+<td>Skip seeds — dihedral auto segmentation is enough</td>
 </tr>
 <tr>
-<td>Face count</td>
-<td>e.g. 1.5M</td>
+<td>Auto result too fragmented</td>
+<td>Fuse with tiny-region merge</td>
 </tr>
 <tr>
-<td>CYM version / commit</td>
-<td>git sha</td>
-</tr>
-<tr>
-<td>Slicer used</td>
-<td>e.g. Snapmaker Orca (U1), version</td>
-</tr>
-<tr>
-<td>Evidence</td>
-<td>screenshot paths under <code>samples/</code> or <code>examples/</code></td>
+<td>One region wrong</td>
+<td>Resegment just that region (Segments panel) instead of re-running everything</td>
 </tr>
 </tbody></table>
-<h2 id="goal">Goal</h2>
-<p>What question this case answers (e.g. &quot;does a fused seed segmentation survive 3MF export with correct filament slots?&quot;).</p>
-<h2 id="pipeline--settings">Pipeline &amp; Settings</h2>
-<p>Each step with its exact parameters (algorithm, thresholds, brush settings). Enough for someone else to reproduce.</p>
-<h2 id="result">Result</h2>
-<p>What happened, with screenshots. Include the slicer-side view, not just the CYM side.</p>
-<h2 id="verification-checklist">Verification checklist</h2>
-<ul>
-<li><input disabled="" type="checkbox"> Regions as expected (count / boundaries)</li>
-<li><input disabled="" type="checkbox"> Colours match palette slots in slicer</li>
-<li><input disabled="" type="checkbox"> Machine &amp; process preset recognized by slicer</li>
-<li><input disabled="" type="checkbox"> Printed output (if applicable): photo</li>
-</ul>
-<h2 id="problems-found">Problems found</h2>
-<p>Anything that didn&#39;t work → file to the defect tracker (<code>../04</code>) and link it here.</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#meta">Meta</a></li><li class="toc-h2"><a href="#goal">Goal</a></li><li class="toc-h2"><a href="#pipeline--settings">Pipeline &amp; Settings</a></li><li class="toc-h2"><a href="#result">Result</a></li><li class="toc-h2"><a href="#verification-checklist">Verification checklist</a></li><li class="toc-h2"><a href="#problems-found">Problems found</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#seed-recommendation">Seed recommendation</a></li><li class="toc-h2"><a href="#growing-regions">Growing regions</a></li><li class="toc-h2"><a href="#fusing">Fusing</a></li><li class="toc-h2"><a href="#when-to-use-what">When to use what</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

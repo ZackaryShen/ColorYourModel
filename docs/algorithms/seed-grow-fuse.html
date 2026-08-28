@@ -203,6 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
 <li><a href="../../README.zh-CN.html">首页（中文）</a></li>
 <li><a href="../../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
+<li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
+<li><a href="../user-guide/painting-tools.html">Painting Tools</a></li>
+<li><a href="../user-guide/exporting.html">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="README.html">Algorithms</a></li>
 <li><a href="segmentation.html">Mesh Segmentation</a></li>
 <li><a href="seed-grow-fuse.html" aria-current="page">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -214,7 +219,10 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="../technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
 <li><a href="../technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
 <li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
+<li><a href="../developer/development.html">Development Guide</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
 <li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
@@ -232,40 +240,49 @@ pre.mermaid.mermaid-offline::after {
     <article>
 <h1 id="seed-based-segmentation-grow--fuse">Seed-Based Segmentation: Grow &amp; Fuse</h1>
 <blockquote>
-<p>Status: <strong>placeholder</strong> — content pending. Fill freely in English or 中文.</p>
+<p>Seed-driven refinement for figure-type models. Status: <strong>v1 written from verified sources</strong>.
+Usage guide: <a href="../user-guide/seed-tools.html">User Guide: Seed Tools</a>.</p>
 </blockquote>
-<h2 id="scope">Scope</h2>
-<p>The seed-driven segmentation workflow exposed in <code>SeedPanel</code> (Auto = fuse / Manual = grow):</p>
+<h2 id="the-flow">The flow</h2>
 <pre class="mermaid">flowchart TD
-    S[&quot;seed recommendation&lt;br/&gt;planar · multiview · cross-section · saliency&quot;] --&gt; G[&quot;manual grow&lt;br/&gt;seed_grow + point-by-point picking&quot;]
-    S --&gt; F[&quot;auto fuse&lt;br/&gt;fuse_segmentation&quot;]
+    S[&quot;seed recommendation&lt;br/&gt;planar · multiview · cross-section · saliency&quot;] --&gt; G[&quot;manual grow&lt;br/&gt;seed_grow(seeds, barrier_deg, optimizer)&quot;]
+    S --&gt; F[&quot;auto fuse&lt;br/&gt;fuse_segmentation (async)&quot;]
     F --&gt; T[&quot;tiny-region merge&lt;br/&gt;aggressive absorb + live size breakdown&quot;]
     G --&gt; RG[&quot;regions (labels only)&quot;]
     T --&gt; RG
     EY[&quot;eye-region detection&quot;] -. protected from cuts/merges .-&gt; RG
 </pre>
-<p>Topics to cover: seed recommendation sources, manual grow mechanics, auto fuse with
-tiny-region merging (including the reverse-split behaviour and the live region-size
-breakdown), and why eye regions survive fuse/merge passes.</p>
-<h2 id="code-pointers">Code pointers</h2>
+<h2 id="seeded-watershed-growth">Seeded watershed growth</h2>
+<p><code>seed_grow</code> takes placed seeds (<code>SeedInput</code>: snapped 3D point + hit face), a <strong>barrier angle</strong> and an <strong>optimizer</strong> flag. Growth spreads from each seed across the face graph and stops where the normal deviation exceeds the barrier — the seeded watershed model dates from iteration 50. The optimizer post-pass tightens the grown boundaries.</p>
+<p>TODO: exact watershed scoring function and the barrier measurement definition (dihedral vs. normal-to-seed).</p>
+<h2 id="seed-recommendation">Seed recommendation</h2>
 <ul>
-<li><code>src-tauri/src/segment/seeded.rs</code> · <code>fuse.rs</code> · <code>manual.rs</code> · <code>recommend.rs</code></li>
-<li><code>src-tauri/src/segment/{planar,multiview,cross_section}.rs</code></li>
-<li><code>src/components/SeedPanel.tsx</code> (Auto/Manual modes)</li>
+<li><code>recommend_seeds(count, curvature, concavity)</code> — saliency-weighted suggestions; the two weights are the panel&#39;s <em>curvature</em> / <em>concavity</em> sliders.</li>
+<li>Structured detectors, each with its own parameters (see <a href="../developer/ipc-reference.html">IPC Reference</a> for signatures):<ul>
+<li><strong>Planar regions</strong> — <code>detect_planar_regions(angle_threshold_deg, dist_thr_factor, min_region_faces)</code></li>
+<li><strong>Multiview</strong> — <code>detect_multiview_regions(view_count, angle_threshold_deg, min_region_faces, match_threshold)</code></li>
+<li><strong>Cross-section</strong> — <code>detect_cross_section_features(planes_per_axis, feature_threshold)</code></li>
 </ul>
-<h2 id="related-research-notes-中文-historical">Related research notes (中文, historical)</h2>
+</li>
+</ul>
+<h2 id="fuse--tiny-region-merge">Fuse &amp; tiny-region merge</h2>
+<p><code>fuse_segmentation</code> (async) consolidates over-seeded output:</p>
 <ul>
-<li><code>../09-连续平面与边界-算法融合研究.md</code> — plane/boundary fusion research</li>
+<li><strong>Aggressive tiny-region merging</strong> — micro-regions are absorbed so the result stays printable; a <strong>live breakdown</strong> of region sizes streams to the status area while it runs (iteration 80).</li>
+<li><strong>Cut threshold 2</strong> — the merged-graph guard was hardened against pathological inputs (<code>b543ede</code>, &quot;bulletproof tiny-region merge&quot;).</li>
+<li><strong>Reverse-split</strong> — a merge that would destroy structure can be reversed; the fuse-debug tooling from iteration 80&#39;s journal came out of exactly that failure mode.</li>
 </ul>
-<h2 id="todo">TODO</h2>
+<h2 id="eye-region-protection">Eye-region protection</h2>
+<p>Once eye regions are detected they are <strong>protected</strong>: internal dihedral cuts skip them (<code>2fc242a</code>) and fuse/merge passes keep them intact — a merged-away eye is a ruined figure print.</p>
+<h2 id="invariants">Invariants</h2>
 <ul>
-<li><input disabled="" type="checkbox"> Grow barrier-angle semantics (what the slider really does)</li>
-<li><input disabled="" type="checkbox"> Fuse/tiny-merge thresholds with provenance</li>
-<li><input disabled="" type="checkbox"> Region-authority note: algorithms propagate labels, never colours (see <a href="../technical/fill-routing.html">../technical/fill-routing.md</a>)</li>
+<li>All of the above propagate <strong>labels only</strong>. Overwriting <code>face_colors</code> with palette colours during fuse/grow is a known violation being tracked (tracker §8, pending the 3MF colour-strategy ruling) — see <a href="../technical/fill-routing.html">Fill Routing</a>.</li>
 </ul>
+<h2 id="related-research-中文-historical">Related research (中文, historical)</h2>
+<p><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.md"><code>09-连续平面与边界-算法融合研究</code></a></p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#scope">Scope</a></li><li class="toc-h2"><a href="#code-pointers">Code pointers</a></li><li class="toc-h2"><a href="#related-research-notes-中文-historical">Related research notes (中文, historical)</a></li><li class="toc-h2"><a href="#todo">TODO</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#the-flow">The flow</a></li><li class="toc-h2"><a href="#seeded-watershed-growth">Seeded watershed growth</a></li><li class="toc-h2"><a href="#seed-recommendation">Seed recommendation</a></li><li class="toc-h2"><a href="#fuse--tiny-region-merge">Fuse &amp; tiny-region merge</a></li><li class="toc-h2"><a href="#eye-region-protection">Eye-region protection</a></li><li class="toc-h2"><a href="#invariants">Invariants</a></li><li class="toc-h2"><a href="#related-research-中文-historical">Related research (中文, historical)</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

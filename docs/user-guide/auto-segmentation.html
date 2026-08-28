@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Case: &lt;short title&gt; (template) · ColorYourModel Docs</title>
+<title>Auto Segmentation · ColorYourModel Docs</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
 <style>
 /* ColorYourModel docs site — light, modern, file://-safe (all inline). */
@@ -203,11 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
 <li><a href="../../README.zh-CN.html">首页（中文）</a></li>
 <li><a href="../../CHANGELOG.html">Changelog</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
-<li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
-<li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
-<li><a href="../user-guide/painting-tools.html">Painting Tools</a></li>
-<li><a href="../user-guide/exporting.html">Exporting</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="getting-started.html">Getting Started</a></li>
+<li><a href="auto-segmentation.html" aria-current="page">Auto Segmentation</a></li>
+<li><a href="seed-tools.html">Seed Tools</a></li>
+<li><a href="painting-tools.html">Painting Tools</a></li>
+<li><a href="exporting.html">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="../algorithms/README.html">Algorithms</a></li>
 <li><a href="../algorithms/segmentation.html">Mesh Segmentation</a></li>
 <li><a href="../algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -221,9 +221,9 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
 <li><a href="../developer/development.html">Development Guide</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="README.html">Cases</a></li>
-<li><a href="01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
-<li><a href="TEMPLATE.html" aria-current="page">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
+<li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
 <li><a href="../03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
@@ -238,61 +238,59 @@ pre.mermaid.mermaid-offline::after {
   </aside>
   <main id="content">
     <article>
-<h1 id="case-short-title">Case: <short title></h1>
+<h1 id="auto-segmentation">Auto Segmentation</h1>
 <blockquote>
-<p>Copy this file to <code>&lt;name&gt;.md</code> and fill it. Write in English or 中文.</p>
+<p>Part of the CYM wiki — how to use the automatic segmentation algorithms.
+For the math and pipeline internals, see <a href="../algorithms/segmentation.html">Algorithms: Mesh Segmentation</a>.</p>
 </blockquote>
-<h2 id="meta">Meta</h2>
+<h2 id="where">Where</h2>
+<p>After importing a model (and at any time later) you can segment it:</p>
+<ul>
+<li><strong>On import</strong>: a default dihedral-angle segmentation (30°) runs automatically.</li>
+<li><strong>Intelligent Segmentation panel</strong>: choose an algorithm and tune its parameters.</li>
+</ul>
+<h2 id="algorithms-in-the-panel">Algorithms in the panel</h2>
+<p>The panel exposes 3 of the 8 backend algorithms (<code>auto_segment_v2</code> IPC, all algorithms available to developers — see the <a href="../developer/ipc-reference.html">IPC Reference</a>):</p>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Value</th>
+<th>Algorithm</th>
+<th>Parameters (default)</th>
+<th>Good for</th>
 </tr>
 </thead>
 <tbody><tr>
-<td>Date</td>
-<td>YYYY-MM-DD</td>
+<td><strong>Dihedral</strong></td>
+<td>angle threshold (30°)</td>
+<td>mechanical parts, hard edges — splits where faces meet at steep angles</td>
 </tr>
 <tr>
-<td>Model</td>
-<td>file name + source + <strong>license/provenance</strong> (must be documented before publishing screenshots)</td>
+<td><strong>Curvature K-Means</strong></td>
+<td>clusters k (6), normal smoothing iterations (2), use SDF fusion (on), crease threshold (45°)</td>
+<td>organic models with smooth patches</td>
 </tr>
 <tr>
-<td>Face count</td>
-<td>e.g. 1.5M</td>
-</tr>
-<tr>
-<td>CYM version / commit</td>
-<td>git sha</td>
-</tr>
-<tr>
-<td>Slicer used</td>
-<td>e.g. Snapmaker Orca (U1), version</td>
-</tr>
-<tr>
-<td>Evidence</td>
-<td>screenshot paths under <code>samples/</code> or <code>examples/</code></td>
+<td><strong>Shape Diameter (SDF)</strong></td>
+<td>k (0 = auto)</td>
+<td>thickness-based separation (limbs, shells)</td>
 </tr>
 </tbody></table>
-<h2 id="goal">Goal</h2>
-<p>What question this case answers (e.g. &quot;does a fused seed segmentation survive 3MF export with correct filament slots?&quot;).</p>
-<h2 id="pipeline--settings">Pipeline &amp; Settings</h2>
-<p>Each step with its exact parameters (algorithm, thresholds, brush settings). Enough for someone else to reproduce.</p>
-<h2 id="result">Result</h2>
-<p>What happened, with screenshots. Include the slicer-side view, not just the CYM side.</p>
-<h2 id="verification-checklist">Verification checklist</h2>
+<pre class="mermaid">flowchart LR
+    P[&quot;Intelligent Segmentation panel&quot;] --&gt;|&quot;select + tune&quot;| A[&quot;auto_segment_v2&lt;br/&gt;(algorithm, params)&quot;]
+    A --&gt; R[&quot;regions replace or join&lt;br/&gt;the current segmentation&quot;]
+</pre>
+<h2 id="behaviour-notes">Behaviour notes</h2>
 <ul>
-<li><input disabled="" type="checkbox"> Regions as expected (count / boundaries)</li>
-<li><input disabled="" type="checkbox"> Colours match palette slots in slicer</li>
-<li><input disabled="" type="checkbox"> Machine &amp; process preset recognized by slicer</li>
-<li><input disabled="" type="checkbox"> Printed output (if applicable): photo</li>
+<li><strong>Manual regions survive re-runs</strong> — segmentation preserves manually painted regions by default (<code>preserve_manual</code>, can be disabled).</li>
+<li><strong>Parameters persist per algorithm</strong> — switching algorithms and coming back keeps the sliders where you left them (validated on restore; stored in <code>localStorage</code> via zustand persist).</li>
+<li><strong>Progress</strong> — long segmentations emit progress events shown in the UI.</li>
+<li><strong>Single-region result?</strong> If everything merges into one region, your thresholds are too permissive — raise the dihedral angle for hard-surface models or increase k for clustering algorithms.</li>
 </ul>
-<h2 id="problems-found">Problems found</h2>
-<p>Anything that didn&#39;t work → file to the defect tracker (<code>../04</code>) and link it here.</p>
+<h2 id="region-management-afterwards">Region management afterwards</h2>
+<p>Any segmentation is a starting point: use the Segments panel and canvas tools to <strong>merge / split / rename</strong> regions, <strong>resegment a single region</strong> with a different algorithm, or refine with seeds (next page).</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#meta">Meta</a></li><li class="toc-h2"><a href="#goal">Goal</a></li><li class="toc-h2"><a href="#pipeline--settings">Pipeline &amp; Settings</a></li><li class="toc-h2"><a href="#result">Result</a></li><li class="toc-h2"><a href="#verification-checklist">Verification checklist</a></li><li class="toc-h2"><a href="#problems-found">Problems found</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#where">Where</a></li><li class="toc-h2"><a href="#algorithms-in-the-panel">Algorithms in the panel</a></li><li class="toc-h2"><a href="#behaviour-notes">Behaviour notes</a></li><li class="toc-h2"><a href="#region-management-afterwards">Region management afterwards</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Case: &lt;short title&gt; (template) · ColorYourModel Docs</title>
+<title>Exporting · ColorYourModel Docs</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
 <style>
 /* ColorYourModel docs site — light, modern, file://-safe (all inline). */
@@ -203,11 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
 <li><a href="../../README.zh-CN.html">首页（中文）</a></li>
 <li><a href="../../CHANGELOG.html">Changelog</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
-<li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
-<li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
-<li><a href="../user-guide/painting-tools.html">Painting Tools</a></li>
-<li><a href="../user-guide/exporting.html">Exporting</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="getting-started.html">Getting Started</a></li>
+<li><a href="auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="seed-tools.html">Seed Tools</a></li>
+<li><a href="painting-tools.html">Painting Tools</a></li>
+<li><a href="exporting.html" aria-current="page">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="../algorithms/README.html">Algorithms</a></li>
 <li><a href="../algorithms/segmentation.html">Mesh Segmentation</a></li>
 <li><a href="../algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -221,9 +221,9 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
 <li><a href="../developer/development.html">Development Guide</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="README.html">Cases</a></li>
-<li><a href="01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
-<li><a href="TEMPLATE.html" aria-current="page">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
+<li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
 <li><a href="../03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
@@ -238,61 +238,55 @@ pre.mermaid.mermaid-offline::after {
   </aside>
   <main id="content">
     <article>
-<h1 id="case-short-title">Case: <short title></h1>
+<h1 id="exporting">Exporting</h1>
 <blockquote>
-<p>Copy this file to <code>&lt;name&gt;.md</code> and fill it. Write in English or 中文.</p>
+<p>Part of the CYM wiki — getting your coloured model into a slicer.
+Internals: <a href="../technical/export-pipeline.html">Technical: Export Pipeline</a>.</p>
 </blockquote>
-<h2 id="meta">Meta</h2>
+<h2 id="export-3mf-recommended">Export 3MF (recommended)</h2>
+<p>The 3MF carries per-region colours <strong>plus machine/process/filament metadata</strong>, so the slicer shows a fully configured multi-material job.</p>
+<p>The export dialog walks you through:</p>
+<ol>
+<li><strong>Vendor &amp; machine</strong> — e.g. Snapmaker U1 (presets are embedded; no vendor profile installation needed)</li>
+<li><strong>Nozzle diameter</strong> — 0.2 / 0.4 / 0.6 / 0.8</li>
+<li><strong>Process</strong> — quality presets filtered for the machine + nozzle</li>
+<li><strong>Filament slots</strong> — one filament preset per palette slot, slot order preserved</li>
+<li><strong>Target slicer</strong> — Snapmaker Orca or OrcaSlicer (decides the model id written into the file)</li>
+</ol>
+<p>Extras: palette slot preview before export, multi-region selection with <strong>apply-all</strong>, and your last selection is remembered (validated) between sessions.</p>
+<pre class="mermaid">flowchart LR
+    S[&quot;select machine / nozzle /&lt;br/&gt;process / filaments / slicer&quot;] --&gt; E[&quot;export_3mf&quot;]
+    P[&quot;embedded presets&lt;br/&gt;(snapmaker_u1.json)&quot;] --&gt; E
+    E --&gt; V[&quot;file written &amp;&lt;br/&gt;non-empty verified&quot;]
+    V --&gt; SL[&quot;Snapmaker Orca shows&lt;br/&gt;Snapmaker U1 (0.4 nozzle)&lt;br/&gt;+ multi-filament colours&quot;]
+</pre>
+<p><strong>Verified end-to-end (2026-08-27)</strong>: a real model exported from CYM imported into Snapmaker Orca (U1) with correct multi-filament colours and the embedded process preset (<code>0.20 Standard @Snapmaker U1 (0.4 nozzle)</code>) — see the <a href="../cases/01-3mf-end-to-end.html">verification case</a>.</p>
+<h2 id="export-obj">Export OBJ</h2>
+<p>Exports <code>.obj</code> plus a sibling <code>.mtl</code>: per-face colours become <code>usemtl</code> material groups, quantized to at most 256 colours. No machine/process pickers needed — colour is written directly. Use OBJ for tools that don&#39;t read 3MF (DCC software, viewers).</p>
+<h2 id="which-one-when">Which one when?</h2>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Value</th>
+<th>Target</th>
+<th>Format</th>
 </tr>
 </thead>
 <tbody><tr>
-<td>Date</td>
-<td>YYYY-MM-DD</td>
+<td>Slice &amp; print (multi-material)</td>
+<td><strong>3MF</strong></td>
 </tr>
 <tr>
-<td>Model</td>
-<td>file name + source + <strong>license/provenance</strong> (must be documented before publishing screenshots)</td>
+<td>Blender / MeshLab / web viewers</td>
+<td><strong>OBJ</strong></td>
 </tr>
 <tr>
-<td>Face count</td>
-<td>e.g. 1.5M</td>
-</tr>
-<tr>
-<td>CYM version / commit</td>
-<td>git sha</td>
-</tr>
-<tr>
-<td>Slicer used</td>
-<td>e.g. Snapmaker Orca (U1), version</td>
-</tr>
-<tr>
-<td>Evidence</td>
-<td>screenshot paths under <code>samples/</code> or <code>examples/</code></td>
+<td>Sharing a printable job with presets</td>
+<td><strong>3MF</strong></td>
 </tr>
 </tbody></table>
-<h2 id="goal">Goal</h2>
-<p>What question this case answers (e.g. &quot;does a fused seed segmentation survive 3MF export with correct filament slots?&quot;).</p>
-<h2 id="pipeline--settings">Pipeline &amp; Settings</h2>
-<p>Each step with its exact parameters (algorithm, thresholds, brush settings). Enough for someone else to reproduce.</p>
-<h2 id="result">Result</h2>
-<p>What happened, with screenshots. Include the slicer-side view, not just the CYM side.</p>
-<h2 id="verification-checklist">Verification checklist</h2>
-<ul>
-<li><input disabled="" type="checkbox"> Regions as expected (count / boundaries)</li>
-<li><input disabled="" type="checkbox"> Colours match palette slots in slicer</li>
-<li><input disabled="" type="checkbox"> Machine &amp; process preset recognized by slicer</li>
-<li><input disabled="" type="checkbox"> Printed output (if applicable): photo</li>
-</ul>
-<h2 id="problems-found">Problems found</h2>
-<p>Anything that didn&#39;t work → file to the defect tracker (<code>../04</code>) and link it here.</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#meta">Meta</a></li><li class="toc-h2"><a href="#goal">Goal</a></li><li class="toc-h2"><a href="#pipeline--settings">Pipeline &amp; Settings</a></li><li class="toc-h2"><a href="#result">Result</a></li><li class="toc-h2"><a href="#verification-checklist">Verification checklist</a></li><li class="toc-h2"><a href="#problems-found">Problems found</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#export-3mf-recommended">Export 3MF (recommended)</a></li><li class="toc-h2"><a href="#export-obj">Export OBJ</a></li><li class="toc-h2"><a href="#which-one-when">Which one when?</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

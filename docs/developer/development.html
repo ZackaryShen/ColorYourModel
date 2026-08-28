@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Case: &lt;short title&gt; (template) · ColorYourModel Docs</title>
+<title>Development Guide · ColorYourModel Docs</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
 <style>
 /* ColorYourModel docs site — light, modern, file://-safe (all inline). */
@@ -219,11 +219,11 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="../technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
 <li><a href="../technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
 <li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
-<li><a href="../developer/development.html">Development Guide</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="README.html">Cases</a></li>
-<li><a href="01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
-<li><a href="TEMPLATE.html" aria-current="page">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="ipc-reference.html">IPC Reference</a></li>
+<li><a href="development.html" aria-current="page">Development Guide</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
+<li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
 <li><a href="../03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
@@ -238,61 +238,70 @@ pre.mermaid.mermaid-offline::after {
   </aside>
   <main id="content">
     <article>
-<h1 id="case-short-title">Case: <short title></h1>
+<h1 id="development-guide">Development Guide</h1>
 <blockquote>
-<p>Copy this file to <code>&lt;name&gt;.md</code> and fill it. Write in English or 中文.</p>
+<p>Part of the CYM wiki — how the repo is organized and how we work on it.</p>
 </blockquote>
-<h2 id="meta">Meta</h2>
+<h2 id="stack--layout">Stack &amp; layout</h2>
+<p>Tauri 2 desktop app: React 18 + TypeScript + Three.js frontend (<code>src/</code>), Rust backend (<code>src-tauri/</code>).
+The full annotated tree lives in the <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.md#project-structure">README</a>; deep-dive stubs live under <a href="../algorithms/README.html">algorithms/</a> and <a href="../technical/README.html">technical/</a>.</p>
+<h2 id="everyday-commands">Everyday commands</h2>
+<pre><code class="language-bash">npm run tauri dev                  # dev app (vite HMR + debug exe)
+npx tsc --noEmit                   # TypeScript check
+npx vitest run                     # frontend unit tests
+cd src-tauri &amp;&amp; cargo test --lib   # backend unit + regression tests
+npm run docs:build                 # regenerate HTML archives after editing docs
+</code></pre>
+<p>Pre-commit convention: if tests fail, compare against a stash baseline to prove the failure pre-dates your change.</p>
+<h2 id="docs-workflow-this-wiki">Docs workflow (this wiki)</h2>
+<p>Markdown is the source (<code>docs/**</code>, <code>README*.md</code>, <code>CHANGELOG.md</code>); HTML archives are generated <strong>colocated</strong> (<code>X.md</code> → <code>X.html</code>) and committed. After editing any doc:</p>
+<pre><code class="language-bash">npm run docs:build     # regenerates, prunes stale archives, asserts links
+git add *.html docs/   # include regenerated archives
+</code></pre>
+<ul>
+<li><code>.github/workflows/docs-check.yml</code> fails CI when archives are stale.</li>
+<li><code>.github/workflows/deploy-docs.yml</code> publishes the HTML to GitHub Pages (manual trigger; enable Pages with Source = &quot;GitHub Actions&quot; first).</li>
+<li>Diagrams are Mermaid fenced blocks — rendered by GitHub and by the HTML archives alike.</li>
+<li>UI-language note: the app UI defaults to <strong>Chinese</strong> with English available (<code>src/i18n.ts</code>); docs skeletons are English, content may be written in either language.</li>
+</ul>
+<h2 id="tools">Tools</h2>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Value</th>
+<th>Script</th>
+<th>Purpose</th>
 </tr>
 </thead>
 <tbody><tr>
-<td>Date</td>
-<td>YYYY-MM-DD</td>
+<td><code>tools/build_docs.mjs</code></td>
+<td>docs → HTML archive generator (marked + github-slugger)</td>
 </tr>
 <tr>
-<td>Model</td>
-<td>file name + source + <strong>license/provenance</strong> (must be documented before publishing screenshots)</td>
+<td><code>tools/extract_orca_presets.py</code></td>
+<td>regenerate <code>src-tauri/resources/presets/snapmaker_u1.json</code> from an OrcaSlicer vendor tree (whitelisted vendors, <code>inherits</code> chain flattening)</td>
 </tr>
 <tr>
-<td>Face count</td>
-<td>e.g. 1.5M</td>
+<td><code>tools/verify_3mf.py</code></td>
+<td>structural verification of an exported 3MF</td>
 </tr>
 <tr>
-<td>CYM version / commit</td>
-<td>git sha</td>
-</tr>
-<tr>
-<td>Slicer used</td>
-<td>e.g. Snapmaker Orca (U1), version</td>
-</tr>
-<tr>
-<td>Evidence</td>
-<td>screenshot paths under <code>samples/</code> or <code>examples/</code></td>
+<td><code>tools/verify_fill_routing.cjs</code></td>
+<td>fill-routing regression helper</td>
 </tr>
 </tbody></table>
-<h2 id="goal">Goal</h2>
-<p>What question this case answers (e.g. &quot;does a fused seed segmentation survive 3MF export with correct filament slots?&quot;).</p>
-<h2 id="pipeline--settings">Pipeline &amp; Settings</h2>
-<p>Each step with its exact parameters (algorithm, thresholds, brush settings). Enough for someone else to reproduce.</p>
-<h2 id="result">Result</h2>
-<p>What happened, with screenshots. Include the slicer-side view, not just the CYM side.</p>
-<h2 id="verification-checklist">Verification checklist</h2>
+<h2 id="conventions">Conventions</h2>
 <ul>
-<li><input disabled="" type="checkbox"> Regions as expected (count / boundaries)</li>
-<li><input disabled="" type="checkbox"> Colours match palette slots in slicer</li>
-<li><input disabled="" type="checkbox"> Machine &amp; process preset recognized by slicer</li>
-<li><input disabled="" type="checkbox"> Printed output (if applicable): photo</li>
+<li><strong>Commits</strong>: <a href="https://www.conventionalcommits.org/">Conventional Commits</a>, English, atomic; commit messages carry test evidence (pass counts).</li>
+<li><strong>Branches</strong>: <code>feature_*</code> / <code>bugfix_*</code>; PRs squash-merged to <code>main</code>.</li>
+<li><strong>Adversarial development loop</strong>: every non-trivial change passes <code>PLAN → REFUTE → REVISE → IMPLEMENT → TEST → RETROSPECT</code>; per-round records live in <a href="../../CHANGELOG.html">CHANGELOG.md</a>.</li>
+<li><strong>Region authority principle</strong>: region <strong>labels</strong> are the truth, colours are output — algorithms must never use colour to decide region identity (see <a href="../technical/fill-routing.html">Fill Routing</a>).</li>
+<li><strong>Thresholds carry provenance</strong>: every magic number in a patch needs a source comment or an explicit &quot;v1 default&quot; marker.</li>
 </ul>
-<h2 id="problems-found">Problems found</h2>
-<p>Anything that didn&#39;t work → file to the defect tracker (<code>../04</code>) and link it here.</p>
+<h2 id="release-status">Release status</h2>
+<p>No release tags yet; v0.1 core loop is functionally complete with 3MF export verified end-to-end (2026-08). The defect tracker with P0/P1/P2 states lives in <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.md">docs/04</a> (中文).</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#meta">Meta</a></li><li class="toc-h2"><a href="#goal">Goal</a></li><li class="toc-h2"><a href="#pipeline--settings">Pipeline &amp; Settings</a></li><li class="toc-h2"><a href="#result">Result</a></li><li class="toc-h2"><a href="#verification-checklist">Verification checklist</a></li><li class="toc-h2"><a href="#problems-found">Problems found</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#stack--layout">Stack &amp; layout</a></li><li class="toc-h2"><a href="#everyday-commands">Everyday commands</a></li><li class="toc-h2"><a href="#docs-workflow-this-wiki">Docs workflow (this wiki)</a></li><li class="toc-h2"><a href="#tools">Tools</a></li><li class="toc-h2"><a href="#conventions">Conventions</a></li><li class="toc-h2"><a href="#release-status">Release status</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

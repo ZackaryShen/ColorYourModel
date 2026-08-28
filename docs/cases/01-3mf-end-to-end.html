@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Case: &lt;short title&gt; (template) · ColorYourModel Docs</title>
+<title>Case: 3MF End-to-End Verification · ColorYourModel Docs</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
 <style>
 /* ColorYourModel docs site — light, modern, file://-safe (all inline). */
@@ -222,8 +222,8 @@ pre.mermaid.mermaid-offline::after {
 <div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
 <li><a href="../developer/development.html">Development Guide</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="README.html">Cases</a></li>
-<li><a href="01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
-<li><a href="TEMPLATE.html" aria-current="page">Case template</a></li></ul></div>
+<li><a href="01-3mf-end-to-end.html" aria-current="page">Case: 3MF End-to-End Verification</a></li>
+<li><a href="TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
 <li><a href="../03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
@@ -238,9 +238,9 @@ pre.mermaid.mermaid-offline::after {
   </aside>
   <main id="content">
     <article>
-<h1 id="case-short-title">Case: <short title></h1>
+<h1 id="case-3mf-end-to-end-verification">Case: 3MF End-to-End Verification</h1>
 <blockquote>
-<p>Copy this file to <code>&lt;name&gt;.md</code> and fill it. Write in English or 中文.</p>
+<p>First verification record following <a href="TEMPLATE.html">the template</a>. Closes tracker P0-4.</p>
 </blockquote>
 <h2 id="meta">Meta</h2>
 <table>
@@ -252,44 +252,55 @@ pre.mermaid.mermaid-offline::after {
 </thead>
 <tbody><tr>
 <td>Date</td>
-<td>YYYY-MM-DD</td>
+<td>2026-08-27</td>
 </tr>
 <tr>
 <td>Model</td>
-<td>file name + source + <strong>license/provenance</strong> (must be documented before publishing screenshots)</td>
+<td>figure bust (shirt / skin / hair / glasses) — ⚠️ <strong>provenance &amp; license not yet documented</strong> (tracked in <code>samples/</code> README note); replace with a self-made model before wider distribution if unresolved</td>
 </tr>
 <tr>
 <td>Face count</td>
-<td>e.g. 1.5M</td>
+<td>TODO (read from CYM HUD on re-run)</td>
 </tr>
 <tr>
 <td>CYM version / commit</td>
-<td>git sha</td>
+<td><code>a7700df</code> era (fill-routing fix verified in the same session)</td>
 </tr>
 <tr>
 <td>Slicer used</td>
-<td>e.g. Snapmaker Orca (U1), version</td>
+<td>Snapmaker Orca, Snapmaker U1 profile</td>
 </tr>
 <tr>
 <td>Evidence</td>
-<td>screenshot paths under <code>samples/</code> or <code>examples/</code></td>
+<td><code>samples/梁圣/example01.png</code> (CYM, seed panel + painted regions), <code>example01_slicer.png</code> / <code>example01_snapmaker.png</code> (slicer import)</td>
 </tr>
 </tbody></table>
 <h2 id="goal">Goal</h2>
-<p>What question this case answers (e.g. &quot;does a fused seed segmentation survive 3MF export with correct filament slots?&quot;).</p>
+<p>Does the full loop hold: CYM segmentation → painting → 3MF export → slicer shows the correct multi-filament, multi-colour, machine-configured job?</p>
 <h2 id="pipeline--settings">Pipeline &amp; Settings</h2>
-<p>Each step with its exact parameters (algorithm, thresholds, brush settings). Enough for someone else to reproduce.</p>
+<ol>
+<li>Import STL; seed-based segmentation (Seed panel: recommend + grow + fuse, eye detection on)</li>
+<li>Paint regions via the palette</li>
+<li>Export 3MF with embedded machine preset (Snapmaker U1, 0.4 nozzle) — no vendor profiles pre-installed in the slicer</li>
+</ol>
 <h2 id="result">Result</h2>
-<p>What happened, with screenshots. Include the slicer-side view, not just the CYM side.</p>
+<ul>
+<li>Snapmaker Orca imported the 3MF with the model displayed in full colour.</li>
+<li><strong>Four filament slots</strong> matched the painted palette (shirt / skin / hair / accent).</li>
+<li>The <strong>process dropdown showed the embedded preset</strong> <code>0.20 Standard @Snapmaker U1 (0.4 nozzle)</code> — proving the compiled-in <code>machine_settings_1.config</code> path works without any vendor installation.</li>
+<li>Maintainer&#39;s verdict on record: <em>&quot;当前的3mf导出是合理的&quot;</em> → <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.md">tracker P0-4 closed</a>.</li>
+</ul>
 <h2 id="verification-checklist">Verification checklist</h2>
 <ul>
-<li><input disabled="" type="checkbox"> Regions as expected (count / boundaries)</li>
-<li><input disabled="" type="checkbox"> Colours match palette slots in slicer</li>
-<li><input disabled="" type="checkbox"> Machine &amp; process preset recognized by slicer</li>
-<li><input disabled="" type="checkbox"> Printed output (if applicable): photo</li>
+<li><input checked="" disabled="" type="checkbox"> Regions as expected (seed panel output, 13 regions post tiny-merge in the same session)</li>
+<li><input checked="" disabled="" type="checkbox"> Colours match palette slots in slicer</li>
+<li><input checked="" disabled="" type="checkbox"> Machine &amp; process preset recognized by slicer</li>
+<li><input disabled="" type="checkbox"> Printed output photo (pending a real print)</li>
 </ul>
 <h2 id="problems-found">Problems found</h2>
-<p>Anything that didn&#39;t work → file to the defect tracker (<code>../04</code>) and link it here.</p>
+<ul>
+<li>None blocking. Written verification protocol (slicer version pinning, assertion checklist per run) is this page&#39;s TODO — future re-verifications should extend this case instead of starting from scratch.</li>
+</ul>
 
     </article>
     <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#meta">Meta</a></li><li class="toc-h2"><a href="#goal">Goal</a></li><li class="toc-h2"><a href="#pipeline--settings">Pipeline &amp; Settings</a></li><li class="toc-h2"><a href="#result">Result</a></li><li class="toc-h2"><a href="#verification-checklist">Verification checklist</a></li><li class="toc-h2"><a href="#problems-found">Problems found</a></li></ul></details>

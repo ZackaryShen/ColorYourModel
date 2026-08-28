@@ -203,6 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
 <li><a href="../../README.zh-CN.html">首页（中文）</a></li>
 <li><a href="../../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
+<li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
+<li><a href="../user-guide/painting-tools.html">Painting Tools</a></li>
+<li><a href="../user-guide/exporting.html">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="README.html">Algorithms</a></li>
 <li><a href="segmentation.html" aria-current="page">Mesh Segmentation</a></li>
 <li><a href="seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -214,7 +219,10 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="../technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
 <li><a href="../technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
 <li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
+<li><a href="../developer/development.html">Development Guide</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
 <li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
@@ -232,51 +240,97 @@ pre.mermaid.mermaid-offline::after {
     <article>
 <h1 id="mesh-segmentation">Mesh Segmentation</h1>
 <blockquote>
-<p>Status: <strong>placeholder</strong> — content pending. Scope is fixed below; fill freely in English or 中文.</p>
+<p>How CYM partitions a mesh into semantic regions. Status: <strong>v1 written from verified sources</strong>; formula deep-dives are marked TODO.
+Usage guide: <a href="../user-guide/auto-segmentation.html">User Guide: Auto Segmentation</a>.</p>
 </blockquote>
-<h2 id="scope">Scope</h2>
-<p>The full segmentation story, in two layers:</p>
-<ol>
-<li><strong>Three-phase dihedral pipeline</strong> (the original <code>auto_segment</code>):</li>
-</ol>
+<h2 id="layer-1--three-phase-dihedral-pipeline">Layer 1 — three-phase dihedral pipeline</h2>
+<p>The original <code>auto_segment</code> (still the on-import default, dihedral 30°):</p>
 <pre class="mermaid">flowchart TD
     M[&quot;input mesh + face adjacency graph&quot;] --&gt; P1[&quot;Phase 1 · dihedral split&lt;br/&gt;cut shared edges above the angle threshold&quot;]
     P1 --&gt; P2[&quot;Phase 3 · normal-consistency merge&lt;br/&gt;fuse adjacent regions with similar normals&quot;]
     P2 --&gt; P3[&quot;Phase 4 · tiny-region absorption&lt;br/&gt;faces &amp;lt; MIN_REGION_CAP → largest neighbour&quot;]
     P3 --&gt; R[&quot;semantic regions&quot;]
 </pre>
-<ol start="2">
-<li><strong>v2 unified interface</strong> (<code>SegmentationAlgorithm</code>, <code>run_segmentation</code>): 8 registered algorithms,
-of which 3 are exposed in the UI panel (<code>IntelligentSegmentPanel</code>) with tunable, persisted parameters:</li>
-</ol>
+<ul>
+<li><strong>Phase 1 — dihedral split</strong>: every shared edge whose dihedral angle exceeds the threshold (default <strong>30°</strong>, <code>DEFAULT_DIHEDRAL_ANGLE</code>) breaks — hard edges become region borders.</li>
+<li><strong>Phase 3 — normal-consistency merge</strong>: adjacent regions whose normals agree are merged iteratively until convergence, undoing over-splitting on curved surfaces.</li>
+<li><strong>Phase 4 — tiny-region absorption</strong>: regions below <code>MIN_REGION_CAP = 30</code> faces merge into their largest neighbour. History: the cap was once 500, which collapsed a 1.5M-face model into 27 regions — 30 is the current tuned value (provenance: iteration 6 retrospective; adaptive sizing is an open item, tracker P1-2).</li>
+</ul>
+<p>Manual regions live in a disjoint label space (<code>MANUAL_SEGMENT_OFFSET = 100_000</code>) so re-running auto segmentation never overwrites hand-drawn regions.</p>
+<h2 id="layer-2--v2-unified-interface">Layer 2 — v2 unified interface</h2>
+<p><code>auto_segment_v2</code> dispatches through one interface (<code>SegmentationAlgorithm</code>, <code>run_segmentation</code> in <code>segment/mod.rs</code>), <strong>async on a worker thread</strong> so the UI never blocks on the mesh lock:</p>
+<table>
+<thead>
+<tr>
+<th>Variant</th>
+<th>Parameters (default)</th>
+<th>UI panel</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>dihedral</code></td>
+<td>angleThreshold (30°)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>shapeDiameter</code></td>
+<td>k (0 = auto)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>curvatureKMeans</code></td>
+<td>k (6), smoothingIters (2), useSdf (true), creaseThresholdDeg (45°)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>sdfGraphCut</code></td>
+<td>k (0)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>concavity</code></td>
+<td>k (0)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>convexDecomposition</code></td>
+<td>maxHulls (0), concavity (5)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>curveSkeleton</code></td>
+<td>maxHulls (0), concavity (5)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>fhGraph</code></td>
+<td>scale (0.3), curvature (1.0), concavity (1.0)</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<p>Single-region resegmentation reuses the same interface (<code>resegment_region</code>).</p>
 <pre class="mermaid">flowchart LR
-    IN[&quot;auto_segment_v2(algorithm, params)&quot;] --&gt; D[&quot;run_segmentation&lt;br/&gt;dispatch&quot;]
+    IN[&quot;auto_segment_v2(algorithm, params)&quot;] --&gt; D[&quot;run_segmentation&lt;br/&gt;dispatch (worker thread)&quot;]
     D --&gt; A1[&quot;Dihedral&quot;] &amp; A2[&quot;ShapeDiameter (SDF)&quot;] &amp; A3[&quot;CurvatureKMeans&quot;] &amp; A4[&quot;SdfGraphCut&quot;]
     D --&gt; A5[&quot;Concavity&quot;] &amp; A6[&quot;ConvexDecomposition&quot;] &amp; A7[&quot;CurveSkeleton&quot;] &amp; A8[&quot;FhGraph&quot;]
 </pre>
-<p>Also cover: manual label space separation (<code>MANUAL_SEGMENT_OFFSET = 100,000</code>),
-region merge/split/rename/resegment operations, and the tiny-region merge diagnostics.</p>
-<h2 id="code-pointers">Code pointers</h2>
+<h2 id="correctness-guardrails">Correctness guardrails</h2>
 <ul>
-<li><code>src-tauri/src/segment/mod.rs</code> — <code>SegmentationAlgorithm</code> enum + dispatch</li>
-<li><code>src-tauri/src/segment/dihedral.rs</code> — three-phase pipeline</li>
-<li><code>src-tauri/src/segment/{curvature,sdf,concavity,convex_decomp,fh,graphcut}.rs</code></li>
-<li><code>src/components/IntelligentSegmentPanel.tsx</code> — UI + persisted params</li>
+<li><strong>Golden topology tests</strong> — cube → 6 regions, sphere → 1, double sphere → 2; 74 assertions passed at introduction (<code>b087c3c</code>).</li>
+<li><strong>Coincident-axis hardening</strong> — UV-sphere-style inputs (hundreds of vertices sharing an axis coordinate) once panicked the kdtree; deterministic per-index perturbation fixed it with regression test <code>kdtree_coincident_axis_no_panic</code> (<code>69a17ea</code>).</li>
+<li><strong>Labels, not colours</strong> — segmentation produces and propagates labels; colour is strictly output (see <a href="../technical/fill-routing.html">Fill Routing</a>).</li>
 </ul>
-<h2 id="related-research-notes-中文-historical">Related research notes (中文, historical)</h2>
-<ul>
-<li><code>../07-智能分区设计.md</code> · <code>../08-智能分区-算法参考与论文.md</code></li>
-</ul>
+<h2 id="historical-research-records-中文">Historical research records (中文)</h2>
+<p><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.md"><code>07-智能分区设计</code></a> · <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.md"><code>08-智能分区-算法参考与论文</code></a> — note: written before Stage-1 landed; where they disagree with code, <strong>code wins</strong> (e.g. multiview <em>is</em> implemented).</p>
 <h2 id="todo">TODO</h2>
 <ul>
-<li><input disabled="" type="checkbox"> Pipeline diagrams (Mermaid)</li>
-<li><input disabled="" type="checkbox"> Per-algorithm: input → output → parameters → when to use</li>
-<li><input disabled="" type="checkbox"> Parameter provenance (every threshold with its source)</li>
-<li><input disabled="" type="checkbox"> Golden-sample topology tests (cube→6, sphere→1, double-sphere→2) explained</li>
+<li><input disabled="" type="checkbox"> Per-algorithm formula sections (k-means feature space, SDF definition, graph-cut energy)</li>
+<li><input disabled="" type="checkbox"> Provenance for curvature/SDF defaults (currently v1 defaults)</li>
+<li><input disabled="" type="checkbox"> Adaptive MIN_REGION_CAP by model scale (tracker P1-2)</li>
 </ul>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#scope">Scope</a></li><li class="toc-h2"><a href="#code-pointers">Code pointers</a></li><li class="toc-h2"><a href="#related-research-notes-中文-historical">Related research notes (中文, historical)</a></li><li class="toc-h2"><a href="#todo">TODO</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#layer-1--three-phase-dihedral-pipeline">Layer 1 — three-phase dihedral pipeline</a></li><li class="toc-h2"><a href="#layer-2--v2-unified-interface">Layer 2 — v2 unified interface</a></li><li class="toc-h2"><a href="#correctness-guardrails">Correctness guardrails</a></li><li class="toc-h2"><a href="#historical-research-records-中文">Historical research records (中文)</a></li><li class="toc-h2"><a href="#todo">TODO</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

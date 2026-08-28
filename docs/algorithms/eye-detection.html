@@ -203,6 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
 <li><a href="../../README.zh-CN.html">首页（中文）</a></li>
 <li><a href="../../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
+<li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
+<li><a href="../user-guide/painting-tools.html">Painting Tools</a></li>
+<li><a href="../user-guide/exporting.html">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="README.html">Algorithms</a></li>
 <li><a href="segmentation.html">Mesh Segmentation</a></li>
 <li><a href="seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -214,7 +219,10 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="../technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
 <li><a href="../technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
 <li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
+<li><a href="../developer/development.html">Development Guide</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
 <li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
@@ -232,38 +240,59 @@ pre.mermaid.mermaid-offline::after {
     <article>
 <h1 id="eye-region-semantic-detection">Eye-Region Semantic Detection</h1>
 <blockquote>
-<p>Status: <strong>placeholder</strong> — content pending. Fill freely in English or 中文.</p>
+<p>One-click eye detection for figure models. Status: <strong>v1 written from verified sources</strong>.
+Usage guide: <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/user-guide/seed-tools.md#seed-recommendation">User Guide: Seed Tools</a>.</p>
 </blockquote>
-<h2 id="scope">Scope</h2>
-<p>Automatic detection of eye regions on figure/character models, used as protected seeds:</p>
+<h2 id="why-eyes">Why eyes</h2>
+<p>Eyes are small, high-curvature and visually critical: no other region ruins a figure print as fast when segmentation gets it wrong. CYM detects them and treats them as <strong>protected</strong> seeds for everything downstream.</p>
+<h2 id="two-entry-points">Two entry points</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Scope</th>
+<th>Since</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>detect_eye_regions(roi_faces)</code></td>
+<td>inside a face ROI; thresholds via <code>EyeParams</code> (parameterized in <code>6b63659</code>)</td>
+<td>ROI era</td>
+</tr>
+<tr>
+<td><code>detect_eye_regions_auto()</code></td>
+<td><strong>whole model, no ROI needed</strong> — template matching backend (<code>detect_eyes_global</code>, <code>TemplateParams</code>)</td>
+<td>Stage 1, <code>8d0e063</code></td>
+</tr>
+</tbody></table>
 <pre class="mermaid">flowchart LR
-    M[&quot;full model scan&lt;br/&gt;(no ROI needed, Stage 1)&quot;] --&gt; C[&quot;geometry cues&lt;br/&gt;curvature / concavity candidates&quot;]
+    M[&quot;full model scan&lt;br/&gt;(auto) or ROI scan&quot;] --&gt; C[&quot;geometry cues /&lt;br/&gt;template match&quot;]
     C --&gt; F[&quot;filter &amp; validate&quot;]
     F --&gt; E[&quot;eye-region labels&lt;br/&gt;protected in fuse / merge&quot;]
 </pre>
-<p>Topics to cover: global detection (<code>detect_eye_regions_auto</code>), ROI-parameterized detection
-(<code>detect_eye_regions</code>) with tunable thresholds, and why eyes matter — small, high-curvature,
-visually critical regions where bad segmentation ruins a figure print.</p>
+<h2 id="behaviour">Behaviour</h2>
+<ul>
+<li><strong>Stale suggestions are cleared</strong> before a new detection runs — old recommendations can&#39;t contaminate the new result (<code>3756321</code>).</li>
+<li><strong>Lone eye-only grows are guarded</strong> — a seed grow that would end up eye-only without its body fails safe (<code>3756321</code>).</li>
+<li><strong>Protection</strong> — detected eye regions survive internal dihedral cuts (<code>2fc242a</code>) and fuse/merge passes.</li>
+<li>Detection results land as regions/labels ready for <a href="seed-grow-fuse.html">seed grow &amp; fuse</a> — never as direct colour writes.</li>
+</ul>
 <h2 id="code-pointers">Code pointers</h2>
 <ul>
-<li><code>src-tauri/src/segment/template.rs</code> — global detection backend</li>
-<li><code>src-tauri/src/segment/eye.rs</code> — eye-region primitives</li>
-<li><code>src-tauri/src/commands/segment.rs</code> — <code>detect_eye_regions</code> / <code>detect_eye_regions_auto</code></li>
-<li><code>src/components/SeedPanel.tsx</code> — &quot;detect eyes&quot; entry</li>
-</ul>
-<h2 id="related-research-notes-中文-historical">Related research notes (中文, historical)</h2>
-<ul>
-<li><code>../10-眼睛区域语义识别.md</code> — research record (pre-Stage-1; read code for current behaviour)</li>
+<li><code>src-tauri/src/segment/template.rs</code> — global template backend (Stage 1)</li>
+<li><code>src-tauri/src/segment/eye.rs</code> — eye primitives + <code>EyeParams</code></li>
+<li><code>src-tauri/src/commands/segment.rs</code> — both IPC entries</li>
+<li><code>src/components/SeedPanel.tsx</code> — the &quot;detect eyes&quot; button</li>
 </ul>
 <h2 id="todo">TODO</h2>
 <ul>
-<li><input disabled="" type="checkbox"> Detection pipeline (curvature/geometry cues → candidates → filtering)</li>
-<li><input disabled="" type="checkbox"> Threshold table with provenance</li>
-<li><input disabled="" type="checkbox"> Failure cases &amp; how to recover manually</li>
+<li><input disabled="" type="checkbox"> Template/cue pipeline detail (what the template matches, acceptance thresholds with provenance)</li>
+<li><input disabled="" type="checkbox"> Failure gallery &amp; manual recovery (re-seed by hand when detection misses)</li>
+<li><input disabled="" type="checkbox"> ROI vs. auto accuracy comparison on the sample corpus</li>
 </ul>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#scope">Scope</a></li><li class="toc-h2"><a href="#code-pointers">Code pointers</a></li><li class="toc-h2"><a href="#related-research-notes-中文-historical">Related research notes (中文, historical)</a></li><li class="toc-h2"><a href="#todo">TODO</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#why-eyes">Why eyes</a></li><li class="toc-h2"><a href="#two-entry-points">Two entry points</a></li><li class="toc-h2"><a href="#behaviour">Behaviour</a></li><li class="toc-h2"><a href="#code-pointers">Code pointers</a></li><li class="toc-h2"><a href="#todo">TODO</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

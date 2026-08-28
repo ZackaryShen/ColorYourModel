@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Case: &lt;short title&gt; (template) · ColorYourModel Docs</title>
+<title>Getting Started · ColorYourModel Docs</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
 <style>
 /* ColorYourModel docs site — light, modern, file://-safe (all inline). */
@@ -203,11 +203,11 @@ pre.mermaid.mermaid-offline::after {
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
 <li><a href="../../README.zh-CN.html">首页（中文）</a></li>
 <li><a href="../../CHANGELOG.html">Changelog</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
-<li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
-<li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
-<li><a href="../user-guide/painting-tools.html">Painting Tools</a></li>
-<li><a href="../user-guide/exporting.html">Exporting</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="getting-started.html" aria-current="page">Getting Started</a></li>
+<li><a href="auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="seed-tools.html">Seed Tools</a></li>
+<li><a href="painting-tools.html">Painting Tools</a></li>
+<li><a href="exporting.html">Exporting</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="../algorithms/README.html">Algorithms</a></li>
 <li><a href="../algorithms/segmentation.html">Mesh Segmentation</a></li>
 <li><a href="../algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
@@ -221,9 +221,9 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
 <li><a href="../developer/development.html">Development Guide</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="README.html">Cases</a></li>
-<li><a href="01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
-<li><a href="TEMPLATE.html" aria-current="page">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
+<li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
 <li><a href="../03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
@@ -238,61 +238,77 @@ pre.mermaid.mermaid-offline::after {
   </aside>
   <main id="content">
     <article>
-<h1 id="case-short-title">Case: <short title></h1>
+<h1 id="getting-started">Getting Started</h1>
 <blockquote>
-<p>Copy this file to <code>&lt;name&gt;.md</code> and fill it. Write in English or 中文.</p>
+<p>Part of the CYM wiki. Start here if you want to build and run ColorYourModel.</p>
 </blockquote>
-<h2 id="meta">Meta</h2>
+<h2 id="what-you-need">What you need</h2>
+<ul>
+<li><a href="https://nodejs.org/">Node.js</a> ≥ 18 (frontend toolchain)</li>
+<li><a href="https://www.rust-lang.org/tools/install">Rust</a> ≥ 1.70 + Cargo (backend)</li>
+<li><a href="https://v2.tauri.app/start/prerequisites/">Tauri 2 system prerequisites</a> — on Windows this is mainly WebView2</li>
+</ul>
+<h2 id="build--run">Build &amp; run</h2>
+<pre><code class="language-bash">git clone https://github.com/ZackaryShen/ColorYourModel.git
+cd ColorYourModel
+
+npm install
+npm run tauri dev      # first run compiles the Rust backend (~2-3 min)
+</code></pre>
+<p>The dev build gives you hot reload for the frontend; incremental Rust builds are fast after the first compile.</p>
+<p>For a packaged release build, use <code>npm run tauri build</code> (produces the installer for your platform).</p>
+<h2 id="your-first-colour-job">Your first colour job</h2>
+<ol>
+<li><strong>Import</strong> an STL white model (binary or ASCII). 1.5M-face-class models load in ~4 s with a progress bar.</li>
+<li><strong>Segment</strong> — an automatic dihedral-angle segmentation (30° threshold) runs right after import; open <strong>Intelligent Segmentation</strong> to switch algorithm or tune parameters (see <a href="auto-segmentation.html">Auto Segmentation</a>).</li>
+<li><strong>Refine regions</strong> — place seeds and grow/fuse (see <a href="seed-tools.html">Seed Tools</a>), or merge/split/rename regions in the Segments panel.</li>
+<li><strong>Paint</strong> — pick a tool and go (see <a href="painting-tools.html">Painting Tools</a>). Everything is undoable.</li>
+<li><strong>Export</strong> a 3MF with machine presets, or an OBJ with per-face colours (see <a href="exporting.html">Exporting</a>), and slice it in Snapmaker Orca / OrcaSlicer.</li>
+</ol>
+<pre class="mermaid">flowchart LR
+    A[&quot;Import STL&quot;] --&gt; B[&quot;Segment&lt;br/&gt;(auto + seeds)&quot;]
+    B --&gt; C[&quot;Refine regions&quot;]
+    C --&gt; D[&quot;Paint&quot;]
+    D --&gt; E[&quot;Export 3MF / OBJ&quot;]
+    E --&gt; F[&quot;Slice &amp; print&quot;]
+</pre>
+<h2 id="verification--tests">Verification &amp; tests</h2>
+<pre><code class="language-bash">npx tsc --noEmit               # TypeScript
+npx vitest run                 # frontend unit tests
+cd src-tauri &amp;&amp; cargo test --lib   # backend unit + regression tests
+</code></pre>
+<h2 id="debug-logging">Debug logging</h2>
+<pre><code class="language-bash"># Windows PowerShell
+$env:RUST_LOG=&quot;debug&quot;; npm run tauri dev
+
+# Linux / macOS
+RUST_LOG=debug npm run tauri dev
+</code></pre>
+<p>Frontend exceptions are captured by the JS bridge and viewable in the in-app <strong>DebugLogViewer</strong> (see <a href="../technical/crash-diagnostics.html">Crash Diagnostics</a>).</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Value</th>
+<th>Symptom</th>
+<th>What to check</th>
 </tr>
 </thead>
 <tbody><tr>
-<td>Date</td>
-<td>YYYY-MM-DD</td>
+<td>First run takes minutes</td>
+<td>Normal — Rust compiles from scratch; later runs are incremental</td>
 </tr>
 <tr>
-<td>Model</td>
-<td>file name + source + <strong>license/provenance</strong> (must be documented before publishing screenshots)</td>
+<td>Model fails to load</td>
+<td>Check the log; UV-sphere-style meshes with many coincident-axis vertices are supported since the kdtree fix (<code>69a17ea</code>)</td>
 </tr>
 <tr>
-<td>Face count</td>
-<td>e.g. 1.5M</td>
-</tr>
-<tr>
-<td>CYM version / commit</td>
-<td>git sha</td>
-</tr>
-<tr>
-<td>Slicer used</td>
-<td>e.g. Snapmaker Orca (U1), version</td>
-</tr>
-<tr>
-<td>Evidence</td>
-<td>screenshot paths under <code>samples/</code> or <code>examples/</code></td>
+<td>UI language is English by default?</td>
+<td>No — the app starts in Chinese; switch in the UI, the choice is persisted (see <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/developer/development.md#i18n">i18n note</a>)</td>
 </tr>
 </tbody></table>
-<h2 id="goal">Goal</h2>
-<p>What question this case answers (e.g. &quot;does a fused seed segmentation survive 3MF export with correct filament slots?&quot;).</p>
-<h2 id="pipeline--settings">Pipeline &amp; Settings</h2>
-<p>Each step with its exact parameters (algorithm, thresholds, brush settings). Enough for someone else to reproduce.</p>
-<h2 id="result">Result</h2>
-<p>What happened, with screenshots. Include the slicer-side view, not just the CYM side.</p>
-<h2 id="verification-checklist">Verification checklist</h2>
-<ul>
-<li><input disabled="" type="checkbox"> Regions as expected (count / boundaries)</li>
-<li><input disabled="" type="checkbox"> Colours match palette slots in slicer</li>
-<li><input disabled="" type="checkbox"> Machine &amp; process preset recognized by slicer</li>
-<li><input disabled="" type="checkbox"> Printed output (if applicable): photo</li>
-</ul>
-<h2 id="problems-found">Problems found</h2>
-<p>Anything that didn&#39;t work → file to the defect tracker (<code>../04</code>) and link it here.</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#meta">Meta</a></li><li class="toc-h2"><a href="#goal">Goal</a></li><li class="toc-h2"><a href="#pipeline--settings">Pipeline &amp; Settings</a></li><li class="toc-h2"><a href="#result">Result</a></li><li class="toc-h2"><a href="#verification-checklist">Verification checklist</a></li><li class="toc-h2"><a href="#problems-found">Problems found</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#what-you-need">What you need</a></li><li class="toc-h2"><a href="#build--run">Build &amp; run</a></li><li class="toc-h2"><a href="#your-first-colour-job">Your first colour job</a></li><li class="toc-h2"><a href="#verification--tests">Verification &amp; tests</a></li><li class="toc-h2"><a href="#debug-logging">Debug logging</a></li><li class="toc-h2"><a href="#troubleshooting">Troubleshooting</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

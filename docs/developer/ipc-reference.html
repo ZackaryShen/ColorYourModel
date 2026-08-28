@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Case: &lt;short title&gt; (template) · ColorYourModel Docs</title>
+<title>IPC Reference · ColorYourModel Docs</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
 <style>
 /* ColorYourModel docs site — light, modern, file://-safe (all inline). */
@@ -219,11 +219,11 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="../technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
 <li><a href="../technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
 <li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
-<li><a href="../developer/development.html">Development Guide</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="README.html">Cases</a></li>
-<li><a href="01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
-<li><a href="TEMPLATE.html" aria-current="page">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="ipc-reference.html" aria-current="page">IPC Reference</a></li>
+<li><a href="development.html">Development Guide</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
+<li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
 <li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
 <li><a href="../03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
@@ -238,61 +238,268 @@ pre.mermaid.mermaid-offline::after {
   </aside>
   <main id="content">
     <article>
-<h1 id="case-short-title">Case: <short title></h1>
+<h1 id="ipc-reference">IPC Reference</h1>
 <blockquote>
-<p>Copy this file to <code>&lt;name&gt;.md</code> and fill it. Write in English or 中文.</p>
+<p>Part of the CYM wiki — every Tauri command the frontend can invoke.
+Source of truth: <code>src-tauri/src/lib.rs</code> (<code>generate_handler!</code>) and <code>src-tauri/src/commands/</code>.</p>
 </blockquote>
-<h2 id="meta">Meta</h2>
+<p>All commands live in the Rust backend and are invoked from TypeScript with <code>invoke(&quot;&lt;name&gt;&quot;, { args })</code>. Async commands run on worker threads so long operations don&#39;t block the UI.</p>
+<h2 id="mesh">Mesh</h2>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Value</th>
+<th>Command</th>
+<th>Signature</th>
+<th>Purpose</th>
 </tr>
 </thead>
 <tbody><tr>
-<td>Date</td>
-<td>YYYY-MM-DD</td>
+<td><code>load_model</code></td>
+<td><code>(path: String) -&gt; MeshDataDto</code></td>
+<td>load binary/ASCII STL, build adjacency + kdtree, emit progress events</td>
 </tr>
 <tr>
-<td>Model</td>
-<td>file name + source + <strong>license/provenance</strong> (must be documented before publishing screenshots)</td>
-</tr>
-<tr>
-<td>Face count</td>
-<td>e.g. 1.5M</td>
-</tr>
-<tr>
-<td>CYM version / commit</td>
-<td>git sha</td>
-</tr>
-<tr>
-<td>Slicer used</td>
-<td>e.g. Snapmaker Orca (U1), version</td>
-</tr>
-<tr>
-<td>Evidence</td>
-<td>screenshot paths under <code>samples/</code> or <code>examples/</code></td>
+<td><code>get_face_color</code></td>
+<td><code>(face_id: u32) -&gt; [u8; 4]</code></td>
+<td>RGBA of one face</td>
 </tr>
 </tbody></table>
-<h2 id="goal">Goal</h2>
-<p>What question this case answers (e.g. &quot;does a fused seed segmentation survive 3MF export with correct filament slots?&quot;).</p>
-<h2 id="pipeline--settings">Pipeline &amp; Settings</h2>
-<p>Each step with its exact parameters (algorithm, thresholds, brush settings). Enough for someone else to reproduce.</p>
-<h2 id="result">Result</h2>
-<p>What happened, with screenshots. Include the slicer-side view, not just the CYM side.</p>
-<h2 id="verification-checklist">Verification checklist</h2>
+<h2 id="segmentation">Segmentation</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Signature</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>auto_segment</code></td>
+<td><code>(angle_threshold: f32) -&gt; SegmentResult</code></td>
+<td>legacy three-phase dihedral segmentation</td>
+</tr>
+<tr>
+<td><code>auto_segment_smart</code></td>
+<td><code>(k: u32) -&gt; SegmentResult</code></td>
+<td>legacy curvature k-means segmentation</td>
+</tr>
+<tr>
+<td><code>auto_segment_v2</code></td>
+<td><code>(algorithm: SegmentationAlgorithm, preserve_manual?: bool) -&gt; SegmentResult</code></td>
+<td><strong>unified entry</strong> — dispatches one of the 8 algorithms; keeps manual regions by default; runs async</td>
+</tr>
+<tr>
+<td><code>resegment_region</code></td>
+<td><code>(label: u32, algorithm: SegmentationAlgorithm) -&gt; SegmentResult</code></td>
+<td>re-run segmentation inside one region, async</td>
+</tr>
+<tr>
+<td><code>reset_segmentation</code></td>
+<td><code>() -&gt; SegmentResult</code></td>
+<td>back to a single default region</td>
+</tr>
+<tr>
+<td><code>merge_segments</code></td>
+<td><code>(target_id: u32, source_ids: Vec&lt;u32&gt;) -&gt; Vec&lt;Segment&gt;</code></td>
+<td>merge regions into target</td>
+</tr>
+<tr>
+<td><code>split_segment</code></td>
+<td><code>(label: u32, method: SplitMethod) -&gt; SplitResult</code></td>
+<td>split a region (plane or crease method)</td>
+</tr>
+<tr>
+<td><code>rename_segment</code></td>
+<td><code>(segment_id: u32, name: String) -&gt; Vec&lt;Segment&gt;</code></td>
+<td>rename a region</td>
+</tr>
+<tr>
+<td><code>paint_segment_face</code></td>
+<td><code>(face_id: u32, segment_label?: u32, stroke_id?: u64) -&gt; PaintSegmentFaceResult</code></td>
+<td>segment-brush: mark one face during a drag</td>
+</tr>
+<tr>
+<td><code>finalize_segment</code></td>
+<td><code>(segment_label: u32) -&gt; FinalizeSegmentResult</code></td>
+<td>finish a segment-brush drag (labels ≥ 100,000 only)</td>
+</tr>
+<tr>
+<td><code>manual_region_add_point</code></td>
+<td><code>(point: [f32; 3], face_index: u32) -&gt; ManualPointResult</code></td>
+<td>lasso: add a snapped point</td>
+</tr>
+<tr>
+<td><code>finalize_manual_region</code></td>
+<td><code>(points: Vec&lt;[f32; 3]&gt;, face_indices: Vec&lt;u32&gt;) -&gt; SegmentResult</code></td>
+<td>lasso: close the loop, create the region</td>
+</tr>
+<tr>
+<td><code>seed_grow</code></td>
+<td><code>(seeds: Vec&lt;SeedInput&gt;, barrier_deg: f32, optimizer: bool) -&gt; SegmentResult</code></td>
+<td>seeded watershed growth</td>
+</tr>
+<tr>
+<td><code>recommend_seeds</code></td>
+<td><code>(count: usize, curvature: f32, concavity: f32) -&gt; Vec&lt;SeedSuggestion&gt;</code></td>
+<td>saliency-based seed suggestions</td>
+</tr>
+<tr>
+<td><code>detect_planar_regions</code></td>
+<td><code>(angle_threshold_deg: f32, dist_thr_factor: f32, min_region_faces: u32) -&gt; Vec&lt;PlanarRegion&gt;</code></td>
+<td>flat-region detection</td>
+</tr>
+<tr>
+<td><code>detect_eye_regions</code></td>
+<td><code>(roi_faces: Vec&lt;u32&gt;) -&gt; Vec&lt;EyeRegion&gt;</code></td>
+<td>eye detection inside a ROI</td>
+</tr>
+<tr>
+<td><code>detect_eye_regions_auto</code></td>
+<td><code>() -&gt; Vec&lt;EyeRegion&gt;</code></td>
+<td>eye detection, whole model (Stage 1)</td>
+</tr>
+<tr>
+<td><code>detect_multiview_regions</code></td>
+<td><code>(view_count: u32, angle_threshold_deg: f32, min_region_faces: u32, match_threshold: u32) -&gt; Vec&lt;MultiViewRegion&gt;</code></td>
+<td>regions consistent across views</td>
+</tr>
+<tr>
+<td><code>detect_cross_section_features</code></td>
+<td><code>(planes_per_axis: u32, feature_threshold: f32) -&gt; Vec&lt;CrossSectionRegion&gt;</code></td>
+<td>features on slicing planes</td>
+</tr>
+<tr>
+<td><code>fuse_segmentation</code></td>
+<td>async</td>
+<td>fuse seed-grown regions + tiny-region merge</td>
+</tr>
+</tbody></table>
+<h2 id="painting">Painting</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Signature</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>brush_paint</code></td>
+<td><code>(center_face: u32, radius: f32, strength: f32, falloff_mode: String, color: [u8; 4], stroke_id?: u64) -&gt; PaintResult</code></td>
+<td>soft brush stroke</td>
+</tr>
+<tr>
+<td><code>spray_paint</code></td>
+<td><code>(center_face: u32, radius: f32, strength: f32, color: [u8; 4], density: u32, stroke_id?: u64) -&gt; PaintResult</code></td>
+<td>scattered spray dots</td>
+</tr>
+<tr>
+<td><code>smart_brush_paint</code></td>
+<td><code>(center_face: u32, radius: f32, strength: f32, falloff_mode: String, color: [u8; 4], stroke_id?: u64) -&gt; PaintResult</code></td>
+<td>brush that respects region boundaries</td>
+</tr>
+<tr>
+<td><code>fill_paint</code></td>
+<td><code>(face_id: u32, color: [u8; 4], radius: f32) -&gt; PaintResult</code></td>
+<td>fill the region under the clicked face (label-authoritative)</td>
+</tr>
+<tr>
+<td><code>fill_segment_paint</code></td>
+<td><code>(segment_id: u32, color: [u8; 4]) -&gt; PaintResult</code></td>
+<td>fill an explicit region id</td>
+</tr>
+<tr>
+<td><code>erase_paint</code></td>
+<td><code>(center_face: u32, radius: f32, stroke_id?: u64) -&gt; PaintResult</code></td>
+<td>remove colour</td>
+</tr>
+<tr>
+<td><code>pick_color</code></td>
+<td><code>(face_id: u32) -&gt; [u8; 4]</code></td>
+<td>eyedropper</td>
+</tr>
+</tbody></table>
+<p><code>stroke_id</code> deduplicates faces within one drag so overlapping stamps don&#39;t darken colour twice.</p>
+<h2 id="history">History</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Signature</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>undo</code> / <code>redo</code></td>
+<td><code>() -&gt; HistoryResult</code></td>
+<td>single timeline over paint / fill / erase / manual edits</td>
+</tr>
+<tr>
+<td><code>history_state</code></td>
+<td><code>() -&gt; HistoryState</code></td>
+<td>can-undo / can-redo + position for UI gating</td>
+</tr>
+</tbody></table>
+<h2 id="export">Export</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Signature</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>list_export_presets</code></td>
+<td><code>() -&gt; Vec&lt;MachineSummary&gt;</code></td>
+<td>vendor/machine/nozzle/process/filament catalogue (embedded presets)</td>
+</tr>
+<tr>
+<td><code>export_palette_preview</code></td>
+<td><code>() -&gt; Vec&lt;String&gt;</code></td>
+<td>palette slots as filament-slot preview</td>
+</tr>
+<tr>
+<td><code>export_3mf_command</code></td>
+<td><code>(path: String, selection?: ExportSelection) -&gt; String</code></td>
+<td>write 3MF with colours + machine settings; verifies the file landed non-empty; async</td>
+</tr>
+<tr>
+<td><code>export_obj_command</code></td>
+<td><code>(path: String) -&gt; String</code></td>
+<td>write <code>.obj</code> + <code>.mtl</code> (per-face colour via <code>usemtl</code>, ≤256 colours); async</td>
+</tr>
+</tbody></table>
+<p><code>ExportSelection</code> = <code>{ machineId, nozzleDiameter, processName, filamentNames: string[], targetSlicer: &quot;snapmaker_orca&quot; | &quot;orcaslicer&quot; }</code>.</p>
+<h2 id="diagnostics">Diagnostics</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Signature</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>report_js_error</code></td>
+<td><code>(msg: String)</code></td>
+<td>frontend → backend error capture (in-app DebugLogViewer)</td>
+</tr>
+<tr>
+<td><code>report_app_ready</code></td>
+<td><code>()</code></td>
+<td>readiness handshake</td>
+</tr>
+</tbody></table>
+<h2 id="notes-for-contributors">Notes for contributors</h2>
 <ul>
-<li><input disabled="" type="checkbox"> Regions as expected (count / boundaries)</li>
-<li><input disabled="" type="checkbox"> Colours match palette slots in slicer</li>
-<li><input disabled="" type="checkbox"> Machine &amp; process preset recognized by slicer</li>
-<li><input disabled="" type="checkbox"> Printed output (if applicable): photo</li>
+<li>Manual region labels start at <code>MANUAL_SEGMENT_OFFSET = 100_000</code> — anything below belongs to automatic segmentation.</li>
+<li><code>SegmentationAlgorithm</code> is a tagged union (<code>type</code> + params) with 8 variants: <code>dihedral</code>, <code>shapeDiameter</code>, <code>curvatureKMeans</code>, <code>sdfGraphCut</code>, <code>concavity</code>, <code>convexDecomposition</code>, <code>curveSkeleton</code>, <code>fhGraph</code> — see <a href="../algorithms/segmentation.html">Mesh Segmentation</a>.</li>
+<li>Adding a command: implement in <code>commands/</code>, register in <code>lib.rs</code> <code>generate_handler!</code>, keep the UI-language i18n keys symmetric.</li>
 </ul>
-<h2 id="problems-found">Problems found</h2>
-<p>Anything that didn&#39;t work → file to the defect tracker (<code>../04</code>) and link it here.</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#meta">Meta</a></li><li class="toc-h2"><a href="#goal">Goal</a></li><li class="toc-h2"><a href="#pipeline--settings">Pipeline &amp; Settings</a></li><li class="toc-h2"><a href="#result">Result</a></li><li class="toc-h2"><a href="#verification-checklist">Verification checklist</a></li><li class="toc-h2"><a href="#problems-found">Problems found</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#mesh">Mesh</a></li><li class="toc-h2"><a href="#segmentation">Segmentation</a></li><li class="toc-h2"><a href="#painting">Painting</a></li><li class="toc-h2"><a href="#history">History</a></li><li class="toc-h2"><a href="#export">Export</a></li><li class="toc-h2"><a href="#diagnostics">Diagnostics</a></li><li class="toc-h2"><a href="#notes-for-contributors">Notes for contributors</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
