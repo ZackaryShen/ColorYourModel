@@ -6,10 +6,19 @@
 
 The seed-driven segmentation workflow exposed in `SeedPanel` (Auto = fuse / Manual = grow):
 
-- **Seed recommendation** — planar regions, multiview, cross-section features, saliency (curvature / concavity)
-- **Manual grow** — point-by-point seeded region growing (`seed_grow`, `manual_region_add_point`, `finalize_manual_region`)
-- **Auto fuse** — fusing seed-grown regions with aggressive tiny-region merging (`fuse_segmentation`), including the reverse-split behaviour and the live region-size breakdown
-- Known protection: eye regions are kept intact across internal dihedral cuts
+```mermaid
+flowchart TD
+    S["seed recommendation<br/>planar · multiview · cross-section · saliency"] --> G["manual grow<br/>seed_grow + point-by-point picking"]
+    S --> F["auto fuse<br/>fuse_segmentation"]
+    F --> T["tiny-region merge<br/>aggressive absorb + live size breakdown"]
+    G --> RG["regions (labels only)"]
+    T --> RG
+    EY["eye-region detection"] -. protected from cuts/merges .-> RG
+```
+
+Topics to cover: seed recommendation sources, manual grow mechanics, auto fuse with
+tiny-region merging (including the reverse-split behaviour and the live region-size
+breakdown), and why eye regions survive fuse/merge passes.
 
 ## Code pointers
 

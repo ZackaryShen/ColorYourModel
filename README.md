@@ -12,20 +12,14 @@
 
 CYM automatically segments the mesh into semantic regions (helmet, skin, base…), lets you refine and paint them with region-aware tools, and exports a standards-compliant **3MF with per-region colours** that imports into Snapmaker Orca / OrcaSlicer as real filament assignments — verified end-to-end on real hardware (Aug 2026, Snapmaker U1).
 
-```
-STL white model
-    ↓
-Auto segmentation (8 algorithms: dihedral / SDF / curvature k-means / graph-cut / …)
-    ↓
-Seed tools: recommend seeds → manual grow / auto fuse (tiny-region merge) · eye-region detection
-    ↓
-Manual refinement (merge / split / rename / resegment regions)
-    ↓
-Painting (brush / spray / smart brush / fill / eraser / picker) with unified undo & redo
-    ↓
-Export 3MF (colour + machine presets) · Export OBJ (per-face colours)
-    ↓
-Snapmaker Orca / OrcaSlicer → slice & print
+```mermaid
+flowchart TD
+    A["STL white model"] --> B["Auto segmentation<br/>8 algorithms: dihedral · SDF · curvature k-means · graph-cut …"]
+    B --> C["Seed tools<br/>recommend seeds → manual grow / auto fuse · eye detection"]
+    C --> D["Manual refinement<br/>merge / split / rename / resegment"]
+    D --> E["Painting<br/>brush · spray · smart brush · fill · eraser · picker<br/>unified undo & redo"]
+    E --> F["Export<br/>3MF (colour + machine presets) · OBJ (per-face colours)"]
+    F --> G["Snapmaker Orca / OrcaSlicer<br/>slice & print"]
 ```
 
 ## Features
@@ -67,28 +61,21 @@ Snapmaker Orca / OrcaSlicer → slice & print
 
 ### Architecture
 
-```
-┌──────────────────────────────────────────────────────┐
-│  React (TypeScript)                                  │
-│  ┌─────────┐ ┌──────────┐ ┌────────────────────────┐ │
-│  │ Toolbar │ │ Viewport │ │ SeedPanel / ExportDlg  │ │
-│  │         │ │          │ │ SegmentsPanel / …      │ │
-│  └────┬────┘ └────┬─────┘ └───────────┬────────────┘ │
-│       │           │                   │              │
-│  ┌────┴───────────┴───────────────────┴───────────┐  │
-│  │  Zustand store (appStore.ts, persisted prefs)  │  │
-├──────────────────┼ Tauri invoke ────────────────────┤
-│  Rust backend    │                                  │
-│  ┌───────────────┴──────────────────────────────┐   │
-│  │  commands/  mesh · segment · paint · history │   │
-│  │             export · js_bridge               │   │
-│  ├──────────────────────────────────────────────┤   │
-│  │  mesh/       loader · model · kdtree         │   │
-│  │  segment/    8 algorithms + seeds/fuse/eye   │   │
-│  │  paint/      brush · spray · fill · eraser   │   │
-│  │  export/     threemf · obj · presets         │   │
-│  └──────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph FE["React + TypeScript"]
+        UI["Toolbar · Viewport<br/>SeedPanel · ExportDialog<br/>SegmentsPanel · …"]
+        STORE["Zustand store<br/>(persisted prefs)"]
+        UI <--> STORE
+    end
+    subgraph BE["Rust backend (Tauri 2)"]
+        CMD["commands/<br/>mesh · segment · paint<br/>history · export · js_bridge"]
+        SEG["segment/<br/>8 algorithms + seeds/fuse/eye"]
+        CORE["mesh/ · paint/ · export/"]
+        CMD --> SEG
+        CMD --> CORE
+    end
+    UI -- "Tauri invoke (IPC)" --> CMD
 ```
 
 ## Project structure

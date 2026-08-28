@@ -12,20 +12,14 @@
 
 CYM 自动把网格分割成语义化区域（头盔、皮肤、底座……），提供分区感知的上色工具做微调，最终导出符合规范的**带逐分区颜色的 3MF**，在 Snapmaker Orca / OrcaSlicer 中导入即为真实的耗材分色——已在真机端到端验证（2026-08，Snapmaker U1）。
 
-```
-STL 白模导入
-    ↓
-自动分割（8 种算法：二面角 / SDF / 曲率 K-Means / 图割 / …）
-    ↓
-种子工具：推荐种子 → 手动生长 / 自动融合（小分区合并）· 眼睛区域检测
-    ↓
-手动微调（分区合并 / 拆分 / 重命名 / 重分割）
-    ↓
-上色（画笔 / 喷漆 / 智能笔 / 填充 / 橡皮 / 吸管）+ 统一撤销/重做
-    ↓
-导出 3MF（颜色 + 机型预设）· 导出 OBJ（逐面颜色）
-    ↓
-Snapmaker Orca / OrcaSlicer → 切片打印
+```mermaid
+flowchart TD
+    A["STL 白模导入"] --> B["自动分割<br/>8 种算法：二面角 · SDF · 曲率 K-Means · 图割 …"]
+    B --> C["种子工具<br/>推荐种子 → 手动生长 / 自动融合 · 眼睛检测"]
+    C --> D["手动微调<br/>合并 / 拆分 / 重命名 / 重分割"]
+    D --> E["上色<br/>画笔 · 喷漆 · 智能笔 · 填充 · 橡皮 · 吸管<br/>统一撤销/重做"]
+    E --> F["导出<br/>3MF（颜色 + 机型预设）· OBJ（逐面颜色）"]
+    F --> G["Snapmaker Orca / OrcaSlicer<br/>切片打印"]
 ```
 
 ## 功能特性
@@ -67,28 +61,21 @@ Snapmaker Orca / OrcaSlicer → 切片打印
 
 ### 架构示意
 
-```
-┌──────────────────────────────────────────────────────┐
-│  React (TypeScript)                                  │
-│  ┌─────────┐ ┌──────────┐ ┌────────────────────────┐ │
-│  │ Toolbar │ │ Viewport │ │ SeedPanel / ExportDlg  │ │
-│  │         │ │          │ │ SegmentsPanel / …      │ │
-│  └────┬────┘ └────┬─────┘ └───────────┬────────────┘ │
-│       │           │                   │              │
-│  ┌────┴───────────┴───────────────────┴───────────┐  │
-│  │  Zustand store (appStore.ts, 持久化偏好)        │  │
-├──────────────────┼ Tauri invoke ────────────────────┤
-│  Rust 后端        │                                  │
-│  ┌───────────────┴──────────────────────────────┐   │
-│  │  commands/  mesh · segment · paint · history │   │
-│  │             export · js_bridge               │   │
-│  ├──────────────────────────────────────────────┤   │
-│  │  mesh/       loader · model · kdtree         │   │
-│  │  segment/    8 算法 + 种子/融合/eye 检测       │   │
-│  │  paint/      brush · spray · fill · eraser   │   │
-│  │  export/     threemf · obj · presets         │   │
-│  └──────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph FE["React + TypeScript"]
+        UI["Toolbar · Viewport<br/>SeedPanel · ExportDialog<br/>SegmentsPanel · …"]
+        STORE["Zustand store<br/>（持久化偏好）"]
+        UI <--> STORE
+    end
+    subgraph BE["Rust 后端（Tauri 2）"]
+        CMD["commands/<br/>mesh · segment · paint<br/>history · export · js_bridge"]
+        SEG["segment/<br/>8 算法 + 种子/融合/eye 检测"]
+        CORE["mesh/ · paint/ · export/"]
+        CMD --> SEG
+        CMD --> CORE
+    end
+    UI -- "Tauri invoke（IPC）" --> CMD
 ```
 
 ## 项目结构

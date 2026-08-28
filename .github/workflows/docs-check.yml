@@ -1,0 +1,48 @@
+# Keeps docs/site in sync with the markdown sources: rebuilds the site and
+# fails if anything under docs/site differs (including missing new pages).
+# Remedy when it fails: run `npm run docs:build` and commit the result.
+
+name: Docs freshness
+
+on:
+  push:
+    paths:
+      - "README.md"
+      - "README.zh-CN.md"
+      - "CHANGELOG.md"
+      - "docs/**"
+      - "tools/build_docs.mjs"
+      - "tools/docs_site.css"
+      - "package-lock.json"
+  pull_request:
+    paths:
+      - "README.md"
+      - "README.zh-CN.md"
+      - "CHANGELOG.md"
+      - "docs/**"
+      - "tools/build_docs.mjs"
+      - "tools/docs_site.css"
+      - "package-lock.json"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run docs:build
+      - name: Fail if docs/site is stale
+        run: |
+          dirty="$(git status --porcelain --untracked-files=all docs/site)"
+          if [ -n "$dirty" ]; then
+            echo "docs/site is out of date. Run 'npm run docs:build' and commit:"
+            echo "$dirty"
+            exit 1
+          fi

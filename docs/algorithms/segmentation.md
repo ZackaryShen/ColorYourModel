@@ -7,10 +7,24 @@
 The full segmentation story, in two layers:
 
 1. **Three-phase dihedral pipeline** (the original `auto_segment`):
-   dihedral-angle splitting → normal-consistency merging → tiny-region absorption (`MIN_REGION_CAP`).
-2. **v2 unified interface** (`SegmentationAlgorithm`, `run_segmentation`): the 8 registered algorithms —
-   Dihedral, ShapeDiameter (SDF), CurvatureKMeans, SdfGraphCut, Concavity, ConvexDecomposition, CurveSkeleton, FhGraph —
-   which of them are exposed in the UI panel (`IntelligentSegmentPanel`), and how parameters persist.
+
+```mermaid
+flowchart TD
+    M["input mesh + face adjacency graph"] --> P1["Phase 1 · dihedral split<br/>cut shared edges above the angle threshold"]
+    P1 --> P2["Phase 3 · normal-consistency merge<br/>fuse adjacent regions with similar normals"]
+    P2 --> P3["Phase 4 · tiny-region absorption<br/>faces &lt; MIN_REGION_CAP → largest neighbour"]
+    P3 --> R["semantic regions"]
+```
+
+2. **v2 unified interface** (`SegmentationAlgorithm`, `run_segmentation`): 8 registered algorithms,
+   of which 3 are exposed in the UI panel (`IntelligentSegmentPanel`) with tunable, persisted parameters:
+
+```mermaid
+flowchart LR
+    IN["auto_segment_v2(algorithm, params)"] --> D["run_segmentation<br/>dispatch"]
+    D --> A1["Dihedral"] & A2["ShapeDiameter (SDF)"] & A3["CurvatureKMeans"] & A4["SdfGraphCut"]
+    D --> A5["Concavity"] & A6["ConvexDecomposition"] & A7["CurveSkeleton"] & A8["FhGraph"]
+```
 
 Also cover: manual label space separation (`MANUAL_SEGMENT_OFFSET = 100,000`),
 region merge/split/rename/resegment operations, and the tiny-region merge diagnostics.

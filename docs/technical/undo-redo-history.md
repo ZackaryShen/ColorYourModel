@@ -6,9 +6,21 @@
 
 The single backend history timeline (stage 2 consolidation):
 
-- `undo` / `redo` / `history_state` cover paint, fill, eraser and manual region edits
-- The former `manual_region_undo` and `restore_face_colors` commands were deleted — no parallel history paths
-- Frontend `useHistory` wiring and how state snapshots stay memory-bounded on 1.5M-face models
+```mermaid
+flowchart LR
+    E1["paint"] --> T["ONE timeline<br/>history.rs"]
+    E2["fill"] --> T
+    E3["erase"] --> T
+    E4["manual edits"] --> T
+    T --> UN["undo"]
+    T --> RD["redo"]
+    T --> ST["history_state"]
+```
+
+Topics to cover: `undo` / `redo` / `history_state` covering paint, fill, eraser and manual
+region edits; the deleted former `manual_region_undo` / `restore_face_colors` commands (no
+parallel history paths); frontend `useHistory` wiring; how snapshots stay memory-bounded on
+1.5M-face models.
 
 ## Code pointers
 

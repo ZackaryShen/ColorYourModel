@@ -6,9 +6,19 @@
 
 How frontend failures get captured and surfaced instead of dying silently:
 
-- `js_bridge` commands: `report_js_error` / `report_app_ready` handshake
-- In-app `DebugLogViewer`; `RUST_LOG` backend logging
-- WebView2 gotchas on Windows (where console output goes, how to attach devtools)
+```mermaid
+sequenceDiagram
+    participant W as WebView (JS)
+    participant B as Rust backend
+    participant V as DebugLogViewer
+    W->>B: report_js_error(detail)
+    B->>B: persist to diagnostics log
+    W->>V: open in-app diagnostics panel
+```
+
+Topics to cover: the `js_bridge` handshake (`report_js_error` / `report_app_ready`); in-app
+`DebugLogViewer`; `RUST_LOG` backend logging; WebView2 gotchas on Windows (where console output
+goes, how to attach devtools).
 
 ## Code pointers
 

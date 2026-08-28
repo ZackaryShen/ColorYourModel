@@ -4,6 +4,14 @@ Real models taken through the full CYM loop — segmentation, painting, export, 
 
 Status: **empty by design for now**; content is being written. Duplicate [`TEMPLATE.md`](TEMPLATE.md) per case.
 
+```mermaid
+flowchart LR
+    M["pick a model<br/>(document provenance!)"] --> S["run pipeline<br/>record every setting"]
+    S --> SL["slice in target slicer"]
+    SL --> E["collect evidence<br/>CYM + slicer screenshots"]
+    E --> W["write the case from TEMPLATE"]
+```
+
 Suggested first entries:
 
 - [ ] 3MF end-to-end verification (2026-08-27, Snapmaker Orca / U1) — evidence exists in `samples/`; needs the written protocol (⚠️ before publishing: document the provenance/license of the model shown in `samples/`, or replace with a self-made model)

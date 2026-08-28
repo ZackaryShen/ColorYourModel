@@ -6,11 +6,17 @@
 
 The GPU highlight scheme (Plan B, iter. 2026-08-08) that replaced geometry-rebuilding overlays:
 
-- Per-vertex `aSegLabel` attribute + `uHighlightLabel`/`uHighlightColor` uniforms injected via `onBeforeCompile`
-- O(1) hover switching (was O(F) geometry rebuild — the giant-segment freeze root cause)
-- `flat` qualifier on the varying; `preserveDrawingBuffer` removed
-- Conditional `frameloop="demand"` (`IdleFrameloop`: sleep after 1.5 s idle, wake on interaction)
-- Tool-gated highlight: only fill / picker / segment tools compute highlight
+```mermaid
+flowchart LR
+    A["per-vertex attribute<br/>aSegLabel"] --> S["material patched via<br/>onBeforeCompile"]
+    U["uniforms<br/>uHighlightLabel / uHighlightColor"] --> S
+    S --> O["fragment: label match → tint<br/>O(1) hover switch · flat varying"]
+```
+
+Topics to cover: O(1) hover switching (was O(F) geometry rebuild — the giant-segment freeze
+root cause); `preserveDrawingBuffer` removed; conditional `frameloop="demand"` (`IdleFrameloop`:
+sleep after 1.5 s idle, wake on interaction); tool-gated highlight (only fill / picker / segment
+tools compute it).
 
 ## Code pointers
 

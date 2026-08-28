@@ -2,6 +2,18 @@
 
 This directory mixes two kinds of documents. When they disagree, **the source code is the authority**.
 
+An HTML rendering of everything lives in [`site/`](site/index.html) — regenerate with `npm run docs:build`.
+
+```mermaid
+flowchart LR
+    R["docs/ README.md<br/>(this index)"] --> AL["algorithms/<br/>math & principles"]
+    R --> TE["technical/<br/>engineering mechanisms"]
+    R --> CA["cases/<br/>showcase & verification"]
+    R --> WD["01…10 numbered docs<br/>中文 working documents"]
+    R --> LJ["loop-journal.md<br/>iteration retrospectives"]
+    WD -. historical research .-> AL
+```
+
 | Kind | Where | Language |
 |------|-------|----------|
 | Deep dives — algorithms | [`algorithms/`](algorithms/) | EN skeleton, content in EN or 中文 |

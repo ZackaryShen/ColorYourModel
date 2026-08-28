@@ -6,10 +6,20 @@
 
 The correctness rule that fixed the "fill C same colour → A changes" bug (`a7700df`, 2026-08-27):
 
-- **Labels are truth; colour is output.** Fill targets strictly `segmentLabels[clickedFace]` — the region the clicked face belongs to. Colour never participates in region identity.
-- History: iter29 hover preference + the v5 stale cache (`lastValidHoveredSegmentRef`) used to hijack fills to wrong regions; both retired. Hover snapshot is HUD diagnostic only.
-- Regression guarantees in `commands::paint::fill_tests`: same-colour double-region fill must not modify the first region; Shift+click flood stops at label boundaries even when both sides share a colour.
-- Where the rule generalizes: fuse/grow/lasso must also propagate labels, never overwrite `face_colors` with palette colours (open backlog item — see tracker `../04`, §8).
+```mermaid
+flowchart TD
+    C["click on face F"] --> L["look up segmentLabels[F]"]
+    L --> T["fill EXACTLY that region (by label)"]
+    T --> O["paint it with the selected colour<br/>(colour is output, never identity)"]
+    X["hover snapshot / stale cache"] -. retired · never an input .-> L
+```
+
+Topics to cover: **labels are truth; colour is output** — fill targets strictly the region the
+clicked face belongs to, so two regions can share one colour; the retired iter29 hover
+preference and v5 stale cache (`lastValidHoveredSegmentRef`); regression guarantees in
+`commands::paint::fill_tests` (same-colour double-region fill must not modify the first region;
+Shift+click flood stops at label boundaries); where the rule generalizes (fuse/grow/lasso must
+propagate labels, never overwrite `face_colors` — open backlog item, see `../04` §8).
 
 ## Code pointers
 

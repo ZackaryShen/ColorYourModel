@@ -6,10 +6,16 @@
 
 Automatic detection of eye regions on figure/character models, used as protected seeds:
 
-- Global detection without ROI (Stage 1): `detect_eye_regions_auto` scans the whole model
-- ROI-parameterized detection: `detect_eye_regions` with tunable thresholds
-- Why eyes matter: they are small, high-curvature, and visually critical — bad segmentation there ruins a figure print
-- Protection semantics: eye regions survive fuse/merge passes
+```mermaid
+flowchart LR
+    M["full model scan<br/>(no ROI needed, Stage 1)"] --> C["geometry cues<br/>curvature / concavity candidates"]
+    C --> F["filter & validate"]
+    F --> E["eye-region labels<br/>protected in fuse / merge"]
+```
+
+Topics to cover: global detection (`detect_eye_regions_auto`), ROI-parameterized detection
+(`detect_eye_regions`) with tunable thresholds, and why eyes matter — small, high-curvature,
+visually critical regions where bad segmentation ruins a figure print.
 
 ## Code pointers
 
