@@ -1,0 +1,1748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · REVISE-1） · ColorYourModel Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.lang-toggle, .gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="..%5Cindex.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../index.html">Home (EN)</a></li>
+<li><a href="../README.zh-CN.html">首页（中文）</a></li>
+<li><a href="../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="algorithms/README.html">Algorithms</a></li>
+<li><a href="algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="technical/README.html">Technical Mechanisms</a></li>
+<li><a href="technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="cases/README.html">Cases</a></li>
+<li><a href="cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html" aria-current="page">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="coloryourmodel--通往可用-v01开发路线图正式版--revise-1">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · REVISE-1）</h1>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>文档日期</td>
+<td>2026-08-10</td>
+</tr>
+<tr>
+<td>状态</td>
+<td><strong>ACTIVE</strong> — 取代 <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.md">docs/05</a> 的候选路线图（已证伪）</td>
+</tr>
+<tr>
+<td>版本</td>
+<td>REVISE-1 — 已吸收独立 REFUTE 的 3 blocker + 6 major</td>
+</tr>
+<tr>
+<td>分支</td>
+<td><code>feat_theme_persist_paint_ux</code>（持续 commit，不 push）</td>
+</tr>
+<tr>
+<td>v0.1 定义</td>
+<td><strong>达到可用状态</strong>才认可为 v0.1 —— 以 <a href="01-PRD-ColorYourModel.html">PRD §6</a> 验收门槛为准，不以「代码是否写完」为准</td>
+</tr>
+<tr>
+<td>方法</td>
+<td>Adversarial Development Loop：PLAN → REFUTE → REVISE → IMPLEMENT → TEST → RETROSPECT</td>
+</tr>
+<tr>
+<td>实测基线</td>
+<td><code>npx tsc --noEmit</code> exit 0；<code>cargo test --lib</code> <strong>103 passed</strong>（REVISE-1 基线 13 → 2026-08-09 现状 67 → 2026-08-10 现状 103；覆盖已扩至 export 预设库 + mesh/kdtree + segment 全算法 + split/merge）；<code>git tag -l</code> 空</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>如何使用本文档</strong>：从 §3 Phase 0 开始逐项勾选。每个 Gate 必须产出<strong>二值结论 + 失败分支</strong>，未达 EXIT 不得进入下一 Phase。每完成一个 Phase 追加一条 <code>loop-journal.md</code> 条目。</p>
+</blockquote>
+<hr>
+<h2 id="0-当前看板滚动更新--2026-08-10">0. 当前看板（滚动更新 · 2026-08-10）</h2>
+<table>
+<thead>
+<tr>
+<th>泳道</th>
+<th>条目</th>
+<th>状态</th>
+<th>凭据 / 阻塞点</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Phase -1 裁决</strong></td>
+<td>D1–D8</td>
+<td>✅ 全部裁决</td>
+<td>§1</td>
+</tr>
+<tr>
+<td><strong>Phase 0 前置</strong></td>
+<td>P1-8 render 期副作用（3 处）</td>
+<td>✅ 完成</td>
+<td><code>550289e</code> + <code>4b8da67</code></td>
+</tr>
+<tr>
+<td><strong>Gate 0a</strong></td>
+<td>HUD 仪器校准</td>
+<td>✅ 完成</td>
+<td><code>8ea2217</code></td>
+</tr>
+<tr>
+<td><strong>Gate 0b</strong></td>
+<td>3MF 格式前置验证</td>
+<td>🟢 <strong>核心完成</strong>（预设库 <code>2e4e070</code>）</td>
+<td>清单 v2 第 1–5 项 ✅；<code>cargo test --lib</code> 66 passed；sample 解包验证 printer_settings_id 逐字相等、machine 78 keys 含 gcode 宏、inherits_group 8 元素。<strong>剩余</strong>：D6-a 非静默预览 UI（下轮）+ spool 三处复验（待先生）</td>
+</tr>
+<tr>
+<td>├ paint_color 编码器</td>
+<td>位流编码，6 黄金值锁定</td>
+<td>✅ 完成</td>
+<td><code>export/paint_color.rs</code>，C1/C2</td>
+</tr>
+<tr>
+<td>├ median-cut 量化</td>
+<td>≤16 槽，确定性</td>
+<td>✅ 完成</td>
+<td><code>export/quantize.rs</code>，C1/C5</td>
+</tr>
+<tr>
+<td>├ project_settings.config</td>
+<td>单一扁平 DynamicPrintConfig writer</td>
+<td>✅ <strong>预设库重构完成</strong></td>
+<td><code>export/project_config.rs</code>：槽位数=<code>filament_colour.size()</code>；混合耗材写 N 长数组（<code>set_at</code> 散射）；<code>inherits_group</code>=N+2（process/filaments/printer 父）；selected 路径嵌入 machine+process 完整配置（REFUTE-6）</td>
+</tr>
+<tr>
+<td>├ 3dmodel.model 改写</td>
+<td>删 basematerials，ns 改 core/2015/02</td>
+<td>✅ 完成</td>
+<td><code>export/threemf.rs</code>，C3</td>
+</tr>
+<tr>
+<td>├ D6-a 非静默量化预览</td>
+<td>量化改色须告知用户</td>
+<td>⬜ 未开工</td>
+<td>当前静默改色，违 WYSIWYG。backlog：待先生确认导出交互后迭代</td>
+</tr>
+<tr>
+<td>└ spool 卡三处复验（箭头所指）</td>
+<td>Orca 重开 <code>paint_color_sample.3mf</code></td>
+<td>🟡 <strong>待先生复验</strong></td>
+<td>新 sample（<code>2e4e070</code> selected 路径）：下拉框应显示 <strong>Snapmaker U1 (0.4 nozzle)</strong>、喷嘴 0.4、工艺 0.20 Standard、spool 卡完整。首次弹 &quot;Customized Preset&quot; 确认框属正常（勾选不再提醒）</td>
+</tr>
+<tr>
+<td><strong>Gate 0b′</strong></td>
+<td>撤销架构归一（R4）</td>
+<td>✅ 已裁决 + <strong>实现完成</strong></td>
+<td>D7 + D8</td>
+</tr>
+<tr>
+<td>├ S1 后端统一时间线</td>
+<td><code>mesh.history</code> 单栈 + <code>stroke_id</code></td>
+<td>✅ 完成</td>
+<td><code>5c85e80</code>、<code>7522659</code>、<code>f43cb44</code></td>
+</tr>
+<tr>
+<td>├ S2 前端切换</td>
+<td>删前端双栈，改旗标 + bridge</td>
+<td>✅ 完成</td>
+<td><code>7eaef39</code>，<code>tsc --noEmit</code> exit 0</td>
+</tr>
+<tr>
+<td>├ S2 运行期验证 v2</td>
+<td>Ctrl+Z/Y、笔画合并、分区撤销可见性</td>
+<td>✅ <strong>通过</strong></td>
+<td>命名 <code>39736dd</code> / 合并 <code>f7d2f83</code> / 拆分 <code>72455f3</code> 全部接入后端时间线且可撤销，先生多轮实测无回归反馈</td>
+</tr>
+<tr>
+<td>└ 重出含 embedded preset 的构建</td>
+<td>含 REFUTE-4 后端改动（machine/process/filament 三份 preset）</td>
+<td>✅ 完成</td>
+<td>多轮 <code>tauri build</code> 成功（B3 例行化）</td>
+</tr>
+<tr>
+<td><strong>Gate 0c</strong></td>
+<td>150 万面撤销性能（≤200ms/op、≤256MB@50 深）</td>
+<td>⬜ 未开工</td>
+<td>D8 后由「决策门」降级为「验收实测」；backlog：待先生确认撤销交互后迭代</td>
+</tr>
+<tr>
+<td><strong>Gate 0d</strong></td>
+<td>高亮性能方案（方案 α 着色器）</td>
+<td>✅ <strong>已完成</strong>（<code>eea2fd1</code> 着色器高亮 + <code>485aa7d</code> 性能优化 + <code>f192f98</code> 工具门控）</td>
+<td>删 <code>SegmentHighlight</code>/<code>FillFaceHighlight</code>/<code>giantSegmentIds</code>/<code>WHOLE_SEGMENT_MAX_SHARE</code>；条件性 demand + 删 <code>preserveDrawingBuffer</code> + <code>flat</code> varying；高亮仅 fill/picker/segment 开启</td>
+</tr>
+<tr>
+<td><strong>Gate 0e</strong></td>
+<td>切片器环境</td>
+<td>✅ 完成</td>
+<td><code>573505f</code>；基线归属已更正（Snapmaker fork / stock 双路径）</td>
+</tr>
+<tr>
+<td><strong>导入健壮性</strong></td>
+<td>STL 导入 kdtree 崩溃（球面等重合轴点）</td>
+<td>✅ 已修复（<code>69a17ea</code>）</td>
+<td>kiddo KdTree 重合轴点 &gt;32 panic → 按 index ~1e-4 确定性扰动；回归测试 <code>kdtree_coincident_axis_no_panic</code></td>
+</tr>
+<tr>
+<td><strong>Phase 1</strong></td>
+<td>删除式重构 1a/1b/1c</td>
+<td>1a ✅ / 1b ✅ / <strong>1c 由 0d 方案吸收</strong></td>
+<td>1a <code>7b74707</code> 解粘滞；1b <code>eea2fd1</code> 删闸门/<code>giantSegmentIds</code>/<code>WHOLE_SEGMENT_MAX_SHARE</code>；1c 的集合语义已被着色器方案（hover/选中都走 uniform，非双 geometry 面集）天然化解，无需再做</td>
+</tr>
+<tr>
+<td><strong>智能分区</strong></td>
+<td>可配置算法 + 面板 + 持久化</td>
+<td>✅ 完成</td>
+<td><code>b087c3c</code> 特征感知分区 + golden harness、<code>47004d9</code> <code>IntelligentSegmentPanel</code> + 参数持久化、<code>0d5f162</code> 文档。三算法：二面角 / 形态直径 SDF / 曲率 K-Means（可融合 SDF 特征）</td>
+</tr>
+<tr>
+<td>├ 分区命名</td>
+<td>双击重命名</td>
+<td>✅ 完成</td>
+<td><code>39736dd</code></td>
+</tr>
+<tr>
+<td>├ 分区合并</td>
+<td>选中 ≥2 合并为一，可撤销</td>
+<td>✅ 完成（A10）</td>
+<td><code>f7d2f83</code> + SegmentsPanel Ctrl+点击多选 + 「合并」按钮；label-only 历史，增量 diff 撤销</td>
+</tr>
+<tr>
+<td>├ 分区拆分</td>
+<td>沿内部棱角拆分，可撤销</td>
+<td>✅ 完成</td>
+<td><code>72455f3</code> + SegmentsPanel「拆分」按钮 + 阈值滑块；拆分量独立成区，最大片留原 label</td>
+</tr>
+<tr>
+<td>├ 手动区跨自动重跑保留</td>
+<td><code>preserve_manual</code></td>
+<td>✅ 完成</td>
+<td><code>364a2be</code>；手动 label 永不回收 <code>b7d64c4</code></td>
+</tr>
+<tr>
+<td>├ §2.4 配色不同源修复</td>
+<td>面板/3D 按 label 统一取色</td>
+<td>✅ 完成</td>
+<td><code>788f7b9</code>（调色板单一来源，按 label 索引）</td>
+</tr>
+<tr>
+<td>└ segment 元数据单一构建点</td>
+<td>后端一处构建</td>
+<td>✅ 完成</td>
+<td><code>ec9af61</code></td>
+</tr>
+<tr>
+<td><strong>性能（智能分区）</strong></td>
+<td>点击「智能分区」主线程卡死</td>
+<td>✅ 已修复（<code>06303ee</code>）</td>
+<td><code>auto_segment_v2</code> 改 async（Tauri tokio worker 线程）+ <code>take()</code> 出 Mutex + 空 <code>face_colors</code>（省多兆 IPC）；REFUTE 证实 sync 命令跑主线程</td>
+</tr>
+<tr>
+<td>├ 阶段进度条 + 转圈</td>
+<td>抽象阶段，动画反馈</td>
+<td>✅ 完成（<code>b1d523c</code>）</td>
+<td>后端 stage 改 canonical key；前端 <code>segmentStages.ts</code> 阶段计划 + <code>resolveSegmentStage</code>；CSS 旋转环 + indeterminate 条纹</td>
+</tr>
+<tr>
+<td>├ 默认算法对齐</td>
+<td>import 默认 <code>curvatureKMeans + useSdf</code></td>
+<td>✅ 完成（<code>eac4a64</code>）</td>
+<td>面板/导入默认一致；平滑模型（装甲等）不再被 dihedral 归成整块</td>
+</tr>
+<tr>
+<td>└ crease 阈值默认 45°</td>
+<td>过分割修复（89 区 → ~7–10 区）</td>
+<td>✅ 完成（<code>82b7366</code>）</td>
+<td><code>DEFAULT_ALGORITHM_PARAMS.curvatureKMeans.creaseThresholdDeg</code> 20°→45°；滑块仍 1–90° 可调</td>
+</tr>
+<tr>
+<td><strong>Lasso</strong></td>
+<td>第 3 点在薄边被误判闭合吞点</td>
+<td>✅ 已修复（<code>156f673</code> + <code>71e8d34</code>）</td>
+<td>根因 1：closing 检测读 stale <code>lassoSnapRef</code>（先算 snap 后判距）；根因 2：闭合只判空间距离，细电缆空间近 ≠ 拓扑近 → 加顶点 1-ring 拓扑守卫 + <code>closeThreshold</code> 0.012→0.004</td>
+</tr>
+<tr>
+<td><strong>知识沉淀</strong></td>
+<td>论文/计划入项目资产</td>
+<td>✅ 完成（<code>e1d374e</code>）</td>
+<td><code>docs/08-智能分区-算法参考与论文.md</code>（三算法论文引用 + 复杂度 + pipeline + 性能复盘）；配对 <code>docs/07</code> 设计/REFUTE 文档</td>
+</tr>
+<tr>
+<td><strong>Phase 2</strong></td>
+<td>复验 A4 / A5</td>
+<td>⬜ 未开工</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>Phase 3</strong></td>
+<td>分区合并（D4）→ 已并入智能分区泳道</td>
+<td>✅ <strong>完成</strong></td>
+<td>合并 <code>f7d2f83</code> / 拆分 <code>72455f3</code> / 命名 <code>39736dd</code> / 撤销接入 / 配色修复 <code>788f7b9</code>。⚠️ PRD <code>FR-SEG-03</code> 语义未同步（当前仍为「元数据双写」旧条目）</td>
+</tr>
+<tr>
+<td><strong>Phase 4</strong></td>
+<td>3MF 收口（A9）</td>
+<td>🟡 阻塞</td>
+<td>依赖 spool 复验 + 先生确认导出交互后迭代 D6-a + 双基线 E2E</td>
+</tr>
+<tr>
+<td><strong>Phase 5</strong></td>
+<td>发版收口</td>
+<td>⬜ 未开工</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<p><strong>当前等待先生复验（多类，均需真实 Tauri runtime / 切片器，headless 不可覆盖）</strong>：</p>
+<ol>
+<li><strong>智能分区效果</strong> — 装甲人偶经 <code>eac4a64</code>（默认 curvatureKMeans）+ <code>82b7366</code>（crease 45°）应拆成 ~7–10 个分区（头/躯干/臂/腿），不再是 89 区 / 1 整块。</li>
+<li><strong>阶段进度条 + 转圈</strong>（<code>b1d523c</code>）— 点「智能分区」应看到「阶段 X/Y · 名称」+ 旋转环，不再出现&quot;卡死/无反馈&quot;。</li>
+<li><strong>Lasso 第 3 点</strong>（<code>71e8d34</code>）— 胸前细电缆上连续点 3 点：第 3 点应正常放置、不误报黄色&quot;ready to close&quot;；只有点回起点顶点附近才变黄闭合。</li>
+<li><strong>Sphere.stl 导入不再崩</strong>（<code>69a17ea</code>）— 安装最新 NSIS，打开 <code>C:\Users\Administrator\Desktop\Sphere.stl</code> 确认不闪退。</li>
+<li><strong>Gate 0b 预设库复验</strong> — 在切片器打开 <code>examples/paint_color_sample.3mf</code>：下拉框 <strong>Snapmaker U1 (0.4 nozzle)</strong>、喷嘴 0.4、工艺 0.20 Standard、spool 卡完整；首次弹 &quot;Customized Preset&quot; 确认框属正常。</li>
+<li><em>(不阻塞)</em> D6-a 非静默预览 UI — 可下轮排。</li>
+</ol>
+<hr>
+<h2 id="1-产品裁决记录phase--1已完成-">1. 产品裁决记录（Phase -1，已完成 ✅）</h2>
+<p>2026-08-06 由用户裁决。<strong>这些是后续所有技术方案的前提，不得单方面推翻。</strong></p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>裁决内容</th>
+<th>结论</th>
+<th>影响</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>D1</strong></td>
+<td>Fill 目标的权威源</td>
+<td><strong>click 命中权威</strong> — hover 降级为纯视觉提示</td>
+<td>删除 hover 参与 fill 决策的全部通路；P0-3 无需 TTL 安全阀。需改 PRD <code>FR-PNT-03</code></td>
+</tr>
+<tr>
+<td><strong>D2</strong></td>
+<td>大分区（&gt;80% 占比）Fill 语义</td>
+<td><strong>整段填充，不降级</strong></td>
+<td>删除两个 share 阈值<strong>及其残留 gate</strong>（见 §2.1）。需改 PRD <code>FR-PNT-02</code>。⚠️ <strong>本项条件性依赖 Gate 0c</strong>，见 §2.5</td>
+</tr>
+<tr>
+<td><strong>D3</strong></td>
+<td>A9 验收基线切片软件</td>
+<td><strong>OrcaSlicer + SnapmakerOrca 双基线</strong></td>
+<td>✅ Gate 0e 已确认二者均安装于开发机，双基线维持</td>
+</tr>
+<tr>
+<td><strong>D4</strong></td>
+<td>分区合并/拆分是否纳入 v0.1</td>
+<td><strong>纳入</strong></td>
+<td>经取证「拆分」已实现（§2.3），真实缺口仅「合并」</td>
+</tr>
+<tr>
+<td><strong>D5</strong></td>
+<td>手动区豁免口径</td>
+<td><strong>自动消解</strong></td>
+<td>D2 判定后阈值全删，「豁免」概念不复存在</td>
+</tr>
+<tr>
+<td><strong>D6</strong></td>
+<td>导出色彩域量化策略（§2.8）</td>
+<td><strong>β 自动量化</strong> — N 色聚到 ≤16 槽位</td>
+<td>永远可导出。⚠️ 附带<strong>强制约束 D6-a</strong>（见下），因 β 原生缺陷是静默改色</td>
+</tr>
+<tr>
+<td><strong>D7</strong></td>
+<td>撤销栈归一（Gate 0b′）</td>
+<td><strong>统一到 Rust 后端</strong></td>
+<td>前端 <code>pushUndo</code> 全量快照栈<strong>下线</strong>；四类操作（涂色/手动分区/合并/拆分）全部在后端记历史</td>
+</tr>
+<tr>
+<td><strong>D8</strong></td>
+<td>撤销快照粒度</td>
+<td><strong>增量 diff</strong></td>
+<td>只存变更面索引 + 旧色；Gate 0c 由「决策门」降为「验收实测」</td>
+</tr>
+</tbody></table>
+<p><strong>D6-a（附加约束，非新增需求，而是 β 失败模式的必要补丁）</strong>：量化<strong>不得静默</strong>。导出前必须展示映射结果——原始色数、目标槽位数、每个槽位由哪些原色合并而来、以及一张合并前后对照预览。用户确认后才写文件。理由：工具的核心承诺是「所见即所得」，β 在切片器里改色而用户不知情会直接摧毁这个承诺；把改动摊开则 β 的代价从「欺骗」降为「知情妥协」。</p>
+<hr>
+<h2 id="2-技术前提已经-refute-校验含被推翻的原始判断">2. 技术前提（已经 REFUTE 校验，含被推翻的原始判断）</h2>
+<h3 id="21-三个-p0-由同一次删除式重构解决--但删除清单需扩到五处">2.1 三个 P0 由同一次「删除式重构」解决 —— 但删除清单需扩到<strong>五处</strong></h3>
+<p>原判断（「删两个阈值 + fill 改 click 即可」）<strong>被 REFUTE 推翻</strong>。穷举「决定填哪些面 / 高亮哪些面」的全部代码路径后，实际需要删除五处，缺一则 Phase 2 复验必不通过：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>位置</th>
+<th>现状</th>
+<th>为何必须删</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><code>Viewport.tsx:1475-1496</code></td>
+<td><code>let nextHover = prevHover</code>（:1477）+ manual 钉死条件（:1484）</td>
+<td><code>hoveredSegment</code> 是<strong>历史粘滞值</strong>，光标移出模型 / 移到 giant 段 / 移到 auto 碎屑时都不跟随。高亮渲染读的正是它（:1786-1789）→ 用户看见 A 段高亮却填掉 B 段</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>usePaintTool.ts:106-107</code></td>
+<td><code>const label = (hovered != null) ? hovered : segmentLabels[faceId]</code></td>
+<td>D1 要求 click 权威，hover 不得参与决策</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>usePaintTool.ts:125-130</code></td>
+<td><code>!!seg &amp;&amp; (isManual ? share&lt;=0.95 : (realSegs.length&gt;1 &amp;&amp; share&lt;=0.8))</code></td>
+<td><strong>仅删两个 share 阈值不够</strong>：残留的 <code>!!seg</code> 与 <code>realSegs.length &gt; 1</code> 会让「单一真实分区」的模型 fill 仍静默降级为 <code>fill_paint</code> 局部填充（:146-150），而 hover 照样整段高亮 → 面集又不等。改为 <code>!opts?.wholeRegion &amp;&amp; label !== undefined</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>Viewport.tsx:1028-1040</code></td>
+<td><code>giantSegmentIds</code> + <code>autoSegs.length &lt;= 1</code> 早退</td>
+<td>D2 取消降级后静音无依据。⚠️ <strong>但它是目前唯一挡住 5400 万次 push 的东西</strong>，删除时机受 Gate 0d 约束，见 §2.2</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>Viewport.tsx:1236-1237</code></td>
+<td><code>hoveredSegment: snap ?? lastValidHoveredSegmentRef.current</code></td>
+<td>store 空时主动复活历史值（iter29 v5 引入）</td>
+</tr>
+</tbody></table>
+<p><strong>后端口径已验证一致，无需改动</strong>：<code>fillSegment</code> 传 <code>segmentId = overrideSegmentId ?? segmentLabels[faceId]</code>（<code>usePaintTool.ts:32-69</code>）→ <code>fill_segment_paint</code>（<code>commands/paint.rs:116-132</code>）→ <code>fill_segment</code> 按 <code>filter(|&amp;label| label == segment_id)</code> 收全段（<code>fill.rs:14-26</code>）。前端 <code>facesBySeg</code>（<code>Viewport.tsx:466-478</code>）同样纯按 <code>segmentLabels</code> 分组。<strong>两端唯一真值都是 <code>segment_labels</code></strong>。</p>
+<p>这满足 backlog <strong>M5</strong> 的「必须换角度」要求：过去 7 轮都在<strong>修补</strong> hover 传递链路，本轮是<strong>移除</strong> hover 的决策权。删除比统一更彻底 —— 没有第二条路径，就不会再次分叉。</p>
+<blockquote>
+<p>B1（HUD 与屏幕高亮不同源）仍须先修：即便一致性成为结构性保证，回归验证仍需可信读数。Gate 0a 保留。</p>
+</blockquote>
+<h3 id="22-d2-的代价高亮渲染性能--原方案-β-已被推翻">2.2 D2 的代价：高亮渲染性能 —— 原方案 β <strong>已被推翻</strong></h3>
+<p><code>SegmentHighlight</code>（<code>Viewport.tsx:591-610</code>）在 <code>useMemo</code> 中同步重建 geometry：150 万面 → <strong>5400 万次 <code>Array.push</code></strong> + 216MB <code>Float32Array</code> 分配 + 全量 <code>computeVertexNormals()</code>，全在主线程。这才是 <code>giantSegmentIds</code> 静音存在的真实原因。</p>
+<p><strong>REFUTE 修正两点：</strong></p>
+<ul>
+<li>✅ <code>SegmentOutline</code>（<code>:528-574</code>）成本<strong>更低不是更高</strong>：它遍历面找「邻面 label 不同」的边界边，单段覆盖全模型时不存在边界边，直接返回 null。§2.2 只算 Highlight 的数量级是对的。</li>
+<li>❌ <strong>方案 β（indexed BufferGeometry）不可行</strong>：主 geometry 是<strong>非索引展开式</strong>（<code>Viewport.tsx:13-23</code> 构建注释、<code>:1064-1068</code> 明确保持 <code>geometry.index === null</code>），每三角形独占 3 顶点。在非索引 buffer 上建 index 等价于 <code>[0,1,2,...]</code>，省不下任何东西。要真省必须先做顶点去重映射，而这会<strong>破坏 <code>faceIndex === 后端 face 序号</code> 这个前提</strong>，使 <code>indirect:true</code> 的 BVH raycast 优化（<code>:942-963</code>）失效。</li>
+</ul>
+<p><strong>修订后的候选方案（Gate 0d 决策）：</strong></p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>做法</th>
+<th>收益</th>
+<th>风险</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>α（首选）</strong></td>
+<td><strong>着色器高亮，零 geometry 分配</strong>：给主 mesh 加一个 per-vertex 的 <code>aSegLabel</code> float attribute（同三角形三顶点同值，分区变化时才更新，O(F) 一次）；hover 变化只改 uniform <code>uHighlightLabel</code>，shader 内比较着色</td>
+<td>hover 切换成本 O(F)→<strong>O(1)</strong>，无新 buffer、无 GC、不碰 raycast 前提</td>
+<td>需 <code>onBeforeCompile</code> 注入或自定义 ShaderMaterial，与主题色/vertexColors 系统耦合</td>
+</tr>
+<tr>
+<td>γ</td>
+<td>大分区高亮异步构建 + 过渡态</td>
+<td>不阻塞主线程</td>
+<td>高亮延迟出现，A4 取证变复杂</td>
+</tr>
+<tr>
+<td>δ</td>
+<td>保留静音，但阈值提高到接近 1.0</td>
+<td>改动最小</td>
+<td>与 D2 语义冲突（用户仍会遇到「点了没高亮」）</td>
+</tr>
+<tr>
+<td><del>β</del></td>
+<td><del>indexed BufferGeometry</del></td>
+<td><del>12×</del></td>
+<td><strong>已否决</strong>：非索引几何 + 破坏 indirect raycast</td>
+</tr>
+</tbody></table>
+<h3 id="23-d4-取证结论拆分已实现缺口仅合并">2.3 D4 取证结论：「拆分」已实现，缺口仅「合并」</h3>
+<p><strong>H1 证实</strong> — <code>finalize_manual_region</code>（<code>src-tauri/src/segment/manual.rs:578-582</code>）无条件覆写 <code>mesh.segment_labels[f] = label</code>，源码注释明写 <em>&quot;faces may belong to an earlier region&quot;</em>，并以 <code>ManualRegionSnapshot</code> 记录原 label 供撤销。<code>paint_segment_face</code>（<code>commands/segment.rs:122-123</code>）同理。</p>
+<p>→ 用户用套索/分区笔在任意已有分区内圈一块，该块 label 被覆写，原分区自动少掉这部分。<strong>功能上就是拆分。</strong></p>
+<p><strong>H2 证实</strong> — <code>src-tauri/src/commands/</code> 下<strong>无任何 merge / split / relabel 命令</strong>，合并需从零实现。有利条件：<code>SegmentsPanel.tsx</code> 已存在，store 已有 <code>selectedSegment</code> 单选态（<code>:13/:33</code>），Viewport 已消费其高亮（<code>:1797-1801</code>）。</p>
+<p><strong>REFUTE 澄清（原判断为误解）</strong>：<code>rebuild_segments</code>（<code>mesh/model.rs:332-367</code>）只用 <code>segment_labels</code> 重建 segments，<strong>全程不触碰 <code>face_colors</code></strong> → 合并不会丢失用户涂色。且后端 <code>Segment.color</code>（<code>:351-360</code>）是<strong>死字段</strong>，全前端无一处读取。原文档「保留目标分区的 label 与颜色」的表述应删除。</p>
+<h3 id="24-新发现缺陷面板配色与-3d-配色不同源docs04-未收录">2.4 新发现缺陷：面板配色与 3D 配色不同源（docs/04 未收录）</h3>
+<table>
+<thead>
+<tr>
+<th>侧</th>
+<th>取色方式</th>
+<th>位置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>3D 视图</td>
+<td>按 <strong>label id</strong>：<code>ci = segId % SEGMENT_COLORS_RGB.length</code></td>
+<td><code>useMesh.ts:96</code></td>
+</tr>
+<tr>
+<td>面板色点</td>
+<td>按 <strong>数组下标</strong>：<code>i % SEGMENT_COLORS.length</code></td>
+<td><code>SegmentsPanel.tsx:43</code>（<code>:29</code> <code>segments.map((seg, i)</code>）</td>
+</tr>
+</tbody></table>
+<p>后端 <code>segments.sort_by_key(|s| s.id)</code>（<code>model.rs:365</code>）。auto 段 id 连续为 <code>0..n-1</code> 时 <code>i == id</code> 属<strong>巧合一致</strong>；一旦出现手动区（id ≥ 100000，<strong>当前已可复现</strong>）或 Phase 3 合并造成 id 空洞，<code>i ≠ id</code> → <strong>面板色点与 3D 分区颜色错位</strong>。</p>
+<p>处置：统一为 <code>segId % len</code>，纳入 Phase 3，并补录进 docs/04。</p>
+<h3 id="25-撤销架构存在两套互不同步的栈r4-级架构决策必须前置">2.5 撤销架构：存在两套互不同步的栈（R4 级架构决策，必须前置）</h3>
+<table>
+<thead>
+<tr>
+<th>栈</th>
+<th>记录内容</th>
+<th>入口</th>
+<th>栈深</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>后端</td>
+<td><code>ManualRegionSnapshot</code> per-face <code>(label, color)</code> LIFO</td>
+<td><code>finalize_manual_region</code>（<code>manual.rs:539-596</code>）/ <code>undo_last_manual_region</code>（<code>:604-612</code>）/ 命令 <code>manual_region_undo</code>（<code>commands/segment.rs:245-262</code>）</td>
+<td>无限</td>
+</tr>
+<tr>
+<td>前端</td>
+<td>全量 <code>face_colors</code> 快照</td>
+<td><code>pushUndo</code>（<code>appStore.ts:341-345</code>）/ <code>undoPaint</code> → <code>restoreFaceColors</code>（<code>useTauriCommand.ts:206-227</code>）→ <code>restore_face_colors</code>（<code>commands/segment.rs:272-312</code>）</td>
+<td><code>slice(-19)</code> = 19 层</td>
+</tr>
+</tbody></table>
+<p><strong>两者不互斥但不同步</strong>：lasso 落笔时 pointerdown 已 <code>pushUndo</code> 一份前端快照，finalize 又 push 一份后端 snapshot —— <strong>同一次操作在两个栈里各留一条记录</strong>，谁先弹出取决于用户按了哪个入口，栈深还不一致。</p>
+<p>原文档把「合并的撤销走哪套」写成「二选一（依 0c 结论）」并留在 Phase 3，<strong>违反 R4</strong>：这是前后端历史语义的架构决策，不是性能实测的下游产物。0c 只能回答「全量快照能否撑 150 万面」，回答不了「两套栈如何归一」。→ 前移为 <strong>Gate 0b&#39;</strong>。</p>
+<h3 id="26-d2-条件性依赖-gate-0c原文档遗漏的依赖">2.6 D2 条件性依赖 Gate 0c（原文档遗漏的依赖）</h3>
+<p>D2「整段填充不降级」是<strong>最大 undo 快照的唯一来源</strong>：一次填充可改动全模型面数。<code>pushUndo</code> 每次存全量 <code>face_colors</code>（<code>appStore.ts:341-345</code>），150 万面 ≈ 18MB/次 × 19 层 ≈ <strong>340MB 常驻</strong>；撤销时 <code>restoreFaceColors</code>（<code>useTauriCommand.ts:184-200</code>）用 <code>Array.from()</code> 把整个数组转 JSON 数字过 IPC → 单次承载 <strong>450 万个十进制数</strong>。</p>
+<p>D2 的论证前提是「有撤销兜底」。若 0c 实测不通过，该前提当场崩塌。<strong>因此 0c 必须写明失败分支</strong>，见 §3 Gate 0c。</p>
+<h3 id="27-phase-1-与-phase-3-的渲染契约冲突原文档遗漏">2.7 Phase 1 与 Phase 3 的渲染契约冲突（原文档遗漏）</h3>
+<p><code>selectedSegment</code>（<code>appStore.ts:31</code>，单值 <code>number | null</code>）与 <code>hoveredSegment</code>（<code>:34</code>）<strong>共用同一个 <code>SegmentHighlight</code> 组件</strong>，靠视图模式分流：paint 视图渲染 hovered（<code>Viewport.tsx:1786-1789</code>），segment 视图渲染 selected 并在 hovered ≠ selected 时额外画一条 hovered 的 Outline（<code>:1795-1805</code>）。</p>
+<p>Phase 1 的全部工作是把决定权<strong>收敛到一个面集</strong>，而 Phase 3 要把 <code>selectedSegment</code> 扩成多选集合 —— segment 视图里会立刻<strong>重新出现「选中集 N 段」与「hover 集 1 段」两个面集</strong>，且 <code>:1803</code> 的 <code>hoveredSegment !== selectedSegment</code> 判等在集合语义下恒真（<code>number !== Set</code>）。</p>
+<p>若放任到 Phase 3 再处理，等于亲手重建刚拆掉的「两个面集」结构。→ 渲染契约改造<strong>前移为 Phase 1c</strong>，Phase 3 只填数据。</p>
+<h3 id="28-色彩域基数差本工具-rgba-任意-vs-切片器-16-槽位gate-0b-新发现r4-级">2.8 色彩域基数差：本工具 RGBA 任意 vs 切片器 ≤16 槽位（Gate 0b 新发现，R4 级）</h3>
+<p><strong>这是 A9 的真正拦路石，此前所有文档均未记录。</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>ColorYourModel</th>
+<th>OrcaSlicer / SnapmakerOrca</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>色彩表达</td>
+<td>逐面任意 RGBA</td>
+<td>逐面<strong>挤出机槽位序号 1..16</strong></td>
+</tr>
+<tr>
+<td>颜色来源</td>
+<td>面上直接存</td>
+<td>由 <code>filament_colour</code> 预设间接解析</td>
+</tr>
+<tr>
+<td>基数上限</td>
+<td>无（用户想涂几种涂几种）</td>
+<td><strong>16</strong></td>
+</tr>
+</tbody></table>
+<p>导出不是「格式转换」，而是<strong>有损映射</strong>：必须先把 N 种面色量化到 ≤16 个槽位，再把这 16 个颜色写进 <code>Metadata/project_settings.config</code> 的 <code>filament_colour</code>。</p>
+<p>三条候选策略，代价与语义差别很大：</p>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>做法</th>
+<th>优点</th>
+<th>代价</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>α 精确 + 硬上限</strong></td>
+<td>统计去重色，&gt;16 直接报错拒绝导出</td>
+<td>零失真，语义诚实</td>
+<td>用户可能已涂 20 色，被卡住且无补救</td>
+</tr>
+<tr>
+<td><strong>β 自动量化</strong></td>
+<td>k-means / median-cut 聚到 16 色</td>
+<td>永远能导出</td>
+<td><strong>静默改色</strong>，与「所见即所得」冲突</td>
+</tr>
+<tr>
+<td><strong>γ 调色板前置</strong></td>
+<td>涂色阶段就限定调色板 ≤16 槽</td>
+<td>全程 WYSIWYG，导出无损</td>
+<td>需改涂色 UI，影响 Phase 1/2</td>
+</tr>
+</tbody></table>
+<p><strong>倾向 α</strong>（v0.1 范围最小、语义最诚实，且失败信息可直接指导用户），但 <strong>R4 要求用户确认后再动代码</strong>。</p>
+<hr>
+<h2 id="3-phase-执行计划">3. Phase 执行计划</h2>
+<h3 id="phase--1--裁决门--已完成">Phase -1 — 裁决门 ✅ 已完成</h3>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> D1–D5 全部裁决（§1）</li>
+<li><input checked="" disabled="" type="checkbox"> README 四处失真校正（commit <code>9bbc9ff</code>）</li>
+<li><input checked="" disabled="" type="checkbox"> 路线图 PLAN 版落盘（commit <code>a5c4e51</code>）→ REFUTE → 本 REVISE-1</li>
+</ul>
+<hr>
+<h3 id="phase-0--gate-阵列六项全部产出二值结论--失败分支">Phase 0 — Gate 阵列（六项，全部产出二值结论 + 失败分支）</h3>
+<blockquote>
+<p><strong>前置修复（必须最先做）</strong>：<strong>P1-8 render 期副作用（2 处）</strong>。✅ 已完成（<code>550289e</code>）</p>
+<p><strong>⚠️ 本条原立论已被证伪，修正如下</strong>：原文写「会让 0c/0d 实测<strong>不可复现</strong>」。查 React 官方文档后确认，StrictMode 在 DEV 下对 useMemo 工厂函数是<strong>确定性二次调用</strong>——测量值是可复现的，但被<strong>稳定放大约 2×</strong>。危害性质从「不可复现」变为「系统性偏高」，是<strong>准确性</strong>风险而非<strong>复现性</strong>风险。两者应对手段不同：前者靠稳定化，后者靠剥离观测干扰。</p>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> 移除 render 期 ref 写入 2 处（<code>useMesh.ts</code> <code>baseGeometry</code> / <code>paintColorArray</code>），后者改用 <code>useLayoutEffect</code> 在 commit 后发布</li>
+<li><input checked="" disabled="" type="checkbox"> 新增测量逃生舱：<code>VITE_NO_STRICT=1</code> 时关闭 StrictMode，令 0c/0d 的内存与耗时反映生产行为</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>DoD</strong>：<code>npx tsc --noEmit</code> exit 0；<code>vite build</code> 通过；<code>cargo test --lib</code> 13 passed</li>
+</ul>
+</blockquote>
+<h4 id="gate-0a--校准-hud-仪器b1-已完成8ea2217">Gate 0a — 校准 HUD 仪器（B1）✅ 已完成（<code>8ea2217</code>）</h4>
+<p>三重分叉：HUD <code>highlighted</code> 取 <code>facesBySeg.get(targetLbl).length</code>（<code>Viewport.tsx:1183</code>，含 click 回退与复活值），屏幕高亮取 store <code>hoveredSegment</code> 且过 <code>giantSegmentIds</code>（<code>:1786-1788</code>）→ iter25–30 六条「决定性证据」不可采信。</p>
+<p><strong>采用解法</strong>：引入唯一真源 memo <code>renderedHighlightLabel</code>，覆盖 segmentView / hover / 巨块过滤三条分支；overlay JSX 与 HUD <strong>同读该 memo</strong>，使「屏幕画的」与「HUD 报的」在结构上无法分叉。</p>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> overlay JSX（paint view <code>:1786</code>、segment view <code>:1797/:1803</code>）改读 <code>renderedHighlightLabel</code></li>
+<li><input checked="" disabled="" type="checkbox"> HUD 增打 <code>renderedHover=</code>（屏幕真正高亮的 label，null 显式打出）与 <code>fillTarget=</code></li>
+<li><input checked="" disabled="" type="checkbox"> HUD 仅在 <code>fillRouting === &quot;segment&quot;</code> 时断言 MISMATCH——<code>local</code> 笔刷与 <code>whole-region</code> 洪泛<strong>设计上就与高亮不等</strong>，此前对它们报 MISMATCH 属误报</li>
+<li><input checked="" disabled="" type="checkbox"> <code>enqueuePaint</code> 快照 <code>renderedHover</code>，与 <code>hoveredSegment</code> <strong>分开存</strong>，保留「所见高亮 vs 实际填充目标」的差值可见性</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>DoD</strong>：<code>npx tsc --noEmit</code> exit 0；<code>vite build</code> 通过</li>
+</ul>
+<h4 id="gate-0b--3mf-格式前置验证从-phase-4-前移-结论a9-按现设计不可达">Gate 0b — 3MF 格式前置验证（从 Phase 4 前移）🔴 结论：<strong>A9 按现设计不可达</strong></h4>
+<p>调查已完成，结论比原预期严重。证据分两层：<strong>规范层</strong>（3MF Consortium 官方规范）与<strong>实现层</strong>（本机 OrcaSlicer 源码 <code>C:\workDir\programing\OrcaHunSe\OrcaSlicer</code>，逐条 grep 亲验）。</p>
+<p><strong>B1｜规范层缺陷（4 条，均已确认）</strong></p>
+<table>
+<thead>
+<tr>
+<th>位置</th>
+<th>问题</th>
+<th>正确做法</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>threemf.rs</code> 默认 xmlns</td>
+<td>写成 <code>http://schemas.microsoft.com/3dmanufacturing/2013/01</code>。该串是 <strong>OPC 关系类型</strong>，不是 XML 命名空间</td>
+<td><code>http://schemas.microsoft.com/3dmanufacturing/core/2015/02</code>（OrcaSlicer <code>3mf.cpp:2542</code> 亦写此串）</td>
+</tr>
+<tr>
+<td><code>:84</code> <code>m:basematerials</code>、<code>:95</code> <code>m:base</code></td>
+<td>二者属<strong>核心规范默认命名空间</strong>，不属 Materials 扩展</td>
+<td>去掉 <code>m:</code> 前缀</td>
+</tr>
+<tr>
+<td><code>:112</code> <code>(&quot;m:basematerials&quot;,&quot;1&quot;)</code></td>
+<td>规范中<strong>无此属性</strong></td>
+<td><code>pid=&quot;1&quot; pindex=&quot;0&quot;</code></td>
+</tr>
+<tr>
+<td><code>:149-150</code> <code>pid=&quot;1&quot; p1=&quot;...&quot;</code></td>
+<td>因上条未注册成功 → <strong>悬空引用</strong></td>
+<td>随上条修复而解</td>
+</tr>
+</tbody></table>
+<p><strong>B2｜实现层：<code>basematerials</code> 在 OrcaSlicer 中零读者</strong></p>
+<pre><code>grep -ri &quot;basematerial|displaycolor&quot; OrcaSlicer/src/libslic3r/Format/   →  No matches found
+</code></pre>
+<p>覆盖 <code>3mf.cpp</code> / <code>bbs_3mf.cpp</code> / <code>AMF</code> / <code>STL</code> / <code>OBJ</code> / <code>STEP</code> 全部导入导出器。<strong>即使把 B1 四条全部改对，OrcaSlicer 仍然一点颜色都读不到</strong>——规范正确性与目标切片器可用性在此处<strong>不是同一件事</strong>。</p>
+<p><strong>B3｜语义层（决定性）：OrcaSlicer 的颜色模型是「挤出机槽位」，不是 RGB</strong></p>
+<p>两条私有通道，均为<strong>逐三角面属性</strong>，不是材质引用：</p>
+<table>
+<thead>
+<tr>
+<th>切片器族</th>
+<th>属性名</th>
+<th>命名空间</th>
+<th>源码位置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PrusaSlicer 兼容</td>
+<td><code>slic3rpe:mmu_segmentation</code></td>
+<td><code>xmlns:slic3rpe=&quot;http://schemas.slic3r.org/3mf/2017/06&quot;</code></td>
+<td><code>3mf.cpp:114</code></td>
+</tr>
+<tr>
+<td>Bambu / Orca</td>
+<td><code>paint_color</code></td>
+<td>无前缀（BBS 自有格式）</td>
+<td><code>bbs_3mf.cpp:280</code></td>
+</tr>
+</tbody></table>
+<p>编码规则（<code>Model.cpp:3478</code> <code>get_triangle_as_string</code> + <code>TriangleSelector.cpp:1648</code> <code>serialize</code>，源码注释明写 <em>&quot;changing it may break backwards compatibility&quot;</em>）：十六进制 nibble 串，未细分叶三角面状态 <code>n</code> 编码为 <code>[0,0]</code> + （<code>n&lt;3</code> 时 2 bit / <code>n&gt;=3</code> 时 <code>[1,1]</code> + base-15 的 4-bit 块），nibble 内 bit 序小端，字符串前插。实测推导：</p>
+<table>
+<thead>
+<tr>
+<th>槽位</th>
+<th>串</th>
+<th>槽位</th>
+<th>串</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>挤出机 1</td>
+<td><code>4</code></td>
+<td>挤出机 4</td>
+<td><code>1C</code></td>
+</tr>
+<tr>
+<td>挤出机 2</td>
+<td><code>8</code></td>
+<td>挤出机 5</td>
+<td><code>2C</code></td>
+</tr>
+<tr>
+<td>挤出机 3</td>
+<td><code>0C</code></td>
+<td>挤出机 16</td>
+<td><code>DC</code></td>
+</tr>
+</tbody></table>
+<p><code>EnforcerBlockerType</code>（<code>TriangleSelector.hpp:13</code>）枚举为 <code>Extruder1..Extruder16</code>——<strong>存的是槽位序号，不是颜色</strong>。真实颜色由 <code>filament_colour</code> 决定，落在 <code>Metadata/project_settings.config</code>（Orca/BBS，<code>bbs_3mf.cpp:580</code>）或 <code>Metadata/Slic3r_PE.config</code>（Prusa 路线，<code>3mf.cpp:73</code>）。</p>
+<p><strong>⛔ 由此产生一条 R4 级产品约束（阻塞，需用户裁决）</strong></p>
+<p>ColorYourModel 允许用户涂<strong>任意多种 RGBA</strong>；OrcaSlicer 只能表达 <strong>≤16 个槽位</strong>。这不是 bug，是两个色彩域的基数差。要让颜色真正显示，必须补一个<strong>量化步骤</strong>（N 种面色 → ≤16 槽位）+ 写调色板进 config。量化策略属产品决策，见 §2.8。</p>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> 规范逐条比对（B1 四条）</li>
+<li><input checked="" disabled="" type="checkbox"> 目标切片器实现层亲验（B2、B3）</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>§2.8 已裁决（D6 = β 自动量化）</strong> → <code>threemf.rs</code> 解冻，改造清单如下</li>
+</ul>
+<p><strong>改造清单 v1（7 项，D6 驱动）— 已被 REFUTE-3 部分推翻，见下</strong></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>项</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>B1 四处规范修正</td>
+<td>默认命名空间改 <code>.../core/2015/02</code>；其余三条按 B1 表</td>
+</tr>
+<tr>
+<td>2</td>
+<td>新增量化模块</td>
+<td>面色去重 → k-means/median-cut 压到 ≤16 → 产出 <code>color → slot</code> 映射表</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>paint_color</code> 编码器</td>
+<td>按 <code>TriangleSelector::serialize</code> 的 nibble 规则；黄金用例：槽 1=<code>4</code>、2=<code>8</code>、3=<code>0C</code>、4=<code>1C</code>、5=<code>2C</code>、16=<code>DC</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>写 <code>Metadata/project_settings.config</code></td>
+<td>输出 <code>filament_colour</code> 数组，长度 = 槽位数，顺序与映射表一致</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>D6-a 非静默</strong></td>
+<td>导出前弹预览：原色数 N → 槽位数 M，列出被合并的色对；N&gt;16 必须用户确认</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>export::threemf</code> 单元测试</td>
+<td>当前<strong>零覆盖</strong>：命名空间、<code>pid/pindex</code> 绑定、编码表黄金用例、量化确定性</td>
+</tr>
+<tr>
+<td>7</td>
+<td>双基线 E2E</td>
+<td>最小 STL 导出 → <strong>OrcaSlicer 与 SnapmakerOrca 都要开</strong> 验色（D3 双基线）</td>
+</tr>
+</tbody></table>
+<hr>
+<h5 id="refute-3-裁决表2026-08-07双路独立证伪--我方亲验仲裁">REFUTE-3 裁决表（2026-08-07，双路独立证伪 + 我方亲验仲裁）</h5>
+<p>两个独立 agent 分别对上表证伪；结论冲突处由我在<strong>两份源码</strong>上亲验仲裁（投票制）。</p>
+<table>
+<thead>
+<tr>
+<th>议题</th>
+<th>路 1</th>
+<th>路 2</th>
+<th>亲验</th>
+<th>裁决</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>basematerials</code>/<code>displaycolor</code> 零读者</td>
+<td>成立</td>
+<td>成立</td>
+<td>stock <code>Format/</code> grep 亦 0 命中</td>
+<td>✅ <strong>收敛，成立</strong></td>
+</tr>
+<tr>
+<td>逐面颜色唯一机制 = <code>paint_color</code></td>
+<td>成立</td>
+<td>成立</td>
+<td>fork <code>bbs_3mf.cpp:4830</code> / stock <code>:3854</code> 注释明写忽略 <code>pid/p1/p2/p3</code></td>
+<td>✅ <strong>成立</strong></td>
+</tr>
+<tr>
+<td>6 个黄金编码值</td>
+<td>亲验正确，无 off-by-one</td>
+<td>未查</td>
+<td><strong>我按 stock <code>TriangleSelector.cpp:1696+</code> 逐位重推，6 值全对</strong></td>
+<td>✅ <strong>采信，锁进单测</strong></td>
+</tr>
+<tr>
+<td><strong>槽位上限</strong></td>
+<td>255，量化模块多余</td>
+<td>fork 255 / 上游 16 / 产品 64</td>
+<td><strong>stock <code>ExtruderMax = Extruder16</code>（int8_t）；fork <code>= 255</code>（int16_t）；两者 <code>MAXIMUM_EXTRUDER_NUMBER = 64</code></strong></td>
+<td>⚠️ <strong>路 1 被推翻</strong>。取交集 = <strong>16</strong>，D6 前提成立</td>
+</tr>
+<tr>
+<td>未涂色面不写 <code>paint_color</code></td>
+<td>成立</td>
+<td>成立</td>
+<td><code>bbs_3mf.cpp:4829</code> <code>if(!empty())</code>；<code>TriangleSelector.cpp:1719</code> 跳过 NONE</td>
+<td>✅ <strong>成立</strong></td>
+</tr>
+<tr>
+<td>hex 必须<strong>大写</strong></td>
+<td>M2</td>
+<td>X3</td>
+<td>stock <code>Model.cpp:3580</code> 只接受 <code>&#39;A&#39;..&#39;F&#39;</code>，否则 <code>assert(false)</code>，Release 静默解成 0</td>
+<td>✅ <strong>收敛，成立</strong></td>
+</tr>
+<tr>
+<td><code>&lt;triangle&gt;</code> 必须索引升序</td>
+<td>M3</td>
+<td>X11</td>
+<td><code>Model.cpp</code> <code>lower_bound</code> + 递增 assert</td>
+<td>✅ <strong>成立</strong></td>
+</tr>
+<tr>
+<td><code>project_settings.config</code> = JSON</td>
+<td>M4</td>
+<td>同</td>
+<td><code>bbs_3mf.cpp:7471</code> <code>save_to_json(..., &quot;project_settings&quot;, &quot;project&quot;, ver)</code></td>
+<td>✅ <strong>成立</strong>，含 <code>version</code>/<code>name</code>/<code>from</code> 头部键</td>
+</tr>
+<tr>
+<td>该 config 读取是否有门禁</td>
+<td>无门禁</td>
+<td>必须写</td>
+<td><strong><code>bbs_3mf.cpp:1839</code> 是裸 <code>if</code>，不受 <code>dont_load_config</code> 也不受 <code>m_is_bbl_3mf</code></strong></td>
+<td>✅ <strong>无门禁，写了就读</strong></td>
+</tr>
+<tr>
+<td>Application 须伪装成 <code>BambuStudio-</code>/<code>Snapmaker_Orca-</code></td>
+<td>未提</td>
+<td>X2 声称必须</td>
+<td><strong><code>paint_color</code> 应用点不受 <code>m_is_bbl_3mf</code> 门禁，非 BBL 分支（<code>:4958</code>起）同样应用</strong></td>
+<td>❌ <strong>路 2 的 X2 被推翻，无需伪装</strong></td>
+</tr>
+<tr>
+<td>E2E 可 CLI 自动化</td>
+<td>M5：<code>--export-3mf</code>/<code>--slice</code> 可用</td>
+<td>未查</td>
+<td>未验</td>
+<td>🟡 <strong>待验，不计入本轮 DoD</strong></td>
+</tr>
+</tbody></table>
+<p><strong>由裁决产生的 5 条硬约束（写进实现，逐条对应单测）</strong></p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>约束</th>
+<th>违反后果</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>C1</td>
+<td>槽位上限 <strong>16</strong>（stock Orca 的 <code>Extruder16</code>）。Snapmaker Orca 虽支持 255，但<strong>取交集</strong>才能双基线通过</td>
+<td>第 17 色起在 stock 上静默变未涂色</td>
+</tr>
+<tr>
+<td>C2</td>
+<td>hex 串必须<strong>大写</strong> <code>A-F</code></td>
+<td>Release 下静默错色，切片器不报错</td>
+</tr>
+<tr>
+<td>C3</td>
+<td>未涂色面<strong>不写</strong> <code>paint_color</code> 属性；<code>&lt;triangle&gt;</code> 严格按面索引升序输出</td>
+<td>前者浪费槽位，后者 <code>lower_bound</code> 取到错条目</td>
+</tr>
+<tr>
+<td>C4</td>
+<td>必须写 <code>Metadata/project_settings.config</code>，否则 <code>max_supported_filament_id</code> 返回 <code>INT_MAX</code>，颜色回落到用户当前预设</td>
+<td>颜色与设计完全无关</td>
+</tr>
+<tr>
+<td>C5</td>
+<td>量化必须<strong>确定性</strong> → 用 median-cut，<strong>禁用 k-means</strong>（随机初始化与「同输入同输出」的单测目标直接冲突）</td>
+<td>单测不可重复，用户两次导出配色不同</td>
+</tr>
+</tbody></table>
+<p><strong>改造清单 v2（REVISE 后，按可交付性重排）</strong></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>项</th>
+<th>轮次</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><code>paint_color</code> nibble 编码器</td>
+<td><strong>本轮</strong></td>
+<td>纯函数 + 6 黄金值单测。C2 大写、C3 升序</td>
+</tr>
+<tr>
+<td>2</td>
+<td>median-cut 量化模块</td>
+<td><strong>本轮</strong></td>
+<td>确定性（C5）；≤16 时<strong>恒等映射不改色</strong>；上限常量化（C1）</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>project_settings.config</code> writer</td>
+<td><strong>本轮</strong></td>
+<td>JSON + <code>filament_colour</code>（C4）</td>
+</tr>
+<tr>
+<td>4</td>
+<td>3dmodel.model 改写</td>
+<td><strong>本轮</strong></td>
+<td>删 <code>basematerials</code>/<code>displaycolor</code>（零读者）；三角面按需挂 <code>paint_color</code>；B1 命名空间顺带修正（对 Orca 无影响，但对通用 3MF 消费者是正确性）</td>
+</tr>
+<tr>
+<td>5</td>
+<td>单元测试</td>
+<td><strong>本轮</strong></td>
+<td>覆盖 C1–C5</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>D6-a 非静默预览 UI</strong></td>
+<td>下轮</td>
+<td>后端出 <code>quantize_preview</code> 命令（纯查询、不写盘），前端弹窗消费。与 1–5 <strong>无耦合</strong>，两路证伪均确认可拆</td>
+</tr>
+<tr>
+<td>7</td>
+<td>双基线 E2E</td>
+<td>下轮</td>
+<td>本机双份源码均在，可从 CLI 起步</td>
+</tr>
+</tbody></table>
+<h5 id="refute-42026-08-07先生二轮反馈箭头指的地方驱动">REFUTE-4（2026-08-07，先生二轮反馈「箭头指的地方」驱动）</h5>
+<p>先生二轮实测：<code>project_settings.config</code> 扩到 41 字段（<code>b10bd20</code>）后，spool 卡仍 <strong>Bed type 空 / Diameter 显示 <code>&lt;&lt;mm</code> / spool 名截断</strong>。先生原话「缺少 resources」精准——缺的是 <strong>embedded preset files</strong>（ORCA 的 resources）。派独立 Explore subagent 在双基线（Snapmaker fork <code>bbs_3mf.cpp</code> + 上游 stock）复核 <code>_extract_project_embedded_presets_from_archive</code>，推翻 4 点：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>被推翻的原判断</th>
+<th>修正</th>
+<th>源码证据</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>①</td>
+<td>project_settings 顶层 41 字段足以填 spool 卡</td>
+<td>spool 卡读的是 <strong>embedded preset files</strong>，每个 preset 必须带 <code>printer_settings_id</code> / <code>print_settings_id</code> / <code>filament_settings_id</code> 作 name，缺则提取器 <code>return;</code> 静默丢</td>
+<td><code>bbs_3mf.cpp:2557-2620</code>（fork）/ 上游同偏移</td>
+</tr>
+<tr>
+<td>②</td>
+<td>6 个 filament 预设可同名</td>
+<td>提取器以 <code>filament_settings_id[0]</code> 为 preset 名，同名被去重覆盖→六色塌一色，须唯一名 <code>Generic PLA @slot1..6</code></td>
+<td><code>bbs_3mf.cpp:2598</code></td>
+</tr>
+<tr>
+<td>③</td>
+<td>写 <code>temperature</code> / <code>bed_temperature</code> 填温床</td>
+<td>二者<strong>不在</strong> <code>PrintConfigDef</code>，被列入 obsolete ignore 集（<code>PrintConfig.cpp:7268</code>）必被吞；改 <code>nozzle_temperature</code> / <code>hot_plate_temp</code></td>
+<td><code>PrintConfig.cpp:759</code>/<code>729</code></td>
+</tr>
+<tr>
+<td>④</td>
+<td><code>default_bed_type</code> 是 coEnum</td>
+<td>实为 <strong>coString</strong>（<code>PrintConfig.cpp:902</code>），直接写 <code>&quot;Cool Plate&quot;</code> 字符串即正确</td>
+<td><code>PrintConfig.cpp:902</code></td>
+</tr>
+</tbody></table>
+<p>前缀常量逐字节相同（<code>Metadata/machine_settings_</code> / <code>process_settings_</code> / <code>filament_settings_</code> / <code>print_setting_</code>），读取端纯 <code>istarts_with</code> 前缀，<code>.config</code> 不需 <code>[Content_Types].xml</code> 注册。无 <code>m_is_bbl_3mf</code> 门禁。</p>
+<p><strong>REVISE</strong>：<code>export/project_config.rs</code> 拆为 4 类 builder（<code>build_project_settings_config</code> 仅留 name/from/version + <code>*_settings_id</code> 引用；<code>build_machine/process/filament_profile_config</code> 承载 machine/process/filament 元数据）+ 常量 + 10 单测；<code>threemf.rs</code> 改为写 project + 1 machine + 1 process + N filament 共 <code>6 + N</code> 份 config。<code>cargo test --lib</code> <strong>26 passed</strong>；<code>examples/paint_color_sample.3mf</code> 解包验证 12 entry 全绿（6 份 filament 预设名唯一、含正确 settings_id、无 obsolete 字段）。</p>
+<ul>
+<li><strong>失败分支已触发</strong>：格式需重写，单列子任务，<strong>不阻塞 Phase 1/2</strong></li>
+</ul>
+<h5 id="refute-672026-08-07预设库实现前证伪2e4e070-落地">REFUTE-6/7（2026-08-07，预设库实现前证伪，<code>2e4e070</code> 落地）</h5>
+<p>先生需求升级：导出时可选<strong>厂商/机型/工艺/耗材</strong>，3mf 打开即识别为 Snapmaker U1 + 0.4mm 喷嘴（不依赖用户已装 Snapmaker vendor profile）。实现前派独立 Explore subagent 审计 <code>SnapMakerOrcaMain</code> 源码 + 双基线交叉验证，推翻两个关键假设：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>被推翻的原判断</th>
+<th>修正</th>
+<th>源码证据</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>⑥</td>
+<td>写 <code>&lt;metadata key=&quot;printer_model_id&quot;&gt;</code>（3dmodel.model）即可让 Orca 识别 U1</td>
+<td><strong>无效</strong>。<code>printer_model_id</code> 是 plate 级<strong>切片</strong>元数据（<code>bbs_3mf.cpp:4354</code> 读 / <code>7882</code> 写），只进 <code>PlateData</code> 供 SelectMachine 对话框比对，<strong>与预设选择无关</strong>。下拉框显示名来自被选中的预设：system 预设显示被改写为 <code>printer_model</code>（括号丢失，<code>PresetComboBoxes.cpp:1352-1356</code>），<strong>只有 project-embedded 预设保留全名</strong>（<code>:1373-1380</code>）。因此必须嵌入 <code>machine_settings_1.config</code>，其 <code>printer_settings_id</code> 与 project 文件<strong>逐字相等</strong>（<code>Preset.cpp:2046</code> 精确 find，不等则合成 <code>Xxx(yourfile.3mf)</code>）</td>
+<td><code>bbs_3mf.cpp:4354/7882</code>、<code>PresetComboBoxes.cpp:1352-1380</code>、<code>Preset.cpp:2046</code></td>
+</tr>
+<tr>
+<td>⑦</td>
+<td>嵌入 machine 预设可写 diff（照抄 Orca 导出）</td>
+<td>必须<strong>完整配置</strong>。inherits 落空（用户未装 vendor）时 <code>Preset.cpp:1541-1545</code> 回退默认打印机值（警告不丢弃）。Orca 自己导出的是 <code>get_preset_differed_for_save</code> diff，照抄会踩坑；萃取器白名单曾砍掉全部 gcode 宏（<code>machine_start_gcode</code> 等 6 个）→ 已补齐重萃</td>
+<td><code>Preset.cpp:1541-1545/1371-1420</code></td>
+</tr>
+<tr>
+<td>⑧</td>
+<td>同名 filament 预设会塌缩颜色 → 须 <code>@slotN</code> 唯一名</td>
+<td><strong>有害</strong>。颜色从 <code>project_config.filament_colour[extruder_idx]</code> 读（<code>PresetComboBoxes.cpp:1273</code>），与预设名无关；<code>@slotN</code> 匹配不到已安装预设 → 继承链断裂退化默认值。Orca 自己导出&quot;stock filament + custom colours&quot;时写<strong>零</strong> filament 预设文件（<code>bbs_3mf.cpp:7489</code> 只写 <code>is_project_embedded</code> 标记的）</td>
+<td><code>PresetComboBoxes.cpp:1273</code>、<code>Plater.cpp:21932</code>（<code>force_filament_colors_update</code> 被 <code>#if 0</code>）、<code>bbs_3mf.cpp:7489</code></td>
+</tr>
+<tr>
+<td>⑨</td>
+<td><code>inherits_group</code> 只要写 N 个名字</td>
+<td>是 <strong>N+2 数组</strong>：<code>[0]</code> process 父、<code>[1..=N]</code> filament 父、<code>[N+1]</code> printer 父（<code>PresetBundle.cpp:2861/2876/2943</code>）。多槽时每槽配置由 <code>set_at(other_opt,0,i)</code> 按索引散射 → 混合耗材必须写 N 长数组</td>
+<td><code>PresetBundle.cpp:2779/2925/2861/2876/2943</code></td>
+</tr>
+</tbody></table>
+<p><strong>IMPL（<code>2e4e070</code>）</strong>：<code>tools/extract_orca_presets.py</code>（vendor 索引白名单 → 265KB <code>snapmaker_u1.json</code>：4 变体/30 工艺/113 耗材）；<code>presets.rs</code>（OnceLock + <code>ExportSelection::resolve</code> 悬空名报错）；<code>project_config.rs</code> 重写（扁平 config + <code>inherits_group</code> + selected/generic 双路径）；<code>threemf.rs</code> 3 参签名（selected 写 6 entry 无 filament 文件）；前端 <code>ExportDialog</code>（厂商→机型→喷嘴→工艺→每槽耗材→目标切片器）+ zustand persist <code>lastExportSelection</code>。<code>cargo test --lib</code> <strong>66 passed</strong>（含 selected-export zip 往返断言）；<code>verify_3mf.py</code> 解包：printer_settings_id 相等、machine 78 keys 含 start gcode、inherits_group 8 元素、无 @slotN。</p>
+<ul>
+<li><strong>待先生复验</strong>：切片器打开新 <code>examples/paint_color_sample.3mf</code> → 下拉框 Snapmaker U1 (0.4 nozzle)、喷嘴 0.4、spool 卡完整。首次弹 &quot;Customized Preset&quot; 确认框属正常（validate_presets 对非 system 预设的行为，勾选&quot;不再提醒&quot;）</li>
+</ul>
+<h4 id="gate-0b--撤销架构归一决策r4-级见-25-已裁决d7--d8">Gate 0b′ — 撤销架构归一决策（R4 级，见 §2.5）✅ <strong>已裁决（D7 + D8）</strong></h4>
+<p><strong>书面契约（用户已确认，2026-08-06）</strong></p>
+<table>
+<thead>
+<tr>
+<th>条款</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>唯一历史真源</strong></td>
+<td>Rust 后端。<code>face_colors</code> 的真源本就在后端，历史与真源同处一地是唯一能杜绝前后端状态漂移的结构</td>
+</tr>
+<tr>
+<td><strong>纳入历史的操作</strong></td>
+<td>涂色（笔刷 / Fill）、手动分区（lasso / 分区笔）、分区合并、分区拆分 —— <strong>四类共用一条时间线</strong></td>
+</tr>
+<tr>
+<td><strong>前端职责</strong></td>
+<td>只发命令、只读结果。<code>appStore.pushUndo</code> 全量快照栈 <strong>下线</strong>，连同其 19 层上限一并移除</td>
+</tr>
+<tr>
+<td><strong>记录粒度</strong></td>
+<td>增量 diff：<code>{ face_indices: Vec&lt;u32&gt;, prev_colors: Vec&lt;[u8;4]&gt; }</code>。<strong>不存全量 <code>face_colors</code></strong></td>
+</tr>
+<tr>
+<td><strong>应用规则</strong></td>
+<td>diff 必须严格逆序应用；redo 栈在任何新操作写入时清空</td>
+</tr>
+<tr>
+<td><strong>栈深与内存</strong></td>
+<td>栈深上限暂定 50（远大于原 19，因单条 diff 体积已降一到两个数量级）；进程增量内存上限 <strong>256MB</strong>，由 Gate 0c 实测校准，超限则按 FIFO 丢弃最旧条目</td>
+</tr>
+<tr>
+<td><strong>IPC 代价</strong></td>
+<td>每次 undo/redo 过一次 IPC。可接受：撤销是低频人工操作，且返回的是 diff 而非 600 万个数的全量数组，载荷远小于现状</td>
+</tr>
+</tbody></table>
+<p><strong>REVISE-2 — 实现方案经双路独立证伪后的修正（2026-08-06）</strong></p>
+<p>实现草案（begin/end_stroke 协议 + 统一 <code>FaceDelta</code> + 一律增量回传）被两个独立 agent 分别攻破，两者<strong>独立收敛到同一处根因</strong>，故按投票制采纳。修正如下：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>被推翻的草案</th>
+<th>修正</th>
+<th>根因</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>V1</strong></td>
+<td><code>begin_stroke</code> / <code>end_stroke</code> 两个命令划定笔画边界</td>
+<td><strong>删除该协议</strong>，改为涂色命令多带一个 <code>stroke_id: u64</code> 参数；后端 <code>stroke_id</code> 与上次相同则并入同一条 entry，否则新建</td>
+<td>有状态协议有 5 条不闭合路径（pointerup 与异步涂色队列竞态、pointerleave/pointercancel 不对称、alt-tab、组件卸载、笔画中按 Ctrl+Z）。无状态参数把这些全部降级为「最坏多一条 entry」</td>
+</tr>
+<tr>
+<td><strong>V2</strong></td>
+<td>undo 结果一律走 <code>updateFaceColors</code> 增量写回</td>
+<td><strong>仅纯颜色 delta 走增量</strong>；凡 label 有变，仍走 <code>updateSegmentLabels</code>（换新 <code>meshData</code> 引用）</td>
+<td><code>segmentColorArray</code> 的 useMemo 依赖是整个 <code>meshData</code> 对象引用（<code>useMesh.ts:138</code>），而 <code>applyFaceColors</code> 是原地改不换引用 → 原地 patch labels 会导致<strong>撤销分区操作在分区视图里完全不可见</strong></td>
+</tr>
+<tr>
+<td><strong>V3</strong></td>
+<td>delta 面数不设上限，一律增量</td>
+<td>面数 &gt; <strong>50 000</strong> 时改回传全量并整体重建</td>
+<td><code>updateFaceColors</code> 只发<strong>一个连续</strong> <code>addUpdateRange</code>（<code>useMesh.ts:243-247</code>）。delta 若同时含首末面，span = 整个 buffer（150 万面 ≈ 54MB 上传），比全量重建更差</td>
+</tr>
+<tr>
+<td><strong>V4</strong></td>
+<td>patch 用 <code>colors: Vec&lt;[u8;4]&gt;</code></td>
+<td>改<strong>扁平 <code>Vec&lt;u8&gt;</code></strong></td>
+<td>Tauri 默认 JSON 序列化；嵌套数组比扁平多一层结构开销，现有 <code>restore_face_colors</code> 用的就是扁平（<code>segment.rs:274</code>），不能倒退</td>
+</tr>
+<tr>
+<td><strong>V5</strong></td>
+<td>单一 <code>FaceDelta { face, prev_color, prev_label }</code></td>
+<td>拆成 <code>Vec&lt;(u32,[u8;4])&gt;</code> 与稀疏 <code>Vec&lt;(u32,u32)&gt;</code> 两条</td>
+<td>涂色类操作 label 恒不变，<code>prev_label</code> 白占 33% 预算</td>
+</tr>
+<tr>
+<td><strong>V6</strong></td>
+<td>「四类操作」按字面实现四个 <code>OpKind</code></td>
+<td>现阶段三个：<code>Paint</code> / <code>SegmentPaint</code>（<code>paint_segment_face</code>）/ <code>ManualRegion</code>。「拆分」无独立命令（是套索覆写 label 的副产品，§2.3），「合并」属 Phase 3 未实现，届时并入同一时间线</td>
+<td>契约的「四类」是前瞻表述；<code>lib.rs:22-40</code> 全表无 merge/split 命令</td>
+</tr>
+<tr>
+<td><strong>V7</strong></td>
+<td>栈深 50 是主约束</td>
+<td><strong>字节预算才是主约束</strong>，50 降为次要上限；契约改写为「小笔画 ≥50 层 / 全模型级操作 ≥14 层」，并把 redo 栈也计入预算</td>
+<td>150 万面全模型操作单条 entry ≈ 12MB，256MB 只够约 14 层。原写法让 50 成为空头支票</td>
+</tr>
+<tr>
+<td><strong>V8</strong></td>
+<td><code>auto_segment</code> 后历史照常</td>
+<td><code>auto_segment*</code> 必须 <code>history.clear()</code></td>
+<td>现有代码已有此语义（<code>segment.rs:56</code>、<code>:333</code>，注释「rewrites all labels; drop stale history」），退役 <code>manual_region_history</code> 时不能把它一起丢掉</td>
+</tr>
+<tr>
+<td><strong>V9</strong></td>
+<td>Ctrl+Z 三级阶梯合并成单一 <code>invoke(&quot;undo&quot;)</code></td>
+<td><strong>第一级留在前端</strong>：套索未闭合时 Ctrl+Z 仍是「撤销上一个点」（<code>lassoPointsRef</code> 纯前端态，后端不可见）；后两级才合并</td>
+<td>合并会静默吃掉一整级交互语义</td>
+</tr>
+<tr>
+<td><strong>V10</strong></td>
+<td><code>canUndo</code> / <code>canRedo</code> 需查询</td>
+<td><strong>搭车返回</strong>，禁止轮询</td>
+<td>涂色是 per-pointermove 的高频 IPC，任何额外往返都会放大</td>
+</tr>
+</tbody></table>
+<p><strong>证伪中被确认成立、不需改的部分</strong>（同样重要）：</p>
+<ul>
+<li><p><strong><code>Segment</code> 完全可从 <code>segment_labels</code> 推导</strong> —— <code>name</code> 是 <code>format!(&quot;Region {}&quot;)</code>、<code>color</code> 是 label 的哈希（<code>model.rs:340-357</code>），全仓无重命名/改色命令。故 label 的就地 swap + <code>rebuild_segments()</code> <strong>能完整恢复分区的新建与消失</strong>。⚠️ 前提：一旦将来加「重命名分区」，<code>Segment</code> 即变为非派生态，本方案当场失效，必须同步改造。</p>
+</li>
+<li><p><strong>颜色链无过期覆盖风险</strong> —— <code>paintColorArray</code> 的 useMemo 依赖 <code>[meshData?.faceColors, meshData?.faceCount]</code> 两个引用均不变 → <strong>永不重算</strong>；<code>paintColorRef.current</code> 就是该 memo 的返回值本身，patch 缓存等同 patch memo。</p>
+</li>
+<li><p><strong>自反演（swap）+ 笔画内去重（保留首次 prev_color）组合正确</strong>，正反用皆成立。</p>
+</li>
+<li><p>复用 <code>AppState</code> 那把唯一的 <code>Mutex</code> 无死锁（无嵌套加锁）；<code>load_model</code> 整体替换 model，历史天然为空。</p>
+</li>
+<li><p><input checked="" disabled="" type="checkbox"> <strong>DoD</strong>：契约成文并经用户确认（R4 满足）</p>
+</li>
+<li><p><input checked="" disabled="" type="checkbox"> <strong>REVISE-2</strong>：实现方案经双路独立证伪并修正</p>
+</li>
+<li><p><input checked="" disabled="" type="checkbox"> <strong>实现 S1（后端）</strong>：<code>mesh/history.rs</code> + 8 个写命令接 <code>stroke_id</code> + <code>undo</code>/<code>redo</code> 命令 + 单测（<code>5c85e80</code>）</p>
+</li>
+<li><p><input checked="" disabled="" type="checkbox"> <strong>实现 S2（前端）</strong>：切到后端 undo，删除 <code>pushUndo</code> 等 8 项 + <code>PaintSnapshot</code> + 退役 <code>restore_face_colors</code> / <code>manual_region_undo</code>（<code>7522659</code> + <code>7eaef39</code>）</p>
+</li>
+<li><p><input disabled="" type="checkbox"> <strong>实现 S3</strong>：Gate 0c 实测校准（backlog：待先生确认撤销交互后迭代）</p>
+</li>
+</ul>
+<h4 id="gate-0c--a6-大规模撤销实测性质已变更">Gate 0c — A6 大规模撤销实测（性质已变更）</h4>
+<blockquote>
+<p><strong>D8 裁决后，0c 由「决策门」降为「验收实测」</strong>。原设计让 0c 去回答「全量快照撑不撑得住 150 万面」；D8 已直接选定增量 diff，该问题作废。0c 现在的职责是<strong>验证 0b′ 契约的实现真的达标</strong>，并把契约里暂定的栈深 50 / 内存 256MB 校准成实测值。</p>
+</blockquote>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> <strong>前置</strong>：0b′ 契约实现落地（后端增量 diff + 前端 <code>pushUndo</code> 下线）— <code>5c85e80</code>/<code>7eaef39</code>/<code>7522659</code>，命名/合并/拆分均已接入时间线且可撤销</li>
+<li><input disabled="" type="checkbox"> 150 万面模型 + Fill 大分区，<code>VITE_NO_STRICT=1</code> 下实测 <strong>10 次撤销 + 10 次重做</strong>的单次耗时与进程内存峰值</li>
+<li><input disabled="" type="checkbox"> <strong>DoD</strong>：单次 undo/redo ≤ 200ms；50 层栈满时进程增量内存 ≤ 256MB；输出实测数字</li>
+<li><input disabled="" type="checkbox"> <strong>失败分支</strong>：调低栈深上限（50 → 实测可承受值）并在 UI 明示；仍不可行才 <strong>回退重裁 D2</strong></li>
+</ul>
+<h4 id="gate-0d--高亮性能方案落地升级为-phase-1-前置必做见-22-已完成方案-α">Gate 0d — 高亮性能方案落地（升级为 Phase 1 前置必做，见 §2.2）✅ <strong>已完成（方案 α）</strong></h4>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> 确认 β(indexed BufferGeometry) 不可行：主 geometry 非索引展开式，建 index 等价于 <code>[0,1,2,...]</code> 省不下任何东西，且会破坏 <code>faceIndex === 后端 face 序号</code> 前提（indirect raycast 失效）；γ/δ 同理被 α 取代</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>方案 α 落地</strong>（<code>eea2fd1</code>）：主材质 <code>onBeforeCompile</code> 注入 <code>uHighlightLabel</code>/<code>uHighlightColor</code> + per-vertex <code>aSegLabel</code>（non-indexed 几何，面 f → 顶点 3f/3f+1/3f+2 同值）；<code>&lt;color_fragment&gt;</code> 后 0.45 mix；hover 切换 O(1)。删 <code>SegmentHighlight</code>/<code>FillFaceHighlight</code>/<code>giantSegmentIds</code>/<code>WHOLE_SEGMENT_MAX_SHARE</code>/<code>emptySet</code></li>
+<li><input checked="" disabled="" type="checkbox"> <strong>性能优化</strong>（<code>485aa7d</code>，经 <code>/adversarial-development-loop</code> REFUTE 证伪 P1 全局 demand / P2 gl_PrimitiveID / P3 Uint32）：条件性 demand（<code>IdleFrameloop</code>，静止 1.5s 切 demand，任意交互唤醒）；删 <code>preserveDrawingBuffer:true</code>；<code>aSegLabel</code> varying 加 <code>flat</code></li>
+<li><input checked="" disabled="" type="checkbox"> <strong>工具门控</strong>（<code>f192f98</code>）：高亮仅 <code>fill|picker|segment</code> 工具计算；其余工具 <code>renderedHighlightLabel</code> 返 null → uniform -1 短路，消除 brush 拖涂 60fps 重渲染风暴</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>DoD</strong>：<code>tsc --noEmit</code> exit 0；<code>vite build</code> 631 模块通过；<code>cargo test --lib</code> 67 passed。视觉一致性 + 卡顿消失待先生装包复验（见 §0 待复验清单）</li>
+<li><input disabled="" type="checkbox"> <strong>失败分支</strong>（已规避）：α 与主题色/vertexColors 耦合风险经 <code>onBeforeCompile</code> chunk 注入化解；若未来自定义 ShaderMaterial 冲突再回退 δ</li>
+</ul>
+<h4 id="gate-0e--切片器环境可获得性新增见-d3-通过">Gate 0e — 切片器环境可获得性（新增，见 D3）✅ <strong>通过</strong></h4>
+<p>开发机实测已安装（<code>C:\Program Files\</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>基线</th>
+<th>可执行文件</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>OrcaSlicer</td>
+<td><code>OrcaSlicer\orca-slicer.exe</code></td>
+<td>✅ 可用</td>
+</tr>
+<tr>
+<td>SnapmakerOrca</td>
+<td><code>Snapmaker_Orca\snapmaker-orca.exe</code></td>
+<td>✅ 可用</td>
+</tr>
+<tr>
+<td>（旁证）Bambu Studio / Prusa3D</td>
+<td>同目录已安装</td>
+<td>可作交叉验证</td>
+</tr>
+</tbody></table>
+<p><strong>⚠️ 基线更正（2026-08-07，REFUTE-3 发现，原记载完全反了）</strong></p>
+<p>原文写「<code>OrcaHunSe\OrcaSlicer</code> 是上游 OrcaSlicer 源码；SnapmakerOrca 本机无源码」。<strong>两句都错</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>路径</th>
+<th>实际身份</th>
+<th>证据</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>C:\workDir\programing\OrcaHunSe\OrcaSlicer</code></td>
+<td><strong>Snapmaker Orca 2.3.3</strong>（fork），分支 <code>feature_bugfix_0603</code></td>
+<td><code>version.inc:4</code> <code>SLIC3R_APP_NAME &quot;Snapmaker Orca&quot;</code>；<code>git remote</code> = <code>Snapmaker/OrcaSlicer.git</code></td>
+</tr>
+<tr>
+<td><code>C:\workDir\programing\orcaslicer</code></td>
+<td><strong>上游 stock OrcaSlicer 2.5.0-dev</strong>，分支 <code>main</code></td>
+<td><code>version.inc</code> <code>SLIC3R_APP_NAME &quot;OrcaSlicer&quot;</code>；<code>git remote</code> = <code>OrcaSlicer/orcaslicer.git</code></td>
+</tr>
+<tr>
+<td><code>C:\workDir\programing\SnapmakerOrca\OrcaSlicer</code></td>
+<td>空壳，无 <code>src/libslic3r</code></td>
+<td><code>ls</code> 确认</td>
+</tr>
+</tbody></table>
+<p>后果：IMPL-1 记录的 Gate 0b 全部「实现层证据」取自 <strong>Snapmaker fork</strong>，却被标注为上游。已在 stock 上逐条复验（见 §Gate 0b REFUTE-3 裁决表），<strong>结论大部分仍成立，但槽位上限一条被推翻</strong>。双基线源码此后均可亲验，无需黑盒。</p>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> <strong>DoD</strong>：二值结论 = <strong>可获得</strong>，D3 双基线维持不变，无需降级</li>
+</ul>
+<hr>
+<hr>
+<h3 id="phase-1--删除式重构解决-p0-1--p0-2--p0-3">Phase 1 — 删除式重构（解决 P0-1 / P0-2 / P0-3）</h3>
+<blockquote>
+<p>Gate 0a（仪器）、0d（性能方案）→ <strong>两者均已完成</strong>。本 Phase 实际落地与 §2.1 字面方案有偏差（见下），但 D1/D2 语义目标已达成（hover 降级为纯视觉提示、整段填充不降级）。<strong>本 Phase 需单独 REFUTE</strong> 已不阻塞 —— 实现已过且先生将装包复验。</p>
+</blockquote>
+<h4 id="1a--统一-hover-语义所见侧稳定-已完成7b74707">1a — 统一 hover 语义（「所见」侧稳定）✅ <strong>已完成（<code>7b74707</code>）</strong></h4>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> 替换 iter30 v7 过度粘性守卫（<code>if (!(prevIsManual &amp;&amp; lbl &lt; MANUAL_SEGMENT_OFFSET))</code>）：改为<strong>真实区域一律接管高亮</strong>；仅光标落极小碎面 crumb（<code>faceCount &lt; max(16, 总面数*0.001)</code>）才允许手动段保持粘性（覆盖 seg=0 碎片误填，不阻挡正常区域切换）</li>
+<li><input checked="" disabled="" type="checkbox"> 加 <code>segmentFaceCount</code> 映射（id→faceCount）；加陈旧清除 effect（标签不在 <code>segmentIds</code> 立即清空）；无命中时 <code>nextHover = null</code></li>
+<li><input checked="" disabled="" type="checkbox"> 删 <code>lastValidHoveredSegmentRef</code> 复活逻辑（§2.1 #5）</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>手动验证</strong>：hover 手动区 A → 移到 auto 区 B → 高亮立即切到 B；移出模型 → 高亮消失（先生多轮实测无粘滞回归，迭代 35 后 hover 始终跟随光标）</li>
+</ul>
+<h4 id="1b--收敛-fill-决策--删闸门--基本完成eea2fd1--早轮-optswholeregion-改动">1b — 收敛 fill 决策 + 删闸门 ✅ <strong>基本完成（<code>eea2fd1</code> + 早轮 <code>!opts?.wholeRegion</code> 改动）</strong></h4>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> fill 目标权威源已为 <code>segmentLabels[faceId]</code>（早轮 <code>usePaintTool.ts</code> 改 <code>!opts?.wholeRegion &amp;&amp; label !== undefined</code>，同时删 <code>!!seg</code> 与 <code>realSegs.length &gt; 1</code> —— §2.1 #2/#3）</li>
+<li><input checked="" disabled="" type="checkbox"> 删除 <code>WHOLE_SEGMENT_MAX_SHARE</code> / <code>MANUAL_REGION_MAX_SHARE</code> 常量及引用（§2.1 #3 配套）；删除 <code>giantSegmentIds</code> 及 <code>autoSegs.length &lt;= 1</code> 早退（§2.1 #4，原依赖 0d —— 现 0d 已完成故已删）</li>
+<li><input checked="" disabled="" type="checkbox"> <code>SegmentHighlight</code>/<code>FillFaceHighlight</code>（几何重建叠加）已删，高亮改走方案 α 着色器（Gate 0d）；hover 不再压制 giant 段</li>
+<li><input checked="" disabled="" type="checkbox"> <code>lastValidHoveredSegmentRef</code> 复活通路（§2.1 #5）已在 1a 一并删除；<code>Viewport.tsx</code> sticky 块经 1a 重写为 cursor-follow</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>手动验证</strong>：Fill 整段 = 高亮整段，HUD 无 MISMATCH（先生实测 fill 整段填充，无&quot;高亮 A 填 B&quot;反馈；A4 系统复验仍留 Phase 2）</li>
+</ul>
+<h4 id="1c--渲染契约前置改造为-phase-3-铺路见-27-由-0d-方案吸收无需再做">1c — 渲染契约前置改造（为 Phase 3 铺路，见 §2.7）✅ <strong>由 0d 方案吸收，无需再做</strong></h4>
+<p>原任务是把 <code>SegmentHighlight</code>/<code>SegmentOutline</code> 入参从 <code>selectedSegment: number</code> 改成集合，为 Phase 3 多选铺路。Gate 0d 已删除这两个几何重建组件，高亮统一走着色器 uniform（hover/选中都写 <code>uHighlightLabel</code>，不存在&quot;两个面集&quot;），§2.7 描述的叠加冲突被方案 α <strong>结构性化解</strong>。</p>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> <code>SegmentHighlight</code>/<code>SegmentOutline</code> 几何重建组件已删（<code>eea2fd1</code>），无&quot;入参改集合&quot;对象</li>
+<li><input checked="" disabled="" type="checkbox"> 「选中集 + hover 段」叠加规则由着色器 uniform 承载（<code>Viewport.tsx</code> 渲染单 label），无恒真判等残留</li>
+<li><input checked="" disabled="" type="checkbox"> 选中集未进持久化（SegmentsPanel 多选为本地 state，见 <code>SegmentsPanel.tsx</code>），P1-6 条件门未触发</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>结论</strong>：1c 关闭，Phase 3 直接落地（见下）</li>
+</ul>
+<p><strong>Phase 1 DoD</strong>：</p>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> <code>npx tsc --noEmit</code> exit 0（持续通过）</li>
+<li><input checked="" disabled="" type="checkbox"> <code>cargo test --lib</code> 不回退（≥13，现 103）</li>
+<li><input checked="" disabled="" type="checkbox"> HUD 无 MISMATCH（先生实测无&quot;高亮 A 填 B&quot;反馈；A4 系统复验仍留 Phase 2）</li>
+<li><input disabled="" type="checkbox"> 同步更新 PRD：<code>FR-PNT-02</code>（取消半径降级）、<code>FR-PNT-03</code>（click 权威）— ⚠️ <strong>PRD 仍未同步</strong>（当前 PRD 仍是旧语义），待补</li>
+</ul>
+<hr>
+<h3 id="phase-2--复验-a4--a5">Phase 2 — 复验 A4 / A5</h3>
+<ul>
+<li><input disabled="" type="checkbox"> A4：150 万面模型，分别在 auto 大分区、auto 小分区、手动区、<strong>单一真实分区模型</strong>上 Fill，HUD 四次均无 MISMATCH</li>
+<li><input disabled="" type="checkbox"> A5：笔刷光标环位置 == 着色位置，无偏移</li>
+<li><input disabled="" type="checkbox"> <strong>EXIT</strong>：A4 通过；若仍不一致，<strong>停止打补丁</strong>，派 REFUTE 重新取证（不得进入第 9 轮同思路修补）</li>
+</ul>
+<hr>
+<h3 id="phase-3--分区合并d4-已完成并入智能分区泳道">Phase 3 — 分区合并（D4）✅ <strong>已完成（并入智能分区泳道）</strong></h3>
+<blockquote>
+<p>撤销架构（0b′）与渲染契约（1c）已在上游关闭；实现 <code>f7d2f83</code>（合并）+ <code>72455f3</code>（拆分）+ <code>39736dd</code>（命名）已全部落地并通过先生实测。</p>
+</blockquote>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> 后端 <code>merge_segments(target_label, source_labels)</code>：重写 <code>segment_labels</code> + <code>rebuild_segments()</code>（<code>f7d2f83</code>）</li>
+<li><input checked="" disabled="" type="checkbox"> 后端单测（普通合并 / 含手动区 / 单分区入参 / 空入参 / 越界 label）</li>
+<li><input checked="" disabled="" type="checkbox"> SegmentsPanel 多选交互 + 「合并」按钮（Ctrl+点击多选 + <code>mergeInto</code> 动作）</li>
+<li><input checked="" disabled="" type="checkbox"> 按 0b′ 契约接入撤销（label-only 历史，增量 diff）</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>修复 §2.4 配色不同源</strong>：<code>SegmentsPanel.tsx</code> 改为按 <code>seg.id % len</code> 取色，与 <code>useMesh.ts:96</code> 统一（<code>788f7b9</code>）</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>DoD</strong>：<code>cargo test --lib</code> 13 → ≥18（现 <strong>103</strong>）；tsc exit 0；合并后撤销能完整还原</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>拆分</strong>（D4 取证「拆分已具备」的强化）：<code>split_segment</code> 沿内部棱角拆成多区，可撤销（<code>72455f3</code> + 阈值滑块）</li>
+<li><input disabled="" type="checkbox"> <strong>PRD <code>FR-SEG-03</code> 同步</strong>：当前 PRD 中 <code>FR-SEG-03</code> 仍是「分区元数据双写」旧条目，<strong>未补合并语义</strong>（Event-driven：选中 ≥2 分区触发合并 → 归并为单一分区保留目标 label）⚠️ 待补</li>
+</ul>
+<hr>
+<h3 id="phase-4--3mf-收口a9">Phase 4 — 3MF 收口（A9）</h3>
+<blockquote>
+<p>Gate 0b 已排除格式层风险，0e 已确认环境，此处做真实规模验证。</p>
+</blockquote>
+<ul>
+<li><input disabled="" type="checkbox"> 真实彩色模型导出 3MF → <strong>OrcaSlicer</strong> 打开验色</li>
+<li><input disabled="" type="checkbox"> 同一产物 → <strong>SnapmakerOrca</strong> 打开验色（若 0e 判定不可获得则跳过，A9 降为单基线）</li>
+<li><input disabled="" type="checkbox"> <strong>DoD</strong>：基线全部通过，截图存档</li>
+</ul>
+<hr>
+<h3 id="phase-5--发版收口">Phase 5 — 发版收口</h3>
+<ul>
+<li><input disabled="" type="checkbox"> A1 / A2 / A3 / A7 / A8 逐条实测（此前未系统走过完整清单）</li>
+<li><input disabled="" type="checkbox"> B1 <code>npx tsc --noEmit</code> exit 0</li>
+<li><input disabled="" type="checkbox"> B2 <code>cargo test --lib</code> 全通过</li>
+<li><input disabled="" type="checkbox"> B3 <code>npx tauri build --bundles nsis</code> 产出 setup.exe + 便携 exe，冒烟启动</li>
+<li><input disabled="" type="checkbox"> CHANGELOG 补齐（当前实际停在 Round 3-4）</li>
+<li><input disabled="" type="checkbox"> docs/04 缺陷清单状态回填 + 补录 §2.4 新缺陷</li>
+<li><input disabled="" type="checkbox"> <strong>打 tag <code>v0.1.0</code></strong>（本仓库第一个 tag）</li>
+</ul>
+<hr>
+<h2 id="4-v01-验收清单判定可用的唯一依据">4. v0.1 验收清单（判定「可用」的唯一依据）</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>验收项</th>
+<th>判据</th>
+<th>Phase</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A1</td>
+<td>大模型导入</td>
+<td>150 万面 STL &lt;6 秒，无卡死，默认灰面</td>
+<td>5</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>A2</td>
+<td>智能分区</td>
+<td>双立方体分出 2 段；块体+薄板凹接合处边界合理（可配置多算法：曲率 K-Means / 形态直径 SDF / 二面角，前端 <code>IntelligentSegmentPanel</code> <code>b087c3c</code>+<code>47004d9</code>；golden 拓扑断言 cube→6 / sphere→1 / 双球→2 已通过；先生多轮实测并驱动默认算法 <code>eac4a64</code> + crease 阈值 <code>82b7366</code> 迭代）</td>
+<td>5</td>
+<td>✅ <strong>完成</strong></td>
+</tr>
+<tr>
+<td>A3</td>
+<td>套索闭合</td>
+<td>吸附跟随流畅；点回起点必闭合；无「点完消失」</td>
+<td>5</td>
+<td>🟡 修复中（<code>156f673</code>+<code>71e8d34</code> 已修两轮，待先生最新包复验）</td>
+</tr>
+<tr>
+<td>A4</td>
+<td><strong>Fill 一致性</strong></td>
+<td>所填面集 == 黄色高亮面集，HUD 无 MISMATCH</td>
+<td>2</td>
+<td>🟡 基本完成（Gate 0d 着色器高亮 + 1a/1b 收敛决策权；HUD MISMATCH 断言已就位，系统复验待做）</td>
+</tr>
+<tr>
+<td>A5</td>
+<td>笔刷精度</td>
+<td>光标环位置即着色位置，无偏移</td>
+<td>2</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>A6</td>
+<td>撤销</td>
+<td>连续 10 次操作逐级撤销并重做，颜色完全还原</td>
+<td>0c</td>
+<td>🟡 实现完成（S1/S2 + 命名/合并/拆分全部可撤销，<code>5c85e80</code>~<code>72455f3</code>）；<strong>150 万面性能实测（Gate 0c）未做</strong></td>
+</tr>
+<tr>
+<td>A7</td>
+<td>偏好持久化</td>
+<td>改主题/语言/笔刷后重启，设置全保留</td>
+<td>5</td>
+<td>✅ <strong>实现完成</strong>（zustand persist：theme/language/shading/brush/color/snap/lastExport/lastSegment*）</td>
+</tr>
+<tr>
+<td>A8</td>
+<td>主题无闪白</td>
+<td>深色主题启动全程无白屏帧</td>
+<td>5</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>A9</td>
+<td>3MF 导出</td>
+<td>产物在 OrcaSlicer（+ SnapmakerOrca，视 0e）打开，几何正确且<strong>分色边界与工具内一致</strong>（判据已按 §2.8 修订：切片器颜色由 filament 槽位解析，不能要求 RGB 逐位一致）</td>
+<td>0b→<strong>§2.8 裁决</strong>→4</td>
+<td>🔴 阻塞（spool 复验 + D6-a + 双基线 E2E 未完成）</td>
+</tr>
+<tr>
+<td><strong>A10</strong></td>
+<td><strong>分区合并</strong>（D4 新增）</td>
+<td>选中 ≥2 分区合并为一，可撤销还原</td>
+<td>3</td>
+<td>✅ <strong>完成</strong>（<code>f7d2f83</code> + SegmentsPanel 多选合并）</td>
+</tr>
+<tr>
+<td>B1</td>
+<td><code>npx tsc --noEmit</code></td>
+<td>exit code 0</td>
+<td>5</td>
+<td>✅ 持续通过</td>
+</tr>
+<tr>
+<td>B2</td>
+<td><code>cargo test --lib</code></td>
+<td>全通过（目标 ≥18 项）</td>
+<td>5</td>
+<td>✅ <strong>103 passed / 0 failed / 1 ignored</strong></td>
+</tr>
+<tr>
+<td>B3</td>
+<td><code>npx tauri build --bundles nsis</code></td>
+<td>产出 setup.exe 与便携 exe</td>
+<td>5</td>
+<td>✅ 多次成功（B3 例行化）</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>B3 例行化</strong>（backlog M6）：NSIS 构建在 journal 中已多次成功，属低风险，归入「每次提交必跑」例行项，不与 A9 捆绑为发版门槛。</p>
+</blockquote>
+<hr>
+<h2 id="5-范围与技术债对照表">5. 范围与技术债对照表</h2>
+<h3 id="纳入-v01">纳入 v0.1</h3>
+<p>分区合并（D4 → A10）；§2.4 配色不同源修复（Phase 3）；<strong>P1-8</strong> render 副作用（Phase 0 前置，因其污染 Gate 测量）；<strong>P1-3</strong> <code>addUpdateRange</code> 截断（与 0d 同一战场，合并在同批 buffer 改造中完成，避免重复改同段代码）。</p>
+<h3 id="排除-v01附理由">排除 v0.1（附理由）</h3>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>调色板预设 + 颜色历史</td>
+<td>增量功能，不影响「现有功能可用」</td>
+</tr>
+<tr>
+<td>批量处理同类模型</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>OrcaSlicer <strong>插件形态集成</strong></td>
+<td>与 A9「导出产物能被 OrcaSlicer 打开」是两回事，后者是 v0.1 硬门槛</td>
+</tr>
+<tr>
+<td>拆分产物指定为 auto 区 / 按 SDF 自动细分 / 拆分 UI 显性化</td>
+<td>拆分基础能力已具备（§2.3），这些是增强</td>
+</tr>
+<tr>
+<td><strong>P1-7</strong> <code>snapEnabled</code> 无 UI 入口</td>
+<td>⚠️ <strong>待定</strong>：属「已实现但用户摸不到」，v0.1 需二选一 —— 补 UI 或明确移除。留待 Phase 5 前决策</td>
+</tr>
+</tbody></table>
+<h3 id="条件门与技术债">条件门与技术债</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>内容</th>
+<th>触发条件</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>P1-6</td>
+<td><code>appStore.ts:418</code> <code>version:1</code> 无 <code>migrate</code></td>
+<td><strong>条件门</strong>：若 v0.1 未改 <code>partialize</code> 8 项默认值 → 留 v0.2；一旦 Phase 1c 把选中集加入持久化、或触碰任一默认值 → <strong>升级为发版前必做</strong>。⚠️ <code>appStore.ts:110-115</code> 的「不要用 migrate」注释仅针对 legacy <code>cym-theme</code> 键，补 migrate 前须在 journal 限定其适用范围</td>
+</tr>
+<tr>
+<td>P1-4</td>
+<td>stroke 去重</td>
+<td>技术债</td>
+</tr>
+<tr>
+<td>P2-9</td>
+<td><code>Viewport.tsx</code> 体量过大需拆分</td>
+<td>技术债</td>
+</tr>
+<tr>
+<td>P2-10</td>
+<td>CI 缺失</td>
+<td>技术债</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="6-变更记录">6. 变更记录</h2>
+<table>
+<thead>
+<tr>
+<th>版本</th>
+<th>日期</th>
+<th>变更</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PLAN</td>
+<td>2026-08-06</td>
+<td>初版。基于 D1–D5 裁决，取代 docs/05 被证伪的候选路线图</td>
+</tr>
+<tr>
+<td><strong>IMPL-1</strong></td>
+<td>2026-08-06</td>
+<td>Phase 0 首批落地 + 两处立论修正：①<strong>P1-8 已修</strong>（<code>550289e</code>），并<strong>推翻其原始立论</strong>——StrictMode 是确定性二次调用，危害是测量值稳定放大 ~2×（准确性），不是不可复现；配套加 <code>VITE_NO_STRICT</code> 逃生舱；②<strong>Gate 0a 已完成</strong>（<code>8ea2217</code>），引入唯一真源 <code>renderedHighlightLabel</code>，并修正 HUD 对 <code>local</code>/<code>whole-region</code> 路由的 MISMATCH 误报；③<strong>Gate 0b 调查完成，结论升级为阻塞</strong>：规范层 4 条缺陷（不止原记 3 条，默认命名空间也是错的），实现层证实 <code>basematerials</code> 在 OrcaSlicer 全 Format 目录<strong>零读者</strong>，且真实机制是逐面 <code>paint_color</code> <strong>槽位序号</strong>而非 RGB；④由此新增 <strong>§2.8 色彩域基数差</strong>（R4 级，A9 判据同步修订）</td>
+</tr>
+<tr>
+<td><strong>REVISE-1</strong></td>
+<td>2026-08-06</td>
+<td>吸收独立 REFUTE 的 3 blocker + 6 major：①§2.1 删除清单由 2 处扩至 5 处（补 sticky hover、残留 <code>!!seg</code>/<code>realSegs</code> gate）；②§2.2 否决方案 β（主 geometry 非索引 + 破坏 indirect raycast），改推着色器方案 α；③新增 §2.5 撤销双栈架构问题并前移为 Gate 0b′（R4）；④新增 §2.6 D2 对 0c 的条件依赖，0c 补失败分支；⑤新增 §2.4 面板/3D 配色不同源缺陷（docs/04 未收录）；⑥Phase 0 扩为六 Gate + P1-8 前置；⑦Phase 1 拆 1a/1b/1c，渲染契约前移；⑧新增 Gate 0e 切片器环境；⑨§5 补全纳入/排除对照与理由</td>
+</tr>
+<tr>
+<td><strong>REFUTE-4</strong></td>
+<td>2026-08-07</td>
+<td>Gate 0b 续：先生二轮反馈 spool 卡 Bed type 空 / Diameter <code>&lt;&lt;mm</code> / spool 名截断。派独立 subagent 在双基线复核 embedded preset 提取机制，推翻 4 点（①spool 卡读 embedded preset，须带 <code>*_settings_id</code>；②6 filament 须唯一名防塌色；③<code>temperature</code>/<code>bed_plate_temp</code> 在 obsolete ignore 集改 <code>nozzle_temperature</code>/<code>hot_plate_temp</code>；④<code>default_bed_type</code> 是 coString 非 coEnum）。<code>project_config.rs</code> 拆 4 类 writer + 10 单测，<code>threemf.rs</code> 写 project+machine+process+N filament 共 6+N 份 config；<code>cargo test --lib</code> 26 passed，sample 解包 12 entry 全绿。新版 Tauri bundle（exe/msi/nsis）构建中（<code>ztWW4u</code>），待先生复验三处</td>
+</tr>
+<tr>
+<td><strong>REFUTE-6/7 + IMPL</strong></td>
+<td>2026-08-07</td>
+<td>Gate 0b 预设库落地（<code>2e4e070</code>）：先生需求升级为导出可选厂商/机型/工艺/耗材。实现前证伪 4 点（⑥<code>printer_model_id</code> 是 plate 切片元数据与预设选择无关，须嵌入 machine preset 且 <code>printer_settings_id</code> 逐字相等；⑦嵌入 machine preset 须完整配置含 gcode 宏，白名单已补；⑧filament 颜色与预设名无关，<code>@slotN</code> 有害，selected 路径写零 filament 文件；⑨<code>inherits_group</code> 是 N+2 数组）。落地：<code>extract_orca_presets.py</code> + <code>snapmaker_u1.json</code>（4 变体/30 工艺/113 耗材）、<code>presets.rs</code>、<code>project_config.rs</code> 重写、<code>threemf.rs</code> 3 参签名、前端 <code>ExportDialog</code> + persist。<code>cargo test --lib</code> <strong>66 passed</strong>、tsc exit 0、vite build ok、<code>verify_3mf.py</code> 解包全绿。待先生复验新 sample（下拉框应显示 U1 (0.4 nozzle)）</td>
+</tr>
+<tr>
+<td><strong>IMPL-2（高亮 / 导入健壮性）</strong></td>
+<td>2026-08-08→09</td>
+<td>用户亲验方案 B 后进入大幅优化与健壮性修复：①<strong>方案 α 着色器高亮落地</strong>（<code>eea2fd1</code>）—— 删 <code>SegmentHighlight</code>/<code>FillFaceHighlight</code>/<code>giantSegmentIds</code>/<code>WHOLE_SEGMENT_MAX_SHARE</code>，主材质 <code>onBeforeCompile</code> 注入 <code>aSegLabel</code>+<code>uHighlightLabel</code>/<code>uHighlightColor</code>，hover 切换 O(1)，giant 段瞬时高亮；②<strong>着色器性能优化</strong>（<code>485aa7d</code>）—— 条件性 demand <code>IdleFrameloop</code> + 删 <code>preserveDrawingBuffer</code> + <code>flat</code> varying（REFUTE 推翻全局 demand / gl_PrimitiveID / Uint32 三候选）；③<strong>高亮按工具门控</strong>（<code>f192f98</code>）—— 仅 fill/picker/segment 计算 hover，消除 brush 拖涂 60fps 重渲染；④<strong>hover 解粘滞</strong>（<code>7b74707</code>）—— 替换 iter30 v7 过度粘性守卫为 cursor-follow + crumb 粘性 + 陈旧立即清除；⑤<strong>Sphere.stl 导入崩溃修复</strong>（<code>69a17ea</code>）—— kiddo KdTree 在重合轴点 &gt;32 时 panic，按 index 加 ~1e-4 确定性扰动，回归测试 <code>kdtree_coincident_axis_no_panic</code>，<code>cargo test --lib</code> <strong>67 passed</strong>。NSIS 重打包供先生装包复验</td>
+</tr>
+<tr>
+<td><strong>IMPL-3（智能分区全能力 / 性能 / lasso）</strong></td>
+<td>2026-08-09→10</td>
+<td>①<strong>智能分区闭环</strong>：特征感知分区 <code>b087c3c</code> + <code>IntelligentSegmentPanel</code>/参数持久化 <code>47004d9</code>/<code>0d5f162</code>；命名 <code>39736dd</code>；合并 <code>f7d2f83</code>；拆分 <code>72455f3</code>；手动区跨 auto 重跑保留 <code>364a2be</code>、手动 label 不回收 <code>b7d64c4</code>；segment 元数据单点构建 <code>ec9af61</code>；配色按 label 统一（§2.4 修复）<code>788f7b9</code>。②<strong>性能</strong>：<code>auto_segment_v2</code> 改 async + 移出 Mutex + 空 <code>face_colors</code>（点击不再卡死主线程）<code>06303ee</code>；阶段进度条 + 动画转圈 <code>b1d523c</code>；import 默认对齐 curvatureKMeans+useSdf <code>eac4a64</code>；crease 阈值 20°→45° 修过分割 <code>82b7366</code>。③<strong>lasso 修复</strong>：stale snap <code>156f673</code> + 闭合拓扑守卫（顶点 1-ring + 阈值 0.012→0.004）<code>71e8d34</code>。④<strong>知识沉淀</strong>：<code>docs/08</code> 算法参考与论文 <code>e1d374e</code>。<code>cargo test --lib</code> <strong>103 passed</strong>。2026-08-10 路线图看板全面同步至真实状态</td>
+</tr>
+</tbody></table>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#0-当前看板滚动更新--2026-08-10">0. 当前看板（滚动更新 · 2026-08-10）</a></li><li class="toc-h2"><a href="#1-产品裁决记录phase--1已完成-">1. 产品裁决记录（Phase -1，已完成 ✅）</a></li><li class="toc-h2"><a href="#2-技术前提已经-refute-校验含被推翻的原始判断">2. 技术前提（已经 REFUTE 校验，含被推翻的原始判断）</a></li><li class="toc-h3"><a href="#21-三个-p0-由同一次删除式重构解决--但删除清单需扩到五处">2.1 三个 P0 由同一次「删除式重构」解决 —— 但删除清单需扩到五处</a></li><li class="toc-h3"><a href="#22-d2-的代价高亮渲染性能--原方案-β-已被推翻">2.2 D2 的代价：高亮渲染性能 —— 原方案 β 已被推翻</a></li><li class="toc-h3"><a href="#23-d4-取证结论拆分已实现缺口仅合并">2.3 D4 取证结论：「拆分」已实现，缺口仅「合并」</a></li><li class="toc-h3"><a href="#24-新发现缺陷面板配色与-3d-配色不同源docs04-未收录">2.4 新发现缺陷：面板配色与 3D 配色不同源（docs/04 未收录）</a></li><li class="toc-h3"><a href="#25-撤销架构存在两套互不同步的栈r4-级架构决策必须前置">2.5 撤销架构：存在两套互不同步的栈（R4 级架构决策，必须前置）</a></li><li class="toc-h3"><a href="#26-d2-条件性依赖-gate-0c原文档遗漏的依赖">2.6 D2 条件性依赖 Gate 0c（原文档遗漏的依赖）</a></li><li class="toc-h3"><a href="#27-phase-1-与-phase-3-的渲染契约冲突原文档遗漏">2.7 Phase 1 与 Phase 3 的渲染契约冲突（原文档遗漏）</a></li><li class="toc-h3"><a href="#28-色彩域基数差本工具-rgba-任意-vs-切片器-16-槽位gate-0b-新发现r4-级">2.8 色彩域基数差：本工具 RGBA 任意 vs 切片器 ≤16 槽位（Gate 0b 新发现，R4 级）</a></li><li class="toc-h2"><a href="#3-phase-执行计划">3. Phase 执行计划</a></li><li class="toc-h3"><a href="#phase--1--裁决门--已完成">Phase -1 — 裁决门 ✅ 已完成</a></li><li class="toc-h3"><a href="#phase-0--gate-阵列六项全部产出二值结论--失败分支">Phase 0 — Gate 阵列（六项，全部产出二值结论 + 失败分支）</a></li><li class="toc-h3"><a href="#phase-1--删除式重构解决-p0-1--p0-2--p0-3">Phase 1 — 删除式重构（解决 P0-1 / P0-2 / P0-3）</a></li><li class="toc-h3"><a href="#phase-2--复验-a4--a5">Phase 2 — 复验 A4 / A5</a></li><li class="toc-h3"><a href="#phase-3--分区合并d4-已完成并入智能分区泳道">Phase 3 — 分区合并（D4）✅ 已完成（并入智能分区泳道）</a></li><li class="toc-h3"><a href="#phase-4--3mf-收口a9">Phase 4 — 3MF 收口（A9）</a></li><li class="toc-h3"><a href="#phase-5--发版收口">Phase 5 — 发版收口</a></li><li class="toc-h2"><a href="#4-v01-验收清单判定可用的唯一依据">4. v0.1 验收清单（判定「可用」的唯一依据）</a></li><li class="toc-h2"><a href="#5-范围与技术债对照表">5. 范围与技术债对照表</a></li><li class="toc-h3"><a href="#纳入-v01">纳入 v0.1</a></li><li class="toc-h3"><a href="#排除-v01附理由">排除 v0.1（附理由）</a></li><li class="toc-h3"><a href="#条件门与技术债">条件门与技术债</a></li><li class="toc-h2"><a href="#6-变更记录">6. 变更记录</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+        lineColor: "#64748b", fontSize: "14px",
+        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>

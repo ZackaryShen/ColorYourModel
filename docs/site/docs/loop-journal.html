@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loop Journal — Adversarial Development Loop 落盘 · ColorYourModel Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.lang-toggle, .gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="..%5Cindex.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../index.html">Home (EN)</a></li>
+<li><a href="../README.zh-CN.html">首页（中文）</a></li>
+<li><a href="../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="algorithms/README.html">Algorithms</a></li>
+<li><a href="algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="technical/README.html">Technical Mechanisms</a></li>
+<li><a href="technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="cases/README.html">Cases</a></li>
+<li><a href="cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="loop-journal.html" aria-current="page">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="loop-journal--adversarial-development-loop-落盘">Loop Journal — Adversarial Development Loop 落盘</h1>
+<blockquote>
+<p>按 <code>adversarial-development-loop</code> 第⑥步 RETROSPECT+JOURNAL 当场落盘。
+每轮一个条目，模板见该 skill 的 Loop Journal 条目模板。
+当前项目主线分支：<code>feat_theme_persist_paint_ux</code>。</p>
+</blockquote>
+<hr>
+<h2 id="迭代-n--眼睛区域语义识别globe--sclera--eyelid--socket">迭代 N — 眼睛区域语义识别（Globe / Sclera / Eyelid / Socket）</h2>
+<h3 id="触发的理论缺口">触发的理论缺口</h3>
+<ul>
+<li>现有三层算法（Layer1 planar / Layer3 MultiView / Layer2 cross-section）+ Layer4 边级多数投票融合，对<strong>眼睛内部细粒度语义</strong>无能为力：<ul>
+<li>planar 根本不进高曲率眼球曲面；MultiView 按法向 20° 生长，弯曲眼球必切碎、平坦额头跨眼部合并；cross-section 是平面证据非面级。</li>
+</ul>
+</li>
+<li>用户要在 cat.stl 类单色模型上拆出 眼球/眼白/眼睑/眼眶 4 个语义区，这是现有检测器覆盖不到的子任务 → 触发「形态-语义」新层。</li>
+</ul>
+<h3 id="初版方案被推翻点">初版方案（被推翻点）</h3>
+<ul>
+<li>候选 A：MultiView 给「眼周 ROI」→ ROI 内局部球拟合 + concavity 投票细分。</li>
+<li>球度 <code>S = 1/(1+e/r²)</code> 区分球 vs 平面；眼睛/眼白用「到 ROI 边缘距离」判据；concavity&gt;0.5 判眼眶。</li>
+<li>完整 PLAN 见 <code>docs/10-眼睛区域语义识别.md</code> §1–§9。</li>
+</ul>
+<h3 id="对抗审查结论refute独立-agentblockermajor">对抗审查结论（REFUTE，独立 agent，[blocker]/[major]）</h3>
+<ul>
+<li><strong>[blocker] 1</strong>：球度 S 对<strong>共面退化</strong>——平面 RANSAC 球半径→∞、残差→0，S≈1，平坦脸颊与球面眼球 S 均≈1，主判别器作废。</li>
+<li><strong>[blocker] 2</strong>：距离判据写反——&quot;到 ROI 边缘 &lt; 0.6·r_roi&quot; 应为「外缘=眼白」，方案写反成「小距离=眼球」。</li>
+<li><strong>[blocker] 3</strong>：<strong>MultiView ROI 前提虚假</strong>——MultiView 按法向一致(20°)生长，弯曲眼球法向跨 &gt;20° 必切碎、平坦额头跨眼部合并；实际产物是「额头+眉毛+眼睑+鼻子」一坨，不产生「眼周 ROI」。→ 整条候选 A 链路不可达。</li>
+<li><strong>[major]</strong>：<code>face_concavity_scores</code> 返回离散 {0,.333,.667,1.0}，<code>&gt;0.5</code> 等价「≥2/3 顶点凹」，与既有 concavity 语义错位（应直接用 <code>vertex_concavity</code> 的 0/1 flag）。</li>
+<li><strong>[major]</strong>：闭眼退化假设错误——折痕 S&gt;0.6 会产<strong>假 globe</strong>。</li>
+<li><strong>[major]</strong>：<code>compactness_threshold</code> 死参数从未使用。</li>
+<li><strong>[major]</strong>：候选 B（全 mesh 形态聚类）否决理由「内存爆」虚假（1.5M 面 × 3 float ≈ 17MB）。</li>
+<li><strong>[major]</strong>：v1 四区与「单色不可靠」自相矛盾。</li>
+<li><strong>[minor]</strong>：<code>EyeRegion → suggestedSeeds</code> 接线未定义。</li>
+</ul>
+<h3 id="修订方案逐条-采纳反驳backlog">修订方案（逐条 采纳/反驳/backlog）</h3>
+<ul>
+<li>采纳 #1：球度改用<strong>球-平面 inlier 计数比</strong> <code>R = sphere_inliers/(sphere_inliers+plane_inliers)</code>，face 同时拟合球与平面，取 inlier 数 → <strong>彻底消除平面退化</strong>。</li>
+<li>采纳 #2：距离判据改为三层环带——ROI 边缘 &lt; 0.4·r_roi = 眼白(外缘)、0.4~0.85 = 眼球(中环)、&gt;0.85 = socket 内壁；单色模型简化为环带。</li>
+<li>采纳 #3：<strong>v1 入口 = 仅 lasso</strong>（先生手动圈选眼部），MultiView 自动 ROI 退 v2（前提证伪）。</li>
+<li>采纳 #4：concavity 用 <code>vertex_concavity</code> 0/1 flag 做面投票（≥2/3 顶点凹 → 凹面）；折痕 vs 眼眶靠二面角峰度区分。</li>
+<li>采纳 #5：闭眼 fallback——ROI 内凸球冠 &lt; 30 face → globe/sclera 标 absent，状态栏提示「未发现眼球，疑似闭眼」。</li>
+<li>采纳 #6：删 <code>compactness_threshold</code>。</li>
+<li>反驳 #7：候选 B 否决理由改为「全 mesh 形态聚类无簇锚点，跨模型不可靠」（撤回「内存爆」）。</li>
+<li>采纳 #8：v1 sclera 标 <strong>Heuristic label</strong>，confidence ≤ 0.5（单色本质限制）。</li>
+<li>采纳 #10：<code>EyeRegion → (point, face_index) → SeedSuggestion</code> adapter，先生点 ghost marker 采纳。</li>
+<li>REVISE 全文见 <code>docs/10</code> §12。</li>
+</ul>
+<h3 id="改动文件实现阶段">改动文件（实现阶段）</h3>
+<ul>
+<li>新增 <code>src-tauri/src/segment/eye/mod.rs</code>：<code>detect_eye_regions(mesh, roi_faces) -&gt; Vec&lt;EyeRegion&gt;</code>，球-平面 inlier 比 RANSAC + 距离分环 + 闭眼 fallback。</li>
+<li>复用：<code>segment::concavity::vertex_concavity</code>、<code>segment::postprocess::crease_strength_deg</code>、<code>mesh.face_adjacency</code>/<code>face_kdtree</code>/<code>face_center</code>/<code>vertices</code>/<code>faces</code>/<code>compute_normals</code>。</li>
+<li>新增命令 <code>detect_eye_regions(roi_faces: Vec&lt;u32&gt;)</code>（lib.rs invoke_handler 注册）。</li>
+<li>前端：<code>types/mesh.ts</code> EyeRegion；<code>useTauriCommand.detectEyeRegions</code>；<code>SeedPanel</code>「👁 眼睛识别」按钮（取当前选中 segment 的 faces 作 ROI）；<code>i18n</code> 文案；<code>Viewport</code> 用 amber/pink/indigo 渲染三类边界。</li>
+</ul>
+<h3 id="测试证据实现后补-xx原-n--k">测试证据（实现后补 X/X，原 N + K）</h3>
+<ul>
+<li>后端单测：lasso 球面→Globe+Sclera；lasso 凹半球→Socket；闭眼假 mesh→Eyelid only + 状态提示；cube ROI 空→[]。</li>
+<li>前端 tsc 干净 + vitest（含按钮/状态路径回归）。</li>
+</ul>
+<h3 id="e2e-证据">E2E 证据</h3>
+<ul>
+<li>先生装包 → 圈 cat 眼睛（lasso）→ 点「👁 眼睛识别」→ 看标签（琥珀=眼球、粉=眼睑、靛=眼眶；眼白为 Heuristic 置信度低）。</li>
+</ul>
+<h3 id="遗留-backlogv2">遗留 backlog（v2）</h3>
+<ul>
+<li>MultiView 自动 ROI（前提未验证，需先实测 cat.stl 上 MultiView 产物规模）。</li>
+<li>EyeRegion 入 Layer 4 fuse（边级投票加第三个投票者）。</li>
+<li>暴露参数面板（ball_radius_ratio / sphere_inlier_threshold / min_region_faces）。</li>
+<li>端到端 PSB/真实模型基准。</li>
+<li>眼白真实辅助判定（依赖 texture/UV，v1 纯几何 Heuristic）。</li>
+</ul>
+<hr>
+<h2 id="迭代-79--eye-区作为分区参与-fuse--grow--seedpanel-自适应-clamp">迭代 79 — Eye 区作为分区参与 fuse &amp; grow + SeedPanel 自适应 clamp</h2>
+<h3 id="触发的理论缺口-1">触发的理论缺口</h3>
+<ul>
+<li>迭代 78 装的 detect_eye_regions 输的是「可视化 overlay」(BoundaryLines), 不进 partition。导致：<ul>
+<li>用户点了 &quot;Fuse &amp; generate&quot; 后看到 fuse 出的 35 个区, 又点 Eye detect, 看到绿色 / 蓝色 / 青色 overlay, 但 overlay 是 dead layer。</li>
+<li>之后任何一次 seedGrow / 二次 fuse 都会把 eye 面就近 Dijkstra 并走, 用户的&quot;识别出眼睛&quot;被吞, <strong>算法判定的轮廓和最终分区永远对不上</strong>。</li>
+</ul>
+</li>
+<li>现有 Layer 4 (fuse) 是 3 通道 vote: planar (Layer 1) + multiview (Layer 3) + dihedral backbone (Layer 0)。Eye 是 Layer 4.5: 用户语义意图 (不是几何特征), 但是同样需要&quot;防吞&quot;。</li>
+</ul>
+<h3 id="初版方案-被推翻">初版方案 (被推翻)</h3>
+<ul>
+<li>候选 A: 每个 EyeRegion auto-addSeedPoint (中位面)。简单但有副作用: ① 用户没要 ghost marker UI; ② 单 seed 不强制 connectivity — eye region 内部被其他 seed 抢走的概率非零; ③ 完全不动 fuse, 用户调 fuse 时 eye 还是会被并。</li>
+<li>候选 B: seedGrow 路径里, 给 EyeRegion 强制 &quot;锁面&quot;, 加进 seed_grow 的 <code>seed_input</code> 不可 grow。破坏既有 seed_grow 语义, 引入 mutation-on-read。</li>
+<li>候选 C (采纳): fuse 第 5 通道 eye_sets, EYE_WEIGHT=1000, 与 dihedral backbone 对齐; plus onGrow 给每个 EyeRegion 合成 1 颗 interior anchor seed 走 seedGrow Voronoi 路径。</li>
+</ul>
+<h3 id="对抗审查结论-refute">对抗审查结论 (REFUTE)</h3>
+<ul>
+<li><strong>[blocker] 1</strong>: EyeRegion 不是 1-face label - 用 label_from_sets 给每眼面单独 label 会让&quot;两个眼内面相邻&quot;也投 cut+1, 等于把眼 region 自己切碎。采纳: 改用 <code>eye_bounded: Vec&lt;bool&gt;</code> (face-level flag), 边界检查 <code>ea != eb</code> 而不是 label diff。</li>
+<li><strong>[blocker] 2</strong>: tiny-region post-merge 会把 1-face 的 sclera 并到邻居, 即便眼 channel 切开了也会被合并掉。采纳: 给含眼面的 region 加锁, 不参与 tiny-region-merge 候选。</li>
+<li><strong>[major]</strong>: existing magic number <code>clampPos</code>/<code>resetPosition</code> 用 <code>innerHeight-460 / innerHeight-80</code> 写死, 高 DPI / 多屏 / 字体缩放下溢出。采纳: 用 panelRef getBoundingClientRect 实测 width/height。</li>
+<li><strong>[major]</strong>: DEFAULT_POS 用 bottom-center, 4K 屏上 panel 跑屏幕中下而非视觉重点, 不在用户视线落点 (模型)。采纳: 改 bottom-right + margin。</li>
+</ul>
+<h3 id="改动文件-实现">改动文件 (实现)</h3>
+<ul>
+<li><code>src-tauri/src/segment/fuse.rs</code>:<ul>
+<li>新增 <code>EYE_WEIGHT: i32 = 1000</code> 与 <code>DIHEDRAL_WEIGHT</code> 对齐。</li>
+<li><code>fuse_region_sets</code> 增加第 5 参 <code>eye_sets: &amp;[Vec&lt;u32&gt;]</code>。</li>
+<li>新增 <code>eye_bounded: Vec&lt;bool&gt;</code> (每 face flag), 边界 vote: <code>ea != eb</code> → cut += EYE_WEIGHT。</li>
+<li>tiny-region merge 候选过滤: <code>region_has_eye[rid]</code> 为 true 的不入列。</li>
+<li>4 个测试保留 + 2 个新测试: <code>eye_set_carves_itself_out</code> (1-face eye channel → 2 region), <code>eye_set_keeps_intra_region_cohesion</code> (2 adjacent eye faces → 1 region, outer 10 faces stay merged, total 2 region)。</li>
+</ul>
+</li>
+<li><code>src-tauri/src/commands/segment.rs</code>:<ul>
+<li><code>fuse_segmentation</code> 加 <code>eye_face_indices: Option&lt;Vec&lt;Vec&lt;u32&gt;&gt;&gt;</code> 参, 内部直接 unwrap_or_default → <code>eye_sets</code>。</li>
+</ul>
+</li>
+<li><code>src/hooks/useTauriCommand.ts</code>:<ul>
+<li><code>fuseSegmentation</code> 加第 4 参 <code>eyeFaceIndices?: number[][]</code>, invoke key <code>eyeFaceIndices</code> (camelCase, backend 已经 <code>snake_case: &#39;eye_face_indices&#39;</code>, Tauri 2 自动转)。</li>
+</ul>
+</li>
+<li><code>src/components/SeedPanel.tsx</code>:<ul>
+<li><code>onFuse</code>: <code>eyeSets = eyeRegions.map(r =&gt; r.faceIndices)</code>, 调 <code>fuseSegmentation(1, 0, dihedralDeg, eyeSets)</code>。</li>
+<li><code>onGrow</code>: 合成 <code>eyeSeeds: SeedPoint[]</code> (从每个 EyeRegion faceIndices 中位面取三顶点均值作坐标), 拼入 <code>seeds = [...seedPoints, ...suggestedSeeds, ...eyeSeeds]</code>。状态栏显示 &quot;手 X + 推 X + 眼 X&quot; 拆分。</li>
+<li><code>clampPos</code>/<code>loadPos</code>/<code>resetPosition</code> 全部用 <code>panelRef.current?.getBoundingClientRect()</code> 实测 width/height。</li>
+<li>拖动 <code>onMove</code> clamp 同理用活体尺寸。</li>
+<li>resize 监听 rAF 节流。</li>
+<li>新增 first-mount effect: 当 panel 第一次拿到真实 rect 时 re-clamp, 防首屏 overflow。</li>
+<li>DEFAULT_POS: bottom-right with margin (替代 bottom-center)。</li>
+</ul>
+</li>
+</ul>
+<h3 id="测试证据">测试证据</h3>
+<ul>
+<li>157 lib tests pass (原 6 fuse + 新 2 eye channel)。</li>
+<li>7 vitest pass (现有 iter60/61/63/65/66 路径不退化)。</li>
+<li>tsc --noEmit 0 错。</li>
+<li>NSIS 3.3MB + MSI 5.0MB。</li>
+</ul>
+<h3 id="e2e-期望">E2E 期望</h3>
+<ul>
+<li>先生: 加载青蛙 → Fuse &amp; generate (35 区) → 点眼睛区域 → Eye detect (出现绿/蓝/青 overlay) → 再点 Fuse &amp; generate → 眼睛区域变为独立分区 (而不是被吸收)。</li>
+<li>改走 Grow: 先生不重 Fuse, 直接点 Grow → 状态栏显示 &quot;...+ 眼 3&quot;, 眼睛区保持独立 label, grow 后 overlay 还在。</li>
+<li>拖 panel 到右下角, 缩小窗口到 panel 高 &gt; 窗口高 → panel 自动 clamp 到 top + margin (而不是 overflow 隐藏)。</li>
+<li>点 📍 复位: panel 落在右下 + 16px margin。</li>
+</ul>
+<h3 id="遗留-backlog-deferred-to-v2">遗留 backlog (deferred to v2)</h3>
+<ul>
+<li>「auto-ROI」(无 selectedSegment 时 MultiView 自动选最像眼睛区域作 ROI) — 等先生决定。</li>
+<li>EyeRegion 进 SegmentsPanel 列表 (作为特殊 label 显示, 让用户在分区面板里也能 &quot;选中眼睛区&quot;)。</li>
+<li>EyeRegion 在 export 3MF 时保存 semantic 信息 (globe/sclera/eyelid/socket 各自单独颜色组)。</li>
+</ul>
+<hr>
+<h2 id="迭代-80--fuse-反向切开-57535--tiny-region-merge-强化--状态栏诊断">迭代 80 — Fuse 反向切开 (57→535) + tiny-region merge 强化 + 状态栏诊断</h2>
+<h3 id="触发的理论缺口-2">触发的理论缺口</h3>
+<ul>
+<li>用户在 500k 面青蛙上点「融合生成」, segment count 从 57 暴增到 535。fuse 应该 &quot;合并&quot;, 实际 &quot;切开&quot;。</li>
+<li>docs/09 §11 设计的本意: 边级多数投票 (<code>score = cut - keep &gt; cut_threshold</code>), cut 必须严格多于 keep 才切, 平票合并。但是 fuse_region_sets 的 post-merge tiny-region step 只跑 3 passes × 1 region:<pre><code class="language-rust">for _pass in 0..3 {
+    let tiny = counts.iter().filter(|(_, &amp;c)| c &lt; min_faces).min_by_key(...);
+    let Some(tiny) = tiny else { break; };
+    // ...仅合 1 个 region
+}
+</code></pre>
+对 500k+ 面模型的「百级别碎片」绝对不够——3 个 region 进, 几百个 region 留。</li>
+</ul>
+<h3 id="初版方案-被否决">初版方案 (被否决)</h3>
+<ul>
+<li>候选 A: 把多视角角度阈值提到 35°+match_threshold=5。会让多视角更有用, 但<strong>与设计本意冲突</strong>: docs/09 §11 明确 &quot;multi-view 鼓励过分割 (advisory only)&quot;。改阈值 = 牺牲多视角价值。</li>
+<li>候选 B: 改 dihedral 默认值为 30° (减少内部碎片)。会让几何骨干粗糙, 不识别脖子-躯体那种 20-25° 的折痕, 反而更糟。</li>
+<li>候选 C (采纳): tiny-region merge 改成 dihedral 风格 (<code>merge_small_regions_fast</code>), 同时把诊断 log 通过 Tauri event 暴露给前端, 用户能直接看到 &quot;525 区中 median=12 face&quot;, 知道是 &quot;crumbs 要拖大点&quot; 不是 &quot;算法错&quot;。</li>
+</ul>
+<h3 id="对抗审查结论-refute-1">对抗审查结论 (REFUTE)</h3>
+<ul>
+<li><strong>[blocker]</strong>: tiny-region merge 改成 &quot;每 pass 吞所有 under-sized&quot; 会不会破坏原有 cube_fuses_to_six_regions 测试? <strong>审查</strong>: 6 个 cube 测试的 <code>min_region_faces</code> 调成 2, cube 仅 12 face, 不会触发 tiny-merge。只有 multi-patch + many-tiny 才会触发, 现有测试覆盖不到。新增一个测试覆盖 this case。</li>
+<li><strong>[blocker]</strong>: 把 <code>__lastFuseDebug</code> 挂在 window 上是不是脆弱? <strong>审查</strong>: 只是 module 内的临时 stashing, 跨 component 不依赖。改成 useState 反而会触发重 render (噪声) — 用 window 反而更合理。</li>
+<li><strong>[major]</strong>: 上一轮我曾以&quot;dihedral 已经给出 38 区, fuse 该给 38&quot;, 但实际给 535 — 分析必然错位。这次<strong>不再假设</strong>, 让数据说话: 让用户重试, 在状态栏直接读到 fused-debug。</li>
+<li><strong>[major]</strong>: dihedral 的 RAG Phase 3 normal-merge 合并阈值 (dot&gt;=0.93=22°) 在光滑曲面上合并能力有限 — Phase 1 2339→Phase 3 1380→Phase 4 38=对实际模型太碎。但这是 dihedral 算法自身的另一个 backlog, 不在 fuse 修复范围。</li>
+</ul>
+<h3 id="改动">改动</h3>
+<ul>
+<li><code>src-tauri/src/segment/fuse.rs</code>:<ul>
+<li>新常量 <code>MAX_MERGE_PASSES = 40</code> (mirror of postprocess::MAX_MERGE_PASSES)。</li>
+<li>tiny-region merge 改 dihedral 风格: 每 pass 吞所有 under-sized region, sort by size asc, eye-locked。</li>
+<li>FuseResult 加 5 个诊断字段 (edge_total/edge_cut/region_size_min/max/median) — Default + 后向兼容。</li>
+<li>每个 channel 的 region 数和切边总数 log::info + main summary。</li>
+</ul>
+</li>
+<li><code>src-tauri/src/commands/segment.rs</code>:<ul>
+<li><code>fuse_segmentation</code> done 时 emit <code>fuse-debug</code> Tauri event, payload 含 channels + cut stats + region size dist。</li>
+</ul>
+</li>
+<li><code>src/components/SeedPanel.tsx</code>:<ul>
+<li>useEffect 一挂载就 listen <code>fuse-debug</code>, 写入 <code>window.__lastFuseDebug</code>。</li>
+<li>onFuse await 完后读 stashed payload, setStatusMessage 展示一行:
+<code>🧩 融合完成: 35 区 (通道 平面0/多视角125/折痕38/眼4, 边 5321/87214 切, 区大小 min=12 med=850 max=42000)</code></li>
+</ul>
+</li>
+<li>状态: 用户能在屏幕直接读到 segment count 的原因, 不再需要 console。</li>
+</ul>
+<h3 id="测试证据-1">测试证据</h3>
+<ul>
+<li>6/6 fuse 单测 pass (含原 cube + 2 eye + 1 empty)。</li>
+<li>7/7 vitest SeedPanel pass。</li>
+<li>tsc --noEmit 0 错。</li>
+<li>NSIS 3.4MB + MSI 5.0MB。</li>
+</ul>
+<h3 id="e2e-期望-1">E2E 期望</h3>
+<ul>
+<li>用户加载青蛙 → Fuse &amp; generate → 状态栏显示类似 <code>🧩 融合完成: 76 区 (平面0/多视角125/折痕38/眼4, 边 5321/87214 切, 区大小 min=12 med=850 max=42000)</code>。</li>
+<li>如果仍有 500+ 区, 用户能从 med 数 (如果 med=几十) 看出 &quot;crumbs 没合够&quot;, 下轮拉高 min_region_faces 滑块。</li>
+<li>如果 med=几千（正常 region 大小), 那 500 区是真实算法结果（多视角过切+折痕多）。</li>
+</ul>
+<h3 id="遗留-backlog-deferred-to-v2-1">遗留 backlog (deferred to v2)</h3>
+<ul>
+<li>MultiView 算法的 angle_thr / match_threshold 加 UX slider (现在 SeedPanel 只暴露多视角按钮, 三个阈值都 hardcode)。</li>
+<li>Fuse 的 <code>min_region_faces</code> 已经是 slider 了, 但是 0=auto 用 <code>max(8, 0.002*n)</code> 默认值不够透明, 应该前端展示 &quot;当前 min=X face, Y% 模型&quot; tooltip。</li>
+<li>Dihedral Phase 3 normal-merge 阈值 dot&gt;=0.93 (22°) 在光滑曲面上不够 aggressive, 让 Phase 1 2339 → Phase 3 1380 而非更激进合并。这是 dihedral 算法自身的优化, 不在 fuse 范畴。</li>
+<li>Eye 自动 ROI (MultiView 自动选最像眼睛区域) 仍然 backlog。</li>
+</ul>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#迭代-n--眼睛区域语义识别globe--sclera--eyelid--socket">迭代 N — 眼睛区域语义识别（Globe / Sclera / Eyelid / Socket）</a></li><li class="toc-h3"><a href="#触发的理论缺口">触发的理论缺口</a></li><li class="toc-h3"><a href="#初版方案被推翻点">初版方案（被推翻点）</a></li><li class="toc-h3"><a href="#对抗审查结论refute独立-agentblockermajor">对抗审查结论（REFUTE，独立 agent，[blocker]/[major]）</a></li><li class="toc-h3"><a href="#修订方案逐条-采纳反驳backlog">修订方案（逐条 采纳/反驳/backlog）</a></li><li class="toc-h3"><a href="#改动文件实现阶段">改动文件（实现阶段）</a></li><li class="toc-h3"><a href="#测试证据实现后补-xx原-n--k">测试证据（实现后补 X/X，原 N + K）</a></li><li class="toc-h3"><a href="#e2e-证据">E2E 证据</a></li><li class="toc-h3"><a href="#遗留-backlogv2">遗留 backlog（v2）</a></li><li class="toc-h2"><a href="#迭代-79--eye-区作为分区参与-fuse--grow--seedpanel-自适应-clamp">迭代 79 — Eye 区作为分区参与 fuse &amp; grow + SeedPanel 自适应 clamp</a></li><li class="toc-h3"><a href="#触发的理论缺口-1">触发的理论缺口</a></li><li class="toc-h3"><a href="#初版方案-被推翻">初版方案 (被推翻)</a></li><li class="toc-h3"><a href="#对抗审查结论-refute">对抗审查结论 (REFUTE)</a></li><li class="toc-h3"><a href="#改动文件-实现">改动文件 (实现)</a></li><li class="toc-h3"><a href="#测试证据">测试证据</a></li><li class="toc-h3"><a href="#e2e-期望">E2E 期望</a></li><li class="toc-h3"><a href="#遗留-backlog-deferred-to-v2">遗留 backlog (deferred to v2)</a></li><li class="toc-h2"><a href="#迭代-80--fuse-反向切开-57535--tiny-region-merge-强化--状态栏诊断">迭代 80 — Fuse 反向切开 (57→535) + tiny-region merge 强化 + 状态栏诊断</a></li><li class="toc-h3"><a href="#触发的理论缺口-2">触发的理论缺口</a></li><li class="toc-h3"><a href="#初版方案-被否决">初版方案 (被否决)</a></li><li class="toc-h3"><a href="#对抗审查结论-refute-1">对抗审查结论 (REFUTE)</a></li><li class="toc-h3"><a href="#改动">改动</a></li><li class="toc-h3"><a href="#测试证据-1">测试证据</a></li><li class="toc-h3"><a href="#e2e-期望-1">E2E 期望</a></li><li class="toc-h3"><a href="#遗留-backlog-deferred-to-v2-1">遗留 backlog (deferred to v2)</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+        lineColor: "#64748b", fontSize: "14px",
+        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>

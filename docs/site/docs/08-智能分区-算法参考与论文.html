@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智能分区 — 算法参考与论文 · ColorYourModel Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.lang-toggle, .gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="..%5Cindex.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../index.html">Home (EN)</a></li>
+<li><a href="../README.zh-CN.html">首页（中文）</a></li>
+<li><a href="../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="algorithms/README.html">Algorithms</a></li>
+<li><a href="algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="technical/README.html">Technical Mechanisms</a></li>
+<li><a href="technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="cases/README.html">Cases</a></li>
+<li><a href="cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html" aria-current="page">智能分区 — 算法参考与论文</a></li>
+<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="智能分区--算法参考与论文">智能分区 — 算法参考与论文</h1>
+<blockquote>
+<p>配套设计文档：<code>docs/07-智能分区设计.md</code>（方案 / REFUTE 结论 / 实现状态）。
+本文档沉淀<strong>算法原理、论文出处、复杂度、端到端 pipeline，以及迭代 39 的性能根因复盘</strong>——把&quot;为什么这么做&quot;固化成可检索的项目资产。
+范围：三种已落地算法（dihedral / ShapeDiameter / intrinsic CurvatureKMeans）；MultiView 3→2→3 仅列设计要点（backlog，未实现）。</p>
+</blockquote>
+<h2 id="0-总览">0. 总览</h2>
+<table>
+<thead>
+<tr>
+<th>算法</th>
+<th>特征</th>
+<th>是否默认</th>
+<th>速度量级</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Dihedral（二面角区域生长）</td>
+<td>相邻面二面角 &lt; 阈值 → 同区</td>
+<td>导入后自动分区默认 30°</td>
+<td>极快 O(F·A)</td>
+</tr>
+<tr>
+<td>ShapeDiameter（SDF）</td>
+<td>沿内法线射线到对壁的距离 = 局部&quot;厚度&quot;</td>
+<td><code>useSdf:true</code> 时启用</td>
+<td>慢 O(n·K·rays)</td>
+</tr>
+<tr>
+<td>Intrinsic CurvatureKMeans</td>
+<td>[平均曲率, |SDF|] 联合聚类 + 连通性保证</td>
+<td>面板默认 <code>curvatureKMeans</code></td>
+<td>慢（含 SDF）</td>
+</tr>
+</tbody></table>
+<p><code>SegmentationAlgorithm</code> 枚举 + <code>run_segmentation</code> 统一入口见 <code>segment/mod.rs</code>；前端经 <code>invoke(&quot;auto_segment_v2&quot;, { algorithm })</code> 触发。</p>
+<h2 id="1-算法与论文">1. 算法与论文</h2>
+<h3 id="11-dihedral二面角区域生长">1.1 Dihedral（二面角区域生长）</h3>
+<ul>
+<li><strong>原理</strong>：对每对共享边的相邻面计算二面角；二面角 &lt; <code>angle_threshold</code>（默认 30°，约 cos 0.93）视为&quot;共面/平滑&quot;，归入同一区域；以邻接图做区域生长（region growing），再用小区域合并（<code>normal_consistency_merge</code> / <code>merge_small_regions_fast</code>）消除碎片。label 0 合法。</li>
+<li><strong>出处</strong>：二面角驱动的区域生长是网格分割的工业标准做法，OrcaSlicer / Bambu Studio 的&quot;按角度分割&quot;即此思路；连通性合并框架与 CGAL <code>Surface_mesh_segmentation</code> 的 Variational Shape Approximation（VSA）同构。</li>
+<li><strong>复杂度</strong>：邻接 BFS + 小区域合并，约 O(F·A)，F=面数，A=平均邻接度（≈6）。在真实网格上毫秒级。</li>
+</ul>
+<h3 id="12-shape-diameter-functionsdf形状直径函数">1.2 Shape Diameter Function（SDF，形状直径函数）</h3>
+<ul>
+<li><strong>原理</strong>：对每个面，沿其（定向一致的）内法线发射若干条射线，取射线与模型<strong>对侧表面</strong>的交点距离的中位数/均值，作为该面的&quot;厚度&quot;描述子；薄特征（肢体）SDF 小，厚特征（装甲板）SDF 大。再做 log 归一化 + K-means 聚类。</li>
+<li><strong>论文</strong>：<ul>
+<li>Gal, R., Shamir, A., Cohen-Or, D. (2006). <em>Salient Geometric Features for Partial Shape Matching and Retrieval</em>. (SDF 的提出)</li>
+<li>Shapira, L., Shamir, A., Cohen-Or, D. (2008). <em>Consistent Mesh Partitioning and Skeletonisation using the Shape Diameter Function</em>. The Visual Computer, 24(4):249–259. (SDF 用于网格分割/骨架化)</li>
+</ul>
+</li>
+<li><strong>本仓库实现</strong>（<code>segment/sdf.rs</code>）：每面经 kdtree <code>nearest_n(K=512)</code> 取候选面，沿 12 条锥形射线做 <code>ray_triangle</code> 求交 → 约 <strong>6144 次射线-三角形求交/面</strong>，O(n·K·rays)。这是默认 <code>curvatureKMeans + useSdf:true</code> 路径的<strong>主瓶颈</strong>（迭代 39 卡死的根因）。</li>
+<li><strong>关键修正（REFUTE blocker #1）</strong>：早期实现把 kdtree 查询半径设为整 bbox 对角线且放在射线循环内 → O(12·n²)；改为 <code>nearest_n(K)</code> 有界候选降到 O(n·K·rays)。另修 <code>consistent_normals</code> 副作用：改为 <code>oriented_normals(mesh)-&gt;Vec</code> 不写回 <code>mesh.normals</code>，避免多算法串联污染。</li>
+</ul>
+<h3 id="13-intrinsic-curvature-k-means内在曲率-k-均值">1.3 Intrinsic Curvature K-Means（内在曲率 K 均值）</h3>
+<ul>
+<li><strong>原理</strong>：逐面特征向量 = <code>[mean |dihedral curvature|, log-normalized |SDF|]</code>（剔除依赖全局朝向的 PCA 法线投影，避免主轴符号/简并导致&quot;按朝向聚类&quot;）。<strong>确定性最远点播种</strong>（无 <code>rand</code> 依赖，保测试确定性）+ Lloyd K-means（默认 k=6，20 轮）+ <strong>连通分量拆分</strong>（BFS over <code>face_adjacency</code> 把每个簇拆成空间连通片）+ <strong>特征距离合并</strong>小碎片到大邻居，最终每个 label 是连通&quot;部件&quot;。</li>
+<li><strong>论文</strong>：<ul>
+<li>Lloyd, S. P. (1982). <em>Least squares quantization in PCM</em>. IEEE Trans. Information Theory. (K-means / Lloyd)</li>
+<li>Meyer, M., Desbrun, M., Schröder, P., Barr, A. H. (2003). <em>Discrete Differential-Geometry Operators for Triangulated 2-Manifolds</em>. VisMath. (离散 Laplace-Beltrami 曲率)</li>
+<li>Cohen-Steiner, D., Alliez, P., Desbrun, M. (2004). <em>Variational Shape Approximation</em>. SIGGRAPH. (VSA — 连通性/凹度合并的理论基础，CGAL Surface_mesh_segmentation 同源)</li>
+</ul>
+</li>
+<li><strong>复杂度</strong>：特征提取 O(F)（含 SDF）、K-means O(F·k·iters)、连通 BFS O(F)。SDF 主导时整体退化到 1.2 的量级。</li>
+</ul>
+<h3 id="14-multiview-323backlog未实现">1.4 MultiView 3→2→3（backlog，未实现）</h3>
+<ul>
+<li><strong>设计要点</strong>（详见 <code>docs/07</code> §11）：多视角正交投影 → 仅最近深度面占栅格 → 每个视角 2D 连通区域 → 构建<strong>带权 match graph</strong>（≥T 视角同区才连边）→ <strong>可切割</strong>算法（normalized cut / 自研 Louvain），<strong>非</strong> union-find（单调不可切）。</li>
+<li><strong>启发来源</strong>：渲染→2D mask→回投→图社区检测范式（如 Segment Anything, Kirillov et al. 2023；SAMesh 类多视角回投分割）。本轮因 petgraph 0.6 无社区检测 + union-find 方向反（视角越多越合并）而推迟。</li>
+</ul>
+<h2 id="2-复杂度对照">2. 复杂度对照</h2>
+<table>
+<thead>
+<tr>
+<th>算法</th>
+<th>主瓶颈</th>
+<th>量级</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Dihedral</td>
+<td>邻接 BFS + 小区域合并</td>
+<td>O(F·A)</td>
+<td>极快，毫秒级</td>
+</tr>
+<tr>
+<td>SDF</td>
+<td>kdtree <code>nearest_n</code> + 12 射线×512 候选面</td>
+<td>O(n·K·rays) ≈ 6144 次/面</td>
+<td><code>useSdf:true</code> 时启用</td>
+</tr>
+<tr>
+<td>CurvatureKMeans</td>
+<td>特征(SDF) + K-means</td>
+<td>O(n·6144) + O(F·k·iters)</td>
+<td>面板默认，最慢</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>K=512（<code>SDF_CANDIDATE_K</code>）、rays=12 为工程取值；ragk 与 k 由用户配置。真实网格（数十万面）下 SDF/Curvature 路径可达数秒～数十秒——<strong>必须在 worker 线程跑</strong>（见 §4）。</p>
+</blockquote>
+<h2 id="3-端到端-pipeline">3. 端到端 pipeline</h2>
+<pre><code>前端 IntelligentSegmentPanel
+  └─ invoke(&quot;auto_segment_v2&quot;, { algorithm })   // 面板 setLoading(true)
+        │
+后端 auto_segment_v2 (async fn → Tauri tokio worker 线程)
+  ├─ mesh.take() 出 Mutex（释放锁，主线程不冻结）
+  ├─ run_segmentation(&amp;mut mesh, algo)
+  │     ├─ Dihedral | ShapeDiameter | CurvatureKMeans
+  │     └─ 每阶段 emit(&quot;segment-progress&quot;, {progress, stage})
+  ├─ mesh.history.clear()
+  ├─ mesh 写回 Mutex
+  └─ SegmentResult { segments, segment_labels, face_colors: Vec::new() }
+        │  (前端 setLoading(false))
+前端 updateSegmentLabels(labels, segments)   // 不再传 faceColors
+</code></pre>
+<ul>
+<li><strong>进度链路</strong>：<code>segment-progress</code> 事件 → <code>Toolbar.tsx</code> 浮层 + <code>Viewport.tsx</code> 由 <code>isLoading</code> 门控。缺口（已修）：面板 <code>run()</code> 原先未 <code>setLoading(true)</code>，浮层不显示。</li>
+<li><strong>label-only 历史</strong>：auto 分区不改 <code>face_colors</code>（仅改 labels），故 <code>face_colors</code> 返回空，省多兆 IPC + 前端全量重绘（与 <code>MergeResult</code>/<code>SplitResult</code> 同例）。</li>
+</ul>
+<h2 id="4-性能根因复盘迭代-392026-08-09">4. 性能根因复盘（迭代 39，2026-08-09）</h2>
+<p><strong>症状</strong>：点击&quot;智能分区&quot;后窗口&quot;未响应&quot;、无法操作。</p>
+<p><strong>根因（三层叠加）</strong>：</p>
+<ol>
+<li><strong>同步命令跑主线程</strong>：Tauri v2 的 sync <code>#[tauri::command]</code> 在 webview/主线程执行；默认 <code>curvatureKMeans + useSdf:true</code> 走 SDF（O(n·6144)），重计算冻结 UI 消息泵 → 窗口假死。（Tauri v2 的 <code>async fn</code> 命令由内置多线程 tokio runtime 调度到 worker 线程，不阻塞主线程。）</li>
+<li><strong>Mutex 持锁冻结</strong>：即使改 async，若 <code>lock()</code> 后持 <code>MutexGuard</code> 跑重计算，主线程的同步命令在 <code>lock()</code> 处被阻塞 → 仍卡。必须把 mesh <code>take()</code> 出锁、算完再写回。</li>
+<li><strong>多兆 <code>face_colors</code> 回传</strong>：auto 分区从不改色，却回传 4n 字节全量颜色 JSON（数 MB），挤占 IPC 与前端全量重绘。</li>
+</ol>
+<p><strong>修复（R1–R4）</strong>：</p>
+<ul>
+<li>R1 <code>commands/segment.rs</code>：<code>auto_segment_v2</code> 改 <code>async fn</code> + <code>State&lt;AppState&gt;</code>；mesh <code>take()</code> 出 Mutex 计算、释放锁、算完锁回（worker 线程跑重计算）。</li>
+<li>R2 同上：<code>face_colors</code> 返回 <code>Vec::new()</code>（auto 分区可证不改色）。</li>
+<li>R3 <code>sdf.rs</code> / <code>curvature.rs</code>：<code>compute_sdf</code> 加 <code>on_progress</code>/<code>base</code>/<code>span</code>，每 <code>n/50</code> 面发一次进度（SDF 段占 curvature 管线 0.0..0.3）。</li>
+<li>R4 <code>IntelligentSegmentPanel.tsx</code>：<code>run()</code> 开头 <code>setLoading(true)</code>，<code>finally</code> 里 <code>setLoading(false)</code>。</li>
+</ul>
+<p><strong>验证</strong>：<code>cargo test --lib</code> <strong>103 passed / 0 failed / 1 ignored</strong>；<code>tsc --noEmit</code> exit 0；<code>vite build</code> 634 模块 exit 0。</p>
+<p><strong>显式 backlog（用户点 3：确认交互后再迭代）</strong>：</p>
+<ul>
+<li>rayon 并行化 <code>sdf.rs</code> per-face 循环（墙钟时间不变，仅降 CPU 占用）。</li>
+<li><code>load_model</code> 同病异步化（大模型加载也走主线程）。</li>
+<li>默认值：<code>useSdf:true</code> + <code>lastSegmentKind</code> 污染导入自动分区路径（用户可能不想要 SDF 的慢）。</li>
+<li>SDF 平滑法线复用（<code>oriented_normals</code> 两遍）。</li>
+<li>Plane 拆分视口&quot;画切痕&quot;交互（坐标系混用会静默切错）。</li>
+<li>调色板 <code>label % 15</code> 撞色（拆分两片约 1/15 同色）。</li>
+</ul>
+<h2 id="5-参考文献bibliography">5. 参考文献（Bibliography）</h2>
+<ul>
+<li>Gal, R., Shamir, A., Cohen-Or, D. (2006). <em>Salient Geometric Features for Partial Shape Matching and Retrieval</em>. Computer Graphics Forum / Eurographics.</li>
+<li>Shapira, L., Shamir, A., Cohen-Or, D. (2008). <em>Consistent Mesh Partitioning and Skeletonisation using the Shape Diameter Function</em>. The Visual Computer, 24(4):249–259.</li>
+<li>Cohen-Steiner, D., Alliez, P., Desbrun, M. (2004). <em>Variational Shape Approximation</em>. ACM SIGGRAPH 2004.</li>
+<li>Meyer, M., Desbrun, M., Schröder, P., Barr, A. H. (2003). <em>Discrete Differential-Geometry Operators for Triangulated 2-Manifolds</em>. VisMath / IEEE Visualization.</li>
+<li>Lloyd, S. P. (1982). <em>Least squares quantization in PCM</em>. IEEE Transactions on Information Theory, 28(2):129–137.</li>
+<li>Kirillov, A., et al. (2023). <em>Segment Anything</em>. ICCV 2023 (Meta AI). （MultiView 3→2→3 范式启发）</li>
+<li>CGAL. <em>Surface Mesh Segmentation</em> (package <code>Surface_mesh_segmentation</code>), based on Shapira et al. 2008 + Cohen-Steiner et al. 2004.</li>
+<li>OrcaSlicer / Bambu Studio. <em>Mesh segmentation by dihedral angle</em> (工业实现参考).</li>
+</ul>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#0-总览">0. 总览</a></li><li class="toc-h2"><a href="#1-算法与论文">1. 算法与论文</a></li><li class="toc-h3"><a href="#11-dihedral二面角区域生长">1.1 Dihedral（二面角区域生长）</a></li><li class="toc-h3"><a href="#12-shape-diameter-functionsdf形状直径函数">1.2 Shape Diameter Function（SDF，形状直径函数）</a></li><li class="toc-h3"><a href="#13-intrinsic-curvature-k-means内在曲率-k-均值">1.3 Intrinsic Curvature K-Means（内在曲率 K 均值）</a></li><li class="toc-h3"><a href="#14-multiview-323backlog未实现">1.4 MultiView 3→2→3（backlog，未实现）</a></li><li class="toc-h2"><a href="#2-复杂度对照">2. 复杂度对照</a></li><li class="toc-h2"><a href="#3-端到端-pipeline">3. 端到端 pipeline</a></li><li class="toc-h2"><a href="#4-性能根因复盘迭代-392026-08-09">4. 性能根因复盘（迭代 39，2026-08-09）</a></li><li class="toc-h2"><a href="#5-参考文献bibliography">5. 参考文献（Bibliography）</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+        lineColor: "#64748b", fontSize: "14px",
+        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>

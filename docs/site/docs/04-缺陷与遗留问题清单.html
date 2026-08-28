@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ColorYourModel 缺陷与遗留问题清单 · ColorYourModel Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.lang-toggle, .gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="..%5Cindex.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../index.html">Home (EN)</a></li>
+<li><a href="../README.zh-CN.html">首页（中文）</a></li>
+<li><a href="../CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="algorithms/README.html">Algorithms</a></li>
+<li><a href="algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="technical/README.html">Technical Mechanisms</a></li>
+<li><a href="technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="cases/README.html">Cases</a></li>
+<li><a href="cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html" aria-current="page">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="coloryourmodel-缺陷与遗留问题清单">ColorYourModel 缺陷与遗留问题清单</h1>
+<table>
+<thead>
+<tr>
+<th>文档日期</th>
+<th>2026-08-06</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>数据来源</td>
+<td>30 轮迭代 journal + 10 份日报 + 代码现状核对</td>
+</tr>
+<tr>
+<td>合计</td>
+<td>23 项（P0 × 5，P1 × 8，P2 × 10），其中 P0-5 已于 2026-08-09 修复，P0-4 已于 2026-08-27 端到端验证关闭，P0-1/2/3 已于 2026-08-27 随 <code>a7700df</code> 修复（待真机复验后关闭）</td>
+</tr>
+<tr>
+<td>分级口径</td>
+<td><strong>P0</strong> 阻塞验收 / 功能不正确<br><strong>P1</strong> 影响体验或存在正确性隐患<br><strong>P2</strong> 优化、清理、技术债</td>
+</tr>
+<tr>
+<td>核对状态</td>
+<td>2026-08-06 经两路独立 agent 逐条对照源码证伪，修订 2 处 blocker（P1-6、P2-6）与 3 处 major（P1-3、P1-8、P2-4）</td>
+</tr>
+</tbody></table>
+<p><strong>每条的核实等级</strong>（按静态源码可判定性）：</p>
+<table>
+<thead>
+<tr>
+<th>等级</th>
+<th>含义</th>
+<th>条目</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>✅ 已证实</td>
+<td>源码中找到直接证据</td>
+<td>P0-2、P1-1、P1-3、P1-4、P1-7、P1-8、P2-1、P2-2、P2-3、P2-5、P2-6、P2-7、P2-9、P2-10</td>
+</tr>
+<tr>
+<td>⏳ 需真机</td>
+<td>依赖运行时行为，静态不可判</td>
+<td>P0-1、P0-3、P0-4、P1-5</td>
+</tr>
+<tr>
+<td>◐ 部分核实</td>
+<td>常量确认存在，但具体数值来自运行日志</td>
+<td>P1-2、P2-8</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="一p0--阻塞验收">一、P0 — 阻塞验收</h2>
+<h3 id="p0-1-fill-填充范围与高亮范围不一致---代码已修复a7700df2026-08-27待真机复验">P0-1 Fill 填充范围与高亮范围不一致 — 🔧 代码已修复（<code>a7700df</code>，2026-08-27），待真机复验</h3>
+<ul>
+<li><strong>现象</strong>：点击填充后，实际着色面集与黄色高亮所示面集不符。HUD 证据：<code>fill face=517527 seg=0 → 12 filled / 1498252 highlighted ⚠️ MISMATCH</code>。</li>
+<li><strong>根因</strong>：<code>seg=0</code> 是覆盖 150 万面的默认分区，因占比超阈值退化为局部半径填充，而高亮层仍按整段渲染。</li>
+<li><strong>历史</strong>：iter25–30 共 7 版修复，最新 v7（manual segment stickiness）<strong>仍标注&quot;待用户验证&quot;</strong>，journal 无成功记录。</li>
+<li><strong>影响</strong>：直接阻塞 PRD 验收项 A4，也是产品核心价值（一键区域填色）不成立的原因。</li>
+<li><strong>修复（2026-08-27，<code>a7700df</code>）</strong>：fill 目标改为严格取 <code>segmentLabels[clickedFace]</code>（点击面所属分区），iter29 hover 偏好与 v5 陈旧缓存 <code>lastValidHoveredSegmentRef</code> 整体退役；颜色不再参与区域判定。回归测试 <code>commands::paint::fill_tests</code> 覆盖「同色双区域填充不得改写第一区域」等场景。</li>
+<li><strong>建议动作</strong>：在 <code>cargo tauri dev</code> 下人工回归，读 HUD 的 <code>hover=</code> / <code>N filled / M highlighted</code> 字段确认是否收敛。<strong>若 v7 仍不收敛，须停止打补丁，改为重新取证。</strong></li>
+<li><strong>状态</strong>：🔧 已修复 + 回归测试覆盖，待先生真机复验同色双填充场景后关闭。</li>
+</ul>
+<h3 id="p0-2-hover-与-fill-的分区闸门不对称---结构性解决a7700df2026-08-27">P0-2 hover 与 fill 的分区闸门不对称 — 🔧 结构性解决（<code>a7700df</code>，2026-08-27）</h3>
+<ul>
+<li><strong>现象</strong>：<code>MANUAL_REGION_MAX_SHARE = 0.95</code> 只在 <code>paintFace</code> 侧生效（usePaintTool.ts:126-130 为 0.95 / 0.8 双分支），hover 高亮侧没有对应闸门 —— Viewport.tsx:1033-1039 只用 <code>WHOLE_SEGMENT_MAX_SHARE</code>，且 <code>id &gt;= MANUAL_SEGMENT_OFFSET</code> 被<strong>无条件豁免</strong>。</li>
+<li><strong>后果</strong>：高亮显示的范围与填充实际采纳的范围在阈值边界上必然分叉 —— 这是 P0-1 的结构性成因之一。</li>
+<li><strong>建议动作</strong>：把两侧闸门抽成同一个纯函数，hover 与 fill 共用，杜绝判据漂移。</li>
+<li><strong>状态</strong>：🔧 结构性解决：fill 目标不再消费 hover 快照（严格按点击面 label 路由），闸门分叉不再影响填充结果；hover 高亮降级为 HUD 诊断显示，不参与任何工具决策。</li>
+</ul>
+<h3 id="p0-3-陈旧-hover-缺少安全阀---结构性解决a7700df2026-08-27">P0-3 陈旧 hover 缺少安全阀 — 🔧 结构性解决（<code>a7700df</code>，2026-08-27）</h3>
+<ul>
+<li><strong>现象</strong>：hover 状态未及时失效时，可能对一个 150 万面的陈旧分区执行填充。</li>
+<li><strong>后果</strong>：一次误操作即污染整个模型，且撤销栈可能不足以完全回滚。</li>
+<li><strong>建议动作</strong>：填充前强制校验 hover 目标的时效性与面数上限，超限直接拒绝并提示。</li>
+<li><strong>状态</strong>：🔧 结构性解决：fill 不再读取任何 hover 状态（陈旧 hover 无法驱动填充）；统一撤销/重做时间线（<code>history::undo/redo</code>）覆盖 fill/erase/manual 编辑，可完整回滚。</li>
+</ul>
+<h3 id="p0-4-3mf-导出未经端到端验证---已验证关闭2026-08-27">P0-4 3MF 导出未经端到端验证 — ✅ 已验证关闭（2026-08-27）</h3>
+<ul>
+<li><strong>现象</strong>：导出链路仅有 fixture 单测与链接验证，<strong>从未用真实 STL 在 GUI 里跑通并送入切片软件</strong>。用户明确表示&quot;3mf 当前我都还没测试&quot;。</li>
+<li><strong>后果</strong>：产品最终产物的正确性完全未知，PRD 验收项 A9 无法通过。</li>
+<li><strong>建议动作</strong>：用真实模型走完整链路，在 OrcaSlicer 中打开验证颜色，作为发版硬门槛。</li>
+<li><strong>验证记录（2026-08-27）</strong>：真实 STL 走通完整链路——CYM 分区/种子上色 → 导出 3MF → <strong>Snapmaker Orca (U1)</strong> 导入，多耗材颜色正确显示，工艺下拉框正确出现内嵌预设 <code>0.20 Standard @Snapmaker U1 (0.4 nozzle)</code>。先生确认：&quot;当前的3mf导出是合理的&quot;。证据：<code>samples/梁圣/example01*.png</code>。</li>
+<li><strong>状态</strong>：✅ 已验证关闭。书面验证协议（切片器版本/校验点清单）待补，模板见 <a href="cases/TEMPLATE.html">docs/cases/TEMPLATE.md</a>。</li>
+</ul>
+<h3 id="p0-5-stl-导入-kdtree-崩溃球面等重合轴点--已修复69a17ea2026-08-09">P0-5 STL 导入 kdtree 崩溃（球面等重合轴点）— ✅ <strong>已修复（<code>69a17ea</code>，2026-08-09）</strong></h3>
+<ul>
+<li><strong>现象</strong>：打开 <code>Sphere.stl</code>（UV 球，32040 面 / 16022 唯一顶点，STL 本身合法）直接闪退。</li>
+<li><strong>根因</strong>：<code>load_stl</code> → <code>build_kdtree</code> / <code>build_vertex_kdtree</code>，kiddo-4 默认 <code>BUCKET_SIZE=32</code>，当同一分裂轴上 &gt;32 点坐标完全相同时 panic（<code>kiddo-4.2.1/.../construction.rs</code>：&quot;Too many items with the same position on one axis&quot;）。UV 球每个纬度环所有三角形共享同一 Z 轴坐标（单环数百面），远超 32。</li>
+<li><strong>修复</strong>：新增 <code>kd_point(p, salt)</code> 按点 index 派生 ~1e-4 确定性扰动，对两棵树的入点均过该 helper；选扰动而非抬高 bucket（更密球仍会越界）。</li>
+<li><strong>验证</strong>：回归测试 <code>kdtree_coincident_axis_no_panic</code>（UV 球 50×320，单环 640 重合轴面）通过；<code>cargo test --lib</code> 67 passed。</li>
+<li><strong>状态</strong>：✅ 已修复并打包，待先生装包打开 Sphere.stl 复验不崩。</li>
+</ul>
+<hr>
+<h2 id="二p1--影响体验或存在正确性隐患">二、P1 — 影响体验或存在正确性隐患</h2>
+<h3 id="p1-1-manualregionmaxshare--095-缺乏出处">P1-1 <code>MANUAL_REGION_MAX_SHARE = 0.95</code> 缺乏出处</h3>
+<p>阈值为拍脑袋取值，journal 明确标注无依据。需要产品侧给出判据，或改为基于分区数量分布的自适应策略。</p>
+<h3 id="p1-2-phase4-小分区归并过激">P1-2 Phase4 小分区归并过激</h3>
+<p><code>MIN_REGION_CAP = 30</code> 对 150 万面模型会把 <strong>13218 个区坍缩到 27 个</strong>。当前仅在前端做防御性适配，后端阈值未按模型规模自适应。</p>
+<h3 id="p1-3-addupdaterange-截断全量写入">P1-3 <code>addUpdateRange</code> 截断全量写入</h3>
+<p><code>updateFaceColors</code> 的 <code>addUpdateRange</code>（useMesh.ts:222）会截断 <code>buildGeometry</code> 的全量 <code>.set()</code>（useMesh.ts:164）。全库 <code>clearUpdateRanges</code> <strong>0 处命中</strong>。属静默的正确性隐患。</p>
+<p><strong>注意：代码中已有反驳论据，修复前须先驳倒它。</strong> useMesh.ts:183-187 的注释主张「renderer 每次上传后自动清空 updateRanges，故无需手动 clear」。若该假设成立则本条不成立。提工单前应先确认 three.js 当前版本的实际行为，否则会被以「注释已解释过」驳回。</p>
+<h3 id="p1-4-画笔-stroke-内叠加变深">P1-4 画笔 stroke 内叠加变深</h3>
+<p>同一面在一次拖动中被多次 <code>mix_color</code>，颜色累积变深。需后端引入 <code>stroke_id</code> + HashSet 去重，改动横跨 5 个文件，方案待确认。</p>
+<h3 id="p1-5-画笔-step-半径幻觉">P1-5 画笔 step 半径幻觉</h3>
+<p>step 衰减下实际着色半径为 <code>radius/2</code>，UI 显示值与实际不符，用户无法预期落笔范围。</p>
+<h3 id="p1-6-偏好缺少-migrate-迁移函数">P1-6 偏好缺少 <code>migrate</code> 迁移函数</h3>
+<p>修改默认值对已持久化用户完全无效（persist 会用旧值覆盖），后续任何默认值调整都无法触达存量用户。</p>
+<p><strong>现状须准确表述</strong>：<code>version: 1</code> <strong>已存在</strong>（appStore.ts:418），缺的只是 <code>migrate</code> 函数。因已有版本号占位，补 <code>migrate</code> 的成本低于从零引入版本机制。</p>
+<h3 id="p1-7-snapenabled-无-ui-开关">P1-7 <code>snapEnabled</code> 无 UI 开关</h3>
+<p>状态存在且已持久化，但界面上没有任何入口。iter23 明确警告：直接让它生效会导致吸附<strong>永久关闭且无法恢复</strong>。要么补 UI，要么移除该状态。</p>
+<h3 id="p1-8-render-阶段存在副作用写入2-处非-1-处">P1-8 render 阶段存在副作用写入（<strong>2 处，非 1 处</strong>）</h3>
+<p>违反 React 纯度约束，在并发模式下行为未定义：</p>
+<ul>
+<li><code>useMesh.ts:52</code> — <code>geometryRef.current = geometry</code>，位于 <code>useMemo</code> 内</li>
+<li><code>useMesh.ts:80</code> — <code>paintColorRef.current = arr</code>，同类问题</li>
+</ul>
+<p>只修第一处会遗漏第二处。另 <code>updatedFaces</code> 缺少越界校验（useMesh.ts:192-211 无 bounds check；仅 appStore.ts:314 有）。</p>
+<hr>
+<h2 id="三p2--优化清理与技术债">三、P2 — 优化、清理与技术债</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>问题</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>P2-1</td>
+<td>后端 <code>load_stl</code> 空间索引未懒加载</td>
+<td>iter9 提出，横跨 iter9→22 反复出现在 backlog，<strong>至今未做</strong></td>
+</tr>
+<tr>
+<td>P2-2</td>
+<td>批量 stroke IPC + 路径插值未做</td>
+<td>iter16 提出，可显著降低高频绘制的 IPC 开销</td>
+</tr>
+<tr>
+<td>P2-3</td>
+<td><code>segmentColorArray</code> 冷启动开销</td>
+<td>门控后首次切换分区视图需同步计算 54MB</td>
+</tr>
+<tr>
+<td>P2-4</td>
+<td><strong>DIAG-B / DIAG-D</strong> 诊断日志未清理</td>
+<td>残留 2 处：<code>commands/paint.rs:41,44</code>、<code>paint/brush.rs:16,22</code>。DIAG-A / DIAG-C 已移除（全库 0 处命中，前端 <code>src/</code> 亦为 0），清理时不要去找它们</td>
+</tr>
+<tr>
+<td>P2-5</td>
+<td><code>get_face_color</code> 为死接口</td>
+<td>定义 <code>commands/mesh.rs:75</code>，注册 <code>lib.rs:24</code>，前端 0 处调用（吸管实走 <code>pick_color</code>）。建议移除或接入</td>
+</tr>
+<tr>
+<td>P2-6</td>
+<td><code>MeshModel.unit</code> 为死字段</td>
+<td>model.rs:94 声明、:128 赋值 <code>&quot;millimeter&quot;</code>，全库无读取点。⚠️ 原记「2 处 dead_code，含 <code>apply_falloff</code>」已证伪：<code>apply_falloff</code> 不存在于代码库（0 处命中），真实函数为 <code>falloff_strength</code>（brush.rs:29）且被 3 处调用，属热路径。警告条数须以 <code>cargo build</code> 输出为准</td>
+</tr>
+<tr>
+<td>P2-7</td>
+<td><code>:focus</code> 交互态完全缺失</td>
+<td><code>:hover</code>/<code>:disabled</code> 已覆盖 <code>.cym-btn</code>（theme.css:114,117）与 <code>.cym-toggle</code>（:126）；真正的缺口是 <code>:focus</code> 全库 0 处，键盘可达性不足</td>
+</tr>
+<tr>
+<td>P2-8</td>
+<td><strong>README 与 CHANGELOG 严重过时</strong>（已逐行取证）</td>
+<td>README:40「GPU 面拾取，颜色编码 ID 渲染到 RenderTarget」— 迭代 4 已换为 BVH 射线拾取；README:43「Space 平移」— 迭代 3 已换为右键拖拽；README:38「三阶段算法」— 未含后加的 SDF 分割；README:139 列出 <code>eraser.rs</code> — 该文件不存在（橡皮在 <code>commands/paint.rs</code> 内），且缺 <code>sdf.rs</code>/<code>manual.rs</code>/<code>kdtree.rs</code>/<code>smart_snap.rs</code>。CHANGELOG:71 停在 Round 7-8（实际已到迭代 30）</td>
+</tr>
+<tr>
+<td>P2-9</td>
+<td><code>Viewport.tsx</code> 达 2141 行</td>
+<td>相机、拾取、套索层、高亮层、HUD 混杂单文件，重构候选</td>
+</tr>
+<tr>
+<td>P2-10</td>
+<td>无 CI；前端零单测</td>
+<td>所有验证靠人工触发；<code>seg_log</code> 写 <code>CARGO_MANIFEST_DIR</code> 运行时不可靠</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="四非缺陷的固有限制不予修复仅需文档告知">四、非缺陷的固有限制（不予修复，仅需文档告知）</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>分区边界几何锯齿</td>
+<td>形态学平滑只能缓解；真正的直线级平滑需另立方案</td>
+</tr>
+<tr>
+<td>模型有洞时射线 miss</td>
+<td>射线拾取的几何固有限制</td>
+</tr>
+<tr>
+<td><code>maxZoom = 500</code></td>
+<td>工程取值，正交投影无近裁面爆炸风险，可按需调整</td>
+</tr>
+<tr>
+<td>吸附同侧阈值 60°</td>
+<td>经验值，锚定立方体角点 54.74° 并留约 5° 余量</td>
+</tr>
+<tr>
+<td>headless E2E 无法覆盖 IPC 功能</td>
+<td>Tauri runtime 缺失，属工具链固有约束</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="五上线风险清单">五、上线风险清单</h2>
+<table>
+<thead>
+<tr>
+<th>风险</th>
+<th>等级</th>
+<th>说明</th>
+<th>缓解</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>核心功能不正确</td>
+<td><strong>高</strong></td>
+<td>P0-1 使&quot;一键区域填色&quot;这一核心价值不成立</td>
+<td>修复并人工验收后方可发版</td>
+</tr>
+<tr>
+<td>产物不可用</td>
+<td><strong>高</strong></td>
+<td>P0-4 导出未验证，用户可能拿到无法使用的 3MF</td>
+<td>端到端真机验证设为发版硬门槛</td>
+</tr>
+<tr>
+<td>大模型误操作</td>
+<td><strong>中</strong></td>
+<td>P0-3 一次误填充污染 150 万面</td>
+<td>补安全阀 + 确认撤销栈可完整回滚</td>
+</tr>
+<tr>
+<td>文档误导</td>
+<td><strong>中</strong></td>
+<td>P2-8 README 描述的功能与实际不符，新协作者会按错误前提开发</td>
+<td>用本批文档替换 README 中过时章节</td>
+</tr>
+<tr>
+<td>回归无护栏</td>
+<td><strong>中</strong></td>
+<td>无 CI、前端零单测，改动全靠人工回归</td>
+<td>至少为 P0 相关路径补前端单测</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="六建议的修复顺序">六、建议的修复顺序</h2>
+<pre><code>第一梯队（发版前必须完成）
+  P0-2 统一 hover/fill 闸门  ──►  P0-1 验证 Fill 收敛  ──►  P0-3 补安全阀
+                                        │
+                                        ▼
+                                  P0-4 3MF 端到端验证
+第二梯队（发版后首个迭代）
+  P1-3 修 addUpdateRange   P1-8 移除 render 副作用   P1-6 偏好版本迁移
+  P2-8 同步 README/CHANGELOG
+第三梯队（技术债专项）
+  P1-4 stroke 去重   P1-1/P1-2 阈值自适应   P2-9 Viewport 拆分   P2-10 建 CI
+</code></pre>
+<p><strong>排序依据</strong>：P0-2 是 P0-1 的结构性成因，先统一闸门再验证填充才有意义；P0-4 独立于前三项，可并行推进。</p>
+<hr>
+<h2 id="七本轮已收口2026-08-07">七、本轮已收口（2026-08-07）</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>类型</th>
+<th>处置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>分区入口三处硬编码 <code>30.0</code>（<code>Toolbar.tsx:89,105</code> + <code>useTauriCommand.ts:41</code>）</td>
+<td>技术债 / 魔法数</td>
+<td>✅ 已收口：导入后自动分区改走 <code>autoSegmentV2(buildAlgorithm(持久化 or 默认 dihedral 30°, 参数))</code>；旧 <code>autoSegment</code> / <code>autoSegmentSmart</code> 钩子退役，统一 <code>auto_segment_v2</code> IPC。阈值 30° 不再来自字面量，而来自 <code>DEFAULT_ALGORITHM_PARAMS</code> / 持久化偏好（值与旧行为一致，仅来源变更）</td>
+</tr>
+<tr>
+<td>智能分区无统一前端入口</td>
+<td>能力缺口</td>
+<td>✅ 已补：新增 <code>IntelligentSegmentPanel</code>（模态），算法 <code>&lt;select&gt;</code> + 动态参数滑块，运行即 <code>invoke(&quot;auto_segment_v2&quot;)</code>；选择持久化（zustand persist 白名单 + <code>sanitizeAlgorithmParams</code> 值域校验）</td>
+</tr>
+<tr>
+<td>后端可配置多算法分割（golden 验收）</td>
+<td>能力缺口</td>
+<td>✅ 已落地（<code>b087c3c</code>）：统一接口 <code>SegmentationAlgorithm</code> + <code>run_segmentation</code> + 曲率 K-Means / 形态直径 SDF / 二面角；golden 拓扑断言 74 passed（cube→6、sphere→1、双球→2）。视觉/交互仍待 <code>cargo tauri dev</code> 真机复验（headless 无法覆盖 Tauri 渲染）</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="八填充路由区域权威化2026-08-27">八、填充路由区域权威化（2026-08-27）</h2>
+<h3 id="已修本轮提交">已修（本轮提交）</h3>
+<p><strong>现象</strong>：已分区模型上，填充工具给区域 A 涂红后再给区域 C 涂同一种红，出现&quot;C 变红、A 变其他色&quot;的互斥表现。</p>
+<p><strong>审计结论</strong>：后端链路（<code>segment_faces</code> / <code>flood_fill</code> / <code>apply_paint</code> 单一写路径）全程按 <code>segment_labels</code> 选面，从未以颜色反推分区；问题出在前端填充目标的裁决链：</p>
+<table>
+<thead>
+<tr>
+<th>根因</th>
+<th>位置</th>
+<th>修复</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>iter29 &quot;hover 偏好&quot;：点击目标优先取 hover 快照而非点击面自身 label，边界处射线差一个面就填到别的区</td>
+<td><code>usePaintTool.ts</code> Fill 分支</td>
+<td>填充目标恒为 <code>segmentLabels[clickedFace]</code>（区域信息为准）</td>
+</tr>
+<tr>
+<td>iter29 v5 陈旧缓存兜底：store hover 为 null 时回退到上一帧缓存的 <code>lastValidHoveredSegmentRef</code>，光标已离开该区仍可能被当作目标</td>
+<td><code>Viewport.tsx</code> enqueuePaint + pointermove/leave 写入点</td>
+<td>缓存整个删除；hover 快照仅作 HUD 诊断</td>
+</tr>
+</tbody></table>
+<p><strong>回归护栏</strong>：<code>commands/paint.rs::fill_tests</code> —— 同色双区域填充不得改写第一区域的任何字节；flood 路由在两侧同色时仍止步于 label 边界。</p>
+<h3 id="待裁决新增-backlogp2">待裁决（新增 backlog，P2）</h3>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>分区操作用调色板色整片覆盖用户涂色</td>
+<td><code>fuse.rs:469</code>、<code>seeded.rs:339</code>、<code>manual.rs:559</code> 均执行 <code>face_colors[f] = manual_label_color(label)</code>，fuse/grow/lasso 会吃掉用户已有涂色。与&quot;区域信息一直在、涂色不被破坏&quot;的目标相悖。解法方向：算法只写 label，显示层统一走 segmentView 的 label→调色板映射，3MF 导出对未涂色面取默认色或分区代表色。<strong>改动涉及导出取色策略，需先生拍板后再动</strong></td>
+</tr>
+</tbody></table>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#一p0--阻塞验收">一、P0 — 阻塞验收</a></li><li class="toc-h3"><a href="#p0-1-fill-填充范围与高亮范围不一致---代码已修复a7700df2026-08-27待真机复验">P0-1 Fill 填充范围与高亮范围不一致 — 🔧 代码已修复（a7700df，2026-08-27），待真机复验</a></li><li class="toc-h3"><a href="#p0-2-hover-与-fill-的分区闸门不对称---结构性解决a7700df2026-08-27">P0-2 hover 与 fill 的分区闸门不对称 — 🔧 结构性解决（a7700df，2026-08-27）</a></li><li class="toc-h3"><a href="#p0-3-陈旧-hover-缺少安全阀---结构性解决a7700df2026-08-27">P0-3 陈旧 hover 缺少安全阀 — 🔧 结构性解决（a7700df，2026-08-27）</a></li><li class="toc-h3"><a href="#p0-4-3mf-导出未经端到端验证---已验证关闭2026-08-27">P0-4 3MF 导出未经端到端验证 — ✅ 已验证关闭（2026-08-27）</a></li><li class="toc-h3"><a href="#p0-5-stl-导入-kdtree-崩溃球面等重合轴点--已修复69a17ea2026-08-09">P0-5 STL 导入 kdtree 崩溃（球面等重合轴点）— ✅ 已修复（69a17ea，2026-08-09）</a></li><li class="toc-h2"><a href="#二p1--影响体验或存在正确性隐患">二、P1 — 影响体验或存在正确性隐患</a></li><li class="toc-h3"><a href="#p1-1-manualregionmaxshare--095-缺乏出处">P1-1 MANUAL_REGION_MAX_SHARE = 0.95 缺乏出处</a></li><li class="toc-h3"><a href="#p1-2-phase4-小分区归并过激">P1-2 Phase4 小分区归并过激</a></li><li class="toc-h3"><a href="#p1-3-addupdaterange-截断全量写入">P1-3 addUpdateRange 截断全量写入</a></li><li class="toc-h3"><a href="#p1-4-画笔-stroke-内叠加变深">P1-4 画笔 stroke 内叠加变深</a></li><li class="toc-h3"><a href="#p1-5-画笔-step-半径幻觉">P1-5 画笔 step 半径幻觉</a></li><li class="toc-h3"><a href="#p1-6-偏好缺少-migrate-迁移函数">P1-6 偏好缺少 migrate 迁移函数</a></li><li class="toc-h3"><a href="#p1-7-snapenabled-无-ui-开关">P1-7 snapEnabled 无 UI 开关</a></li><li class="toc-h3"><a href="#p1-8-render-阶段存在副作用写入2-处非-1-处">P1-8 render 阶段存在副作用写入（2 处，非 1 处）</a></li><li class="toc-h2"><a href="#三p2--优化清理与技术债">三、P2 — 优化、清理与技术债</a></li><li class="toc-h2"><a href="#四非缺陷的固有限制不予修复仅需文档告知">四、非缺陷的固有限制（不予修复，仅需文档告知）</a></li><li class="toc-h2"><a href="#五上线风险清单">五、上线风险清单</a></li><li class="toc-h2"><a href="#六建议的修复顺序">六、建议的修复顺序</a></li><li class="toc-h2"><a href="#七本轮已收口2026-08-07">七、本轮已收口（2026-08-07）</a></li><li class="toc-h2"><a href="#八填充路由区域权威化2026-08-27">八、填充路由区域权威化（2026-08-27）</a></li><li class="toc-h3"><a href="#已修本轮提交">已修（本轮提交）</a></li><li class="toc-h3"><a href="#待裁决新增-backlogp2">待裁决（新增 backlog，P2）</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+        lineColor: "#64748b", fontSize: "14px",
+        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>

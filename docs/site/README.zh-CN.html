@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ColorYourModel 🎨 · ColorYourModel Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.lang-toggle, .gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="index.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    <a class="lang-toggle" href="index.html">English</a>
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="index.html">Home (EN)</a></li>
+<li><a href="README.zh-CN.html" aria-current="page">首页（中文）</a></li>
+<li><a href="CHANGELOG.html">Changelog</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="docs/algorithms/README.html">Algorithms</a></li>
+<li><a href="docs/algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="docs/algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="docs/algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="docs/technical/README.html">Technical Mechanisms</a></li>
+<li><a href="docs/technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="docs/technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="docs/technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="docs/technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="docs/technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="docs/technical/crash-diagnostics.html">Crash Diagnostics</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="docs/cases/README.html">Cases</a></li>
+<li><a href="docs/cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="docs/01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="docs/02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="docs/03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="docs/05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="docs/06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="docs/07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="docs/08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="docs/09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="docs/loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="coloryourmodel-">ColorYourModel 🎨</h1>
+<p><a href="index.html">English</a> | <a href="README.zh-CN.html">简体中文</a></p>
+<blockquote>
+<p>把 3D 打印白模 STL 变成基于分区的彩色 3MF，直接多耗材彩色打印。</p>
+</blockquote>
+<p><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License: AGPL-3.0"></a>
+<img src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white" alt="Built with Tauri 2">
+<img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black" alt="React 18"></p>
+<p><strong>ColorYourModel（CYM）</strong> 是一款桌面应用（Tauri 2 + React + Three.js 前端，Rust 后端），解决一个实际的 3D 打印问题：白模 STL 只是一堆无结构的三角面片——没有&quot;分区&quot;概念，也没有颜色。高细节模型在切片软件里逐面片涂色基本不可行。</p>
+<p>CYM 自动把网格分割成语义化区域（头盔、皮肤、底座……），提供分区感知的上色工具做微调，最终导出符合规范的<strong>带逐分区颜色的 3MF</strong>，在 Snapmaker Orca / OrcaSlicer 中导入即为真实的耗材分色——已在真机端到端验证（2026-08，Snapmaker U1）。</p>
+<pre class="mermaid">flowchart TD
+    A[&quot;STL 白模导入&quot;] --&gt; B[&quot;自动分割&lt;br/&gt;8 种算法：二面角 · SDF · 曲率 K-Means · 图割 …&quot;]
+    B --&gt; C[&quot;种子工具&lt;br/&gt;推荐种子 → 手动生长 / 自动融合 · 眼睛检测&quot;]
+    C --&gt; D[&quot;手动微调&lt;br/&gt;合并 / 拆分 / 重命名 / 重分割&quot;]
+    D --&gt; E[&quot;上色&lt;br/&gt;画笔 · 喷漆 · 智能笔 · 填充 · 橡皮 · 吸管&lt;br/&gt;统一撤销/重做&quot;]
+    E --&gt; F[&quot;导出&lt;br/&gt;3MF（颜色 + 机型预设）· OBJ（逐面颜色）&quot;]
+    F --&gt; G[&quot;Snapmaker Orca / OrcaSlicer&lt;br/&gt;切片打印&quot;]
+</pre>
+<h2 id="功能特性">功能特性</h2>
+<h3 id="当前可用-">当前可用 ✅</h3>
+<ul>
+<li><strong>STL 导入</strong>——二进制 + ASCII，1.5M 面级模型约 4 秒加载，带进度事件</li>
+<li><strong>自动分割 v2</strong>——统一后端接口（<code>SegmentationAlgorithm</code>）含 8 种算法：二面角分裂、形态直径 SDF、曲率 K-Means、SDF 图割、凹度、凸分解、曲线骨架、FH 图。前端面板暴露其中 3 种，参数可调且持久化</li>
+<li><strong>种子分区</strong>——推荐种子（平面 / 多视角 / 截面 / 显著性）、逐点手动生长、自动融合 + 小分区合并</li>
+<li><strong>眼睛区域检测</strong>——手办模型一键识别，全局检测（无需 ROI）</li>
+<li><strong>分区管理</strong>——合并 / 拆分 / 重命名分区，单区域重分割</li>
+<li><strong>上色工具</strong>——画笔、喷漆、智能笔（分区边界感知）、填充、橡皮、吸管</li>
+<li><strong>标签权威填充</strong>——填充严格作用于点击面所属分区，两个分区可安全共用同一颜色（有回归测试保护）</li>
+<li><strong>统一撤销 / 重做</strong>——一条时间线覆盖画笔、填充、橡皮与手动编辑</li>
+<li><strong>分区视图</strong>——分区彩色可视化 + 边界描边；hover 高亮为 GPU 着色器方案（逐顶点标签属性，O(1) 切换，按需渲染）</li>
+<li><strong>BVH 面拾取</strong>——<code>three-mesh-bvh</code> 加速的 CPU 射线求交，1.5M 面模型稳定命中</li>
+<li><strong>3MF 导出</strong>——已端到端验证（2026-08）：多耗材颜色正确导入 Snapmaker Orca；内嵌机型预设让切片器开箱即显示 <em>Snapmaker U1 (0.4 nozzle)</em>。导出对话框：机型 → 喷嘴 → 工艺 → 耗材槽位 → 目标切片器，支持多分区选择 + 一键套用</li>
+<li><strong>OBJ 导出</strong>——经 MTL 材质分组实现逐面颜色，最多量化到 256 色</li>
+<li><strong>交互细节</strong>——3D 画笔光标环、Space 平移、进度条、崩溃诊断（JS 错误桥接）</li>
+<li><strong>i18n</strong>——中文（默认）/ 英文界面，选择持久化</li>
+</ul>
+<h3 id="计划中-">计划中 🗓</h3>
+<ul>
+<li><input disabled="" type="checkbox"> 调色板预设 + 颜色历史</li>
+<li><input disabled="" type="checkbox"> 同类模型批量处理</li>
+<li><input disabled="" type="checkbox"> OrcaSlicer 插件形态集成</li>
+</ul>
+<h2 id="技术栈">技术栈</h2>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>技术</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>前端</td>
+<td>React 18 + TypeScript</td>
+<td>声明式 UI</td>
+</tr>
+<tr>
+<td>3D</td>
+<td>Three.js + @react-three/fiber + three-mesh-bvh</td>
+<td>渲染 + 加速拾取</td>
+</tr>
+<tr>
+<td>状态</td>
+<td>Zustand（persist）</td>
+<td>应用状态 + 偏好持久化</td>
+</tr>
+<tr>
+<td>桌面</td>
+<td>Tauri 2</td>
+<td>原生窗口 + Rust 后端</td>
+</tr>
+<tr>
+<td>后端</td>
+<td>Rust</td>
+<td>网格 I/O、分割、上色、导出</td>
+</tr>
+<tr>
+<td>Rust 依赖</td>
+<td>nalgebra · parry3d · petgraph · kiddo · stl_io · quick-xml · zip</td>
+<td>几何、图、空间索引、解析</td>
+</tr>
+<tr>
+<td>构建/测试</td>
+<td>Vite 6 · Vitest + Testing Library · cargo test</td>
+<td><code>tsc --noEmit</code> / <code>vitest run</code> / <code>cargo test --lib</code></td>
+</tr>
+</tbody></table>
+<h3 id="架构示意">架构示意</h3>
+<pre class="mermaid">flowchart LR
+    subgraph FE[&quot;React + TypeScript&quot;]
+        UI[&quot;Toolbar · Viewport&lt;br/&gt;SeedPanel · ExportDialog&lt;br/&gt;SegmentsPanel · …&quot;]
+        STORE[&quot;Zustand store&lt;br/&gt;（持久化偏好）&quot;]
+        UI &lt;--&gt; STORE
+    end
+    subgraph BE[&quot;Rust 后端（Tauri 2）&quot;]
+        CMD[&quot;commands/&lt;br/&gt;mesh · segment · paint&lt;br/&gt;history · export · js_bridge&quot;]
+        SEG[&quot;segment/&lt;br/&gt;8 算法 + 种子/融合/eye 检测&quot;]
+        CORE[&quot;mesh/ · paint/ · export/&quot;]
+        CMD --&gt; SEG
+        CMD --&gt; CORE
+    end
+    UI -- &quot;Tauri invoke（IPC）&quot; --&gt; CMD
+</pre>
+<h2 id="项目结构">项目结构</h2>
+<pre><code>ColorYourModel/
+├── src/                          # React 前端 (TypeScript)
+│   ├── components/
+│   │   ├── Toolbar/              # 工具选择 + 参数
+│   │   ├── Viewport/             # 3D 视口（BVH 拾取、着色器高亮）
+│   │   ├── BrushSettings/        # 画笔参数
+│   │   ├── ColorPanel/           # 颜色选择
+│   │   ├── SegmentsPanel/        # 分区管理
+│   │   ├── StatusBar/            # 状态栏 + HUD 诊断
+│   │   ├── ExportDialog/         # 3MF 导出向导（预设库）
+│   │   ├── SeedPanel.tsx         # 种子分区：Auto（融合）/ Manual（生长）
+│   │   ├── IntelligentSegmentPanel.tsx  # 自动分割算法 + 参数
+│   │   └── DebugLogViewer.tsx    # 应用内崩溃诊断
+│   ├── hooks/                    # useMesh · usePaintTool · useTauriCommand · useHistory
+│   ├── store/appStore.ts         # Zustand 全局状态（持久化）
+│   ├── types/                    # mesh · segment · export 类型
+│   ├── utils/                    # 日志 · 分区调色板
+│   ├── i18n.ts                   # 中文（默认）/ 英文
+│   ├── App.tsx · main.tsx
+├── src-tauri/                    # Rust 后端
+│   ├── src/
+│   │   ├── commands/             # Tauri IPC 层（mesh/segment/paint/history/export）
+│   │   ├── mesh/                 # STL 加载 · 模型 + 邻接图 · kdtree
+│   │   ├── segment/              # 分割算法、种子、融合、eye 检测
+│   │   ├── paint/                # brush · spray · fill · smart snap · eraser
+│   │   ├── export/               # 3MF · OBJ · 切片器预设 · 量化
+│   │   └── lib.rs                # Tauri Builder + 命令注册
+│   ├── resources/presets/        # 生成的切片器预设（源自 OrcaSlicer vendor 树）
+│   └── Cargo.toml
+├── docs/                         # 索引见 docs/README.md
+├── tools/                        # 预设萃取与 3MF/fill 验证脚本
+├── examples/                     # 示例产物（paint_color_sample.3mf）
+├── legacy/                       # 已废弃的 Python 原型
+└── CHANGELOG.md
+</code></pre>
+<h2 id="快速开始">快速开始</h2>
+<h3 id="环境要求">环境要求</h3>
+<ul>
+<li><a href="https://nodejs.org/">Node.js</a> ≥ 18</li>
+<li><a href="https://www.rust-lang.org/tools/install">Rust</a> ≥ 1.70 + Cargo</li>
+<li><a href="https://v2.tauri.app/start/prerequisites/">Tauri 2 系统依赖</a>（WebView2 等）</li>
+</ul>
+<h3 id="运行">运行</h3>
+<pre><code class="language-bash">git clone https://github.com/ZackaryShen/ColorYourModel.git
+cd ColorYourModel
+
+npm install
+npm run tauri dev      # 首次启动编译 Rust 后端（约 2-3 分钟）
+</code></pre>
+<h3 id="测试与检查">测试与检查</h3>
+<pre><code class="language-bash">npx tsc --noEmit               # TypeScript
+npx vitest run                 # 前端单测
+cd src-tauri &amp;&amp; cargo test --lib   # 后端单测 + 回归测试
+</code></pre>
+<h3 id="调试日志">调试日志</h3>
+<pre><code class="language-bash"># Windows PowerShell
+$env:RUST_LOG=&quot;debug&quot;; npm run tauri dev
+
+# Linux / macOS
+RUST_LOG=debug npm run tauri dev
+</code></pre>
+<h2 id="文档">文档</h2>
+<p>完整索引见 <a href="docs/README.html">docs/README.md</a>。简版：</p>
+<ul>
+<li><a href="docs/algorithms/README.html">docs/algorithms/</a> —— 分割与检测算法（数学原理）</li>
+<li><a href="docs/technical/README.html">docs/technical/</a> —— 工程机制（拾取、高亮、撤销/重做、导出管线）</li>
+<li><a href="docs/cases/README.html">docs/cases/</a> —— 案例展示与验证记录</li>
+<li><code>docs/01…10-*.md</code> —— 中文工作文档（PRD、架构、缺陷清单、路线图、研究笔记）</li>
+<li><a href="CHANGELOG.html">CHANGELOG.md</a> —— 逐迭代变更记录</li>
+</ul>
+<p>本项目采用对抗式自循环开发（<code>PLAN → REFUTE → REVISE → IMPLEMENT → TEST → RETROSPECT</code>），各轮记录见 CHANGELOG。</p>
+<h2 id="路线图">路线图</h2>
+<blockquote>
+<p>尚无 release tag。状态以 PRD 验收标准衡量，不以&quot;代码写完&quot;衡量。</p>
+</blockquote>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> <strong>v0.1 核心闭环</strong> —— STL 导入 → 分割 → 上色 → 已验证的 3MF 导出（2026-08）<ul>
+<li>3MF 已在 Snapmaker Orca (U1) 端到端验证；fill 路由有回归测试保护</li>
+<li>待办：fill 簇真机复验（见 <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.md">docs/04</a>）</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> <strong>v0.2</strong> —— 调色板预设 + 颜色历史、体验打磨</li>
+<li><input disabled="" type="checkbox"> <strong>v1.0</strong> —— 批量处理、OrcaSlicer 插件形态集成</li>
+</ul>
+<h2 id="贡献">贡献</h2>
+<p>欢迎 Issue 和 PR。请遵循 <a href="https://www.conventionalcommits.org/">Conventional Commits</a>。提交即表示同意贡献内容按 AGPL-3.0 授权。</p>
+<h2 id="许可证">许可证</h2>
+<p>本项目基于 <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/LICENSE">GNU AGPL-3.0</a> 授权。</p>
+<p>Copyleft 保证衍生作品——包括网络服务形态——同样开源，同时任何人（含公司）都可自由使用、学习、修改和再分发。注：内置切片器预设萃取自 OrcaSlicer（AGPL-3.0）vendor 树，按 AGPL 派生数据处理。如需替代授权，请联系维护者。</p>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#功能特性">功能特性</a></li><li class="toc-h3"><a href="#当前可用-">当前可用 ✅</a></li><li class="toc-h3"><a href="#计划中-">计划中 🗓</a></li><li class="toc-h2"><a href="#技术栈">技术栈</a></li><li class="toc-h3"><a href="#架构示意">架构示意</a></li><li class="toc-h2"><a href="#项目结构">项目结构</a></li><li class="toc-h2"><a href="#快速开始">快速开始</a></li><li class="toc-h3"><a href="#环境要求">环境要求</a></li><li class="toc-h3"><a href="#运行">运行</a></li><li class="toc-h3"><a href="#测试与检查">测试与检查</a></li><li class="toc-h3"><a href="#调试日志">调试日志</a></li><li class="toc-h2"><a href="#文档">文档</a></li><li class="toc-h2"><a href="#路线图">路线图</a></li><li class="toc-h2"><a href="#贡献">贡献</a></li><li class="toc-h2"><a href="#许可证">许可证</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+        lineColor: "#64748b", fontSize: "14px",
+        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>
