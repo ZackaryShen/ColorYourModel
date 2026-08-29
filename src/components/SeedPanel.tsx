@@ -120,10 +120,9 @@ export function SeedPanel() {
   const { seedGrow, recommendSeeds, detectPlanarRegions, detectMultiViewRegions, detectCrossSectionRegions, detectEyeRegions, detectEyeRegionsAuto, fuseSegmentation, resetSegmentation } = useTauriCommand();
 
   // Iteration 66: give the panel an obvious "I'm done here" exit affordance.
-  // The × button on the title row and the Esc key both switch back to View —
-  // same semantics as IntelligentSegmentPanel uses for its modal. Seed / ghost /
-  // algorithm region state is left in the store so re-entering the Seed tool
-  // restores the in-progress workflow.
+  // The × button on the title row and the Esc key both switch back to View.
+  // Seed / ghost / algorithm region state is left in the store so re-entering
+  // the Seed tool restores the in-progress workflow.
   const closePanel = () => {
     log.info("SeedPanel", "closePanel → View");
     setSeedPickMode(false); // disarm before unmount so re-entering Seed tool doesn't start in Pick

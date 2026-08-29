@@ -2348,9 +2348,10 @@ function ProgressBar() {
   const segmentProgress = useAppStore((s) => s.segmentProgress);
   const segmentStage = useAppStore((s) => s.segmentStage);
   // The active algorithm kind for the current segmentation. Falls back to
-  // curvatureKMeans to match the toolbar's new import default. The persisted
-  // `lastSegmentKind` is updated by the panel before invoke, so any path that
-  // funnels through the panel will see the user's chosen algorithm here.
+  // curvatureKMeans to match the toolbar's import default. `lastSegmentKind`
+  // is a legacy persisted value: the Intelligent Segmentation panel that
+  // wrote it was retired (its role lives on in the SeedPanel auto-fuse flow),
+  // so this reflects whatever was persisted before that removal.
   const segmentKind = useAppStore((s) => s.lastSegmentKind) ?? "curvatureKMeans";
 
   if (!isLoading) return null;

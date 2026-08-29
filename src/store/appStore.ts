@@ -88,10 +88,12 @@ interface AppStore {
   loadingKind: "import" | "segment";
   segmentProgress: number;
   segmentStage: string;
-  // The algorithm kind the segmentation is currently running for. Set by
-  // both the panel (IntelligentSegmentPanel.run) and the import auto-segment
-  // (Toolbar.handleImport) before invoking, so the ProgressBar can pick the
-  // correct stage plan regardless of which flow triggered the work.
+  // The algorithm kind the segmentation is currently running for. The import
+  // auto-segment (Toolbar.handleImport) is the only live trigger since the
+  // Intelligent Segmentation panel was retired (its role lives on in the
+  // SeedPanel auto-fuse flow). NOTE: the setter currently has no callers --
+  // pre-existing dead state, kept until the progress-bar stage plan is
+  // revisited.
   segmentStageKind: AlgorithmKind | null;
 
   // Actions

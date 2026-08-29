@@ -8,7 +8,6 @@ import { useUndoRedo } from "../../hooks/useHistory";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 import { ExportDialog } from "../ExportDialog/ExportDialog";
-import { IntelligentSegmentPanel } from "../IntelligentSegmentPanel";
 import {
   buildAlgorithm,
   DEFAULT_ALGORITHM_PARAMS,
@@ -47,10 +46,11 @@ export function Toolbar() {
   const { loadModel, autoSegmentV2, undo, redo, historyState } = useTauriCommand();
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const [segmentPanelOpen, setSegmentPanelOpen] = useState(false);
-  // Persisted last segmentation choice: used both on import (so re-import
-  // auto-segments with the user's preferred algorithm instead of a hard-coded
-  // 30° dihedral) and when the panel is opened.
+  // Persisted last segmentation choice: used on import so re-import
+  // auto-segments with the user's last chosen algorithm instead of a
+  // hard-coded algorithm. (Written historically by the removed Intelligent
+  // Segmentation panel; the SegmentsPanel resegment picker keeps its own
+  // per-region choice.)
   const lastAlgorithmParams = useAppStore((s) => s.lastAlgorithmParams);
   const lastSegmentKind = useAppStore((s) => s.lastSegmentKind);
 
@@ -133,9 +133,6 @@ export function Toolbar() {
   return (
     <div style={styles.container}>
       {exportDialogOpen && <ExportDialog onClose={() => setExportDialogOpen(false)} />}
-      {segmentPanelOpen && (
-        <IntelligentSegmentPanel onClose={() => setSegmentPanelOpen(false)} />
-      )}
       <div style={styles.section}>
         <button onClick={handleImport} disabled={isLoading} className="cym-btn" style={styles.button} title={t("toolbar.import")}>
           {isLoading ? "..." : "📂"}
@@ -207,20 +204,6 @@ export function Toolbar() {
           title={t("toolbar.redo")}
         >
           ↷
-        </button>
-      </div>
-
-      <div style={styles.divider} />
-
-      <div style={styles.section}>
-        <button
-          onClick={() => setSegmentPanelOpen(true)}
-          disabled={!isLoaded}
-          className="cym-btn"
-          style={styles.button}
-          title={t("segmentPanel.toolbar")}
-        >
-          🤖
         </button>
       </div>
     </div>
