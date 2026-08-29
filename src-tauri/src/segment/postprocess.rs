@@ -28,6 +28,7 @@
 use std::collections::HashMap;
 
 use petgraph::visit::EdgeRef;
+use rayon::prelude::*;
 
 use crate::mesh::model::{MeshModel, Segment};
 
@@ -137,30 +138,37 @@ pub(crate) fn log_normalize(values: &[f32]) -> Vec<f32> {
 /// Dividing by the mesh maximum is the same noise-amplification trap as min-max
 /// on SDF: on a smooth model the largest local dihedral may be 3°, and stretching
 /// that to 1.0 turns tessellation jitter into the dominant clustering axis.
+///
+/// Each face reads only `normals` + the adjacency graph and writes its own
+/// slot, so the per-face map parallelises losslessly (rayon indexed collect
+/// keeps face order and per-face float ops unchanged).
 pub(crate) fn face_curvature(mesh: &MeshModel, normals: &[[f32; 3]]) -> Vec<f32> {
     let n = mesh.faces.len();
-    let mut curv = vec![0.0f32; n];
-    for fi in 0..n {
-        let node = petgraph::graph::NodeIndex::new(fi);
-        let mut sum = 0.0f32;
-        let mut cnt = 0u32;
-        let ni = normals[fi];
-        for edge in mesh.face_adjacency.edges(node) {
-            let nb = if edge.source() == node {
-                edge.target()
+    (0..n)
+        .into_par_iter()
+        .map(|fi| {
+            let node = petgraph::graph::NodeIndex::new(fi);
+            let mut sum = 0.0f32;
+            let mut cnt = 0u32;
+            let ni = normals[fi];
+            for edge in mesh.face_adjacency.edges(node) {
+                let nb = if edge.source() == node {
+                    edge.target()
+                } else {
+                    edge.source()
+                };
+                let nj = normals[nb.index()];
+                let dot = (ni[0] * nj[0] + ni[1] * nj[1] + ni[2] * nj[2]).clamp(-1.0, 1.0);
+                sum += dot.acos();
+                cnt += 1;
+            }
+            if cnt > 0 {
+                (sum / cnt as f32 / CURV_FULL_SCALE).min(1.0)
             } else {
-                edge.source()
-            };
-            let nj = normals[nb.index()];
-            let dot = (ni[0] * nj[0] + ni[1] * nj[1] + ni[2] * nj[2]).clamp(-1.0, 1.0);
-            sum += dot.acos();
-            cnt += 1;
-        }
-        if cnt > 0 {
-            curv[fi] = (sum / cnt as f32 / CURV_FULL_SCALE).min(1.0);
-        }
-    }
-    curv
+                0.0
+            }
+        })
+        .collect()
 }
 
 /// Assemble features from a curvature field and an optional pre-normalized

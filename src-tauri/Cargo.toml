@@ -30,6 +30,7 @@ zip = "2"
 
 # Algorithms
 petgraph = "0.6"
+rayon = "1"
 
 # Logging
 log = "0.4"

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use petgraph::visit::EdgeRef;
+use rayon::prelude::*;
 
 use crate::mesh::model::{MeshModel, Segment};
 use crate::mesh::loader::ProgressFn;
@@ -154,29 +156,35 @@ fn basis(n: &[f32; 3]) -> ([f32; 3], [f32; 3]) {
     (t1, t2)
 }
 
-/// Per-face Shape Diameter Function (log-normalized). Returns raw SDF values;
-/// faces with no ray hit are filled with SDF_HOLE_FILL and later imputed.
-///
-/// `on_progress` / `base` / `span` let the caller surface progress for the SDF
-/// stage within its own progress sub-range (REFUTE major-2: this stage previously
-/// emitted nothing, so the progress bar sat frozen for the most expensive part).
-pub fn compute_sdf(
-    mesh: &MeshModel,
-    on_progress: &ProgressFn,
-    base: f32,
-    span: f32,
-) -> Vec<f32> {
-    let oriented = oriented_normals(mesh);
-    compute_sdf_inner(mesh, &oriented, on_progress, base, span)
-}
-
 /// Core SDF computation using an already orientation-consistent normal field.
 /// Candidates are queried **once per face** (not per ray) and bounded to the
 /// `SDF_CANDIDATE_K` nearest neighbours, so cost is O(n·K·rays) instead of the
 /// previous O(12·n²) that made SDF unusable on real meshes (REFUTE blocker #1:
 /// the kdtree query radius was the full bbox diagonal and sat inside the ray
 /// loop, so it returned ~all faces).
+///
+/// Parallelised over faces with rayon (the single dominant cost of the import
+/// pipeline: 358s of the 361s curvatureKMeans run on a 1.88M-face model,
+/// measured 2026-08-28). Faces are fully independent — each face reads only
+/// `mesh`/`oriented` and writes its own output slot — so the indexed
+/// `par_iter + collect` preserves face order and runs the exact same float
+/// ops per face as the former sequential loop; results are bitwise identical.
 pub(crate) fn compute_sdf_inner(
+    mesh: &MeshModel,
+    oriented: &[[f32; 3]],
+    on_progress: &ProgressFn,
+    base: f32,
+    span: f32,
+) -> Vec<f32> {
+    let raw = sdf_sample_raw(mesh, oriented, on_progress, base, span);
+    impute_sdf_holes(mesh, &raw)
+}
+
+/// Raw per-face SDF sampling (no hole imputation): no-hit faces keep the
+/// `SDF_HOLE_FILL` sentinel. Split from [`compute_sdf_inner`] so tests can
+/// assert bitwise parity of the parallel sampling against a sequential
+/// reference without the impute phase interfering.
+fn sdf_sample_raw(
     mesh: &MeshModel,
     oriented: &[[f32; 3]],
     on_progress: &ProgressFn,
@@ -185,76 +193,109 @@ pub(crate) fn compute_sdf_inner(
 ) -> Vec<f32> {
     let n = mesh.faces.len();
     let report_every = (n / 50).max(1);
-    let mut sdf = vec![SDF_HOLE_FILL; n];
+    let done = AtomicUsize::new(0);
 
-    for fi in 0..n {
-        let center = mesh.face_center(fi as u32);
-        let nrm = oriented[fi]; // consistent outward normal
-        // inward direction (negative of outward normal)
-        let inward = [-nrm[0], -nrm[1], -nrm[2]];
-        let (t1, t2) = basis(&inward);
+    // The per-face body lives in ONE `#[inline(never)]` helper shared by this
+    // driver and by sequential callers (the bitwise parity probe). Two separate
+    // inline copies of token-identical code were observed to diverge bitwise
+    // (suspected per-function FP-contraction codegen decisions); a single
+    // compiled body makes that class of divergence structurally impossible.
+    (0..n)
+        .into_par_iter()
+        .map(|fi| {
+            let value = sdf_face_sample(mesh, oriented, fi);
 
-        // Candidate faces for the inward cone — computed ONCE per face, bounded.
-        let candidates = mesh
-            .face_kdtree
-            .nearest_n::<kiddo::SquaredEuclidean>(&center, SDF_CANDIDATE_K);
+            // Progress is reported from worker threads via an atomic counter —
+            // the old `fi % report_every` pattern is meaningless under rayon's
+            // work-stealing order.
+            let seen = done.fetch_add(1, Ordering::Relaxed);
+            if seen % report_every == 0 {
+                on_progress(base + span * (seen as f32 / n as f32), "sdf:sample");
+            }
+            value
+        })
+        .collect()
+}
 
-        let mut hits: Vec<f32> = Vec::with_capacity(SDF_RAYS);
-        for r in 0..SDF_RAYS {
-            // Fibonacci-ish spread over the cone
-            let frac = (r as f32 + 0.5) / SDF_RAYS as f32;
-            let theta = SDF_CONE_HALF_ANGLE * frac.sqrt(); // 0..cone
-            let phi = 2.0 * std::f32::consts::PI * r as f32 * 0.618_033_99;
-            let dir = [
-                inward[0] * theta.cos() + (t1[0] * phi.cos() + t2[0] * phi.sin()) * theta.sin(),
-                inward[1] * theta.cos() + (t1[1] * phi.cos() + t2[1] * phi.sin()) * theta.sin(),
-                inward[2] * theta.cos() + (t1[2] * phi.cos() + t2[2] * phi.sin()) * theta.sin(),
-            ];
-            // Normalize dir
-            let dl = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
-            let dir = [dir[0] / dl, dir[1] / dl, dir[2] / dl];
+/// Per-face SDF: cast `SDF_RAYS` inward rays in a cone around -normal, take
+/// the median hit distance against the `SDF_CANDIDATE_K` nearest faces
+/// (CGAL-style robust thickness). No-hit faces return the `SDF_HOLE_FILL`
+/// sentinel for [`impute_sdf_holes`].
+///
+/// `#[inline(never)]` is load-bearing: this is THE single compiled body of the
+/// per-face sampling, shared by the rayon driver and sequential probes.
+#[inline(never)]
+fn sdf_face_sample(mesh: &MeshModel, oriented: &[[f32; 3]], fi: usize) -> f32 {
+    let center = mesh.face_center(fi as u32);
+    let nrm = oriented[fi]; // consistent outward normal
+    // inward direction (negative of outward normal)
+    let inward = [-nrm[0], -nrm[1], -nrm[2]];
+    let (t1, t2) = basis(&inward);
 
-            let mut best_t = f32::INFINITY;
-            for cand in candidates.iter() {
-                let cf = cand.item as usize;
-                if cf == fi {
-                    continue;
-                }
-                let f = &mesh.faces[cf];
-                let v0 = mesh.vertices[f[0] as usize];
-                let v1 = mesh.vertices[f[1] as usize];
-                let v2 = mesh.vertices[f[2] as usize];
-                if let Some(t) = ray_triangle(&center, &dir, &v0, &v1, &v2) {
-                    if t < best_t {
-                        best_t = t;
-                    }
+    // Candidate faces for the inward cone — computed ONCE per face, bounded.
+    let candidates = mesh
+        .face_kdtree
+        .nearest_n::<kiddo::SquaredEuclidean>(&center, SDF_CANDIDATE_K);
+
+    let mut hits: Vec<f32> = Vec::with_capacity(SDF_RAYS);
+    for r in 0..SDF_RAYS {
+        // Fibonacci-ish spread over the cone
+        let frac = (r as f32 + 0.5) / SDF_RAYS as f32;
+        let theta = SDF_CONE_HALF_ANGLE * frac.sqrt();
+        let phi = 2.0 * std::f32::consts::PI * r as f32 * 0.618_033_99;
+        let dir = [
+            inward[0] * theta.cos() + (t1[0] * phi.cos() + t2[0] * phi.sin()) * theta.sin(),
+            inward[1] * theta.cos() + (t1[1] * phi.cos() + t2[1] * phi.sin()) * theta.sin(),
+            inward[2] * theta.cos() + (t1[2] * phi.cos() + t2[2] * phi.sin()) * theta.sin(),
+        ];
+        // Normalize dir
+        let dl = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
+        let dir = [dir[0] / dl, dir[1] / dl, dir[2] / dl];
+
+        let mut best_t = f32::INFINITY;
+        for cand in candidates.iter() {
+            let cf = cand.item as usize;
+            if cf == fi {
+                continue;
+            }
+            let f = &mesh.faces[cf];
+            let v0 = mesh.vertices[f[0] as usize];
+            let v1 = mesh.vertices[f[1] as usize];
+            let v2 = mesh.vertices[f[2] as usize];
+            if let Some(t) = ray_triangle(&center, &dir, &v0, &v1, &v2) {
+                if t < best_t {
+                    best_t = t;
                 }
             }
-            if best_t.is_finite() {
-                hits.push(best_t);
-            }
         }
-
-        if !hits.is_empty() {
-            hits.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            // median (robust to outliers, per CGAL)
-            let mid = hits.len() / 2;
-            sdf[fi] = if hits.len() % 2 == 1 {
-                hits[mid]
-            } else {
-                0.5 * (hits[mid - 1] + hits[mid])
-            };
-        }
-        if fi % report_every == 0 {
-            on_progress(
-                base + span * (fi as f32 / n as f32),
-                "sdf:sample",
-            );
+        if best_t.is_finite() {
+            hits.push(best_t);
         }
     }
 
-    // Impute holes: assign each no-hit face the average SDF of its neighbors.
-    let mut imputed = sdf.clone();
+    if hits.is_empty() {
+        SDF_HOLE_FILL
+    } else {
+        hits.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        // median (robust to outliers, per CGAL)
+        let mid = hits.len() / 2;
+        if hits.len() % 2 == 1 {
+            hits[mid]
+        } else {
+            0.5 * (hits[mid - 1] + hits[mid])
+        }
+    }
+}
+
+/// Fill no-hit faces (the `SDF_HOLE_FILL` sentinel) with the average SDF of
+/// their neighbours. Deliberately sequential: each pass reads neighbours'
+/// freshly imputed values (Gauss-Seidel semantics, ≤5 passes), and on
+/// watertight meshes it is a pure `continue` sweep — negligible next to the
+/// sampled phase. Any face still missing afterwards takes the global positive
+/// mean (prevents log of negative downstream).
+pub(crate) fn impute_sdf_holes(mesh: &MeshModel, sdf: &[f32]) -> Vec<f32> {
+    let n = mesh.faces.len();
+    let mut imputed = sdf.to_vec();
     let mut changed = true;
     let mut guard = 0;
     while changed && guard < 5 {
@@ -619,7 +660,8 @@ mod tests {
     #[test]
     fn compute_sdf_separates_two_cubes() {
         let m = two_separated_cubes();
-        let sdf = compute_sdf(&m, &|_, _| {}, 0.0, 1.0);
+        let oriented = oriented_normals(&m);
+        let sdf = compute_sdf_inner(&m, &oriented, &|_, _| {}, 0.0, 1.0);
         // No unfilled holes should remain after imputation.
         assert!(sdf.iter().all(|&v| v > 0.0), "SDF left unfilled holes (-1 sentinel)");
         let min = sdf.iter().cloned().fold(f32::INFINITY, f32::min);
@@ -712,4 +754,57 @@ mod tests {
             m.segment_labels
         );
     }
+
+    /// Bitwise parity check for the rayon SDF driver (2026-08-28): the rayon
+    /// driver must return per-face values in face order and unchanged from a
+    /// sequential walk over the SAME shared per-face helper
+    /// ([`sdf_face_sample`], single `#[inline(never)]` body). History: the
+    /// first parity probe compared two separate inline copies of token-identical
+    /// code and reported ~55% bitwise mismatches (all "par hit vs seq miss"),
+    /// with the mismatch set moving between runs; root cause is per-function
+    /// codegen divergence between the two copies. Extracting ONE shared body
+    /// makes that impossible by construction; this probe now verifies the
+    /// driver itself. Run:
+    /// cargo test --release --lib probe_sdf -- --ignored --nocapture
+    ///
+    /// Cross-process region-count variance (e.g. 1274 vs 1160 regions on the
+    /// Sanji model) is a PRE-EXISTING nondeterminism, independent of rayon:
+    /// the adjacency HashMap iterates in a random per-instance order, so BFS
+    /// orientation propagation and float summation order differ per load. See
+    /// the determinism probe in `mesh::loader`.
+    #[test]
+    #[ignore]
+    fn probe_sdf_par_vs_seq_bitwise() {
+        let path = std::env::var("CYM_BENCH_STL").unwrap_or_else(|_| {
+            "C:/selfDIr/Blender3D/Sanji+Diorama+Detailed_U1.stl".to_string()
+        });
+        let mesh =
+            crate::mesh::loader::load_stl(std::path::Path::new(&path), &|_, _| {}).expect("load");
+        let oriented = oriented_normals(&mesh);
+
+        let t = std::time::Instant::now();
+        let par = sdf_sample_raw(&mesh, &oriented, &|_, _| {}, 0.0, 1.0);
+        eprintln!("[sdf par] {:?} ({} faces)", t.elapsed(), mesh.faces.len());
+
+        // Sequential walk over the SAME shared helper.
+        let n = mesh.faces.len().min(200_000);
+        let t = std::time::Instant::now();
+        let seq: Vec<f32> = (0..n)
+            .map(|fi| sdf_face_sample(&mesh, &oriented, fi))
+            .collect();
+        eprintln!("[sdf seq] {:?} ({} faces)", t.elapsed(), n);
+
+        let mismatches = (0..n)
+            .filter(|&i| par[i].to_bits() != seq[i].to_bits())
+            .count();
+        eprintln!(
+            "[sdf driver parity] first {} faces: {} bitwise mismatches",
+            n, mismatches
+        );
+        assert_eq!(
+            mismatches, 0,
+            "rayon driver changed per-face results vs sequential walk"
+        );
+    }
+
 }

@@ -231,7 +231,7 @@ impl MeshModel {
     /// so the brush radius queries are unaffected; it only makes points distinct
     /// enough for kiddo to always find a split. Robust at ANY mesh resolution
     /// (unlike bumping BUCKET_SIZE, which a denser sphere would still exceed).
-    fn kd_point(mut p: [f32; 3], salt: u64) -> [f32; 3] {
+    pub(crate) fn kd_point(mut p: [f32; 3], salt: u64) -> [f32; 3] {
         let h = salt.wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let fx = (((h & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5) * 2.0e-4;
         let fy = ((((h >> 16) & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5) * 2.0e-4;
@@ -283,6 +283,7 @@ impl MeshModel {
 
     /// Build face adjacency graph using edge sharing
     pub fn build_adjacency(&mut self) {
+        let t_edge_map = std::time::Instant::now();
         let mut edge_to_face: HashMap<(u32, u32), Vec<u32>> = HashMap::new();
 
         for (face_idx, face) in self.faces.iter().enumerate() {
@@ -298,6 +299,7 @@ impl MeshModel {
                     .push(face_idx as u32);
             }
         }
+        let t_edge_map_done = t_edge_map.elapsed();
 
         self.face_adjacency = UnGraph::new_undirected();
         let face_count = self.faces.len() as u32;
@@ -330,7 +332,9 @@ impl MeshModel {
         }
 
         log::info!(
-            "[build_adjacency] unique_edges={}, manifold_edges={}, non_manifold={}, graph_nodes={}, graph_edges={}",
+            "[build_adjacency] edge_map={:?} graph_build={:?} unique_edges={}, manifold_edges={}, non_manifold={}, graph_nodes={}, graph_edges={}",
+            t_edge_map_done,
+            t_edge_map.elapsed(),
             edge_to_face.len(),
             edge_count,
             non_manifold,

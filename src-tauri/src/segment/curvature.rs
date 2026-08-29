@@ -17,6 +17,7 @@
 //! so the auto/manual label namespaces never collide.
 
 use petgraph::visit::EdgeRef;
+use rayon::prelude::*;
 
 use crate::mesh::loader::ProgressFn;
 use crate::mesh::model::{MeshModel, Segment};
@@ -24,7 +25,7 @@ use crate::segment::postprocess::{
     assemble_features, face_curvature, finalize_segments, log_normalize, refine_regions, Feature,
     DEFAULT_CREASE_DEG,
 };
-use crate::segment::sdf::{compute_sdf, oriented_normals};
+use crate::segment::sdf::{compute_sdf_inner, oriented_normals};
 
 /// Hard ceiling on cluster count to keep the label space safely under the manual
 /// offset and the k-means tractable.
@@ -32,38 +33,52 @@ const MAX_K: usize = 24;
 
 /// Light Laplacian smoothing of the normal field (noise robustness). New normal
 /// for a face = normalized sum of its own + neighbours' normals.
+///
+/// Jacobi-style two-buffer update (reads the input field only, writes its own
+/// slot), so the per-face map is order-independent; rayon's indexed collect
+/// keeps results identical to the sequential loop.
 fn smooth_normals(mesh: &MeshModel, normals: &[[f32; 3]]) -> Vec<[f32; 3]> {
     let n = mesh.faces.len();
-    let mut out = vec![[0.0f32; 3]; n];
-    for fi in 0..n {
-        let node = petgraph::graph::NodeIndex::new(fi);
-        let mut s = normals[fi];
-        for edge in mesh.face_adjacency.edges(node) {
-            let nb = if edge.source() == node {
-                edge.target()
+    (0..n)
+        .into_par_iter()
+        .map(|fi| {
+            let node = petgraph::graph::NodeIndex::new(fi);
+            let mut s = normals[fi];
+            for edge in mesh.face_adjacency.edges(node) {
+                let nb = if edge.source() == node {
+                    edge.target()
+                } else {
+                    edge.source()
+                };
+                let ni = nb.index();
+                s[0] += normals[ni][0];
+                s[1] += normals[ni][1];
+                s[2] += normals[ni][2];
+            }
+            let len = (s[0] * s[0] + s[1] * s[1] + s[2] * s[2]).sqrt();
+            if len > 1e-10 {
+                [s[0] / len, s[1] / len, s[2] / len]
             } else {
-                edge.source()
-            };
-            let ni = nb.index();
-            s[0] += normals[ni][0];
-            s[1] += normals[ni][1];
-            s[2] += normals[ni][2];
-        }
-        let len = (s[0] * s[0] + s[1] * s[1] + s[2] * s[2]).sqrt();
-        out[fi] = if len > 1e-10 {
-            [s[0] / len, s[1] / len, s[2] / len]
-        } else {
-            normals[fi]
-        };
-    }
-    out
+                normals[fi]
+            }
+        })
+        .collect()
 }
 
 /// Build per-face intrinsic features: curvature = mean |dihedral| to neighbours
 /// on a 90° full-scale; thickness = |SDF| (log-normalized) when `use_sdf`.
+///
+/// `normals` (smoothed) feeds the curvature axis; `oriented` (the raw
+/// BFS-consistent field BEFORE smoothing) feeds the SDF inward directions —
+/// this matches the pre-parallel behaviour, where the SDF wrapper computed its
+/// own fresh orientation field. The raw field is now computed once by the
+/// caller and shared, removing a duplicate O(n+E) BFS per pipeline run (2026-08-28
+/// adversarial review F9); the clone the caller keeps is ~22 MB on a 1.88M-face
+/// model, negligible next to the SDF sampling it accelerates.
 fn build_features(
     mesh: &MeshModel,
     normals: &[[f32; 3]],
+    oriented: &[[f32; 3]],
     use_sdf: bool,
     on_progress: &ProgressFn,
     base: f32,
@@ -72,7 +87,7 @@ fn build_features(
     let curv = face_curvature(mesh, normals);
     if use_sdf {
         // SDF owns the 0.0..0.3 progress sub-range of the curvature pipeline.
-        let thick = log_normalize(&compute_sdf(mesh, on_progress, base, span));
+        let thick = log_normalize(&compute_sdf_inner(mesh, oriented, on_progress, base, span));
         assemble_features(&curv, Some(&thick))
     } else {
         assemble_features(&curv, None)
@@ -183,11 +198,14 @@ pub fn segment_by_curvature_kmeans(
         return Vec::new();
     }
     on_progress(0.0, "curv:features");
-    let mut normals = oriented_normals(mesh);
+    // One BFS orientation pass, shared by the SDF (raw field) and the
+    // curvature axis (smoothed copy of it). The old code ran the BFS twice.
+    let oriented_raw = oriented_normals(mesh);
+    let mut normals = oriented_raw.clone();
     for _ in 0..smoothing_iters {
         normals = smooth_normals(mesh, &normals);
     }
-    let feats = build_features(mesh, &normals, use_sdf, on_progress, 0.0, 0.3);
+    let feats = build_features(mesh, &normals, &oriented_raw, use_sdf, on_progress, 0.0, 0.3);
     on_progress(0.3, "curv:kmeans");
 
     let k = if k_user == 0 { 6 } else { k_user as usize };

@@ -6,6 +6,24 @@
 
 ## [Unreleased]
 
+### Added — 导入管线并行化（2026-08-28）
+
+- **SDF 采样 rayon 并行**：`compute_sdf_inner` 逐面循环改 `into_par_iter`（每面只写自己的槽位，纯读共享网格/树），AtomicUsize 报进度。实测 94MB/187.9 万面 Sanji 模型：**导入后自动 curvatureKMeans 分割 360.8s → 34.35s（10.5×）**，其中 sdf:sample 阶段 ~358s → ~25s（16 逻辑核）
+- **特征计算并行**：`face_curvature` 与 `smooth_normals` 同样 rayon 化（Jacobi 双缓冲，读旧写新，顺序无关）
+- **oriented 法线 BFS 去重**：curvature 管线此前每次运行算两遍全局 BFS 定向（一次在 `curvature.rs`，一次藏在 `compute_sdf` 包装器内）；现计算一次、原始场与平滑场分离传参，行为逐位不变
+- **可测性重构**：`compute_sdf_inner` 拆为 `sdf_sample_raw`（并行采样）+ `impute_sdf_holes`（串行补洞，Gauss-Seidel 语义不可并行）；每面计算抽为唯一 `#[inline(never)]` 的 `sdf_face_sample`——rayon 驱动与顺序探针共用同一编译体，结构上排除"两份内联副本 codegen 分歧"
+- **证据基建**：`bench_import_stages`（分阶段耗时基准，CYM_BENCH_STL 可换模型）、`bench_kdtree_build_variants`、`probe_segmentation_determinism`、`probe_sdf_par_vs_seq_bitwise` 四个 ignored 探针入库
+- 实测数据（16 核，cargo test --release）：load_stl 2.88s（邻接 1.51s / kdtree 0.59s / parse 0.47s / 去重 0.30s）；to_dto 25ms + JSON 序列化 156ms（95MB，raw 二进制 IPC 列 backlog）
+- **证伪记录**：kiddo `ImmutableKdTree::new_from_slice` 批量构建实测 194.4s（逐点 add 仅 439ms，慢 ~440×，官方文档"perhaps prohibitively slower"属实）——换树方案被数据否决；邻接图并行化经分账（edge_map ~1.0s / petgraph ~1.4s）后撤销（类型被 17 个消费文件锁定，收益上限 ~1s，浮点求和序风险不值）
+- **既有非确定性确认**（与本轮无关但被本轮曝光）：跨进程区域数波动（1274/1160/1435/1420）源于 `oriented_normals` BFS 符号传播与 impute 依赖邻接 HashMap 随机迭代序；同进程内一切自洽。raw 采样已验证 rayon 驱动与顺序遍历**逐位一致**（200k 面 0 mismatch）
+
+### Removed — 工具栏智能分区入口（2026-08-28）
+
+- 删除左侧工具栏 🤖 按钮与 `IntelligentSegmentPanel`（其角色由 SeedPanel 的自动识别 + 融合生成流程继承，二者为历史继承关系）；删除面板专属 i18n 键（`segmentPanel.algo.*` 保留——SegmentsPanel 单区域重分割在用）
+- **产品语义变化**：该面板是全局分区算法选择的唯一写入者（`lastSegmentKind`/`lastAlgorithmParams`），移除后导入自动分区使用历史持久化值（无则 curvatureKMeans）；单区域重分割（SegmentsPanel）不受影响
+- 清理引用面板语义的过期注释（Toolbar/appStore/SeedPanel/Viewport）
+
+
 ### Verified — 3MF 导出端到端验证（2026-08-27）
 
 - 真实 STL 走通完整链路：CYM 分区/种子上色 → 导出 3MF → **Snapmaker Orca (U1)** 导入，多耗材颜色正确、工艺下拉框正确出现内嵌预设 `0.20 Standard @Snapmaker U1 (0.4 nozzle)`。先生确认"当前的3mf导出是合理的"
