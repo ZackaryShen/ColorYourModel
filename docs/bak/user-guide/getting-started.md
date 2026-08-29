@@ -25,14 +25,14 @@ For a packaged release build, use `npm run tauri build` (produces the installer 
 ## Your first colour job
 
 1. **Import** an STL white model (binary or ASCII). 1.5M-face-class models load in ~4 s with a progress bar.
-2. **Segment** — an automatic dihedral-angle segmentation (30° threshold) runs right after import; open **Intelligent Segmentation** to switch algorithm or tune parameters (see [Auto Segmentation](auto-segmentation.md)).
-3. **Refine regions** — place seeds and grow/fuse (see [Seed Tools](seed-tools.md)), or merge/split/rename regions in the Segments panel.
+2. **Segment** — nothing runs automatically; open the **Seed panel** and click fuse (or place seeds and grow) — see [Seed Tools](seed-tools.md). The model stays fully usable unsegmented: normal Fill clicks are radius-bounded.
+3. **Refine regions** — merge/split/rename regions in the Segments panel, or resegment a single one.
 4. **Paint** — pick a tool and go (see [Painting Tools](painting-tools.md)). Everything is undoable.
 5. **Export** a 3MF with machine presets, or an OBJ with per-face colours (see [Exporting](exporting.md)), and slice it in Snapmaker Orca / OrcaSlicer.
 
 ```mermaid
 flowchart LR
-    A["Import STL"] --> B["Segment<br/>(auto + seeds)"]
+    A["Import STL"] --> B["Segment<br/>(Seed panel: fuse / grow)"]
     B --> C["Refine regions"]
     C --> D["Paint"]
     D --> E["Export 3MF / OBJ"]

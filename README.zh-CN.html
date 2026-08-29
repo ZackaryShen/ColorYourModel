@@ -249,9 +249,8 @@ pre.mermaid.mermaid-offline::after {
 <p><strong>ColorYourModel（CYM）</strong> 是一款桌面应用（Tauri 2 + React + Three.js 前端，Rust 后端），解决一个实际的 3D 打印问题：白模 STL 只是一堆无结构的三角面片——没有&quot;分区&quot;概念，也没有颜色。高细节模型在切片软件里逐面片涂色基本不可行。</p>
 <p>CYM 自动把网格分割成语义化区域（头盔、皮肤、底座……），提供分区感知的上色工具做微调，最终导出符合规范的<strong>带逐分区颜色的 3MF</strong>，在 Snapmaker Orca / OrcaSlicer 中导入即为真实的耗材分色——已在真机端到端验证（2026-08，Snapmaker U1）。</p>
 <pre class="mermaid">flowchart TD
-    A[&quot;STL 白模导入&quot;] --&gt; B[&quot;自动分割&lt;br/&gt;8 种算法：二面角 · SDF · 曲率 K-Means · 图割 …&quot;]
-    B --&gt; C[&quot;种子工具&lt;br/&gt;推荐种子 → 手动生长 / 自动融合 · 眼睛检测&quot;]
-    C --&gt; D[&quot;手动微调&lt;br/&gt;合并 / 拆分 / 重命名 / 重分割&quot;]
+    A[&quot;STL 白模导入&quot;] --&gt; B[&quot;分割 —— 种子面板&lt;br/&gt;自动融合（平面 / 多视角 / 二面角 / 眼睛四通道投票）&lt;br/&gt;或手动种子生长 · 眼睛检测&quot;]
+    B --&gt; C[&quot;微调&lt;br/&gt;合并 / 拆分 / 重命名 / 重分割&quot;]
     D --&gt; E[&quot;上色&lt;br/&gt;画笔 · 喷漆 · 智能笔 · 填充 · 橡皮 · 吸管&lt;br/&gt;统一撤销/重做&quot;]
     E --&gt; F[&quot;导出&lt;br/&gt;3MF（颜色 + 机型预设）· OBJ（逐面颜色）&quot;]
     F --&gt; G[&quot;Snapmaker Orca / OrcaSlicer&lt;br/&gt;切片打印&quot;]
@@ -260,7 +259,7 @@ pre.mermaid.mermaid-offline::after {
 <h3 id="当前可用-">当前可用 ✅</h3>
 <ul>
 <li><strong>STL 导入</strong>——二进制 + ASCII，1.5M 面级模型约 4 秒加载，带进度事件</li>
-<li><strong>自动分割 v2</strong>——统一后端接口（<code>SegmentationAlgorithm</code>）含 8 种算法：二面角分裂、形态直径 SDF、曲率 K-Means、SDF 图割、凹度、凸分解、曲线骨架、FH 图。前端面板暴露其中 3 种，参数可调且持久化</li>
+<li><strong>分割</strong>——种子面板一键<strong>融合</strong>（平面 / 多视角 / 二面角 / 眼睛四通道投票）或手动种子生长；8 种可互换算法收于同一后端接口，经分区面板的「重分割」按区域选用。导入<strong>不做</strong>自动分割——分区生成是显式步骤</li>
 <li><strong>种子分区</strong>——推荐种子（平面 / 多视角 / 截面 / 显著性）、逐点手动生长、自动融合 + 小分区合并</li>
 <li><strong>眼睛区域检测</strong>——手办模型一键识别，全局检测（无需 ROI）</li>
 <li><strong>分区管理</strong>——合并 / 拆分 / 重命名分区，单区域重分割</li>

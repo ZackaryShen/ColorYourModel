@@ -8,11 +8,6 @@ import { useUndoRedo } from "../../hooks/useHistory";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 import { ExportDialog } from "../ExportDialog/ExportDialog";
-import {
-  buildAlgorithm,
-  DEFAULT_ALGORITHM_PARAMS,
-  type AlgorithmKind,
-} from "../../types/segment";
 
 const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.View, icon: "🖐️", i18nKey: "tool.view" },
@@ -43,17 +38,9 @@ export function Toolbar() {
   const setLoadingKind = useAppStore((s) => s.setLoadingKind);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
-  const { loadModel, autoSegmentV2, undo, redo, historyState } = useTauriCommand();
+  const { loadModel, undo, redo, historyState } = useTauriCommand();
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  // Persisted last segmentation choice: used on import so re-import
-  // auto-segments with the user's last chosen algorithm instead of a
-  // hard-coded algorithm. (Written historically by the removed Intelligent
-  // Segmentation panel; the SegmentsPanel resegment picker keeps its own
-  // per-region choice.)
-  const lastAlgorithmParams = useAppStore((s) => s.lastAlgorithmParams);
-  const lastSegmentKind = useAppStore((s) => s.lastSegmentKind);
-
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {
     const unlistenImport = listen<{ progress: number; stage: string }>(
@@ -101,29 +88,16 @@ export function Toolbar() {
       return;
     }
 
-    // Auto-segmentation failure must not be swallowed: the model IS loaded and
-    // usable, but with an empty segment list Fill has no partition to target
-    // and silently degrades to the brush (REFUTE, docs/06 §2.1 item 3). Say so
-    // explicitly instead of letting the user discover "Fill = brush" later.
-    try {
-      // Use the user's last chosen algorithm (persisted); default to curvatureKMeans
-      // to match the panel's default. Dihedral is fast but fails on smooth models
-      // (armor, organic shapes) where there are no sharp edges to split —
-      // curvatureKMeans + useSdf groups by intrinsic curvature and thickness,
-      // which handles smooth surfaces much better. The cost is a longer wall-clock
-      // run, but the async fix (06303ee) keeps the UI responsive and the new
-      // per-stage progress bar lets the user see it's working.
-      const segKind: AlgorithmKind = lastSegmentKind ?? "curvatureKMeans";
-      const segParams = lastAlgorithmParams ?? DEFAULT_ALGORITHM_PARAMS;
-      await autoSegmentV2(buildAlgorithm(segKind, segParams));
-      setImportProgress(1, t("toolbar.importComplete"));
-      setStatusMessage(t("toolbar.importComplete"));
-    } catch (e) {
-      log.error("Toolbar", "Auto-segment failed", { error: String(e) });
-      setStatusMessage(`${t("toolbar.segmentFailed")}: ${e}`);
-    } finally {
-      setLoading(false);
-    }
+    // No automatic segmentation on import (removed 2026-08-29): the fuse flow
+    // (SeedPanel → 融合生成) never consumed it — fuse_segmentation builds its
+    // own planar/multiview/dihedral vote channels and wipes existing labels
+    // before re-labelling — so the 30s+ of per-import compute was dead work.
+    // Region generation now starts explicitly from the Seed panel; Fill's
+    // normal click stays radius-bounded without regions (only Shift+click's
+    // explicit whole-region flood needs a partition).
+    setImportProgress(1, t("toolbar.importComplete"));
+    setStatusMessage(t("toolbar.importComplete"));
+    setLoading(false);
   };
 
   const handleExport = () => {

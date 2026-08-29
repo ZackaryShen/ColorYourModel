@@ -244,11 +244,17 @@ pre.mermaid.mermaid-offline::after {
 For the math and pipeline internals, see <a href="../algorithms/segmentation.html">Algorithms: Mesh Segmentation</a>.</p>
 </blockquote>
 <h2 id="where">Where</h2>
-<p>After importing a model (and at any time later) you can segment it:</p>
+<p>Import does <strong>not</strong> auto-segment — region generation is an explicit step, so a
+large model is browsable the moment it loads:</p>
 <ul>
-<li><strong>On import</strong>: a default dihedral-angle segmentation (30°) runs automatically.</li>
-<li><strong>Intelligent Segmentation panel</strong>: choose an algorithm and tune its parameters.</li>
+<li><strong>Seed panel (recommended)</strong> — 融合生成 / auto fuse: a planar + multiview +
+dihedral + eye four-channel vote produces semantic regions in one click (see
+<a href="seed-tools.html">Seed Tools</a>).</li>
+<li><strong>Segments panel</strong> — resegment a single existing region with a chosen
+algorithm and tuned parameters.</li>
 </ul>
+<p>The algorithms behind these entries are the same unified backend interface
+described below.</p>
 <h2 id="algorithms-in-the-panel">Algorithms in the panel</h2>
 <p>The panel exposes 3 of the 8 backend algorithms (<code>auto_segment_v2</code> IPC, all algorithms available to developers — see the <a href="../developer/ipc-reference.html">IPC Reference</a>):</p>
 <table>

@@ -44,57 +44,9 @@ export function useTauriCommand() {
   };
 
   /**
-   * Unified multi-algorithm auto-segmentation entry point. The UI sends a single
-   * `algorithm` enum (dihedral | shapeDiameter | curvatureKMeans) assembled by
-   * `buildAlgorithm`; the backend dispatches via `run_segmentation`. Replaces the
-   * old per-algorithm `autoSegment` / `autoSegmentSmart` hooks (REFUTE: avoid N
-   * near-identical commands and the configuration drift that caused).
-   *
-   * `preserveManual` keeps hand-drawn regions (labels >= MANUAL_SEGMENT_OFFSET)
-   * alive across a re-run: the algorithm still claims every face, then the
-   * backend paints the manual labels back on top. It defaults to true here AND
-   * in Rust so that any future call site that forgets the argument still fails
-   * safe. We deliberately did NOT gate this behind a confirm dialog — a dialog
-   * on the panel would not cover Toolbar.tsx's segment-on-import path, so manual
-   * regions would still vanish silently there.
-   */
-  const autoSegmentV2 = async (
-    algorithm: SegmentationAlgorithm,
-    preserveManual: boolean = true
-  ) => {
-    log.info("useTauriCommand", `autoSegmentV2(${algorithm.type})`, { preserveManual });
-    try {
-      setStatusMessage("智能分区中…");
-      const t0 = performance.now();
-      const result = await invoke<SegmentResult>("auto_segment_v2", {
-        algorithm,
-        preserveManual,
-      });
-      const dt = (performance.now() - t0).toFixed(1);
-
-      log.info("useTauriCommand", `autoSegmentV2 returned in ${dt}ms`, {
-        segmentCount: result.segments.length,
-        labelCount: result.segmentLabels.length,
-      });
-
-      // Update both segment metadata AND per-face labels in meshData. The
-      // backend no longer returns faceColors for auto-segmentation (it never
-      // changes them), so colours are left untouched — also avoids a multi-MB
-      // IPC payload and a full repaint (see commands/segment.rs REFUTE major-5).
-      updateSegmentLabels(result.segmentLabels, result.segments);
-      setStatusMessage(`分区完成：${result.segments.length} 个区域`);
-      return result.segments;
-    } catch (e) {
-      log.error("useTauriCommand", "autoSegmentV2 failed", { error: String(e) });
-      setStatusMessage(`分区失败：${e}`);
-      throw e;
-    }
-  };
-
-  /**
    * Wipe the current segmentation AND all face paint, returning the mesh to its
-   * freshly-loaded "uncoloured" state (iteration 57, B2). Unlike `autoSegmentV2`
-   * this DOES return the (neutral) face-colour buffer so the frontend repaints
+   * freshly-loaded "uncoloured" state (iteration 57, B2). Unlike the retired
+   * autoSegmentV2 hook this DOES return the (neutral) face-colour buffer so the frontend repaints
    * back to grey in one shot — no model reload needed.
    */
   const resetSegmentation = async (): Promise<void> => {
@@ -744,7 +696,6 @@ export function useTauriCommand() {
 
   return {
     loadModel,
-    autoSegmentV2,
     export3mf,
     exportObj,
     paintSegmentFace,

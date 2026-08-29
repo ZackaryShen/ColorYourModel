@@ -249,9 +249,8 @@ pre.mermaid.mermaid-offline::after {
 <p><strong>ColorYourModel (CYM)</strong> is a desktop app (Tauri 2 + React + Three.js frontend, Rust backend) that solves a practical 3D-printing problem: white-model STL files are just a pile of unstructured triangles — no &quot;regions&quot;, no colour. Painting such a model triangle-by-triangle in a slicer is hopeless for anything detailed.</p>
 <p>CYM automatically segments the mesh into semantic regions (helmet, skin, base…), lets you refine and paint them with region-aware tools, and exports a standards-compliant <strong>3MF with per-region colours</strong> that imports into Snapmaker Orca / OrcaSlicer as real filament assignments — verified end-to-end on real hardware (Aug 2026, Snapmaker U1).</p>
 <pre class="mermaid">flowchart TD
-    A[&quot;STL white model&quot;] --&gt; B[&quot;Auto segmentation&lt;br/&gt;8 algorithms: dihedral · SDF · curvature k-means · graph-cut …&quot;]
-    B --&gt; C[&quot;Seed tools&lt;br/&gt;recommend seeds → manual grow / auto fuse · eye detection&quot;]
-    C --&gt; D[&quot;Manual refinement&lt;br/&gt;merge / split / rename / resegment&quot;]
+    A[&quot;STL white model&quot;] --&gt; B[&quot;Segment — Seed panel&lt;br/&gt;auto fuse (planar / multiview / dihedral / eye vote)&lt;br/&gt;or manual seed grow · eye detection&quot;]
+    B --&gt; C[&quot;Refine&lt;br/&gt;merge / split / rename / resegment&quot;]
     D --&gt; E[&quot;Painting&lt;br/&gt;brush · spray · smart brush · fill · eraser · picker&lt;br/&gt;unified undo &amp; redo&quot;]
     E --&gt; F[&quot;Export&lt;br/&gt;3MF (colour + machine presets) · OBJ (per-face colours)&quot;]
     F --&gt; G[&quot;Snapmaker Orca / OrcaSlicer&lt;br/&gt;slice &amp; print&quot;]
@@ -260,7 +259,7 @@ pre.mermaid.mermaid-offline::after {
 <h3 id="working-today-">Working today ✅</h3>
 <ul>
 <li><strong>STL import</strong> — binary + ASCII, ~4 s for 1.5M-face-class models, with progress events</li>
-<li><strong>Auto segmentation v2</strong> — one unified backend interface (<code>SegmentationAlgorithm</code>) with 8 algorithms: dihedral split, shape-diameter SDF, curvature k-means, SDF graph-cut, concavity, convex decomposition, curve skeleton, FH graph. The UI panel exposes 3 of them with tunable, persisted parameters</li>
+<li><strong>Segmentation</strong> — SeedPanel one-click <strong>fuse</strong> (planar / multiview / dihedral / eye four-channel vote) or manual seed growing; 8 interchangeable algorithms behind one backend interface, exposed per-region through the SegmentsPanel resegment picker. Import does <strong>not</strong> auto-segment — region generation is an explicit step</li>
 <li><strong>Seed-based segmentation</strong> — recommended seeds (planar / multiview / cross-section / saliency), point-by-point manual grow, and auto fuse with tiny-region merging</li>
 <li><strong>Eye-region detection</strong> — one-click detection for figure models, global (no ROI needed)</li>
 <li><strong>Region management</strong> — merge / split / rename regions, resegment a single region</li>

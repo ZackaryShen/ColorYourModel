@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Removed — 导入时自动分割（2026-08-29）
+
+- 导入不再自动运行 curvatureKMeans 等分割算法：事实链验证 `fuse_segmentation` 从不消费导入分割——它自建平面/多视角/二面角三通道投票，并在融合前显式清空全部已有标签。导入分割（大模型 ~34s）是纯死工作，用户点「融合生成」即被丢弃
+- **行为变化**：导入后模型为无分区状态（全部 label 0）——SeedPanel「融合生成」是生成分区的入口；Fill 普通点击为半径限定填充（无需分区），Shift+click 整区洪水在无分区时会淹没全模型（显式操作）；眼睛检测全局模式无需分区（ROI 拾取模式需先融合出分区）
+- 清理：Toolbar 导入流程、死 hook `autoSegmentV2`、孤儿 i18n 键 `toolbar.segmentFailed`、appStore 过期注释（`lastSegmentKind`/`lastAlgorithmParams` 降级为只读遗留字段）
+- 导入即完成的加载语义：大模型导入从 ~34s 降回 ~3s（加载本身）
+
+
 ### Added — 导入管线并行化（2026-08-28）
 
 - **SDF 采样 rayon 并行**：`compute_sdf_inner` 逐面循环改 `into_par_iter`（每面只写自己的槽位，纯读共享网格/树），AtomicUsize 报进度。实测 94MB/187.9 万面 Sanji 模型：**导入后自动 curvatureKMeans 分割 360.8s → 34.35s（10.5×）**，其中 sdf:sample 阶段 ~358s → ~25s（16 逻辑核）

@@ -242,6 +242,30 @@ pre.mermaid.mermaid-offline::after {
 <p>所有重要变更均记录于此文件。格式基于 <a href="https://keepachangelog.com/">Keep a Changelog</a>。</p>
 <hr>
 <h2 id="unreleased">[Unreleased]</h2>
+<h3 id="removed--导入时自动分割2026-08-29">Removed — 导入时自动分割（2026-08-29）</h3>
+<ul>
+<li>导入不再自动运行 curvatureKMeans 等分割算法：事实链验证 <code>fuse_segmentation</code> 从不消费导入分割——它自建平面/多视角/二面角三通道投票，并在融合前显式清空全部已有标签。导入分割（大模型 ~34s）是纯死工作，用户点「融合生成」即被丢弃</li>
+<li><strong>行为变化</strong>：导入后模型为无分区状态（全部 label 0）——SeedPanel「融合生成」是生成分区的入口；Fill 普通点击为半径限定填充（无需分区），Shift+click 整区洪水在无分区时会淹没全模型（显式操作）；眼睛检测全局模式无需分区（ROI 拾取模式需先融合出分区）</li>
+<li>清理：Toolbar 导入流程、死 hook <code>autoSegmentV2</code>、孤儿 i18n 键 <code>toolbar.segmentFailed</code>、appStore 过期注释（<code>lastSegmentKind</code>/<code>lastAlgorithmParams</code> 降级为只读遗留字段）</li>
+<li>导入即完成的加载语义：大模型导入从 ~34s 降回 ~3s（加载本身）</li>
+</ul>
+<h3 id="added--导入管线并行化2026-08-28">Added — 导入管线并行化（2026-08-28）</h3>
+<ul>
+<li><strong>SDF 采样 rayon 并行</strong>：<code>compute_sdf_inner</code> 逐面循环改 <code>into_par_iter</code>（每面只写自己的槽位，纯读共享网格/树），AtomicUsize 报进度。实测 94MB/187.9 万面 Sanji 模型：<strong>导入后自动 curvatureKMeans 分割 360.8s → 34.35s（10.5×）</strong>，其中 sdf:sample 阶段 ~358s → ~25s（16 逻辑核）</li>
+<li><strong>特征计算并行</strong>：<code>face_curvature</code> 与 <code>smooth_normals</code> 同样 rayon 化（Jacobi 双缓冲，读旧写新，顺序无关）</li>
+<li><strong>oriented 法线 BFS 去重</strong>：curvature 管线此前每次运行算两遍全局 BFS 定向（一次在 <code>curvature.rs</code>，一次藏在 <code>compute_sdf</code> 包装器内）；现计算一次、原始场与平滑场分离传参，行为逐位不变</li>
+<li><strong>可测性重构</strong>：<code>compute_sdf_inner</code> 拆为 <code>sdf_sample_raw</code>（并行采样）+ <code>impute_sdf_holes</code>（串行补洞，Gauss-Seidel 语义不可并行）；每面计算抽为唯一 <code>#[inline(never)]</code> 的 <code>sdf_face_sample</code>——rayon 驱动与顺序探针共用同一编译体，结构上排除&quot;两份内联副本 codegen 分歧&quot;</li>
+<li><strong>证据基建</strong>：<code>bench_import_stages</code>（分阶段耗时基准，CYM_BENCH_STL 可换模型）、<code>bench_kdtree_build_variants</code>、<code>probe_segmentation_determinism</code>、<code>probe_sdf_par_vs_seq_bitwise</code> 四个 ignored 探针入库</li>
+<li>实测数据（16 核，cargo test --release）：load_stl 2.88s（邻接 1.51s / kdtree 0.59s / parse 0.47s / 去重 0.30s）；to_dto 25ms + JSON 序列化 156ms（95MB，raw 二进制 IPC 列 backlog）</li>
+<li><strong>证伪记录</strong>：kiddo <code>ImmutableKdTree::new_from_slice</code> 批量构建实测 194.4s（逐点 add 仅 439ms，慢 ~440×，官方文档&quot;perhaps prohibitively slower&quot;属实）——换树方案被数据否决；邻接图并行化经分账（edge_map ~1.0s / petgraph ~1.4s）后撤销（类型被 17 个消费文件锁定，收益上限 ~1s，浮点求和序风险不值）</li>
+<li><strong>既有非确定性确认</strong>（与本轮无关但被本轮曝光）：跨进程区域数波动（1274/1160/1435/1420）源于 <code>oriented_normals</code> BFS 符号传播与 impute 依赖邻接 HashMap 随机迭代序；同进程内一切自洽。raw 采样已验证 rayon 驱动与顺序遍历<strong>逐位一致</strong>（200k 面 0 mismatch）</li>
+</ul>
+<h3 id="removed--工具栏智能分区入口2026-08-28">Removed — 工具栏智能分区入口（2026-08-28）</h3>
+<ul>
+<li>删除左侧工具栏 🤖 按钮与 <code>IntelligentSegmentPanel</code>（其角色由 SeedPanel 的自动识别 + 融合生成流程继承，二者为历史继承关系）；删除面板专属 i18n 键（<code>segmentPanel.algo.*</code> 保留——SegmentsPanel 单区域重分割在用）</li>
+<li><strong>产品语义变化</strong>：该面板是全局分区算法选择的唯一写入者（<code>lastSegmentKind</code>/<code>lastAlgorithmParams</code>），移除后导入自动分区使用历史持久化值（无则 curvatureKMeans）；单区域重分割（SegmentsPanel）不受影响</li>
+<li>清理引用面板语义的过期注释（Toolbar/appStore/SeedPanel/Viewport）</li>
+</ul>
 <h3 id="verified--3mf-导出端到端验证2026-08-27">Verified — 3MF 导出端到端验证（2026-08-27）</h3>
 <ul>
 <li>真实 STL 走通完整链路：CYM 分区/种子上色 → 导出 3MF → <strong>Snapmaker Orca (U1)</strong> 导入，多耗材颜色正确、工艺下拉框正确出现内嵌预设 <code>0.20 Standard @Snapmaker U1 (0.4 nozzle)</code>。先生确认&quot;当前的3mf导出是合理的&quot;</li>
@@ -387,7 +411,7 @@ pre.mermaid.mermaid-offline::after {
 <p><strong>改动文件</strong>：<code>Viewport.tsx</code>（BrushCursor, Space handler, SegmentOutline）</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#unreleased">[Unreleased]</a></li><li class="toc-h3"><a href="#verified--3mf-导出端到端验证2026-08-27">Verified — 3MF 导出端到端验证（2026-08-27）</a></li><li class="toc-h3"><a href="#added--文档骨架--双语-readme2026-08-27">Added — 文档骨架 + 双语 README（2026-08-27）</a></li><li class="toc-h3"><a href="#changed--许可证-mit--agpl-30-only2026-08-27">Changed — 许可证 MIT → AGPL-3.0-only（2026-08-27）</a></li><li class="toc-h3"><a href="#fixed--填充目标区域权威化2026-08-27">Fixed — 填充目标区域权威化（2026-08-27）</a></li><li class="toc-h3"><a href="#added--3mf-导出预设库-2026-08-07-2e4e070">Added — 3MF 导出预设库 (2026-08-07, 2e4e070)</a></li><li class="toc-h3"><a href="#added--智能分区前端面板2026-08-07-本轮提交">Added — 智能分区前端面板（2026-08-07, 本轮提交）</a></li><li class="toc-h3"><a href="#changed--着色器分区高亮方案-b2026-08-08-eea2fd1--485aa7d--f192f98">Changed — 着色器分区高亮（方案 B，2026-08-08, eea2fd1 + 485aa7d + f192f98）</a></li><li class="toc-h3"><a href="#fixed--stl-导入崩溃2026-08-09-69a17ea">Fixed — STL 导入崩溃（2026-08-09, 69a17ea）</a></li><li class="toc-h3"><a href="#added--v02-功能增强">Added — v0.2 功能增强</a></li><li class="toc-h3"><a href="#changed">Changed</a></li><li class="toc-h3"><a href="#fixed">Fixed</a></li><li class="toc-h2"><a href="#010--2024-12-初始版本">[0.1.0] — 2024-12 (初始版本)</a></li><li class="toc-h3"><a href="#added">Added</a></li><li class="toc-h2"><a href="#对抗式开发日志">对抗式开发日志</a></li><li class="toc-h3"><a href="#round-7-8--手动分区画笔">Round 7-8 — 手动分区画笔</a></li><li class="toc-h3"><a href="#round-6--性能优化--法线合并">Round 6 — 性能优化 + 法线合并</a></li><li class="toc-h3"><a href="#round-5--小分区合并--进度条">Round 5 — 小分区合并 + 进度条</a></li><li class="toc-h3"><a href="#round-4--i18n--喷漆差异化">Round 4 — i18n + 喷漆差异化</a></li><li class="toc-h3"><a href="#round-3--画笔光标--space-平移--分区边框">Round 3 — 画笔光标 + Space 平移 + 分区边框</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#unreleased">[Unreleased]</a></li><li class="toc-h3"><a href="#removed--导入时自动分割2026-08-29">Removed — 导入时自动分割（2026-08-29）</a></li><li class="toc-h3"><a href="#added--导入管线并行化2026-08-28">Added — 导入管线并行化（2026-08-28）</a></li><li class="toc-h3"><a href="#removed--工具栏智能分区入口2026-08-28">Removed — 工具栏智能分区入口（2026-08-28）</a></li><li class="toc-h3"><a href="#verified--3mf-导出端到端验证2026-08-27">Verified — 3MF 导出端到端验证（2026-08-27）</a></li><li class="toc-h3"><a href="#added--文档骨架--双语-readme2026-08-27">Added — 文档骨架 + 双语 README（2026-08-27）</a></li><li class="toc-h3"><a href="#changed--许可证-mit--agpl-30-only2026-08-27">Changed — 许可证 MIT → AGPL-3.0-only（2026-08-27）</a></li><li class="toc-h3"><a href="#fixed--填充目标区域权威化2026-08-27">Fixed — 填充目标区域权威化（2026-08-27）</a></li><li class="toc-h3"><a href="#added--3mf-导出预设库-2026-08-07-2e4e070">Added — 3MF 导出预设库 (2026-08-07, 2e4e070)</a></li><li class="toc-h3"><a href="#added--智能分区前端面板2026-08-07-本轮提交">Added — 智能分区前端面板（2026-08-07, 本轮提交）</a></li><li class="toc-h3"><a href="#changed--着色器分区高亮方案-b2026-08-08-eea2fd1--485aa7d--f192f98">Changed — 着色器分区高亮（方案 B，2026-08-08, eea2fd1 + 485aa7d + f192f98）</a></li><li class="toc-h3"><a href="#fixed--stl-导入崩溃2026-08-09-69a17ea">Fixed — STL 导入崩溃（2026-08-09, 69a17ea）</a></li><li class="toc-h3"><a href="#added--v02-功能增强">Added — v0.2 功能增强</a></li><li class="toc-h3"><a href="#changed">Changed</a></li><li class="toc-h3"><a href="#fixed">Fixed</a></li><li class="toc-h2"><a href="#010--2024-12-初始版本">[0.1.0] — 2024-12 (初始版本)</a></li><li class="toc-h3"><a href="#added">Added</a></li><li class="toc-h2"><a href="#对抗式开发日志">对抗式开发日志</a></li><li class="toc-h3"><a href="#round-7-8--手动分区画笔">Round 7-8 — 手动分区画笔</a></li><li class="toc-h3"><a href="#round-6--性能优化--法线合并">Round 6 — 性能优化 + 法线合并</a></li><li class="toc-h3"><a href="#round-5--小分区合并--进度条">Round 5 — 小分区合并 + 进度条</a></li><li class="toc-h3"><a href="#round-4--i18n--喷漆差异化">Round 4 — i18n + 喷漆差异化</a></li><li class="toc-h3"><a href="#round-3--画笔光标--space-平移--分区边框">Round 3 — 画笔光标 + Space 平移 + 分区边框</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

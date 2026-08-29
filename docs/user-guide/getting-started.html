@@ -260,13 +260,13 @@ npm run tauri dev      # first run compiles the Rust backend (~2-3 min)
 <h2 id="your-first-colour-job">Your first colour job</h2>
 <ol>
 <li><strong>Import</strong> an STL white model (binary or ASCII). 1.5M-face-class models load in ~4 s with a progress bar.</li>
-<li><strong>Segment</strong> — an automatic dihedral-angle segmentation (30° threshold) runs right after import; open <strong>Intelligent Segmentation</strong> to switch algorithm or tune parameters (see <a href="auto-segmentation.html">Auto Segmentation</a>).</li>
-<li><strong>Refine regions</strong> — place seeds and grow/fuse (see <a href="seed-tools.html">Seed Tools</a>), or merge/split/rename regions in the Segments panel.</li>
+<li><strong>Segment</strong> — nothing runs automatically; open the <strong>Seed panel</strong> and click fuse (or place seeds and grow) — see <a href="seed-tools.html">Seed Tools</a>. The model stays fully usable unsegmented: normal Fill clicks are radius-bounded.</li>
+<li><strong>Refine regions</strong> — merge/split/rename regions in the Segments panel, or resegment a single one.</li>
 <li><strong>Paint</strong> — pick a tool and go (see <a href="painting-tools.html">Painting Tools</a>). Everything is undoable.</li>
 <li><strong>Export</strong> a 3MF with machine presets, or an OBJ with per-face colours (see <a href="exporting.html">Exporting</a>), and slice it in Snapmaker Orca / OrcaSlicer.</li>
 </ol>
 <pre class="mermaid">flowchart LR
-    A[&quot;Import STL&quot;] --&gt; B[&quot;Segment&lt;br/&gt;(auto + seeds)&quot;]
+    A[&quot;Import STL&quot;] --&gt; B[&quot;Segment&lt;br/&gt;(Seed panel: fuse / grow)&quot;]
     B --&gt; C[&quot;Refine regions&quot;]
     C --&gt; D[&quot;Paint&quot;]
     D --&gt; E[&quot;Export 3MF / OBJ&quot;]

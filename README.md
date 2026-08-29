@@ -14,9 +14,8 @@ CYM automatically segments the mesh into semantic regions (helmet, skin, base…
 
 ```mermaid
 flowchart TD
-    A["STL white model"] --> B["Auto segmentation<br/>8 algorithms: dihedral · SDF · curvature k-means · graph-cut …"]
-    B --> C["Seed tools<br/>recommend seeds → manual grow / auto fuse · eye detection"]
-    C --> D["Manual refinement<br/>merge / split / rename / resegment"]
+    A["STL white model"] --> B["Segment — Seed panel<br/>auto fuse (planar / multiview / dihedral / eye vote)<br/>or manual seed grow · eye detection"]
+    B --> C["Refine<br/>merge / split / rename / resegment"]
     D --> E["Painting<br/>brush · spray · smart brush · fill · eraser · picker<br/>unified undo & redo"]
     E --> F["Export<br/>3MF (colour + machine presets) · OBJ (per-face colours)"]
     F --> G["Snapmaker Orca / OrcaSlicer<br/>slice & print"]
@@ -27,7 +26,7 @@ flowchart TD
 ### Working today ✅
 
 - **STL import** — binary + ASCII, ~4 s for 1.5M-face-class models, with progress events
-- **Auto segmentation v2** — one unified backend interface (`SegmentationAlgorithm`) with 8 algorithms: dihedral split, shape-diameter SDF, curvature k-means, SDF graph-cut, concavity, convex decomposition, curve skeleton, FH graph. The UI panel exposes 3 of them with tunable, persisted parameters
+- **Segmentation** — SeedPanel one-click **fuse** (planar / multiview / dihedral / eye four-channel vote) or manual seed growing; 8 interchangeable algorithms behind one backend interface, exposed per-region through the SegmentsPanel resegment picker. Import does **not** auto-segment — region generation is an explicit step
 - **Seed-based segmentation** — recommended seeds (planar / multiview / cross-section / saliency), point-by-point manual grow, and auto fuse with tiny-region merging
 - **Eye-region detection** — one-click detection for figure models, global (no ROI needed)
 - **Region management** — merge / split / rename regions, resegment a single region

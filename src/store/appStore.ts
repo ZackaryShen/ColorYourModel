@@ -71,11 +71,11 @@ interface AppStore {
   // Last export dialog selection (persisted so re-exports don't re-pick).
   lastExportSelection: PersistedExportSelection | null;
 
-  // Intelligent-segmentation parameters (persisted so the panel opens where the
-  // user left it, and so model import can auto-segment with the user's last
-  // choice instead of a hard-coded 30° dihedral). `lastAlgorithmParams` keeps a
-  // per-kind record so switching algorithms in the dialog and back does not lose
-  // tuned sliders; `lastSegmentKind` remembers which algorithm was last run.
+  // Legacy persisted segmentation preference. Writers are all gone (the
+  // IntelligentSegmentPanel was removed, then import-time auto-segmentation —
+  // the fuse flow never consumed it); the fields stay so old localStorage
+  // state still deserializes and Viewport's progress-bar stage plan keeps its
+  // fallback. Do not new code depend on these.
   lastAlgorithmParams: AlgorithmParams | null;
   lastSegmentKind: AlgorithmKind | null;
 

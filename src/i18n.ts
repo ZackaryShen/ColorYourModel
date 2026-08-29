@@ -22,7 +22,6 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolbar.importComplete": { zh: "导入完成", en: "Import complete" },
   "toolbar.importFailed": { zh: "导入失败", en: "Import failed" },
   "toolbar.startImport": { zh: "开始导入…", en: "Starting import…" },
-  "toolbar.segmentFailed": { zh: "模型已加载，但自动分区失败——填充将降级为画笔", en: "Model loaded, but auto-segmentation failed — Fill degrades to brush" },
 
   // Toolbar — tool tooltips (differentiated descriptions)
   "tool.view": { zh: "🖐️ 查看/导航 — 左键旋转、右键平移、中键缩放；选工具后按住 Alt 也可旋转", en: "🖐️ View / Navigate — left rotate, right pan, middle zoom; hold Alt to rotate while a tool is active" },

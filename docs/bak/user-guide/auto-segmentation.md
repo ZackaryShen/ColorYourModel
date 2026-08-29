@@ -5,10 +5,17 @@
 
 ## Where
 
-After importing a model (and at any time later) you can segment it:
+Import does **not** auto-segment — region generation is an explicit step, so a
+large model is browsable the moment it loads:
 
-- **On import**: a default dihedral-angle segmentation (30°) runs automatically.
-- **Intelligent Segmentation panel**: choose an algorithm and tune its parameters.
+- **Seed panel (recommended)** — 融合生成 / auto fuse: a planar + multiview +
+  dihedral + eye four-channel vote produces semantic regions in one click (see
+  [Seed Tools](seed-tools.md)).
+- **Segments panel** — resegment a single existing region with a chosen
+  algorithm and tuned parameters.
+
+The algorithms behind these entries are the same unified backend interface
+described below.
 
 ## Algorithms in the panel
 
