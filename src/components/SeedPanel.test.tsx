@@ -200,3 +200,22 @@ describe("SeedPanel.onClose — iteration 66「无法退出」修复", () => {
     expect(useAppStore.getState().activeTool).toBe("view");
   });
 });
+
+describe("SeedPanel 折角滑杆 — 2° 下限回归（godzilla fuse 探针）", () => {
+  // 后端 fuse 在 2° 才能把光滑雕塑体（哥斯拉 86.7% 巨区 → 13%）分出
+  // 头/四肢/尾巴，见 segment::godzilla_soft_fold_feasibility /
+  // fuse_floor_e2e。滑杆若退回 min=5，雕塑类模型会重新退化成一个巨区。
+  it("折角滑杆 min=2 且默认值 2°", () => {
+    // 前序失败用例的 /生长/ 选择器会误点「手动（生长）」模式 Tab 并把
+    // segmentMode 泄漏为 manual；本用例只关心 auto 模式下的滑杆，显式归位。
+    useAppStore.setState({ segmentMode: "auto" });
+    const { container } = render(<SeedPanel />);
+    const ranges = Array.from(
+      container.querySelectorAll('input[type="range"]')
+    ) as HTMLInputElement[];
+    const fold = ranges.find((r) => r.min === "2");
+    expect(fold).toBeTruthy();
+    expect(fold!.max).toBe("35");
+    expect(fold!.value).toBe("2");
+  });
+});

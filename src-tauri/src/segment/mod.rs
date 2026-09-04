@@ -635,3 +635,701 @@ mod stl_comparison_harness {
         }
     }
 }
+
+/// Godzilla fuse-path diagnosis. The fold-angle backbone under-segments smooth
+/// sculpts (the whole body floods into one region at 5°), so this probe measures
+/// WHY: the raw edge-angle histogram, the dihedral(5°) partition size
+/// distribution, and a reproduction of the exact fuse vote the SeedPanel sends
+/// (`cut_threshold=2, min_region_faces=0`). Orthographic label renders (PPM,
+/// front + side) are written next to the log so the partitions can be judged
+/// visually, not just by counts.
+///
+/// Run:
+///   cargo test --release --lib -- --ignored --nocapture godzilla_fuse_diagnosis
+#[cfg(test)]
+mod godzilla_diagnosis {
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    use petgraph::visit::EdgeRef;
+
+    use crate::mesh::loader::{load_stl, ProgressFn};
+    use crate::mesh::model::MeshModel;
+    use crate::segment::dihedral::segment_by_dihedral_angle;
+    use crate::segment::fuse::fuse_region_sets;
+    use crate::segment::planar::{detect_planar_regions, PlanarParams};
+    use crate::segment::multiview::{detect_multiview_regions, MultiViewParams};
+
+    const GODZILLA: &str = r"C:\selfDIr\3D_3mf\stls\哥斯拉_U1.stl";
+    const OUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), r"\target\diag_godzilla");
+
+    pub(crate) fn noop_progress() -> Box<ProgressFn> {
+        Box::new(|_, _| {})
+    }
+
+    fn load() -> Option<MeshModel> {
+        let cb = noop_progress();
+        let t = Instant::now();
+        let m = load_stl(std::path::Path::new(GODZILLA), &*cb).ok();
+        eprintln!("load: {:?} in {:.2}s", GODZILLA, t.elapsed().as_secs_f64());
+        m
+    }
+
+    /// Per-region face counts, descending.
+    fn region_sizes(mesh: &MeshModel) -> Vec<usize> {
+        let mut c: HashMap<u32, usize> = HashMap::new();
+        for &l in &mesh.segment_labels {
+            *c.entry(l).or_insert(0) += 1;
+        }
+        let mut v: Vec<usize> = c.into_values().collect();
+        v.sort_unstable_by(|a, b| b.cmp(a));
+        v
+    }
+
+    fn report_sizes(name: &str, sizes: &[usize], n_faces: usize) {
+        let n_reg = sizes.len();
+        let top: Vec<usize> = sizes.iter().take(12).copied().collect();
+        let pct = |p: f64| -> usize {
+            let i = ((n_reg as f64 - 1.0) * p).round() as usize;
+            sizes.get(i).copied().unwrap_or(0)
+        };
+        eprintln!(
+            "[{}] regions={} top={} p50={} p90={} largest_share={:.1}%",
+            name,
+            n_reg,
+            format!("{:?}", top),
+            pct(0.5),
+            pct(0.9),
+            sizes.first().map(|s| *s as f64 / n_faces as f64 * 100.0).unwrap_or(0.0),
+        );
+    }
+
+    /// Flat-shade an orthographic label render. view: 0 = front (XY), 1 = side
+    /// (ZY). Faces are sub-pixel at this resolution, so a plain bbox scanline
+    /// rasteriser with an atomic depth buffer is enough (and honest — no
+    /// smoothing that could hide a real boundary). `palette` maps a 12-bit
+    /// label to RGB.
+    fn render(mesh: &MeshModel, labels: &[u32], view: u8, path: &str, w: usize, h: usize, palette: fn(u32) -> [u8; 3]) {
+        use rayon::prelude::*;
+        let (ux, uy, ud) = match view {
+            0 => (0usize, 1usize, 2usize),
+            _ => (2usize, 1usize, 0usize),
+        };
+        let mut lo = [f32::MAX; 2];
+        let mut hi = [f32::MIN; 2];
+        let mut dlo = f32::MAX;
+        let mut dhi = f32::MIN;
+        for v in &mesh.vertices {
+            let p = [v[ux], v[uy]];
+            for k in 0..2 {
+                lo[k] = lo[k].min(p[k]);
+                hi[k] = hi[k].max(p[k]);
+            }
+            dlo = dlo.min(v[ud]);
+            dhi = dhi.max(v[ud]);
+        }
+        let span = [(hi[0] - lo[0]).max(1e-6), (hi[1] - lo[1]).max(1e-6)];
+        let scale = (w as f32 / span[0]).min(h as f32 / span[1]) * 0.96;
+        let ox = w as f32 / 2.0 - (lo[0] + hi[0]) / 2.0 * scale;
+        let oy = h as f32 / 2.0 - (lo[1] + hi[1]) / 2.0 * scale;
+        let dspan = (dhi - dlo).max(1e-6);
+
+        let pix: Vec<std::sync::atomic::AtomicU32> =
+            (0..w * h).map(|_| std::sync::atomic::AtomicU32::new(0)).collect();
+        mesh.faces.par_iter().enumerate().for_each(|(fi, f)| {
+            let label = labels[fi];
+            let pts: [[f32; 3]; 3] = [
+                mesh.vertices[f[0] as usize],
+                mesh.vertices[f[1] as usize],
+                mesh.vertices[f[2] as usize],
+            ];
+            let px: Vec<[f32; 2]> = pts
+                .iter()
+                .map(|p| [p[ux] * scale + ox, (h as f32) - (p[uy] * scale + oy)])
+                .collect();
+            let dz: Vec<f32> = pts.iter().map(|p| (p[ud] - dlo) / dspan).collect();
+            let minx = px.iter().fold(f32::MAX, |m, p| m.min(p[0])).max(0.0) as isize;
+            let maxx = px.iter().fold(f32::MIN, |m, p| m.max(p[0])).min(w as f32 - 1.0) as isize;
+            let miny = px.iter().fold(f32::MAX, |m, p| m.min(p[1])).max(0.0) as isize;
+            let maxy = px.iter().fold(f32::MIN, |m, p| m.max(p[1])).min(h as f32 - 1.0) as isize;
+            if minx > maxx || miny > maxy {
+                return;
+            }
+            let (ax, ay) = (px[0][0], px[0][1]);
+            let (bx, by) = (px[1][0], px[1][1]);
+            let (cx, cy) = (px[2][0], px[2][1]);
+            let det = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);
+            if det.abs() < 1e-12 {
+                return;
+            }
+            for y in miny..=maxy {
+                for x in minx..=maxx {
+                    let (xf, yf) = (x as f32 + 0.5, y as f32 + 0.5);
+                    let l0 = ((bx - ax) * (yf - ay) - (xf - ax) * (by - ay)) / det;
+                    let l1 = ((xf - ax) * (cy - ay) - (cx - ax) * (yf - ay)) / det;
+                    let l2 = 1.0 - l0 - l1;
+                    if l0 < 0.0 || l1 < 0.0 || l2 < 0.0 {
+                        continue;
+                    }
+                    let d = l0 * dz[0] + l1 * dz[1] + l2 * dz[2];
+                    let dkey = (d * 1.0e6) as u32;
+                    let idx = y as usize * w + x as usize;
+                    let cell = &pix[idx];
+                    let mut cur = cell.load(std::sync::atomic::Ordering::Relaxed);
+                    while dkey > cur {
+                        match cell.compare_exchange_weak(
+                            cur,
+                            dkey | ((label as u32 & 0xFFF) << 20),
+                            std::sync::atomic::Ordering::Relaxed,
+                            std::sync::atomic::Ordering::Relaxed,
+                        ) {
+                            Ok(_) => break,
+                            Err(c) => cur = c,
+                        }
+                    }
+                }
+            }
+        });
+
+        // Golden-ratio hue per label → stable, distinguishable colours.
+        let mut img = vec![0u8; w * h * 3];
+        for (i, cell) in pix.iter().enumerate() {
+            let raw = cell.load(std::sync::atomic::Ordering::Relaxed);
+            let c = if raw == 0 {
+                [28, 28, 32]
+            } else {
+                let label = (raw >> 20) & 0xFFF;
+                palette(label)
+            };
+            img[i * 3..i * 3 + 3].copy_from_slice(&c);
+        }
+        let header = format!("P6\n{} {}\n255\n", w, h);
+        let _ = std::fs::write(path, header.into_bytes().iter().copied().chain(img).collect::<Vec<u8>>());
+        eprintln!("wrote {}", path);
+    }
+
+    /// Golden-ratio HSV palette for region ids (diagnosis renders only).
+    fn palette_region(label: u32) -> [u8; 3] {
+        let hue = (label as f32 * 0.6180339887) % 1.0;
+        let (s, v) = (0.75f32, 0.95f32);
+        let i = (hue * 6.0).floor() as i32 % 6;
+        let f = hue * 6.0 - i as f32;
+        let (r, g, b) = match i.rem_euclid(6) {
+            0 => (v, v * (1.0 - s * f), v * (1.0 - s)),
+            1 => (v * (1.0 - s * f), v, v * (1.0 - s)),
+            2 => (v * (1.0 - s), v, v * (1.0 - s * f)),
+            3 => (v * (1.0 - s), v * (1.0 - s * f), v),
+            4 => (v * (1.0 - s * f), v * (1.0 - s), v),
+            _ => (v, v * (1.0 - s), v * (1.0 - s * f)),
+        };
+        [(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8]
+    }
+
+    /// Grayscale heat palette: label value 0..240 → brightness 0..255.
+    fn palette_gray(v: u32) -> [u8; 3] {
+        let b = (v as f32 / 240.0 * 255.0).min(255.0) as u8;
+        [b, b, b]
+    }
+
+    /// Partition → PPM renders (front + side) in OUT_DIR.
+    fn render_partition(mesh: &MeshModel, tag: &str) {
+        let _ = std::fs::create_dir_all(OUT_DIR);
+        let labels = mesh.segment_labels.clone();
+        render(mesh, &labels, 0, &format!("{}\\{}_front.ppm", OUT_DIR, tag), 900, 900, palette_region);
+        render(mesh, &labels, 1, &format!("{}\\{}_side.ppm", OUT_DIR, tag), 900, 900, palette_region);
+    }
+
+    /// REFUTE blockers B1/B2 decisive probe.
+    ///
+    /// B1: does a sub-threshold (<cut°) leakage path keep head+torso in ONE
+    /// union-find component at the aggressive cut thresholds the soft-fold plan
+    /// needs? Measured directly: union-find at cut ∈ {1.5, 2, 3} + component-
+    /// colour renders (head/chest same colour = leakage = plan dead).
+    ///
+    /// B2: is the boundary-strip normal angle θ separable between real part
+    /// valleys (neck) and skin texture? For every cut edge, θ = angle between
+    /// the mean normals of the ≤s-hop balls on each side (degenerate resultant →
+    /// θ=0, merge-friendly). Output: θ histogram over cut edges + a grayscale
+    /// heatmap render (bright = high θ) to be judged visually.
+    #[test]
+    #[ignore = "reads the 75MB Godzilla STL from disk; run explicitly"]
+    fn godzilla_soft_fold_feasibility() {
+        let mut mesh = match load() {
+            Some(m) => m,
+            None => {
+                eprintln!("GODZILLA STL MISSING — skipped");
+                return;
+            }
+        };
+        let n = mesh.faces.len();
+        let _ = std::fs::create_dir_all(OUT_DIR);
+
+        // Raw fold angle per adjacency edge (face ids via the weight map, the
+        // only invariant-based form per the refuter's special-check (c)).
+        let edges: Vec<(u32, u32, f32)> = mesh
+            .face_adjacency
+            .edge_references()
+            .map(|e| {
+                let a = mesh.face_adjacency[e.source()];
+                let b = mesh.face_adjacency[e.target()];
+                let na = &mesh.normals[a as usize];
+                let nb = &mesh.normals[b as usize];
+                let d = (na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2]).clamp(-1.0, 1.0);
+                (a, b, d.acos())
+            })
+            .collect();
+        eprintln!("unique adjacency edges: {}", edges.len());
+
+        // ── B1: union-find components at three cut thresholds ───────────
+        for cut_deg in [1.5f32, 2.0, 3.0] {
+            let cut_rad = cut_deg.to_radians();
+            let mut parent: Vec<u32> = (0..n as u32).collect();
+            fn find(p: &mut Vec<u32>, x: u32) -> u32 {
+                if p[x as usize] != x {
+                    p[x as usize] = find(p, p[x as usize]);
+                }
+                p[x as usize]
+            }
+            for &(a, b, ang) in &edges {
+                if ang < cut_rad {
+                    let ra = find(&mut parent, a);
+                    let rb = find(&mut parent, b);
+                    if ra != rb {
+                        parent[ra as usize] = rb;
+                    }
+                }
+            }
+            let mut counts: HashMap<u32, usize> = HashMap::new();
+            let mut labels = vec![0u32; n];
+            let mut comp_map: HashMap<u32, u32> = HashMap::new();
+            let mut next_cid = 0u32;
+            for i in 0..n as u32 {
+                let root = find(&mut parent, i);
+                let cid = *comp_map.entry(root).or_insert_with(|| {
+                    next_cid += 1;
+                    next_cid - 1
+                });
+                labels[i as usize] = cid;
+                *counts.entry(cid).or_insert(0) += 1;
+            }
+            let mut sizes: Vec<usize> = counts.values().copied().collect();
+            sizes.sort_unstable_by(|a, b| b.cmp(a));
+            report_sizes(&format!("cut{:.1}", cut_deg), &sizes, n);
+            render(
+                &mesh,
+                &labels,
+                0,
+                &format!("{}\\connect_{:.1}_front.ppm", OUT_DIR, cut_deg),
+                900,
+                900,
+                palette_region,
+            );
+        }
+
+        // ── B2: strip-θ statistic over cut edges at cut=2°, s=3 ─────────
+        let cut_rad = 2.0f32.to_radians();
+        let s_hops = 3usize;
+        // Component membership at this cut (keep-edges only).
+        let mut parent: Vec<u32> = (0..n as u32).collect();
+        fn find2(p: &mut Vec<u32>, x: u32) -> u32 {
+            if p[x as usize] != x {
+                p[x as usize] = find2(p, p[x as usize]);
+            }
+            p[x as usize]
+        }
+        for &(a, b, ang) in &edges {
+            if ang < cut_rad {
+                let ra = find2(&mut parent, a);
+                let rb = find2(&mut parent, b);
+                if ra != rb {
+                    parent[ra as usize] = rb;
+                }
+            }
+        }
+        let mut comp = vec![0u32; n];
+        let mut cmap: HashMap<u32, u32> = HashMap::new();
+        let mut next_cid = 0u32;
+        for i in 0..n as u32 {
+            comp[i as usize] = *cmap.entry(find2(&mut parent, i)).or_insert_with(|| {
+                next_cid += 1;
+                next_cid - 1
+            });
+        }
+        // Boundary faces per component + cut edges list.
+        let mut is_boundary = vec![false; n];
+        let mut cut_edges: Vec<(u32, u32)> = Vec::new();
+        for &(a, b, ang) in &edges {
+            if ang >= cut_rad {
+                cut_edges.push((a, b));
+                is_boundary[a as usize] = true;
+                is_boundary[b as usize] = true;
+            }
+        }
+        // BFS depth from boundary faces, ≤ s_hops, within component.
+        let mut depth = vec![u8::MAX; n];
+        let mut frontier: Vec<u32> = Vec::new();
+        for f in 0..n as u32 {
+            if is_boundary[f as usize] {
+                depth[f as usize] = 0;
+                frontier.push(f);
+            }
+        }
+        let mut ring = Vec::new();
+        for _ in 0..s_hops {
+            ring.clear();
+            for &f in &frontier {
+                for e in mesh.face_adjacency.edges(petgraph::graph::NodeIndex::new(f as usize)) {
+                    let g = mesh.face_adjacency[e.target()] as usize;
+                    if depth[g] == u8::MAX && comp[g] == comp[f as usize] {
+                        depth[g] = depth[f as usize] + 1;
+                        ring.push(g as u32);
+                    }
+                }
+            }
+            std::mem::swap(&mut frontier, &mut ring);
+        }
+        // Per-component mean normal of its ≤s shell (single global shell is
+        // wrong — the statistic must be per (component, boundary-neighbourhood);
+        // approximated per cut edge by the two endpoint components' shell means.
+        // For a fairer LOCAL reading, average only faces whose depth ≤ s AND
+        // that lie within the same component as the endpoint (already implied).
+        let ncomp = cmap.len();
+        let mut shell_sum = vec![[0.0f32; 4]; ncomp]; // xyz + count in w
+        for f in 0..n {
+            let d = depth[f];
+            if d <= s_hops as u8 {
+                let c = comp[f] as usize;
+                let nn = &mesh.normals[f];
+                shell_sum[c][0] += nn[0];
+                shell_sum[c][1] += nn[1];
+                shell_sum[c][2] += nn[2];
+                shell_sum[c][3] += 1.0;
+            }
+        }
+        // θ per cut edge from the two endpoint shells.
+        let mut theta_hist = vec![0u64; 19]; // 0,2.5,...,45+ in 2.5° buckets up to 45
+        let mut face_theta = vec![0.0f32; n];
+        for &(a, b) in &cut_edges {
+            let sa = &shell_sum[comp[a as usize] as usize];
+            let sb = &shell_sum[comp[b as usize] as usize];
+            if sa[3] < 1.0 || sb[3] < 1.0 {
+                continue;
+            }
+            let norm = |v: &[f32; 4]| -> [f32; 3] {
+                let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                if l < 1e-3 {
+                    [0.0; 3]
+                } else {
+                    [v[0] / l, v[1] / l, v[2] / l]
+                }
+            };
+            let va = norm(sa);
+            let vb = norm(sb);
+            let th = if va == [0.0; 3] || vb == [0.0; 3] {
+                0.0f32 // degenerate (curved-shell) resultant → merge-friendly
+            } else {
+                let d = (va[0] * vb[0] + va[1] * vb[1] + va[2] * vb[2]).clamp(-1.0, 1.0);
+                d.acos() * 180.0 / std::f32::consts::PI
+            };
+            let bi = ((th / 2.5) as usize).min(18);
+            theta_hist[bi] += 1;
+            if th > face_theta[a as usize] {
+                face_theta[a as usize] = th;
+            }
+            if th > face_theta[b as usize] {
+                face_theta[b as usize] = th;
+            }
+        }
+        let total_th: u64 = theta_hist.iter().sum();
+        for (i, &c) in theta_hist.iter().enumerate() {
+            eprintln!(
+                "  theta [{:4.1},{:4.1}) : {:9} ({:5.2}%)",
+                i as f32 * 2.5,
+                (i + 1) as f32 * 2.5,
+                c,
+                c as f64 / total_th as f64 * 100.0
+            );
+        }
+        // Heatmap: grayscale = θ (bright = high), non-shell faces dark.
+        let mut heat = vec![0u32; n];
+        for f in 0..n {
+            heat[f] = (face_theta[f] / 45.0 * 240.0).min(240.0) as u32;
+        }
+        render(
+            &mesh,
+            &heat,
+            0,
+            &format!("{}\\theta_heat_front.ppm", OUT_DIR),
+            900,
+            900,
+            palette_gray,
+        );
+
+        // ── Pivot candidate (refuter M4): the EXISTING dihedral pipeline at
+        // sub-5° thresholds. Phase1 cuts (B1 says the neck separates at 2°),
+        // Phase3 avg-normal merge heals texture rubble, Phase4 absorbs crumbs.
+        // Zero new algorithm — only the UI slider floor (5°) blocks it today.
+        for deg in [2.0f32, 2.5, 3.0] {
+            let t = Instant::now();
+            let mut m = load().unwrap();
+            let cb = noop_progress();
+            segment_by_dihedral_angle(&mut m, deg, &*cb);
+            let sizes = region_sizes(&m);
+            eprintln!("--- dihedral({:.1}°) full pipeline in {:.2}s", deg, t.elapsed().as_secs_f64());
+            report_sizes(&format!("dihedral{:.1}", deg), &sizes, n);
+            render_partition(&m, &format!("dihedral_full{:.1}", deg));
+        }
+    }
+
+    /// E2E: the REAL fuse command path (`planar + multiview + dihedral(deg) →
+    /// fuse_region_sets(2, 0, …)` — the exact payload SeedPanel sends) at the
+    /// proposed 2° slider floor vs the current 5° floor, across one sculpt
+    /// (Godzilla), two organic sculpts (pug, dragon-whisker) and one
+    /// hard-surface regression (kfc_station). Renders for Godzilla only.
+    #[test]
+    #[ignore = "reads large STL files from disk; run explicitly"]
+    fn fuse_floor_e2e() {
+        let fixtures: &[(&str, &str, bool)] = &[
+            ("godzilla", r"C:\selfDIr\3D_3mf\stls\哥斯拉_U1.stl", true),
+            ("pug", r"C:\selfDIr\Projects\ColorYourModel\samples\_src\pug.stl", false),
+            ("dragon_whisker", r"C:\selfDIr\Projects\ColorYourModel\samples\_src\dragon-whisker.stl", false),
+            ("kfc_station", r"C:\selfDIr\Projects\ColorYourModel\samples\_src\kfc_station.stl", false),
+        ];
+        for (name, path, do_render) in fixtures {
+            let p = std::path::Path::new(path);
+            if !p.exists() {
+                eprintln!("[{}] MISSING {} — skipped", name, path);
+                continue;
+            }
+            for deg in [2.0f32, 5.0] {
+                let cb = noop_progress();
+                let t = Instant::now();
+                let mut mesh = match load_stl(p, &*cb) {
+                    Ok(m) => m,
+                    Err(_) => {
+                        eprintln!("[{}] LOAD FAILED", name);
+                        continue;
+                    }
+                };
+                let n_faces = mesh.faces.len();
+                let detect_min = (n_faces / 500).max(2);
+                let planar = detect_planar_regions(
+                    &mesh,
+                    &PlanarParams { angle_thr_deg: 15.0, dist_thr_factor: 1.0 / 30.0, min_region_faces: detect_min },
+                )
+                .into_iter()
+                .map(|r| r.face_indices)
+                .collect::<Vec<_>>();
+                let multiview = detect_multiview_regions(
+                    &mesh,
+                    &MultiViewParams { view_count: 12, angle_thr_deg: 20.0, min_region_faces: detect_min, match_threshold: 1 },
+                )
+                .into_iter()
+                .map(|r| r.face_indices)
+                .collect::<Vec<_>>();
+                let dihedral_sets = {
+                    let _ = segment_by_dihedral_angle(&mut mesh, deg, &*cb);
+                    let mut map: HashMap<u32, Vec<u32>> = HashMap::new();
+                    for (i, &l) in mesh.segment_labels.iter().enumerate() {
+                        map.entry(l).or_default().push(i as u32);
+                    }
+                    mesh.segment_labels = vec![0u32; n_faces];
+                    mesh.segments.clear();
+                    map.into_values().collect::<Vec<_>>()
+                };
+                let r = fuse_region_sets(&mut mesh, &planar, &multiview, &dihedral_sets, &[], 2, 0)
+                    .expect("fuse failed");
+                let sizes = region_sizes(&mesh);
+                eprintln!(
+                    "[{} dihedral{:.0}°] fuse: regions={} max_share={:.1}% median={} time={:.1}s (planar={} mv={} dih={})",
+                    name,
+                    deg,
+                    r.region_count,
+                    sizes.first().map(|s| *s as f64 / n_faces as f64 * 100.0).unwrap_or(0.0),
+                    r.region_size_median,
+                    t.elapsed().as_secs_f64(),
+                    planar.len(),
+                    multiview.len(),
+                    dihedral_sets.len(),
+                );
+                if *do_render {
+                    render_partition(&mesh, &format!("fuse_{:.0}deg", deg));
+                }
+            }
+        }
+    }
+
+
+    #[test]
+    #[ignore = "reads the 75MB Godzilla STL from disk; run explicitly"]
+    fn godzilla_fuse_diagnosis() {
+        let mut mesh = match load() {
+            Some(m) => m,
+            None => {
+                eprintln!("GODZILLA STL MISSING — skipped");
+                return;
+            }
+        };
+        let n = mesh.faces.len();
+        eprintln!("faces={} adjacency_edges={}", n, mesh.face_adjacency.edge_count());
+
+        // ── 1. Raw edge dihedral-angle histogram ────────────────────────
+        let buckets: [f32; 13] = [0.5, 1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0, 30.0, 45.0, 60.0, 90.0, 180.0];
+        let mut hist = vec![0u64; buckets.len()];
+        let mut concave_sharp = 0u64;
+        let centers = mesh.face_centers();
+        for edge in mesh.face_adjacency.edge_references() {
+            let fi = mesh.face_adjacency[edge.source()];
+            let fj = mesh.face_adjacency[edge.target()];
+            let na = &mesh.normals[fi as usize];
+            let nb = &mesh.normals[fj as usize];
+            let d = (na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2]).clamp(-1.0, 1.0);
+            let ang = d.acos() * 180.0 / std::f32::consts::PI;
+            let bi = match buckets.iter().position(|&b| ang <= b) {
+                Some(i) => i,
+                None => buckets.len() - 1,
+            };
+            hist[bi] += 1;
+            // Signed test: face centroid vs neighbour plane (concave = centre
+            // of face i is on the negative side of j's outward plane).
+            let cj = centers[fj as usize];
+            let ci = centers[fi as usize];
+            let side = (ci[0] - cj[0]) * nb[0] + (ci[1] - cj[1]) * nb[1] + (ci[2] - cj[2]) * nb[2];
+            if ang > 5.0 && side < 0.0 {
+                concave_sharp += 1;
+            }
+        }
+        let total: u64 = hist.iter().sum();
+        let mut lo = 0.0f32;
+        for (i, &c) in hist.iter().enumerate() {
+            eprintln!("  angle ({:5.1}, {:5.1}] : {:10} ({:5.2}%)", lo, buckets[i], c, c as f64 / total as f64 * 100.0);
+            lo = buckets[i];
+        }
+        eprintln!("  sharp(>5°) concave edges: {} / {}", concave_sharp, total);
+
+        // ── 2. The fuse backbone as shipped: dihedral at 5° ─────────────
+        let cb = noop_progress();
+        let t = Instant::now();
+        segment_by_dihedral_angle(&mut mesh, 5.0, &*cb);
+        eprintln!("dihedral(5°) done in {:.2}s", t.elapsed().as_secs_f64());
+        report_sizes("dihedral5", &region_sizes(&mesh), n);
+        render_partition(&mesh, "dihedral5");
+
+        // ── 3. Reproduce the exact SeedPanel fuse (cut=2, min=0, 5°) ────
+        let mut m2 = load().unwrap();
+        let detect_min = (n / 500).max(2);
+        let planar = detect_planar_regions(
+            &m2,
+            &PlanarParams { angle_thr_deg: 15.0, dist_thr_factor: 1.0 / 30.0, min_region_faces: detect_min },
+        )
+        .into_iter()
+        .map(|r| r.face_indices)
+        .collect::<Vec<_>>();
+        let multiview = detect_multiview_regions(
+            &m2,
+            &MultiViewParams { view_count: 12, angle_thr_deg: 20.0, min_region_faces: detect_min, match_threshold: 1 },
+        )
+        .into_iter()
+        .map(|r| r.face_indices)
+        .collect::<Vec<_>>();
+        let dihedral_sets = {
+            let _ = segment_by_dihedral_angle(&mut m2, 5.0, &*noop_progress());
+            let mut map: HashMap<u32, Vec<u32>> = HashMap::new();
+            for (i, &l) in m2.segment_labels.iter().enumerate() {
+                map.entry(l).or_default().push(i as u32);
+            }
+            m2.segment_labels = vec![0u32; n];
+            m2.segments.clear();
+            map.into_values().collect::<Vec<_>>()
+        };
+        eprintln!(
+            "channels: planar={} multiview={} dihedral={}",
+            planar.len(),
+            multiview.len(),
+            dihedral_sets.len()
+        );
+        let r = fuse_region_sets(&mut m2, &planar, &multiview, &dihedral_sets, &[], 2, 0).unwrap();
+        eprintln!(
+            "fuse as shipped: regions={} cut={}.raw={} before_merge={} median={} max={} passes={} tiny_before={}",
+            r.region_count,
+            r.edge_cut.unwrap_or(0),
+            r.edge_total.unwrap_or(0),
+            r.regions_before_merge,
+            r.region_size_median,
+            r.region_size_max,
+            r.merge_passes,
+            r.tiny_regions_before_merge,
+        );
+        render_partition(&m2, "fuse_as_shipped");
+
+        // Section 4 (FH / concavity / SdfGraphCut alternative backbones) was
+        // removed: on this mesh those probes hang in fh.rs's O(crumbs×E)
+        // merge_small_components, and the refuted soft-fold plan made them
+        // moot — the adopted fix reuses the existing dihedral pipeline at a
+        // lower threshold (see godzilla_soft_fold_feasibility).
+    }
+}
+
+/// Hard-surface regression for the 2° fuse floor: two clean CAD-ish meshes,
+/// full fuse path at 2° vs 5°. Guards the "lower floor over-splits bevelled
+/// hard-surface models" concern (refuter M5).
+#[cfg(test)]
+mod fuse_floor_regression {
+    use super::godzilla_diagnosis::noop_progress;
+    use crate::segment::dihedral::segment_by_dihedral_angle;
+    use crate::segment::fuse::fuse_region_sets;
+    use crate::segment::planar::{detect_planar_regions, PlanarParams};
+    use crate::segment::multiview::{detect_multiview_regions, MultiViewParams};
+    use crate::mesh::loader::load_stl;
+    use std::collections::HashMap;
+
+    const FIXTURES: &[(&str, &str)] = &[
+        ("ring_stand", r"C:\selfDIr\Projects\ColorYourModel\samples\_src\ring-stand.stl"),
+        ("cyberpunk_mask", r"C:\selfDIr\Projects\ColorYourModel\samples\_src\cyberpunk-mask.stl"),
+    ];
+
+    #[test]
+    #[ignore = "reads STL files from disk; run explicitly"]
+    fn hard_surface_floor_regression() {
+        for (name, path) in FIXTURES {
+            let p = std::path::Path::new(path);
+            if !p.exists() {
+                eprintln!("[{}] MISSING — skipped", name);
+                continue;
+            }
+            for deg in [2.0f32, 5.0] {
+                let cb = noop_progress();
+                let mut mesh = load_stl(p, &*cb).expect("load");
+                let n = mesh.faces.len();
+                let detect_min = (n / 500).max(2);
+                let planar = detect_planar_regions(
+                    &mesh,
+                    &PlanarParams { angle_thr_deg: 15.0, dist_thr_factor: 1.0 / 30.0, min_region_faces: detect_min },
+                ).into_iter().map(|r| r.face_indices).collect::<Vec<_>>();
+                let multiview = detect_multiview_regions(
+                    &mesh,
+                    &MultiViewParams { view_count: 12, angle_thr_deg: 20.0, min_region_faces: detect_min, match_threshold: 1 },
+                ).into_iter().map(|r| r.face_indices).collect::<Vec<_>>();
+                let dihedral_sets = {
+                    let _ = segment_by_dihedral_angle(&mut mesh, deg, &*cb);
+                    let mut map: HashMap<u32, Vec<u32>> = HashMap::new();
+                    for (i, &l) in mesh.segment_labels.iter().enumerate() {
+                        map.entry(l).or_default().push(i as u32);
+                    }
+                    mesh.segment_labels = vec![0u32; n];
+                    mesh.segments.clear();
+                    map.into_values().collect::<Vec<_>>()
+                };
+                let r = fuse_region_sets(&mut mesh, &planar, &multiview, &dihedral_sets, &[], 2, 0).expect("fuse");
+                let mut sizes: Vec<usize> = mesh.segment_labels.iter().fold(HashMap::<u32, usize>::new(), |mut m, l| { *m.entry(*l).or_insert(0) += 1; m }).into_values().collect();
+                sizes.sort_unstable_by(|a, b| b.cmp(a));
+                eprintln!(
+                    "[{} {:.0}°] faces={} fuse_regions={} max_share={:.1}% median={}",
+                    name, deg, n, r.region_count,
+                    sizes.first().map(|s| *s as f64 / n as f64 * 100.0).unwrap_or(0.0),
+                    r.region_size_median,
+                );
+            }
+        }
+    }
+}

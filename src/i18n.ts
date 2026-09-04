@@ -82,7 +82,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.fuse": { zh: "🧩 融合生成", en: "🧩 Fuse & generate" },
   "seed.fuseTitle": { zh: "把 Layer 0 折角 + Layer 1 平面 + Layer 3 多视角的区域成员关系按边级多数投票融合成最终分区并落盘（不再依赖种子点）", en: "Fuse Layer 0 dihedral + Layer 1 planar + Layer 3 MultiView region membership by edge-level majority vote into the final partition (no seed points needed)" },
   "seed.fuseDihedral": { zh: "折角阈值", en: "Dihedral °" },
-  "seed.fuseDihedralHint": { zh: "融合的几何主干：按二面角在折痕处切割。光滑/单色模型上平面与多视角都没信号，靠它才能切出部件。越低切得越细，越高越粗", en: "Geometry backbone for the fuse: cut at dihedral creases. On smooth/single-colour meshes planar + MultiView have no signal, so this is what splits the model. Lower = finer, higher = coarser" },
+  "seed.fuseDihedralHint": { zh: "融合的几何主干：按二面角在折痕处切割。光滑/单色模型上平面与多视角都没信号，靠它才能切出部件。雕刻类手办（哥斯拉/宠物等）折角被摊平，建议 2-3° 才能分出头/四肢/尾巴；硬表面模型 5-15° 即可。越低切得越细，越高越粗", en: "Geometry backbone for the fuse: cut at dihedral creases. On smooth/single-colour meshes planar + MultiView have no signal, so this is what splits the model. Sculpted figures (godzilla/creatures) spread their folds below 5° — use 2-3° to separate head/limbs/tail; hard-surface models are fine at 5-15°. Lower = finer, higher = coarser" },
   "seed.clearAll": { zh: "🗑 清空分区", en: "🗑 Reset partition" },
   "seed.clearAllTitle": { zh: "清空分区与上色（回到刚导入的干净状态，不可撤销）", en: "Clear partition + paint (back to the freshly-loaded clean state; cannot be undone)" },
   "seed.fuseHint": {

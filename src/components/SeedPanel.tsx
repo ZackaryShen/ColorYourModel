@@ -150,7 +150,13 @@ export function SeedPanel() {
   const [detecting, setDetecting] = useState(false);
   const [detectingEye, setDetectingEye] = useState(false);
   const [fusing, setFusing] = useState(false);
-  const [dihedralDeg, setDihedralDeg] = useState(15);
+  // 2° floor + default (godzilla fuse probe). The old 5° floor kept the whole
+  // smooth-sculpt body in one 86.7% region because sculpt folds spread their
+  // turning over many sub-5° edges; at 2° the same fuse pipeline returns 73
+  // regions (largest 13%) on Godzilla and 75 on pug, and does NOT over-split
+  // clean hard-surface models (ring-stand 64 vs 110 regions, cyberpunk-mask
+  // 76 vs 82). See segment::godzilla_soft_fold_feasibility / fuse_floor_e2e.
+  const [dihedralDeg, setDihedralDeg] = useState(2);
   const [resetting, setResetting] = useState(false);
 
   // ── Drag-to-move (iteration 78) ────────────────────────────────────────
@@ -1171,17 +1177,19 @@ export function SeedPanel() {
 
       {segmentMode === "auto" && (
         <>
-          {/* Geometry backbone for the fusion: dihedral crease angle. on smooth /
+          {/* Geometry backbone for the fusion: dihedral crease angle. On smooth /
               single-colour meshes the planar + multiview channels have no signal,
               so this is what actually splits the model into parts. Lower = more,
-              finer regions; higher = fewer, coarser parts. */}
+              finer regions; higher = fewer, coarser parts. Floor is 2°: sculpted
+              figures spread their part folds over sub-5° edges (godzilla probe),
+              so only a 2° floor lets the fuse separate head/limbs/tail. */}
           <div style={styles.row}>
             <span style={styles.label} title={t("seed.fuseDihedralHint")}>
               {t("seed.fuseDihedral")}
             </span>
             <input
               type="range"
-              min={5}
+              min={2}
               max={35}
               value={dihedralDeg}
               onChange={(e) => setDihedralDeg(Number(e.target.value))}

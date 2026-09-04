@@ -664,7 +664,9 @@ export function useTauriCommand() {
   const fuseSegmentation = async (
     cutThreshold: number = 1,
     minRegionFaces: number = 0,
-    dihedralDeg: number = 15,
+    // 2° matches the SeedPanel slider default: sculpted figures spread their
+    // part folds over sub-5° edges, so 15° here produced one giant region.
+    dihedralDeg: number = 2,
     eyeFaceIndices?: number[][]
   ): Promise<SegmentResult> => {
     log.info(
