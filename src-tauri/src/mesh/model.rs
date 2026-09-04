@@ -27,6 +27,15 @@ pub struct Segment {
 /// Defined here (with `Segment`) and re-exported by `segment::manual`.
 pub const MANUAL_SEGMENT_OFFSET: u32 = 100_000;
 
+/// Number of colours in the frontend segment palette
+/// (`src/utils/segmentPalette.ts`, pinned to this value by
+/// `segmentPalette.test.ts`). The fuse's adjacency-aware label allocation
+/// (`alloc_manual_label_in_class`) places each region on a colour slot of that
+/// palette, so the two sides must agree; a drift shows up as adjacent regions
+/// rendered in the same colour. The colour VALUES live on the TS side only —
+/// labels are the authority, colour is derived output.
+pub const SEGMENT_PALETTE_SIZE: u32 = 30;
+
 /// Ceiling on a user-supplied region name, in characters (not bytes).
 ///
 /// The panel row is one line; anything past this is already elided visually,
@@ -488,6 +497,41 @@ impl MeshModel {
         label
     }
 
+    /// Like [`Self::alloc_manual_label`], but the label is chosen so that
+    /// `label % palette_size == class`, i.e. the region lands on a specific
+    /// colour slot of the frontend palette. The fuse uses this to greedily
+    /// colour its region-adjacency graph so two touching regions never render
+    /// in the same colour — with 80+ regions on a 15-colour palette and
+    /// `label % palette_size` colouring, adjacent regions collided constantly
+    /// and *looked* unsegmented ("很多都没有分出来").
+    ///
+    /// Uniqueness needs no exclusion set: the floor is above every live manual
+    /// label and `next_manual_label` advances past each result, exactly like
+    /// [`Self::alloc_manual_label`].
+    ///
+    /// `palette_size` must match `SEGMENT_PALETTE_SIZE` in
+    /// `src/utils/segmentPalette.ts` (pinned to 30 by a vitest on the TS side
+    /// and by `palette_size_is_pinned` here).
+    pub fn alloc_manual_label_in_class(&mut self, class: u32, palette_size: u32) -> u32 {
+        assert!(palette_size > 0, "palette_size must be positive");
+        let class = class % palette_size;
+        let live_max = self
+            .segment_labels
+            .iter()
+            .copied()
+            .filter(|&l| l >= MANUAL_SEGMENT_OFFSET)
+            .max();
+        let floor = match live_max {
+            Some(m) => m.saturating_add(1),
+            None => MANUAL_SEGMENT_OFFSET,
+        }
+        .max(self.next_manual_label);
+        // First label >= floor aligned to `class` on the palette clock.
+        let label = floor + (class + palette_size - floor % palette_size) % palette_size;
+        self.next_manual_label = label.saturating_add(1);
+        label
+    }
+
     /// Deterministic per-label colour for manual segments.
     ///
     /// Derived from the label so a region keeps its colour across rebuilds
@@ -661,6 +705,26 @@ mod tests {
         m.segment_labels[0] = a;
         let b = m.alloc_manual_label();
         assert_eq!((a, b), (MANUAL_SEGMENT_OFFSET, MANUAL_SEGMENT_OFFSET + 1));
+    }
+
+    /// The fuse's adjacency-aware allocation: each label must land on the
+    /// requested colour slot (`label % palette_size == class`) and every call
+    /// must hand out a fresh number even when the alignment skips candidates.
+    #[test]
+    fn class_aligned_labels_respect_the_palette_slot_and_stay_unique() {
+        let mut m = labelled(&[0; 4]);
+        // Alternating classes force the alignment to skip over slot-0
+        // candidates between two slot-1 allocations.
+        let a = m.alloc_manual_label_in_class(1, SEGMENT_PALETTE_SIZE);
+        let b = m.alloc_manual_label_in_class(0, SEGMENT_PALETTE_SIZE);
+        let c = m.alloc_manual_label_in_class(1, SEGMENT_PALETTE_SIZE);
+        assert_eq!(a % SEGMENT_PALETTE_SIZE, 1);
+        assert_eq!(b % SEGMENT_PALETTE_SIZE, 0);
+        assert_eq!(c % SEGMENT_PALETTE_SIZE, 1);
+        assert!(a >= MANUAL_SEGMENT_OFFSET && b > a && c > b);
+        // Class is taken modulo the palette, so out-of-range requests clamp.
+        let d = m.alloc_manual_label_in_class(37, SEGMENT_PALETTE_SIZE);
+        assert_eq!(d % SEGMENT_PALETTE_SIZE, 37 % SEGMENT_PALETTE_SIZE);
     }
 
     /// Regression: the allocator used to be `max(live labels) + 1`, so a region

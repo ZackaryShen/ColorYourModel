@@ -214,21 +214,21 @@ fn vertex_normal(mesh: &MeshModel, v: u32) -> [f32; 3] {
 /// root cause of the "water-ripple overflow" where the selected region spilled
 /// outside the drawn loop). Faces whose normal is only mildly off the loop's
 /// average normal stay connected; only the opposite shell is excluded.
-fn build_vertex_adjacency(
-    mesh: &MeshModel,
-    front_faces: Option<&HashSet<u32>>,
-) -> HashMap<u32, Vec<u32>> {
-    let mut vadj: HashMap<u32, Vec<u32>> = HashMap::new();
+/// Vertex-edge adjacency indexed directly by vertex id (`Vec<Vec<u32>>`, not a
+/// `HashMap`) — the whole-mesh build runs once per lasso finalize and a hashed
+/// entry per vertex was measurable in dev builds.
+fn build_vertex_adjacency(mesh: &MeshModel, front_faces: Option<&[bool]>) -> Vec<Vec<u32>> {
+    let mut vadj: Vec<Vec<u32>> = vec![Vec::new(); mesh.vertices.len()];
     for (fi, face) in mesh.faces.iter().enumerate() {
         if let Some(ff) = front_faces {
-            if !ff.contains(&(fi as u32)) {
+            if !ff[fi] {
                 continue;
             }
         }
         let edges = [(face[0], face[1]), (face[1], face[2]), (face[0], face[2])];
         for (a, b) in edges {
-            vadj.entry(a).or_default().push(b);
-            vadj.entry(b).or_default().push(a);
+            vadj[a as usize].push(b);
+            vadj[b as usize].push(a);
         }
     }
     vadj
@@ -241,7 +241,7 @@ fn build_vertex_adjacency(
 /// removes the O(F) per-edge rebuild that made finalize slow on large meshes.
 fn shortest_vertex_path_with_adj(
     mesh: &MeshModel,
-    vadj: &HashMap<u32, Vec<u32>>,
+    vadj: &[Vec<u32>],
     from: u32,
     to: u32,
 ) -> Vec<u32> {
@@ -262,7 +262,7 @@ fn shortest_vertex_path_with_adj(
             continue;
         }
         let cv = mesh.vertices[cur as usize];
-        for &nb in vadj.get(&cur).unwrap_or(&Vec::new()) {
+        for &nb in &vadj[cur as usize] {
             let nw = mesh.vertices[nb as usize];
             let w = distance(&cv, &nw);
             let nd = d.0 + w;
@@ -434,7 +434,12 @@ pub fn region_from_loop(
     // only the opposite shell of a thin/closed mesh, while keeping curved front
     // faces connected. This is what stops Dijkstra from tunneling to the back
     // and producing an oversized ("overflowing") region.
-    let front_faces: Option<HashSet<u32>> = {
+    //
+    // Bitmask, not HashSet: one write per face of the whole mesh (1.5M entries
+    // on a big sculpt) and one probe per face in the passes below — hashed
+    // inserts per face dominated finalize cost in dev builds (field report:
+    // one lasso region took 60s+).
+    let front_faces: Option<Vec<bool>> = {
         let mut avg = [0.0f32; 3];
         let mut count = 0u32;
         for &fi in face_indices {
@@ -457,20 +462,20 @@ pub fn region_from_loop(
                 // Exclude only faces whose normal points the opposite way
                 // (dot < -cos 50° ≈ -0.64): the back shell of a thin mesh.
                 let cos_thresh = -(50.0f32).to_radians().cos();
-                let mut set = HashSet::new();
+                let mut mask = vec![false; mesh.normals.len()];
                 for (fi, n) in mesh.normals.iter().enumerate() {
                     if dot3(*n, an) > cos_thresh {
-                        set.insert(fi as u32);
+                        mask[fi] = true;
                     }
                 }
-                Some(set)
+                Some(mask)
             }
         }
     };
 
     // Build vertex adjacency ONCE for the whole loop (cheap relative to the old
     // per-edge rebuild), then densify each loop edge over that single graph.
-    let vadj = build_vertex_adjacency(mesh, front_faces.as_ref());
+    let vadj = build_vertex_adjacency(mesh, front_faces.as_deref());
     let mut loop_edges: HashSet<(u32, u32)> = HashSet::new();
     let n = verts.len();
     for i in 0..n {

@@ -447,17 +447,66 @@ pub fn fuse_region_sets(
     };
 
     // ── 4. Commit: fresh manual label per region + colour + one undo entry ─
+    // Labels are allocated so that `label % SEGMENT_PALETTE_SIZE` — the
+    // frontend's colour slot — differs across ADJACENT regions. With 80+
+    // regions and a sequential allocation, touching regions shared a palette
+    // colour every few boundaries and the partition *looked* unsegmented
+    // (field report on the 1.5M-face godzilla sculpt at 0°). Greedy graph
+    // colouring over the region adjacency, largest region first: with 30
+    // slots a free class is essentially always available; the fallback
+    // reuses class 0 rather than fail.
+    let mut region_sizes_map: HashMap<u32, usize> = HashMap::new();
+    for &r in &region {
+        *region_sizes_map.entry(r).or_insert(0) += 1;
+    }
+    let mut reg_adj: HashMap<u32, HashSet<u32>> = HashMap::new();
+    for e in mesh.face_adjacency.edge_references() {
+        let a = mesh.face_adjacency[e.source()];
+        let b = mesh.face_adjacency[e.target()];
+        if a >= n as u32 || b >= n as u32 {
+            continue;
+        }
+        let (ra, rb) = (region[a as usize], region[b as usize]);
+        if ra != rb {
+            reg_adj.entry(ra).or_default().insert(rb);
+            reg_adj.entry(rb).or_default().insert(ra);
+        }
+    }
+    // Deterministic order: size desc, then region id (the refuter's m1 rule —
+    // never depend on HashMap iteration order for a committed result).
+    let mut order: Vec<u32> = region_sizes_map.keys().copied().collect();
+    order.sort_unstable_by(|a, b| {
+        region_sizes_map[b]
+            .cmp(&region_sizes_map[a])
+            .then(a.cmp(b))
+    });
+    let palette_slots = crate::mesh::model::SEGMENT_PALETTE_SIZE as usize;
+    let mut class_of: HashMap<u32, u32> = HashMap::new();
+    for &r in &order {
+        let mut used = [false; { crate::mesh::model::SEGMENT_PALETTE_SIZE as usize }];
+        for &nb in reg_adj.get(&r).into_iter().flatten() {
+            if let Some(c) = class_of.get(&nb) {
+                used[*c as usize % palette_slots] = true;
+            }
+        }
+        let class = (0..palette_slots)
+            .find(|&c| !used[c])
+            .unwrap_or(0) as u32;
+        class_of.insert(r, class);
+    }
+    let mut id_to_label: HashMap<u32, u32> = HashMap::new();
+    for &r in &order {
+        let label = mesh.alloc_manual_label_in_class(class_of[&r], palette_slots as u32);
+        id_to_label.insert(r, label);
+    }
     let mut prev_colors = Vec::with_capacity(n);
     let mut prev_labels = Vec::with_capacity(n);
-    let mut id_to_label: HashMap<u32, u32> = HashMap::new();
     let mut final_regions = Vec::<(u32, usize)>::new();
     let mut region_faces: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut moved = 0usize;
     for f in 0..n {
         let rid = region[f];
-        let label = *id_to_label
-            .entry(rid)
-            .or_insert_with(|| mesh.alloc_manual_label());
+        let label = id_to_label[&rid];
         region_faces.entry(rid).or_default().push(f as u32);
         let fi = f as u32;
         prev_labels.push((fi, mesh.segment_labels[f]));

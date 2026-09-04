@@ -36,3 +36,16 @@ rayon = "1"
 log = "0.4"
 env_logger = "0.11"
 parry3d = "0.30.2"
+
+# Dev-build runtime speed: the interactive paths (lasso finalize, paint, fuse)
+# are O(mesh) passes over up to 1.5M faces, and unoptimized debug codegen made
+# each pass ~10x slower than release (field report: one lasso region took 60s+
+# in `tauri dev`; release-measured cost of the same passes is well under 1s).
+# opt-level=1 keeps incremental compile times usable while closing most of the
+# gap. Dependencies get the same level because petgraph/hashbrown traversal
+# dominates the BFS / union-find / adjacency passes.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 1

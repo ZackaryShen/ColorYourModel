@@ -1390,3 +1390,59 @@ mod fuse_floor_zero {
         }
     }
 }
+
+/// Lasso interaction timing on the real Godzilla mesh — the user-reported
+/// "one lasso region took over a minute" reproduction. Times the exact
+/// per-click path (`snap_point_to_vertex_on_face`, called once per lasso
+/// click) and the close path (`region_from_loop`, called once on closure).
+/// Run in DEBUG to see what dev-mode users feel:
+///   cargo test --lib lasso_debug_timing -- --ignored --nocapture
+/// (and with --release for the shipped-build reference).
+#[cfg(test)]
+mod lasso_timing {
+    use super::godzilla_diagnosis::{GODZILLA, noop_progress};
+    use crate::mesh::loader::load_stl;
+    use crate::segment::manual::{region_from_loop, snap_point_to_vertex_on_face};
+    use std::time::Instant;
+
+    #[test]
+    #[ignore = "reads the 75MB Godzilla STL from disk; run explicitly"]
+    fn lasso_debug_timing() {
+        let mesh = load_stl(std::path::Path::new(GODZILLA), &*noop_progress()).expect("load");
+        let fi: u32 = 510313; // the face under the user's cursor in the field report
+        let tri = mesh.faces[fi as usize];
+        let c = [
+            (mesh.vertices[tri[0] as usize][0]
+                + mesh.vertices[tri[1] as usize][0]
+                + mesh.vertices[tri[2] as usize][0]) / 3.0,
+            (mesh.vertices[tri[0] as usize][1]
+                + mesh.vertices[tri[1] as usize][1]
+                + mesh.vertices[tri[2] as usize][1]) / 3.0,
+            (mesh.vertices[tri[0] as usize][2]
+                + mesh.vertices[tri[1] as usize][2]
+                + mesh.vertices[tri[2] as usize][2]) / 3.0,
+        ];
+        let t = Instant::now();
+        let mut snaps = 0;
+        for _ in 0..8 {
+            if snap_point_to_vertex_on_face(&mesh, &c, fi).is_some() {
+                snaps += 1;
+            }
+        }
+        eprintln!("8 lasso clicks (snap_point_to_vertex_on_face): {:.2}s ({} ok)", t.elapsed().as_secs_f64(), snaps);
+
+        let pts = vec![
+            mesh.vertices[tri[0] as usize],
+            mesh.vertices[tri[1] as usize],
+            mesh.vertices[tri[2] as usize],
+        ];
+        let faces = vec![fi, fi, fi];
+        let t = Instant::now();
+        let region = region_from_loop(&mesh, &pts, &faces);
+        eprintln!(
+            "1 lasso close (region_from_loop): {:.2}s -> {} faces",
+            t.elapsed().as_secs_f64(),
+            region.len()
+        );
+    }
+}

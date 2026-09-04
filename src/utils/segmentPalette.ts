@@ -17,6 +17,28 @@ const SEGMENT_COLORS_HEX = [
   "#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6",
   "#e67e22", "#1abc9c", "#e91e63", "#00bcd4", "#8bc34a",
   "#ff9800", "#795548", "#607d8b", "#ff5722", "#673ab7",
+  // Slots 16-30: golden-angle hue spacing (offset to stay clear of the 15
+  // originals). The fuse allocates labels so adjacent regions land on
+  // different slots (model.rs alloc_manual_label_in_class); 30 slots make a
+  // same-colour adjacency essentially impossible on real partitions.
+  // SEGMENT_PALETTE_SIZE is pinned to 30 by segmentPalette.test.ts AND by
+  // SEGMENT_PALETTE_SIZE in src-tauri/src/mesh/model.rs — keep all three
+  // in sync.
+  "#d69751",
+  "#7051d6",
+  "#58d651",
+  "#d6517f",
+  "#51a6d6",
+  "#cdd651",
+  "#b851d6",
+  "#51d691",
+  "#d66b51",
+  "#515ed6",
+  "#85d651",
+  "#d651ac",
+  "#51d2d6",
+  "#d6b351",
+  "#8c51d6",
 ] as const;
 
 function hexToRgb(hex: string): [number, number, number] {
