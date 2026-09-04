@@ -1440,9 +1440,59 @@ mod lasso_timing {
         let t = Instant::now();
         let region = region_from_loop(&mesh, &pts, &faces);
         eprintln!(
-            "1 lasso close (region_from_loop): {:.2}s -> {} faces",
+            "1 tiny lasso close (region_from_loop): {:.2}s -> {} faces",
             t.elapsed().as_secs_f64(),
             region.len()
+        );
+
+        // REALISTIC loop: six clicks spread ~8-15 units apart around the same
+        // area — the shape of a real lasso stroke, where consecutive clicked
+        // points are far apart and every gap costs a full-graph Dijkstra.
+        let mut realistic_pts: Vec<[f32; 3]> = Vec::new();
+        for &(dx, dy) in &[
+            (0.0f32, 0.0f32),
+            (8.0, 0.0),
+            (12.0, 6.0),
+            (6.0, 12.0),
+            (-4.0, 10.0),
+            (-6.0, 3.0),
+        ] {
+            let q = [c[0] + dx, c[1] + dy, c[2]];
+            if let Some((vi, _)) = mesh.nearest_vertex(&q) {
+                realistic_pts.push(mesh.vertices[vi as usize]);
+            }
+        }
+        let t = Instant::now();
+        let region = region_from_loop(&mesh, &realistic_pts, &[]);
+        eprintln!(
+            "1 realistic 6-point lasso close: {:.2}s -> {} faces",
+            t.elapsed().as_secs_f64(),
+            region.len()
+        );
+    }
+}
+
+/// Measures the debug-build cost of serializing the `SegmentResult` IPC
+/// payload for a 1.5M-face mesh (the lasso finalize ships full label + colour
+/// buffers). Suspected residual lag after the compute fixes.
+#[cfg(test)]
+mod ipc_payload_timing {
+    #[test]
+    #[ignore = "allocation-heavy timing probe; run explicitly"]
+    fn segment_result_json_timing() {
+        let n = 1_499_964usize;
+        let labels: Vec<u32> = (0..n as u32).map(|i| 100_000 + i % 90).collect();
+        let colors: Vec<u8> = (0..n * 4).map(|i| (i % 251) as u8).collect();
+        let t = std::time::Instant::now();
+        let s = serde_json::to_string(&serde_json::json!({
+            "segmentLabels": labels,
+            "faceColors": colors,
+        }))
+        .unwrap();
+        eprintln!(
+            "serialize 1.5M labels + 6M colours: {:.2}s ({} MB)",
+            t.elapsed().as_secs_f64(),
+            s.len() / 1_048_576
         );
     }
 }

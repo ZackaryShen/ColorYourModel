@@ -11,6 +11,10 @@ export function useTauriCommand() {
   const setMeshData = useAppStore((s) => s.setMeshData);
   const updateSegmentLabels = useAppStore((s) => s.updateSegmentLabels);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
+  // Drives the global ProgressBar overlay (Viewport). The lasso finalize
+  // flips it so the backend's `manual:*` segment-progress events render as a
+  // visible stage bar instead of a frozen click.
+  const setLoading = useAppStore((s) => s.setLoading);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
   const setSegmentMetadata = useAppStore((s) => s.setSegmentMetadata);
   const markHistoryDirty = useAppStore((s) => s.markHistoryDirty);
@@ -181,6 +185,12 @@ export function useTauriCommand() {
     points: [number, number, number][],
     faceIndices: number[]
   ) => {
+    // The backend emits `manual:*` segment-progress events during the close;
+    // isLoading makes the Viewport ProgressBar overlay actually visible. The
+    // overlay covers the backend compute AND the IPC payload parse (both happen
+    // before the invoke promise resolves) — only the final React repaint lands
+    // after it drops.
+    setLoading(true);
     try {
       const result = await invoke<SegmentResult>("finalize_manual_region", {
         points,
@@ -206,6 +216,8 @@ export function useTauriCommand() {
     } catch (e) {
       log.error("useTauriCommand", "finalizeManualRegion failed", { error: String(e) });
       setStatusMessage(`手动分区失败：${e}`);
+    } finally {
+      setLoading(false);
     }
   };
 

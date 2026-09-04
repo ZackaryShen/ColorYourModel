@@ -107,6 +107,20 @@ const FUSE_STAGE_PLAN: StageDef[] = [
 ];
 
 /**
+ * Stage plan for the lasso finalize pipeline (`finalize_manual_region`): snap
+ * → per-gap boundary completion (`manual:loop`, the dominant stage when
+ * clicked points are far apart) → barrier BFS → boundary smoothing → commit.
+ * Every backend key for this pipeline starts with `manual:`.
+ */
+const MANUAL_STAGE_PLAN: StageDef[] = [
+  { key: "manual:snap", labelKey: "segStage.manual.snap", indeterminate: false },
+  { key: "manual:loop", labelKey: "segStage.manual.loop", indeterminate: false },
+  { key: "manual:bfs", labelKey: "segStage.manual.bfs", indeterminate: false },
+  { key: "manual:smooth", labelKey: "segStage.manual.smooth", indeterminate: true },
+  { key: "manual:commit", labelKey: "segStage.manual.commit", indeterminate: true },
+];
+
+/**
  * When curvatureKMeans runs with `useSdf: true`, the feature-building phase
  * internally calls `compute_sdf`, which emits the key `"sdf:sample"`. That
  * key is the same one ShapeDiameter uses for its own sampling phase, but in
@@ -160,6 +174,27 @@ export function resolveSegmentStage(
       return {
         index: idx + 1,
         total: FUSE_STAGE_PLAN.length,
+        labelKey: s.labelKey,
+        indeterminate: s.indeterminate,
+        done: false,
+      };
+    }
+    return {
+      index: 1,
+      total: 1,
+      labelKey: "segStage.working",
+      indeterminate: true,
+      done: false,
+    };
+  }
+  // Same for the lasso finalize pipeline (`manual:*`).
+  if (rawKey.startsWith("manual:")) {
+    const idx = MANUAL_STAGE_PLAN.findIndex((s) => s.key === rawKey);
+    if (idx >= 0) {
+      const s = MANUAL_STAGE_PLAN[idx];
+      return {
+        index: idx + 1,
+        total: MANUAL_STAGE_PLAN.length,
         labelKey: s.labelKey,
         indeterminate: s.indeterminate,
         done: false,

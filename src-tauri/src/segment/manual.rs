@@ -5,6 +5,7 @@ use petgraph::visit::EdgeRef;
 
 use crate::mesh::history::OpKind;
 use crate::mesh::kdtree::distance;
+use crate::mesh::loader::ProgressFn;
 use crate::mesh::model::MeshModel;
 
 /// f32 wrapper implementing Ord (NaN treated as equal) so it can be used as a
@@ -239,6 +240,17 @@ fn build_vertex_adjacency(mesh: &MeshModel, front_faces: Option<&[bool]>) -> Vec
 /// loop so the boundary follows the surface between clicked points. The graph
 /// is built once by the caller (`region_from_loop`) instead of per edge, which
 /// removes the O(F) per-edge rebuild that made finalize slow on large meshes.
+/// Shortest path between two vertices over a PRE-BUILT vertex-edge graph
+/// (A*, edge weight = Euclidean distance). Used to densify the lasso loop so
+/// the boundary follows the surface between clicked points. The graph is built
+/// once by the caller (`region_from_loop`) instead of per edge.
+///
+/// A* with the straight-line distance to the target as heuristic: every edge
+/// weight is a Euclidean chord, so the heuristic is admissible and consistent
+/// and the popped path is exactly the Dijkstra optimum — but the search no
+/// longer sweeps most of a 750k-vertex graph for far-apart clicks (it expands
+/// a lens-shaped corridor around the straight line instead). Field relevance:
+/// a 6-click lasso on a big sculpt used to pay ~6 full Dijkstra sweeps.
 fn shortest_vertex_path_with_adj(
     mesh: &MeshModel,
     vadj: &[Vec<u32>],
@@ -248,28 +260,31 @@ fn shortest_vertex_path_with_adj(
     if from == to {
         return vec![from];
     }
+    let tv = mesh.vertices[to as usize];
+    let h = |v: u32| -> f32 { distance(&mesh.vertices[v as usize], &tv) };
     let nv = mesh.vertices.len();
     let mut dist = vec![f32::INFINITY; nv];
     let mut prev = vec![u32::MAX; nv];
     dist[from as usize] = 0.0;
     let mut heap: BinaryHeap<(std::cmp::Reverse<F32Ord>, u32)> = BinaryHeap::new();
-    heap.push((std::cmp::Reverse(F32Ord(0.0)), from));
+    heap.push((std::cmp::Reverse(F32Ord(h(from))), from));
     while let Some((std::cmp::Reverse(d), cur)) = heap.pop() {
         if cur == to {
             break;
         }
-        if d.0 > dist[cur as usize] {
+        let g_cur = d.0 - h(cur);
+        if g_cur > dist[cur as usize] {
             continue;
         }
         let cv = mesh.vertices[cur as usize];
         for &nb in &vadj[cur as usize] {
             let nw = mesh.vertices[nb as usize];
             let w = distance(&cv, &nw);
-            let nd = d.0 + w;
+            let nd = g_cur + w;
             if nd < dist[nb as usize] {
                 dist[nb as usize] = nd;
                 prev[nb as usize] = cur;
-                heap.push((std::cmp::Reverse(F32Ord(nd)), nb));
+                heap.push((std::cmp::Reverse(F32Ord(nd + h(nb))), nb));
             }
         }
     }
@@ -404,6 +419,18 @@ pub fn region_from_loop(
     points: &[[f32; 3]],
     face_indices: &[u32],
 ) -> Vec<u32> {
+    region_from_loop_with_progress(mesh, points, face_indices, &|_, _| {})
+}
+
+/// Same computation with stage progress for the frontend ProgressBar:
+/// `manual:snap` → `manual:loop` (one tick per densified gap — the dominant
+/// stage for far-apart clicks) → `manual:bfs` → `manual:smooth`.
+pub fn region_from_loop_with_progress(
+    mesh: &MeshModel,
+    points: &[[f32; 3]],
+    face_indices: &[u32],
+    on_progress: &ProgressFn,
+) -> Vec<u32> {
     if points.len() < 3 {
         return Vec::new();
     }
@@ -427,6 +454,7 @@ pub fn region_from_loop(
     if verts.len() < 3 {
         return Vec::new();
     }
+    on_progress(0.05, "manual:snap");
 
     // 1b: derive the loop's average front normal from the hit faces the user
     // actually clicked (they are guaranteed front-side). Confine densification
@@ -478,6 +506,7 @@ pub fn region_from_loop(
     let vadj = build_vertex_adjacency(mesh, front_faces.as_deref());
     let mut loop_edges: HashSet<(u32, u32)> = HashSet::new();
     let n = verts.len();
+    let gaps = n.max(1);
     for i in 0..n {
         let a = verts[i];
         let b = verts[(i + 1) % n];
@@ -489,6 +518,10 @@ pub fn region_from_loop(
             let e = (w[0].min(w[1]), w[0].max(w[1]));
             loop_edges.insert(e);
         }
+        on_progress(
+            0.05 + 0.60 * ((i + 1) as f32 / gaps as f32),
+            "manual:loop",
+        );
     }
     if loop_edges.is_empty() {
         return Vec::new();
@@ -499,6 +532,7 @@ pub fn region_from_loop(
     if total == 0 {
         return Vec::new();
     }
+    on_progress(0.70, "manual:bfs");
     let start = 0u32;
     let mut visited = vec![false; total];
     let mut comp_a: Vec<u32> = Vec::new();
@@ -534,6 +568,7 @@ pub fn region_from_loop(
     } else {
         comp_a
     };
+    on_progress(0.95, "manual:smooth");
     smooth_region_boundary(mesh, &raw)
 }
 
@@ -547,13 +582,25 @@ pub fn finalize_manual_region(
     points: &[[f32; 3]],
     face_indices: &[u32],
 ) -> Result<(u32, Vec<u32>), String> {
+    finalize_manual_region_with_progress(mesh, points, face_indices, &|_, _| {})
+}
+
+/// Same as [`finalize_manual_region`] with ProgressBar stages forwarded from
+/// [`region_from_loop_with_progress`], plus a commit tick (0.97) for the
+/// metadata rebuild before `done`.
+pub fn finalize_manual_region_with_progress(
+    mesh: &mut MeshModel,
+    points: &[[f32; 3]],
+    face_indices: &[u32],
+    on_progress: &ProgressFn,
+) -> Result<(u32, Vec<u32>), String> {
     if points.len() < 3 {
         return Err(format!(
             "At least 3 points are required to close a region (got {})",
             points.len()
         ));
     }
-    let region = region_from_loop(mesh, points, face_indices);
+    let region = region_from_loop_with_progress(mesh, points, face_indices, on_progress);
     if region.is_empty() {
         return Err("Enclosed region is empty (degenerate loop)".into());
     }
@@ -584,6 +631,7 @@ pub fn finalize_manual_region(
     // frontend (SegmentResult.segments is read from `mesh.segments`). Without
     // this, manual regions are written to faces but never appear as selectable
     // regions — mirroring finalize_segment.
+    on_progress(0.97, "manual:commit");
     mesh.rebuild_segments();
 
     log::info!(

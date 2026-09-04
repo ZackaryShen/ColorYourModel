@@ -6,7 +6,8 @@ use crate::mesh::loader::ProgressFn;
 use crate::mesh::model::{MeshModel, Segment, DEFAULT_FACE_COLOR};
 use crate::segment::dihedral::segment_by_dihedral_angle;
 use crate::segment::manual::{
-    finalize_manual_region as backend_finalize_manual_region, snap_point_to_vertex_on_face,
+    finalize_manual_region_with_progress as backend_finalize_manual_region_with_progress,
+    snap_point_to_vertex_on_face,
     MANUAL_SEGMENT_OFFSET,
 };
 use crate::segment::sdf::segment_by_sdf;
@@ -239,7 +240,15 @@ pub fn finalize_manual_region(
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let (_label, _region) = backend_finalize_manual_region(mesh, &points, &face_indices)?;
+    // The frontend's ProgressBar overlay is driven by these events (the
+    // finalize hook flips isLoading around the invoke). The dominant stage is
+    // `manual:loop` — one A* per gap between clicked points.
+    let app_for_progress = app.clone();
+    let progress: Box<ProgressFn> = Box::new(move |fraction: f32, stage: &str| {
+        emit_fuse_progress(&app_for_progress, fraction, stage);
+    });
+    let (_label, _region) =
+        backend_finalize_manual_region_with_progress(mesh, &points, &face_indices, &*progress)?;
 
     // Emit completion
     let _ = app.emit(
