@@ -90,6 +90,23 @@ export const SEGMENT_STAGE_PLANS: Record<AlgorithmKind, StageDef[]> = {
 };
 
 /**
+ * Stage plan for the SeedPanel's fuse pipeline (`fuse_segmentation`): planar
+ * → multiview (the long pole, per-view fraction) → dihedral backbone (remapped
+ * `fuse:fold_*` keys) → edge vote + merge. Every backend key for this pipeline
+ * starts with `fuse:`, so `resolveSegmentStage` sniffs the prefix and resolves
+ * against this plan regardless of the persisted `lastSegmentKind`.
+ */
+const FUSE_STAGE_PLAN: StageDef[] = [
+  { key: "fuse:planar", labelKey: "segStage.fuse.planar", indeterminate: false },
+  { key: "fuse:multiview", labelKey: "segStage.fuse.multiview", indeterminate: false },
+  { key: "fuse:fold_edges", labelKey: "segStage.dihedral.edges", indeterminate: false },
+  { key: "fuse:fold_regions", labelKey: "segStage.dihedral.regions", indeterminate: false },
+  { key: "fuse:fold_merge", labelKey: "segStage.dihedral.merge", indeterminate: true },
+  { key: "fuse:fold_finalize", labelKey: "segStage.dihedral.finalize", indeterminate: false },
+  { key: "fuse:vote", labelKey: "segStage.fuse.vote", indeterminate: true },
+];
+
+/**
  * When curvatureKMeans runs with `useSdf: true`, the feature-building phase
  * internally calls `compute_sdf`, which emits the key `"sdf:sample"`. That
  * key is the same one ShapeDiameter uses for its own sampling phase, but in
@@ -124,8 +141,8 @@ export function resolveSegmentStage(
   kind: AlgorithmKind,
   rawKey: string,
 ): ResolvedStage {
-  const plan = SEGMENT_STAGE_PLANS[kind];
   if (rawKey === "done") {
+    const plan = SEGMENT_STAGE_PLANS[kind];
     return {
       index: plan.length,
       total: plan.length,
@@ -134,6 +151,29 @@ export function resolveSegmentStage(
       done: true,
     };
   }
+  // The fuse pipeline emits its own `fuse:*` keys; sniff the prefix instead of
+  // relying on `lastSegmentKind`, which the retired panel no longer updates.
+  if (rawKey.startsWith("fuse:")) {
+    const idx = FUSE_STAGE_PLAN.findIndex((s) => s.key === rawKey);
+    if (idx >= 0) {
+      const s = FUSE_STAGE_PLAN[idx];
+      return {
+        index: idx + 1,
+        total: FUSE_STAGE_PLAN.length,
+        labelKey: s.labelKey,
+        indeterminate: s.indeterminate,
+        done: false,
+      };
+    }
+    return {
+      index: 1,
+      total: 1,
+      labelKey: "segStage.working",
+      indeterminate: true,
+      done: false,
+    };
+  }
+  const plan = SEGMENT_STAGE_PLANS[kind];
   const normalised =
     kind === "curvatureKMeans" ? (STAGE_ALIASES[rawKey] ?? rawKey) : rawKey;
   const idx = plan.findIndex((s) => s.key === normalised);

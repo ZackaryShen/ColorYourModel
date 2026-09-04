@@ -25,7 +25,9 @@ use crate::segment::template::{
     detect_eyes_global as backend_detect_eyes_global, TemplateParams,
 };
 use crate::segment::multiview::{
-    detect_multiview_regions as backend_detect_multiview_regions, MultiViewParams, MultiViewRegion,
+    detect_multiview_regions as backend_detect_multiview_regions,
+    detect_multiview_regions_with_progress as backend_detect_multiview_regions_with_progress,
+    MultiViewParams, MultiViewRegion,
 };
 use crate::segment::cross_section::{
     detect_cross_section_features as backend_detect_cross_section_features, CrossSectionRegion,
@@ -782,6 +784,16 @@ pub fn detect_cross_section_features(
 /// views / 20° / match 1); only the fusion knobs are exposed:
 /// `cut_threshold` (edge cut vote margin, 1 = cut must outvote keep) and
 /// `min_region_faces` (post-fusion tiny-region filter, 0 = auto).
+/// Emit a `segment-progress` event for the fuse pipeline. A module-level fn
+/// (not a closure) so the per-view / per-stage callbacks below can borrow
+/// `app` without lifetime fights.
+fn emit_fuse_progress(app: &tauri::AppHandle, frac: f32, stage: &str) {
+    let _ = app.emit(
+        "segment-progress",
+        serde_json::json!({ "progress": frac.clamp(0.0, 1.0), "stage": stage }),
+    );
+}
+
 #[tauri::command]
 pub async fn fuse_segmentation(
     cut_threshold: i32,
@@ -805,15 +817,20 @@ pub async fn fuse_segmentation(
     let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
     drop(mesh_guard);
 
-    // No-op progress callback: the detectors we call here are read-only and the
-    // heavy commit happens in `fuse_region_sets` (which emits its own done
-    // event below).
-    let progress_cb: Box<ProgressFn> = Box::new(|_, _| {});
+    // Progress plan (fractions are the fuse pipeline's measured stage weights
+    // on a 1.5M-face sculpt: multiview ≈ 40%, dihedral backbone ≈ 40%, the
+    // rest is fast). The frontend resolver (segmentStages.ts) maps every
+    // `fuse:*` key to a localised stage line, so the ProgressBar moves during
+    // the run instead of freezing on "融合生成分区中…".
+    let emit_progress = |frac: f32, stage: &str| {
+        emit_fuse_progress(&app, frac, stage);
+    };
 
     let n = mesh.faces.len();
     let detect_min = (n / 500).max(2);
 
     // Layer 1: geometric backbone (裁决源).
+    emit_progress(0.02, "fuse:planar");
     let planar_regions = backend_detect_planar_regions(
         &mesh,
         &PlanarParams {
@@ -822,8 +839,12 @@ pub async fn fuse_segmentation(
             min_region_faces: detect_min,
         },
     );
-    // Layer 3: machine-vision evidence channel.
-    let multiview_regions = backend_detect_multiview_regions(
+    // Layer 3: machine-vision evidence channel — the long pole. Each rendered
+    // view reports 0.08 → 0.50. The callback must be 'static (ProgressFn), so
+    // it owns an AppHandle clone like every other command's progress wiring.
+    emit_progress(0.08, "fuse:multiview");
+    let mv_app = app.clone();
+    let multiview_regions = backend_detect_multiview_regions_with_progress(
         &mesh,
         &MultiViewParams {
             view_count: 12,
@@ -831,6 +852,7 @@ pub async fn fuse_segmentation(
             min_region_faces: detect_min,
             match_threshold: 1,
         },
+        &move |f, _| emit_fuse_progress(&mv_app, 0.08 + 0.42 * f, "fuse:multiview"),
     );
 
     // Layer 0: geometry backbone — dihedral crease vote. On smooth / single-
@@ -841,8 +863,21 @@ pub async fn fuse_segmentation(
     // of colour/flatness, giving the edge vote real signal. Computed
     // transiently: we read the per-face labels into region sets, then reset the
     // mesh's labels so `fuse_region_sets` re-labels everything itself.
+    // The dihedral pipeline's own progress (0.05→0.95 over its four stages) is
+    // remapped into the fuse's global 0.50→0.90 window under `fuse:fold_*`
+    // keys, so the bar keeps moving through the heaviest single stage.
     let dihedral_sets: Vec<Vec<u32>> = {
-        let _segs = segment_by_dihedral_angle(&mut mesh, dihedral_deg, &*progress_cb);
+        let fold_app = app.clone();
+        let fold_progress: Box<ProgressFn> = Box::new(move |f, stage| {
+            let key = match stage {
+                "dihedral:edges" => "fuse:fold_edges",
+                "dihedral:regions" => "fuse:fold_regions",
+                "dihedral:merge" => "fuse:fold_merge",
+                _ => "fuse:fold_finalize",
+            };
+            emit_fuse_progress(&fold_app, 0.50 + 0.40 * f, key);
+        });
+        let _segs = segment_by_dihedral_angle(&mut mesh, dihedral_deg, &*fold_progress);
         let mut map: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
         for (i, &l) in mesh.segment_labels.iter().enumerate() {
             map.entry(l).or_default().push(i as u32);
@@ -869,6 +904,10 @@ pub async fn fuse_segmentation(
     // means "no eye regions in scope" — the fuse stays a 3-channel vote.
     let eye_sets: Vec<Vec<u32>> = eye_face_indices.unwrap_or_default();
 
+    // Edge vote + tiny-region merge — indeterminate (fuse_region_sets has no
+    // internal progress), but the key flips the ProgressBar to its animated
+    // stripe instead of a frozen percentage.
+    emit_progress(0.92, "fuse:vote");
     let result = fuse_region_sets(
         &mut mesh,
         &planar_sets,

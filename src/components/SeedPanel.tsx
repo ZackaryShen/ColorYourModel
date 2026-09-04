@@ -89,6 +89,10 @@ export function SeedPanel() {
   const setSeedPickMode = useAppStore((s) => s.setSeedPickMode);
   const segmentMode = useAppStore((s) => s.segmentMode);
   const setSegmentMode = useAppStore((s) => s.setSegmentMode);
+  // The global ProgressBar overlay only renders while `isLoading` is true; the
+  // fuse sets it so its `segment-progress` events (Toolbar listener → store)
+  // drive a visible stage bar instead of a silent wait.
+  const setLoading = useAppStore((s) => s.setLoading);
   const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
   const setSuggestedSeeds = useAppStore((s) => s.setSuggestedSeeds);
   const clearSuggestedSeeds = useAppStore((s) => s.clearSuggestedSeeds);
@@ -150,7 +154,8 @@ export function SeedPanel() {
   const [detecting, setDetecting] = useState(false);
   const [detectingEye, setDetectingEye] = useState(false);
   const [fusing, setFusing] = useState(false);
-  // 2° floor + default (godzilla fuse probe). The old 5° floor kept the whole
+  // 0° floor (probed: 0° terminates in ~46s on godzilla/1.5M, 82 regions) with
+  // a 2° default (godzilla fuse probe). The old 5° floor kept the whole
   // smooth-sculpt body in one 86.7% region because sculpt folds spread their
   // turning over many sub-5° edges; at 2° the same fuse pipeline returns 73
   // regions (largest 13%) on Godzilla and 75 on pug, and does NOT over-split
@@ -618,6 +623,10 @@ export function SeedPanel() {
   // (1 = a cut must outvote keep; ties merge to suppress over-splitting).
   const onFuse = async () => {
     setFusing(true);
+    // Surface the backend's fuse:* progress events on the global ProgressBar
+    // overlay (Viewport) — without this flag the overlay stays hidden and the
+    // ~40s fuse looks like a frozen app.
+    setLoading(true);
     log.info("SeedPanel", "onFuse click", {
       eyeRegions: eyeRegions.length,
     });
@@ -670,6 +679,7 @@ export function SeedPanel() {
       // error already surfaced via status message in fuseSegmentation
     } finally {
       setFusing(false);
+      setLoading(false);
     }
   };
 
@@ -1180,16 +1190,18 @@ export function SeedPanel() {
           {/* Geometry backbone for the fusion: dihedral crease angle. On smooth /
               single-colour meshes the planar + multiview channels have no signal,
               so this is what actually splits the model into parts. Lower = more,
-              finer regions; higher = fewer, coarser parts. Floor is 2°: sculpted
-              figures spread their part folds over sub-5° edges (godzilla probe),
-              so only a 2° floor lets the fuse separate head/limbs/tail. */}
+              finer regions; higher = fewer, coarser parts. Floor is 0°: probed on
+              godzilla (1.5M faces) 0° terminates in ~46s and returns 82 regions /
+              largest 13.7% — no fragmentation explosion, just slightly finer than
+              2°. Default 2°: sculpted figures spread their part folds over sub-5°
+              edges, so only ≤2° lets the fuse separate head/limbs/tail. */}
           <div style={styles.row}>
             <span style={styles.label} title={t("seed.fuseDihedralHint")}>
               {t("seed.fuseDihedral")}
             </span>
             <input
               type="range"
-              min={2}
+              min={0}
               max={35}
               value={dihedralDeg}
               onChange={(e) => setDihedralDeg(Number(e.target.value))}

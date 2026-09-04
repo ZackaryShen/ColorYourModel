@@ -660,7 +660,7 @@ mod godzilla_diagnosis {
     use crate::segment::planar::{detect_planar_regions, PlanarParams};
     use crate::segment::multiview::{detect_multiview_regions, MultiViewParams};
 
-    const GODZILLA: &str = r"C:\selfDIr\3D_3mf\stls\哥斯拉_U1.stl";
+    pub(crate) const GODZILLA: &str = r"C:\selfDIr\3D_3mf\stls\哥斯拉_U1.stl";
     const OUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), r"\target\diag_godzilla");
 
     pub(crate) fn noop_progress() -> Box<ProgressFn> {
@@ -676,7 +676,7 @@ mod godzilla_diagnosis {
     }
 
     /// Per-region face counts, descending.
-    fn region_sizes(mesh: &MeshModel) -> Vec<usize> {
+    pub(crate) fn region_sizes(mesh: &MeshModel) -> Vec<usize> {
         let mut c: HashMap<u32, usize> = HashMap::new();
         for &l in &mesh.segment_labels {
             *c.entry(l).or_insert(0) += 1;
@@ -832,7 +832,7 @@ mod godzilla_diagnosis {
     }
 
     /// Partition → PPM renders (front + side) in OUT_DIR.
-    fn render_partition(mesh: &MeshModel, tag: &str) {
+    pub(crate) fn render_partition(mesh: &MeshModel, tag: &str) {
         let _ = std::fs::create_dir_all(OUT_DIR);
         let labels = mesh.segment_labels.clone();
         render(mesh, &labels, 0, &format!("{}\\{}_front.ppm", OUT_DIR, tag), 900, 900, palette_region);
@@ -1330,6 +1330,63 @@ mod fuse_floor_regression {
                     r.region_size_median,
                 );
             }
+        }
+    }
+}
+
+/// Sub-2 deg floor probe: does opening the slider to 0 still terminate, and
+/// what does it buy? fuse E2E at 0 / 0.5 / 1 deg on Godzilla (region counts,
+/// wall clock, renders). 0 deg disconnects EVERY face before phase-3, so this
+/// also stress-tests the normal-consistency merge at 1.5M singleton regions.
+#[cfg(test)]
+mod fuse_floor_zero {
+    use super::godzilla_diagnosis::{noop_progress, region_sizes, render_partition, GODZILLA};
+    use crate::mesh::loader::load_stl;
+    use crate::segment::dihedral::segment_by_dihedral_angle;
+    use crate::segment::fuse::fuse_region_sets;
+    use crate::segment::planar::{detect_planar_regions, PlanarParams};
+    use crate::segment::multiview::{detect_multiview_regions, MultiViewParams};
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    #[test]
+    #[ignore = "reads the 75MB Godzilla STL from disk; run explicitly"]
+    fn fuse_at_sub2_deg_floors() {
+        let p = std::path::Path::new(GODZILLA);
+        for deg in [0.0f32, 0.5, 1.0] {
+            let cb = noop_progress();
+            let t = Instant::now();
+            let mut mesh = load_stl(p, &*cb).expect("load");
+            let n = mesh.faces.len();
+            let detect_min = (n / 500).max(2);
+            let planar = detect_planar_regions(
+                &mesh,
+                &PlanarParams { angle_thr_deg: 15.0, dist_thr_factor: 1.0 / 30.0, min_region_faces: detect_min },
+            ).into_iter().map(|r| r.face_indices).collect::<Vec<_>>();
+            let multiview = detect_multiview_regions(
+                &mesh,
+                &MultiViewParams { view_count: 12, angle_thr_deg: 20.0, min_region_faces: detect_min, match_threshold: 1 },
+            ).into_iter().map(|r| r.face_indices).collect::<Vec<_>>();
+            let dihedral_sets = {
+                let _ = segment_by_dihedral_angle(&mut mesh, deg, &*cb);
+                let mut map: HashMap<u32, Vec<u32>> = HashMap::new();
+                for (i, &l) in mesh.segment_labels.iter().enumerate() {
+                    map.entry(l).or_default().push(i as u32);
+                }
+                mesh.segment_labels = vec![0u32; n];
+                mesh.segments.clear();
+                map.into_values().collect::<Vec<_>>()
+            };
+            let r = fuse_region_sets(&mut mesh, &planar, &multiview, &dihedral_sets, &[], 2, 0).expect("fuse");
+            let sizes = region_sizes(&mesh);
+            eprintln!(
+                "[godzilla {:.1} deg] fuse: regions={} max_share={:.1}% median={} total={:.1}s",
+                deg, r.region_count,
+                sizes.first().map(|s| *s as f64 / n as f64 * 100.0).unwrap_or(0.0),
+                r.region_size_median,
+                t.elapsed().as_secs_f64(),
+            );
+            render_partition(&mesh, &format!("fuse_{:.1}deg", deg));
         }
     }
 }

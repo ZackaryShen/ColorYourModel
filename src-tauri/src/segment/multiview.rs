@@ -211,6 +211,18 @@ fn shared_edge(mesh: &MeshModel, a: u32, b: u32) -> Option<(u32, u32)> {
 /// *advisory* detector feeding ghost seeds, not a full relabelling; `seed_grow`'s
 /// fallback already covers whatever is left.
 pub fn detect_multiview_regions(mesh: &MeshModel, params: &MultiViewParams) -> Vec<MultiViewRegion> {
+    detect_multiview_regions_with_progress(mesh, params, &|_, _| {})
+}
+
+/// Same detection with a per-view progress callback (`(views_done / views,
+/// "multiview:views")` after each rendered view). The fuse command remaps this
+/// into its own `fuse:*` stage plan; every other caller uses the no-progress
+/// wrapper above.
+pub fn detect_multiview_regions_with_progress(
+    mesh: &MeshModel,
+    params: &MultiViewParams,
+    on_progress: &crate::mesh::loader::ProgressFn,
+) -> Vec<MultiViewRegion> {
     let n = mesh.faces.len();
     if n == 0 {
         return Vec::new();
@@ -309,6 +321,7 @@ pub fn detect_multiview_regions(mesh: &MeshModel, params: &MultiViewParams) -> V
                 per_face_views[f].push((vi, label[f]));
             }
         }
+        on_progress(((vi + 1) as f32) / views as f32, "multiview:views");
     }
 
     // Build the weighted match graph (face–face, weight = #views in agreement)
