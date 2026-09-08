@@ -202,7 +202,8 @@ pre.mermaid.mermaid-offline::after {
     <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="README.html">Home (EN)</a></li>
 <li><a href="README.zh-CN.html">首页（中文）</a></li>
-<li><a href="CHANGELOG.html" aria-current="page">Changelog</a></li></ul></div>
+<li><a href="CHANGELOG.html" aria-current="page">Changelog</a></li>
+<li><a href="CONTRIBUTING.html">Contributing to ColorYourModel</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="docs/user-guide/getting-started.html">Getting Started</a></li>
 <li><a href="docs/user-guide/auto-segmentation.html">Auto Segmentation</a></li>
 <li><a href="docs/user-guide/seed-tools.html">Seed Tools</a></li>
@@ -242,6 +243,16 @@ pre.mermaid.mermaid-offline::after {
 <p>所有重要变更均记录于此文件。格式基于 <a href="https://keepachangelog.com/">Keep a Changelog</a>。</p>
 <hr>
 <h2 id="unreleased">[Unreleased]</h2>
+<h3 id="added--开源准备示例图库与社区文档2026-09-08">Added — 开源准备：示例图库与社区文档（2026-09-08）</h3>
+<ul>
+<li><strong>示例图库</strong>（<code>docs/cases/examples.html</code>）：13 个真实案例——手办雕塑（sanji 187 万面 37 区、armoured hero 91 区）、AI 生成模型（Tripo 菠萝屋 76 区）、招牌/建筑件（KFC 系、house2）——每案例配核实过的截图与面数/区数说明，附模型版权与来源声明（CYM 不附带任何模型，仅跟踪验证截图）</li>
+<li><strong>CONTRIBUTING.md</strong>：构建前提、测试命令（cargo/vitest/tsc/docs:build）、分支与提交约定、对抗开发循环说明、证据探针约定</li>
+<li><strong>GitHub issue 模板</strong>：bug 报告（含面数/OS/版本字段）与功能请求</li>
+<li><strong>README 双语</strong>：新增 Screenshots 区（真实运行截图）与示例图库、贡献指引链接</li>
+<li><strong>文档站</strong>：<code>deploy-docs.yml</code> Pages 产物放行 <code>samples/**/*.png</code>（图库图片在站点上可见）；生成器根文档三件套扩为四件套（+CONTRIBUTING.html）</li>
+<li><strong>user-guide/seed-tools</strong> 更新：折角阈值 0–35°（默认 2°）的模型分类建议表、fuse/套索进度条、相邻区不同色的 30 槽调色板、套索工作流</li>
+<li>samples 重组：<code>梁圣</code> → <code>liangsheng</code>（同案例改名），新增 12 个案例目录的验证截图（仅 PNG，模型不入库）</li>
+</ul>
 <h3 id="removed--导入时自动分割2026-08-29">Removed — 导入时自动分割（2026-08-29）</h3>
 <ul>
 <li>导入不再自动运行 curvatureKMeans 等分割算法：事实链验证 <code>fuse_segmentation</code> 从不消费导入分割——它自建平面/多视角/二面角三通道投票，并在融合前显式清空全部已有标签。导入分割（大模型 ~34s）是纯死工作，用户点「融合生成」即被丢弃</li>
@@ -411,7 +422,7 @@ pre.mermaid.mermaid-offline::after {
 <p><strong>改动文件</strong>：<code>Viewport.tsx</code>（BrushCursor, Space handler, SegmentOutline）</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#unreleased">[Unreleased]</a></li><li class="toc-h3"><a href="#removed--导入时自动分割2026-08-29">Removed — 导入时自动分割（2026-08-29）</a></li><li class="toc-h3"><a href="#added--导入管线并行化2026-08-28">Added — 导入管线并行化（2026-08-28）</a></li><li class="toc-h3"><a href="#removed--工具栏智能分区入口2026-08-28">Removed — 工具栏智能分区入口（2026-08-28）</a></li><li class="toc-h3"><a href="#verified--3mf-导出端到端验证2026-08-27">Verified — 3MF 导出端到端验证（2026-08-27）</a></li><li class="toc-h3"><a href="#added--文档骨架--双语-readme2026-08-27">Added — 文档骨架 + 双语 README（2026-08-27）</a></li><li class="toc-h3"><a href="#changed--许可证-mit--agpl-30-only2026-08-27">Changed — 许可证 MIT → AGPL-3.0-only（2026-08-27）</a></li><li class="toc-h3"><a href="#fixed--填充目标区域权威化2026-08-27">Fixed — 填充目标区域权威化（2026-08-27）</a></li><li class="toc-h3"><a href="#added--3mf-导出预设库-2026-08-07-2e4e070">Added — 3MF 导出预设库 (2026-08-07, 2e4e070)</a></li><li class="toc-h3"><a href="#added--智能分区前端面板2026-08-07-本轮提交">Added — 智能分区前端面板（2026-08-07, 本轮提交）</a></li><li class="toc-h3"><a href="#changed--着色器分区高亮方案-b2026-08-08-eea2fd1--485aa7d--f192f98">Changed — 着色器分区高亮（方案 B，2026-08-08, eea2fd1 + 485aa7d + f192f98）</a></li><li class="toc-h3"><a href="#fixed--stl-导入崩溃2026-08-09-69a17ea">Fixed — STL 导入崩溃（2026-08-09, 69a17ea）</a></li><li class="toc-h3"><a href="#added--v02-功能增强">Added — v0.2 功能增强</a></li><li class="toc-h3"><a href="#changed">Changed</a></li><li class="toc-h3"><a href="#fixed">Fixed</a></li><li class="toc-h2"><a href="#010--2024-12-初始版本">[0.1.0] — 2024-12 (初始版本)</a></li><li class="toc-h3"><a href="#added">Added</a></li><li class="toc-h2"><a href="#对抗式开发日志">对抗式开发日志</a></li><li class="toc-h3"><a href="#round-7-8--手动分区画笔">Round 7-8 — 手动分区画笔</a></li><li class="toc-h3"><a href="#round-6--性能优化--法线合并">Round 6 — 性能优化 + 法线合并</a></li><li class="toc-h3"><a href="#round-5--小分区合并--进度条">Round 5 — 小分区合并 + 进度条</a></li><li class="toc-h3"><a href="#round-4--i18n--喷漆差异化">Round 4 — i18n + 喷漆差异化</a></li><li class="toc-h3"><a href="#round-3--画笔光标--space-平移--分区边框">Round 3 — 画笔光标 + Space 平移 + 分区边框</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#unreleased">[Unreleased]</a></li><li class="toc-h3"><a href="#added--开源准备示例图库与社区文档2026-09-08">Added — 开源准备：示例图库与社区文档（2026-09-08）</a></li><li class="toc-h3"><a href="#removed--导入时自动分割2026-08-29">Removed — 导入时自动分割（2026-08-29）</a></li><li class="toc-h3"><a href="#added--导入管线并行化2026-08-28">Added — 导入管线并行化（2026-08-28）</a></li><li class="toc-h3"><a href="#removed--工具栏智能分区入口2026-08-28">Removed — 工具栏智能分区入口（2026-08-28）</a></li><li class="toc-h3"><a href="#verified--3mf-导出端到端验证2026-08-27">Verified — 3MF 导出端到端验证（2026-08-27）</a></li><li class="toc-h3"><a href="#added--文档骨架--双语-readme2026-08-27">Added — 文档骨架 + 双语 README（2026-08-27）</a></li><li class="toc-h3"><a href="#changed--许可证-mit--agpl-30-only2026-08-27">Changed — 许可证 MIT → AGPL-3.0-only（2026-08-27）</a></li><li class="toc-h3"><a href="#fixed--填充目标区域权威化2026-08-27">Fixed — 填充目标区域权威化（2026-08-27）</a></li><li class="toc-h3"><a href="#added--3mf-导出预设库-2026-08-07-2e4e070">Added — 3MF 导出预设库 (2026-08-07, 2e4e070)</a></li><li class="toc-h3"><a href="#added--智能分区前端面板2026-08-07-本轮提交">Added — 智能分区前端面板（2026-08-07, 本轮提交）</a></li><li class="toc-h3"><a href="#changed--着色器分区高亮方案-b2026-08-08-eea2fd1--485aa7d--f192f98">Changed — 着色器分区高亮（方案 B，2026-08-08, eea2fd1 + 485aa7d + f192f98）</a></li><li class="toc-h3"><a href="#fixed--stl-导入崩溃2026-08-09-69a17ea">Fixed — STL 导入崩溃（2026-08-09, 69a17ea）</a></li><li class="toc-h3"><a href="#added--v02-功能增强">Added — v0.2 功能增强</a></li><li class="toc-h3"><a href="#changed">Changed</a></li><li class="toc-h3"><a href="#fixed">Fixed</a></li><li class="toc-h2"><a href="#010--2024-12-初始版本">[0.1.0] — 2024-12 (初始版本)</a></li><li class="toc-h3"><a href="#added">Added</a></li><li class="toc-h2"><a href="#对抗式开发日志">对抗式开发日志</a></li><li class="toc-h3"><a href="#round-7-8--手动分区画笔">Round 7-8 — 手动分区画笔</a></li><li class="toc-h3"><a href="#round-6--性能优化--法线合并">Round 6 — 性能优化 + 法线合并</a></li><li class="toc-h3"><a href="#round-5--小分区合并--进度条">Round 5 — 小分区合并 + 进度条</a></li><li class="toc-h3"><a href="#round-4--i18n--喷漆差异化">Round 4 — i18n + 喷漆差异化</a></li><li class="toc-h3"><a href="#round-3--画笔光标--space-平移--分区边框">Round 3 — 画笔光标 + Space 平移 + 分区边框</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

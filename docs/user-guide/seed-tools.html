@@ -202,7 +202,8 @@ pre.mermaid.mermaid-offline::after {
     <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
 <li><a href="../../README.zh-CN.html">首页（中文）</a></li>
-<li><a href="../../CHANGELOG.html">Changelog</a></li></ul></div>
+<li><a href="../../CHANGELOG.html">Changelog</a></li>
+<li><a href="../../CONTRIBUTING.html">Contributing to ColorYourModel</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="getting-started.html">Getting Started</a></li>
 <li><a href="auto-segmentation.html">Auto Segmentation</a></li>
 <li><a href="seed-tools.html" aria-current="page">Seed Tools</a></li>
@@ -268,6 +269,44 @@ Internals: <a href="../algorithms/seed-grow-fuse.html">Algorithms: Seed Grow &am
 <p>Each seed grows into a region bounded by the <strong>barrier angle</strong> — adjacent faces whose normals differ more than the barrier stop the growth. Toggle the <strong>optimizer</strong> to post-process the grown regions. Add or move seeds and grow again; regions you keep are preserved.</p>
 <h2 id="fusing">Fusing</h2>
 <p><strong>Fuse</strong> merges over-seeded fragments, with aggressive <strong>tiny-region merging</strong> (micro-regions are absorbed and a live size breakdown is shown in the status area) and a reverse-split guard against runaway merges. Eye regions detected earlier are protected — they survive internal cuts and merges.</p>
+<h3 id="the-fold-angle-threshold">The fold-angle threshold</h3>
+<p>The <strong>Dihedral °</strong> slider (0–35°, default <strong>2°</strong>) controls where the partition
+is allowed to cut. Lower = finer, higher = coarser:</p>
+<table>
+<thead>
+<tr>
+<th>Model class</th>
+<th>Suggested value</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Sculpted figures (creatures, busts, anime figures)</td>
+<td><strong>0–3°</strong></td>
+<td>Sculpted part folds (neck, shoulders, hips) spread their turning over many sub-5° edges; only a low threshold lets the fuse separate head / limbs / tail</td>
+</tr>
+<tr>
+<td>Hard-surface parts (signs, kiosks, architectural)</td>
+<td><strong>5–15°</strong></td>
+<td>Sharp creases cut themselves; a higher threshold keeps flat walls whole</td>
+</tr>
+</tbody></table>
+<p>Pressing <strong>Fuse &amp; generate</strong> runs a staged pipeline with a live progress bar:
+planar detection → multi-view evidence → fold-angle backbone → edge vote.</p>
+<h3 id="adjacent-regions-never-share-a-colour">Adjacent regions never share a colour</h3>
+<p>The viewport colours each region by its label. The fuse allocates labels so
+that <strong>touching regions always land on different palette slots</strong> (greedy
+graph colouring over the region adjacency, 30-slot palette) — two neighbouring
+regions can safely look at each other without reading as one blob.</p>
+<h2 id="lasso-regions">Lasso regions</h2>
+<p>For the areas where geometry has no boundary to offer (a smooth cheek, a flat
+wall band), draw a region by hand with the <strong>Lasso</strong> tool: click points around
+the area, then click near the start point (or press Enter) to close.</p>
+<p>Closing the loop shows the same progress bar — snap → boundary completion →
+region capture → smoothing → commit — because on million-face meshes every one
+of those stages is real work. The boundary between clicked points follows the
+mesh surface (A* shortest path), so the outline hugs the geometry instead of
+cutting through it.</p>
 <h2 id="when-to-use-what">When to use what</h2>
 <table>
 <thead>
@@ -278,7 +317,11 @@ Internals: <a href="../algorithms/seed-grow-fuse.html">Algorithms: Seed Grow &am
 </thead>
 <tbody><tr>
 <td>Figure with eyes/face</td>
-<td>Detect eyes first, then seed-grow the body parts</td>
+<td>Detect eyes first, then fuse; lasso anything the vote missed</td>
+</tr>
+<tr>
+<td>Sculpted figure, one giant region</td>
+<td>Lower the fold threshold toward 0–2° and fuse again</td>
 </tr>
 <tr>
 <td>Mechanical part</td>
@@ -286,16 +329,21 @@ Internals: <a href="../algorithms/seed-grow-fuse.html">Algorithms: Seed Grow &am
 </tr>
 <tr>
 <td>Auto result too fragmented</td>
-<td>Fuse with tiny-region merge</td>
+<td>Fuse with tiny-region merge, or raise the fold threshold</td>
 </tr>
 <tr>
 <td>One region wrong</td>
 <td>Resegment just that region (Segments panel) instead of re-running everything</td>
 </tr>
+<tr>
+<td>Smooth area with no crease</td>
+<td>Geometry has no boundary there — lasso it</td>
+</tr>
 </tbody></table>
+<p>Real runs of every case above live in the <a href="../cases/examples.html">Examples Gallery</a>.</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#seed-recommendation">Seed recommendation</a></li><li class="toc-h2"><a href="#growing-regions">Growing regions</a></li><li class="toc-h2"><a href="#fusing">Fusing</a></li><li class="toc-h2"><a href="#when-to-use-what">When to use what</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#seed-recommendation">Seed recommendation</a></li><li class="toc-h2"><a href="#growing-regions">Growing regions</a></li><li class="toc-h2"><a href="#fusing">Fusing</a></li><li class="toc-h3"><a href="#the-fold-angle-threshold">The fold-angle threshold</a></li><li class="toc-h3"><a href="#adjacent-regions-never-share-a-colour">Adjacent regions never share a colour</a></li><li class="toc-h2"><a href="#lasso-regions">Lasso regions</a></li><li class="toc-h2"><a href="#when-to-use-what">When to use what</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

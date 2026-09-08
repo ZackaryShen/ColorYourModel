@@ -46,6 +46,15 @@ flowchart TD
 - [ ] Batch processing of similar models
 - [ ] OrcaSlicer plugin-form integration
 
+## Screenshots
+
+| | |
+|---|---|
+| <img src="samples/sanji-diorama/example02.png" alt="1.87M-face figure segmented into 37 regions" width="480"> | <img src="samples/liangsheng/example01.png" alt="Bust painted as 11 regions" width="480"> |
+| 1.87M-face figure → 37 regions, ready for per-part colour | Painted bust — this model drove the end-to-end 3MF verification |
+
+Thirteen real runs — sculpts, AI-generated meshes, signage, architecture — live in the [**Examples Gallery**](docs/bak/cases/examples.md).
+
 ## Tech stack
 
 | Layer | Tech | Notes |
@@ -176,7 +185,7 @@ The project is developed with an adversarial development loop (`PLAN → REFUTE 
 
 ## Contributing
 
-Issues and PRs welcome. Please follow [Conventional Commits](https://www.conventionalcommits.org/). By contributing you agree that your contributions are licensed under AGPL-3.0.
+Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the build, the test commands and the docs workflow. Please follow [Conventional Commits](https://www.conventionalcommits.org/). By contributing you agree that your contributions are licensed under AGPL-3.0.
 
 ## License
 

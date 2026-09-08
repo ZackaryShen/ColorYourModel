@@ -11,7 +11,7 @@
 | Face count | TODO (read from CYM HUD on re-run) |
 | CYM version / commit | `a7700df` era (fill-routing fix verified in the same session) |
 | Slicer used | Snapmaker Orca, Snapmaker U1 profile |
-| Evidence | `samples/梁圣/example01.png` (CYM, seed panel + painted regions), `example01_slicer.png` / `example01_snapmaker.png` (slicer import) |
+| Evidence | `samples/liangsheng/` (CYM workflow shots; the slicer-import shots of the original run were retired in the 2026-09 samples reorganisation) |
 
 ## Goal
 

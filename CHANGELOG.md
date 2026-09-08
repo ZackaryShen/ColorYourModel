@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+### Added — 开源准备：示例图库与社区文档（2026-09-08）
+
+- **示例图库**（`docs/cases/examples.html`）：13 个真实案例——手办雕塑（sanji 187 万面 37 区、armoured hero 91 区）、AI 生成模型（Tripo 菠萝屋 76 区）、招牌/建筑件（KFC 系、house2）——每案例配核实过的截图与面数/区数说明，附模型版权与来源声明（CYM 不附带任何模型，仅跟踪验证截图）
+- **CONTRIBUTING.md**：构建前提、测试命令（cargo/vitest/tsc/docs:build）、分支与提交约定、对抗开发循环说明、证据探针约定
+- **GitHub issue 模板**：bug 报告（含面数/OS/版本字段）与功能请求
+- **README 双语**：新增 Screenshots 区（真实运行截图）与示例图库、贡献指引链接
+- **文档站**：`deploy-docs.yml` Pages 产物放行 `samples/**/*.png`（图库图片在站点上可见）；生成器根文档三件套扩为四件套（+CONTRIBUTING.html）
+- **user-guide/seed-tools** 更新：折角阈值 0–35°（默认 2°）的模型分类建议表、fuse/套索进度条、相邻区不同色的 30 槽调色板、套索工作流
+- samples 重组：`梁圣` → `liangsheng`（同案例改名），新增 12 个案例目录的验证截图（仅 PNG，模型不入库）
+
 ### Removed — 导入时自动分割（2026-08-29）
 
 - 导入不再自动运行 curvatureKMeans 等分割算法：事实链验证 `fuse_segmentation` 从不消费导入分割——它自建平面/多视角/二面角三通道投票，并在融合前显式清空全部已有标签。导入分割（大模型 ~34s）是纯死工作，用户点「融合生成」即被丢弃

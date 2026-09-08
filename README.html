@@ -202,7 +202,8 @@ pre.mermaid.mermaid-offline::after {
     <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="README.html" aria-current="page">Home (EN)</a></li>
 <li><a href="README.zh-CN.html">首页（中文）</a></li>
-<li><a href="CHANGELOG.html">Changelog</a></li></ul></div>
+<li><a href="CHANGELOG.html">Changelog</a></li>
+<li><a href="CONTRIBUTING.html">Contributing to ColorYourModel</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="docs/user-guide/getting-started.html">Getting Started</a></li>
 <li><a href="docs/user-guide/auto-segmentation.html">Auto Segmentation</a></li>
 <li><a href="docs/user-guide/seed-tools.html">Seed Tools</a></li>
@@ -279,6 +280,24 @@ pre.mermaid.mermaid-offline::after {
 <li><input disabled="" type="checkbox"> Batch processing of similar models</li>
 <li><input disabled="" type="checkbox"> OrcaSlicer plugin-form integration</li>
 </ul>
+<h2 id="screenshots">Screenshots</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><img src="samples/sanji-diorama/example02.png" alt="1.87M-face figure segmented into 37 regions" width="480"></td>
+<td><img src="samples/liangsheng/example01.png" alt="Bust painted as 11 regions" width="480"></td>
+</tr>
+<tr>
+<td>1.87M-face figure → 37 regions, ready for per-part colour</td>
+<td>Painted bust — this model drove the end-to-end 3MF verification</td>
+</tr>
+</tbody></table>
+<p>Thirteen real runs — sculpts, AI-generated meshes, signage, architecture — live in the <a href="docs/cases/examples.html"><strong>Examples Gallery</strong></a>.</p>
 <h2 id="tech-stack">Tech stack</h2>
 <table>
 <thead>
@@ -426,13 +445,13 @@ RUST_LOG=debug npm run tauri dev
 <li><input disabled="" type="checkbox"> <strong>v1.0</strong> — batch processing, OrcaSlicer plugin-form integration</li>
 </ul>
 <h2 id="contributing">Contributing</h2>
-<p>Issues and PRs welcome. Please follow <a href="https://www.conventionalcommits.org/">Conventional Commits</a>. By contributing you agree that your contributions are licensed under AGPL-3.0.</p>
+<p>Issues and PRs welcome — see <a href="CONTRIBUTING.html">CONTRIBUTING.md</a> for the build, the test commands and the docs workflow. Please follow <a href="https://www.conventionalcommits.org/">Conventional Commits</a>. By contributing you agree that your contributions are licensed under AGPL-3.0.</p>
 <h2 id="license">License</h2>
 <p>This project is licensed under the <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/LICENSE">GNU AGPL-3.0</a>.</p>
 <p>Copyleft keeps derivatives — including network-service deployments — open under the same terms, while every person and company remains free to use, study, modify and redistribute the software. Note: the bundled slicer presets are extracted from the OrcaSlicer (AGPL-3.0) vendor tree and are treated as AGPL-derived data. For alternative licensing, contact the maintainer.</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#features">Features</a></li><li class="toc-h3"><a href="#working-today-">Working today ✅</a></li><li class="toc-h3"><a href="#planned-">Planned 🗓</a></li><li class="toc-h2"><a href="#tech-stack">Tech stack</a></li><li class="toc-h3"><a href="#architecture">Architecture</a></li><li class="toc-h2"><a href="#project-structure">Project structure</a></li><li class="toc-h2"><a href="#getting-started">Getting started</a></li><li class="toc-h3"><a href="#prerequisites">Prerequisites</a></li><li class="toc-h3"><a href="#run">Run</a></li><li class="toc-h3"><a href="#tests--checks">Tests &amp; checks</a></li><li class="toc-h3"><a href="#debug-logging">Debug logging</a></li><li class="toc-h2"><a href="#documentation">Documentation</a></li><li class="toc-h2"><a href="#roadmap">Roadmap</a></li><li class="toc-h2"><a href="#contributing">Contributing</a></li><li class="toc-h2"><a href="#license">License</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#features">Features</a></li><li class="toc-h3"><a href="#working-today-">Working today ✅</a></li><li class="toc-h3"><a href="#planned-">Planned 🗓</a></li><li class="toc-h2"><a href="#screenshots">Screenshots</a></li><li class="toc-h2"><a href="#tech-stack">Tech stack</a></li><li class="toc-h3"><a href="#architecture">Architecture</a></li><li class="toc-h2"><a href="#project-structure">Project structure</a></li><li class="toc-h2"><a href="#getting-started">Getting started</a></li><li class="toc-h3"><a href="#prerequisites">Prerequisites</a></li><li class="toc-h3"><a href="#run">Run</a></li><li class="toc-h3"><a href="#tests--checks">Tests &amp; checks</a></li><li class="toc-h3"><a href="#debug-logging">Debug logging</a></li><li class="toc-h2"><a href="#documentation">Documentation</a></li><li class="toc-h2"><a href="#roadmap">Roadmap</a></li><li class="toc-h2"><a href="#contributing">Contributing</a></li><li class="toc-h2"><a href="#license">License</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

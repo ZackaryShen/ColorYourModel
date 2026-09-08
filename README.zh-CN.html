@@ -202,7 +202,8 @@ pre.mermaid.mermaid-offline::after {
     <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="README.html">Home (EN)</a></li>
 <li><a href="README.zh-CN.html" aria-current="page">首页（中文）</a></li>
-<li><a href="CHANGELOG.html">Changelog</a></li></ul></div>
+<li><a href="CHANGELOG.html">Changelog</a></li>
+<li><a href="CONTRIBUTING.html">Contributing to ColorYourModel</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="docs/user-guide/getting-started.html">Getting Started</a></li>
 <li><a href="docs/user-guide/auto-segmentation.html">Auto Segmentation</a></li>
 <li><a href="docs/user-guide/seed-tools.html">Seed Tools</a></li>
@@ -279,6 +280,24 @@ pre.mermaid.mermaid-offline::after {
 <li><input disabled="" type="checkbox"> 同类模型批量处理</li>
 <li><input disabled="" type="checkbox"> OrcaSlicer 插件形态集成</li>
 </ul>
+<h2 id="截图">截图</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><img src="samples/sanji-diorama/example02.png" alt="187 万面手办分割为 37 个区域" width="480"></td>
+<td><img src="samples/liangsheng/example01.png" alt="胸像上色为 11 个区域" width="480"></td>
+</tr>
+<tr>
+<td>187 万面手办 → 37 区，可逐部件上色</td>
+<td>上色胸像——3MF 端到端验证用的就是这个模型</td>
+</tr>
+</tbody></table>
+<p>十三个真实案例——手办、AI 生成模型、招牌、建筑件——见<a href="docs/cases/examples.html"><strong>示例图库</strong></a>。</p>
 <h2 id="技术栈">技术栈</h2>
 <table>
 <thead>
@@ -426,13 +445,13 @@ RUST_LOG=debug npm run tauri dev
 <li><input disabled="" type="checkbox"> <strong>v1.0</strong> —— 批量处理、OrcaSlicer 插件形态集成</li>
 </ul>
 <h2 id="贡献">贡献</h2>
-<p>欢迎 Issue 和 PR。请遵循 <a href="https://www.conventionalcommits.org/">Conventional Commits</a>。提交即表示同意贡献内容按 AGPL-3.0 授权。</p>
+<p>欢迎 Issue 和 PR——构建方式、测试命令与文档流程见 <a href="CONTRIBUTING.html">CONTRIBUTING.md</a>。请遵循 <a href="https://www.conventionalcommits.org/">Conventional Commits</a>。提交即表示同意贡献内容按 AGPL-3.0 授权。</p>
 <h2 id="许可证">许可证</h2>
 <p>本项目基于 <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/LICENSE">GNU AGPL-3.0</a> 授权。</p>
 <p>Copyleft 保证衍生作品——包括网络服务形态——同样开源，同时任何人（含公司）都可自由使用、学习、修改和再分发。注：内置切片器预设萃取自 OrcaSlicer（AGPL-3.0）vendor 树，按 AGPL 派生数据处理。如需替代授权，请联系维护者。</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#功能特性">功能特性</a></li><li class="toc-h3"><a href="#当前可用-">当前可用 ✅</a></li><li class="toc-h3"><a href="#计划中-">计划中 🗓</a></li><li class="toc-h2"><a href="#技术栈">技术栈</a></li><li class="toc-h3"><a href="#架构示意">架构示意</a></li><li class="toc-h2"><a href="#项目结构">项目结构</a></li><li class="toc-h2"><a href="#快速开始">快速开始</a></li><li class="toc-h3"><a href="#环境要求">环境要求</a></li><li class="toc-h3"><a href="#运行">运行</a></li><li class="toc-h3"><a href="#测试与检查">测试与检查</a></li><li class="toc-h3"><a href="#调试日志">调试日志</a></li><li class="toc-h2"><a href="#文档">文档</a></li><li class="toc-h2"><a href="#路线图">路线图</a></li><li class="toc-h2"><a href="#贡献">贡献</a></li><li class="toc-h2"><a href="#许可证">许可证</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#功能特性">功能特性</a></li><li class="toc-h3"><a href="#当前可用-">当前可用 ✅</a></li><li class="toc-h3"><a href="#计划中-">计划中 🗓</a></li><li class="toc-h2"><a href="#截图">截图</a></li><li class="toc-h2"><a href="#技术栈">技术栈</a></li><li class="toc-h3"><a href="#架构示意">架构示意</a></li><li class="toc-h2"><a href="#项目结构">项目结构</a></li><li class="toc-h2"><a href="#快速开始">快速开始</a></li><li class="toc-h3"><a href="#环境要求">环境要求</a></li><li class="toc-h3"><a href="#运行">运行</a></li><li class="toc-h3"><a href="#测试与检查">测试与检查</a></li><li class="toc-h3"><a href="#调试日志">调试日志</a></li><li class="toc-h2"><a href="#文档">文档</a></li><li class="toc-h2"><a href="#路线图">路线图</a></li><li class="toc-h2"><a href="#贡献">贡献</a></li><li class="toc-h2"><a href="#许可证">许可证</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

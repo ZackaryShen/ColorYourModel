@@ -202,7 +202,8 @@ pre.mermaid.mermaid-offline::after {
     <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
     <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
 <li><a href="../../README.zh-CN.html">首页（中文）</a></li>
-<li><a href="../../CHANGELOG.html">Changelog</a></li></ul></div>
+<li><a href="../../CHANGELOG.html">Changelog</a></li>
+<li><a href="../../CONTRIBUTING.html">Contributing to ColorYourModel</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
 <li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
 <li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
@@ -241,6 +242,8 @@ pre.mermaid.mermaid-offline::after {
 <h1 id="cases">Cases</h1>
 <p>Real models taken through the full CYM loop — segmentation, painting, export, sliced print — with evidence.</p>
 <p>Status: <strong>empty by design for now</strong>; content is being written. Duplicate <a href="TEMPLATE.html"><code>TEMPLATE.md</code></a> per case.</p>
+<p>For a visual tour first, see the <a href="examples.html"><strong>Examples Gallery</strong></a> — one page, thirteen real runs, every screenshot committed under <code>samples/</code>.</p>
+<p>Provenance note (resolves the ⚠️ below): the models shown in the gallery and in case 01 were brought in by the repository authors to exercise the tools; CYM ships no models (only the verification screenshots are tracked), and all model artwork / trademarks remain the property of their respective owners.</p>
 <pre class="mermaid">flowchart LR
     M[&quot;pick a model&lt;br/&gt;(document provenance!)&quot;] --&gt; S[&quot;run pipeline&lt;br/&gt;record every setting&quot;]
     S --&gt; SL[&quot;slice in target slicer&quot;]
@@ -249,7 +252,8 @@ pre.mermaid.mermaid-offline::after {
 </pre>
 <p>Suggested next entries:</p>
 <ul>
-<li><input checked="" disabled="" type="checkbox"> 3MF end-to-end verification (2026-08-27, Snapmaker Orca / U1) — written: <a href="01-3mf-end-to-end.html"><code>01-3mf-end-to-end.md</code></a> (⚠️ model provenance in <code>samples/</code> still to document or replace before wide distribution)</li>
+<li><input checked="" disabled="" type="checkbox"> 3MF end-to-end verification (2026-08-27, Snapmaker Orca / U1) — written: <a href="01-3mf-end-to-end.html"><code>01-3mf-end-to-end.md</code></a> (provenance note above)</li>
+<li><input checked="" disabled="" type="checkbox"> Examples gallery (2026-09-08) — written: <a href="examples.html"><code>examples.md</code></a>, 13 models from sculpts to signage</li>
 <li><input disabled="" type="checkbox"> A figure model with eye detection + seed fuse</li>
 <li><input disabled="" type="checkbox"> A mechanical/planar model with auto segmentation only</li>
 </ul>

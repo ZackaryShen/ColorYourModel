@@ -47,6 +47,7 @@ const SOURCES = [
   join(ROOT, "README.md"),
   join(ROOT, "README.zh-CN.md"),
   join(ROOT, "CHANGELOG.md"),
+  join(ROOT, "CONTRIBUTING.md"),
   ...collectDocs(join(ROOT, "docs", "bak")),
 ];
 
@@ -186,7 +187,7 @@ function rewriteLinks(html, src) {
 // ── Page template ────────────────────────────────────────────────────────────
 
 const NAV_GROUPS = [
-  ["Overview", ["README.md", "README.zh-CN.md", "CHANGELOG.md"]],
+  ["Overview", ["README.md", "README.zh-CN.md", "CHANGELOG.md", "CONTRIBUTING.md"]],
   ["User Guide", ["docs/bak/user-guide/getting-started.md", "docs/bak/user-guide/auto-segmentation.md", "docs/bak/user-guide/seed-tools.md", "docs/bak/user-guide/painting-tools.md", "docs/bak/user-guide/exporting.md"]],
   ["Algorithms", ["docs/bak/algorithms/README.md", "docs/bak/algorithms/segmentation.md", "docs/bak/algorithms/seed-grow-fuse.md", "docs/bak/algorithms/eye-detection.md"]],
   ["Technical", ["docs/bak/technical/README.md", "docs/bak/technical/bvh-face-picking.md", "docs/bak/technical/shader-segment-highlight.md", "docs/bak/technical/fill-routing.md", "docs/bak/technical/undo-redo-history.md", "docs/bak/technical/export-pipeline.md", "docs/bak/technical/crash-diagnostics.md"]],
@@ -341,7 +342,7 @@ for (const src of SOURCES) {
 // lives there too and must never be touched); under docs/ every html file is
 // generator-owned.
 const generated = new Set(pages);
-const ROOT_ARCHIVES = new Set(["README.html", "README.zh-CN.html", "CHANGELOG.html"]);
+const ROOT_ARCHIVES = new Set(["README.html", "README.zh-CN.html", "CHANGELOG.html", "CONTRIBUTING.html"]);
 for (const entry of readdirSync(ROOT)) {
   if (ROOT_ARCHIVES.has(entry) && !generated.has(entry)) {
     rmSync(join(ROOT, entry));

@@ -46,6 +46,15 @@ flowchart TD
 - [ ] 同类模型批量处理
 - [ ] OrcaSlicer 插件形态集成
 
+## 截图
+
+| | |
+|---|---|
+| <img src="samples/sanji-diorama/example02.png" alt="187 万面手办分割为 37 个区域" width="480"> | <img src="samples/liangsheng/example01.png" alt="胸像上色为 11 个区域" width="480"> |
+| 187 万面手办 → 37 区，可逐部件上色 | 上色胸像——3MF 端到端验证用的就是这个模型 |
+
+十三个真实案例——手办、AI 生成模型、招牌、建筑件——见[**示例图库**](docs/bak/cases/examples.md)。
+
 ## 技术栈
 
 | 层级 | 技术 | 说明 |
@@ -176,7 +185,7 @@ Markdown 源文件在 [`docs/bak/`](docs/bak/README.md)（与 docs 树镜像）�
 
 ## 贡献
 
-欢迎 Issue 和 PR。请遵循 [Conventional Commits](https://www.conventionalcommits.org/)。提交即表示同意贡献内容按 AGPL-3.0 授权。
+欢迎 Issue 和 PR——构建方式、测试命令与文档流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。请遵循 [Conventional Commits](https://www.conventionalcommits.org/)。提交即表示同意贡献内容按 AGPL-3.0 授权。
 
 ## 许可证
 

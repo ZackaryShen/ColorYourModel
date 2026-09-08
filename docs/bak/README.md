@@ -26,6 +26,7 @@ flowchart LR
 | Know every Tauri command and signature | [IPC Reference](developer/ipc-reference.md) |
 | Contribute code or docs | [Development Guide](developer/development.md) |
 | See a real end-to-end result | [3MF verification case](cases/01-3mf-end-to-end.md) |
+| Browse screenshots of real runs (13 models) | [Examples Gallery](cases/examples.md) |
 | Read how an algorithm works inside | [Algorithms](algorithms/README.md) |
 
 ## Document map
