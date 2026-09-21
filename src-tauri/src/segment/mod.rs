@@ -1496,3 +1496,183 @@ mod ipc_payload_timing {
         );
     }
 }
+
+/// Release-mode benchmark for the Fuse & generate pipeline and the seed
+/// recommender (run with
+/// `cargo test --release --lib bench_fuse -- --ignored --nocapture`,
+/// `CYM_BENCH_STL=<path>` selects the model, `CYM_BENCH_DIHEDRAL=15,2` the
+/// fold-angle settings). Mirrors the `fuse_segmentation` command body stage
+/// for stage (planar -> multiview -> dihedral sets -> fuse vote) with the
+/// SeedPanel's actual parameters (cut_threshold=2, min_region_faces=0 auto),
+/// so the numbers are the backend truth the GUI waits on; only the Tauri
+/// event emission is dropped.
+#[cfg(test)]
+mod bench_fuse {
+    use crate::mesh::loader::load_stl;
+    use crate::mesh::model::MeshModel;
+    use crate::segment::dihedral::segment_by_dihedral_angle;
+    use crate::segment::fuse::fuse_region_sets;
+    use crate::segment::multiview::{detect_multiview_regions_with_progress, MultiViewParams};
+    use crate::segment::planar::{detect_planar_regions, PlanarParams};
+    use crate::segment::recommend::{recommend_seeds, RecommendWeights};
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    /// (region count, largest-region share, face share in regions < 50 faces)
+    fn label_stats(labels: &[u32]) -> (usize, f64, f64) {
+        let mut hist: HashMap<u32, usize> = HashMap::new();
+        for &l in labels {
+            *hist.entry(l).or_default() += 1;
+        }
+        let n = labels.len() as f64;
+        let max = hist.values().copied().max().unwrap_or(0) as f64;
+        let tiny: usize = hist.values().filter(|&&c| c < 50).sum();
+        (
+            hist.len(),
+            if n > 0.0 { max / n } else { 0.0 },
+            if n > 0.0 { tiny as f64 / n } else { 0.0 },
+        )
+    }
+
+    #[test]
+    #[ignore]
+    fn bench_fuse_and_recommend_stages() {
+        let path = std::env::var("CYM_BENCH_STL")
+            .unwrap_or_else(|_| "C:/selfDIr/Blender3D/Sanji+Diorama+Detailed_U1.stl".to_string());
+        let dihedral_settings: Vec<f32> = std::env::var("CYM_BENCH_DIHEDRAL")
+            .map(|s| {
+                s.split(',')
+                    .filter_map(|v| v.trim().parse().ok())
+                    .collect()
+            })
+            .unwrap_or_else(|_| vec![15.0, 2.0]);
+
+        // Seed recommender at the SeedPanel defaults (count=12, curv=1.0,
+        // conc=1.0). Read-only, so it runs on the same load as pass one.
+        let model = load_stl(std::path::Path::new(&path), &|_, _| {}).expect("load");
+        eprintln!("[recommend load] faces={}", model.faces.len());
+        let t = Instant::now();
+        let seeds = recommend_seeds(
+            &model,
+            12,
+            RecommendWeights {
+                curvature: 1.0,
+                concavity: 1.0,
+            },
+        );
+        eprintln!(
+            "[recommend_seeds] +{:?}  suggestions={}",
+            t.elapsed(),
+            seeds.len()
+        );
+        drop(model);
+
+        for deg in dihedral_settings {
+            let started = Instant::now();
+            // Fresh load per setting, exactly like the command path (fuse is
+            // run once per import; committing a previous fuse would leave
+            // labels a fresh load would not have).
+            let mut mesh: MeshModel =
+                load_stl(std::path::Path::new(&path), &|_, _| {}).expect("load");
+            let n = mesh.faces.len();
+            eprintln!(
+                "[fuse {:>4.1}deg load] +{:?}  faces={}",
+                deg,
+                started.elapsed(),
+                n
+            );
+            let detect_min = (n / 500).max(2);
+
+            let t = Instant::now();
+            let planar_regions = detect_planar_regions(
+                &mesh,
+                &PlanarParams {
+                    angle_thr_deg: 15.0,
+                    dist_thr_factor: 1.0 / 30.0,
+                    min_region_faces: detect_min,
+                },
+            );
+            let planar_sets: Vec<Vec<u32>> = planar_regions
+                .iter()
+                .map(|r| r.face_indices.clone())
+                .collect();
+            eprintln!(
+                "[fuse {:>4.1}deg planar] +{:?}  sets={}",
+                deg,
+                t.elapsed(),
+                planar_sets.len()
+            );
+            drop(planar_regions);
+
+            let t = Instant::now();
+            let multiview_regions = detect_multiview_regions_with_progress(
+                &mesh,
+                &MultiViewParams {
+                    view_count: 12,
+                    angle_thr_deg: 20.0,
+                    min_region_faces: detect_min,
+                    match_threshold: 1,
+                },
+                &|_, _| {},
+            );
+            let multiview_sets: Vec<Vec<u32>> = multiview_regions
+                .iter()
+                .map(|r| r.face_indices.clone())
+                .collect();
+            eprintln!(
+                "[fuse {:>4.1}deg multiview] +{:?}  sets={}",
+                deg,
+                t.elapsed(),
+                multiview_sets.len()
+            );
+            drop(multiview_regions);
+
+            let t = Instant::now();
+            let _segs = segment_by_dihedral_angle(&mut mesh, deg, &|_, _| {});
+            let mut map: HashMap<u32, Vec<u32>> = HashMap::new();
+            for (i, &l) in mesh.segment_labels.iter().enumerate() {
+                map.entry(l).or_default().push(i as u32);
+            }
+            let dihedral_sets: Vec<Vec<u32>> = map.into_values().collect();
+            let nfaces = mesh.segment_labels.len();
+            mesh.segment_labels = vec![0u32; nfaces];
+            mesh.segments.clear();
+            mesh.segment_names.clear();
+            eprintln!(
+                "[fuse {:>4.1}deg dihedral] +{:?}  sets={}",
+                deg,
+                t.elapsed(),
+                dihedral_sets.len()
+            );
+
+            let t = Instant::now();
+            let result = fuse_region_sets(
+                &mut mesh,
+                &planar_sets,
+                &multiview_sets,
+                &dihedral_sets,
+                &[],
+                2,
+                0,
+            )
+            .expect("fuse_region_sets");
+            let vote = t.elapsed();
+            let (regions, max_share, tiny_share) = label_stats(&mesh.segment_labels);
+            eprintln!(
+                "[fuse {:>4.1}deg vote] +{:?}  result_regions={} committed={} max_share={:.1}% tiny_share={:.1}% (size min/max/median={}/{}/{} before_merge={} after_merge={})",
+                deg,
+                vote,
+                result.region_count,
+                regions,
+                max_share * 100.0,
+                tiny_share * 100.0,
+                result.region_size_min,
+                result.region_size_max,
+                result.region_size_median,
+                result.regions_before_merge,
+                result.regions_after_merge,
+            );
+            eprintln!("[fuse {:>4.1}deg TOTAL] {:?}", deg, started.elapsed());
+        }
+    }
+}
