@@ -295,7 +295,7 @@ ${pageCss()}
 <body>
 <header id="topbar">
   <button id="menu-btn" aria-label="Toggle navigation">☰</button>
-  <a class="brand" href="${encodeURI(relative(dirname(OUT_MAP.get(src)), "README.html"))}"><img class="brand-icon" src="${iconRel(src)}" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
+  <a class="brand" href="${encodeURI(relative(dirname(OUT_MAP.get(src)), "README.html").split(sep).join("/"))}"><img class="brand-icon" src="${iconRel(src)}" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
   <div class="topbar-right">
     ${langToggle(src)}
     <a class="gh-link" href="${REPO_URL}" title="GitHub repository">GitHub ↗</a>
