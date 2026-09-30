@@ -26,6 +26,8 @@ flowchart TD
     F --> G["Snapmaker Orca / OrcaSlicer<br/>切片打印"]
 ```
 
+> **第一次用？** 先看**[使用手册](docs/bak/user-guide/manual.md)**（[English](docs/bak/user-guide/manual.en.md)）——每个按钮、每个快捷键、相机技巧、分区工作流、导出步骤和当前局限，附截图，零基础友好。
+
 ## 截图
 
 | | |
@@ -203,6 +205,7 @@ RUST_LOG=debug npm run tauri dev
 
 Markdown 源文件在 [`docs/bak/`](docs/bak/README.md)（与 docs 树镜像）；由它生成的 HTML 存档是正式的可读文档。简版：
 
+- **[使用手册](docs/bak/user-guide/manual.md)**（[English](docs/bak/user-guide/manual.en.md)）—— 完整操作说明，附截图。**从这里开始。**
 - [docs/algorithms/](docs/bak/algorithms/) —— 分割与检测算法（数学原理）
 - [docs/technical/](docs/bak/technical/) —— 工程机制（拾取、高亮、撤销/重做、导出管线）
 - [docs/cases/](docs/bak/cases/) —— 案例展示与验证记录
