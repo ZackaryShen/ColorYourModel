@@ -2,6 +2,14 @@
   "name": "color-your-model",
   "private": true,
   "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZackaryShen/ColorYourModel.git"
+  },
+  "bugs": "https://github.com/ZackaryShen/ColorYourModel/issues",
+  "homepage": "https://github.com/ZackaryShen/ColorYourModel#readme",
+  "author": "ColorYourModel Contributors",
   "type": "module",
   "scripts": {
     "dev": "vite",

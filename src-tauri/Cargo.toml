@@ -3,6 +3,8 @@ name = "color-your-model"
 version = "0.1.0"
 description = "3D model coloring tool for 3D printing"
 authors = ["ColorYourModel Contributors"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/ZackaryShen/ColorYourModel"
 edition = "2021"
 
 [lib]
