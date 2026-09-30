@@ -14,3 +14,4 @@ For math and segmentation principles, see [../algorithms/](../algorithms/).
 | [undo-redo-history.md](undo-redo-history.md) | unified backend undo/redo timeline | ✍️ pending |
 | [export-pipeline.md](export-pipeline.md) | 3MF/OBJ export, colour quantization, slicer presets | ✍️ pending |
 | [crash-diagnostics.md](crash-diagnostics.md) | JS error bridge & in-app diagnostics | ✍️ pending |
+| [bench-fuse-recommend.md](bench-fuse-recommend.md) | release-mode fuse/recommend stage benchmark results | ✅ recorded |

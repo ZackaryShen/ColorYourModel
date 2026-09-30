@@ -190,7 +190,7 @@ const NAV_GROUPS = [
   ["Overview", ["README.md", "README.zh-CN.md", "CHANGELOG.md", "CONTRIBUTING.md"]],
   ["User Guide", ["docs/bak/user-guide/getting-started.md", "docs/bak/user-guide/auto-segmentation.md", "docs/bak/user-guide/seed-tools.md", "docs/bak/user-guide/painting-tools.md", "docs/bak/user-guide/exporting.md"]],
   ["Algorithms", ["docs/bak/algorithms/README.md", "docs/bak/algorithms/segmentation.md", "docs/bak/algorithms/seed-grow-fuse.md", "docs/bak/algorithms/eye-detection.md"]],
-  ["Technical", ["docs/bak/technical/README.md", "docs/bak/technical/bvh-face-picking.md", "docs/bak/technical/shader-segment-highlight.md", "docs/bak/technical/fill-routing.md", "docs/bak/technical/undo-redo-history.md", "docs/bak/technical/export-pipeline.md", "docs/bak/technical/crash-diagnostics.md"]],
+  ["Technical", ["docs/bak/technical/README.md", "docs/bak/technical/bvh-face-picking.md", "docs/bak/technical/shader-segment-highlight.md", "docs/bak/technical/fill-routing.md", "docs/bak/technical/undo-redo-history.md", "docs/bak/technical/export-pipeline.md", "docs/bak/technical/crash-diagnostics.md", "docs/bak/technical/bench-fuse-recommend.md"]],
   ["Developer", ["docs/bak/developer/ipc-reference.md", "docs/bak/developer/development.md"]],
   ["Cases", ["docs/bak/cases/README.md", "docs/bak/cases/01-3mf-end-to-end.md", "docs/bak/cases/TEMPLATE.md"]],
   ["Working docs · 中文", SOURCES.filter((s) => /docs[/\\]bak[/\\]0\d-/.test(s)).sort()],
