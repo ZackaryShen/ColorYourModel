@@ -56,5 +56,9 @@ jobs:
             echo "--- sample byte diff (docs/README.html) ---"
             git diff -- docs/README.html | head -20
             od -c docs/README.html | head -3
+            echo "CR bytes in rebuilt file: $(tr -cd '\r' < docs/README.html | wc -c)"
+            echo "HEAD blob:   $(git rev-parse HEAD:docs/README.html)"
+            echo "hash-object (filtered):   $(git hash-object docs/README.html)"
+            echo "hash-object (no filters): $(git hash-object --no-filters docs/README.html)"
             exit 1
           fi
