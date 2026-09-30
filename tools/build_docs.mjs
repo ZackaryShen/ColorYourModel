@@ -173,7 +173,10 @@ function rewriteLinks(html, src) {
     const anchor = hashIdx >= 0 ? href.slice(hashIdx) : "";
     if (pathPart === "") return full;
 
-    const abs = resolve(baseDir, safeDecode(pathPart));
+    // Anchor to ROOT, not process.cwd(): baseDir is repo-relative, so a bare
+    // resolve(baseDir, …) would follow whatever directory the script was
+    // invoked from and silently corrupt every relative link.
+    const abs = resolve(ROOT, baseDir, safeDecode(pathPart));
     const relAbs = relative(ROOT, abs).split(sep).join("/");
     if (relAbs.startsWith("..")) return full; // outside the repo — leave as-is
 
