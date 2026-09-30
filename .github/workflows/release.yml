@@ -1,0 +1,54 @@
+# Builds and attaches platform installers to an existing GitHub release.
+#
+# Trigger manually (Actions → Release build → Run workflow, ref = main) and
+# pass the release tag (e.g. v0.1.0). The workflow file must live on main —
+# the tag itself does not need to contain it — and checks out the tag's tree
+# so the artifacts always match the tagged code. Windows yields msi+nsis,
+# Linux deb/rpm/appimage (tauri.conf.json bundle.targets = "all"). macOS is
+# not built (no signing identity available).
+
+name: Release build
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and attach artifacts to (must exist)"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install Tauri system dependencies (ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf libxdo-dev
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ inputs.tag }}
