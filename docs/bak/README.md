@@ -18,6 +18,7 @@ flowchart LR
 
 | Goal | Page |
 |------|------|
+| **Complete user manual (中文, every button / shortcut / limitation)** | [使用手册 v0.1.0](user-guide/manual.md) |
 | Build and run the app for the first time | [Getting Started](user-guide/getting-started.md) |
 | Understand / tune automatic segmentation | [Auto Segmentation](user-guide/auto-segmentation.md) |
 | Refine a figure model (seeds, grow, fuse, eyes) | [Seed Tools](user-guide/seed-tools.md) |
@@ -50,7 +51,7 @@ Hosted as [release assets](https://github.com/ZackaryShen/ColorYourModel/release
 
 | Kind | Source (bak/) | HTML archive | Language |
 |------|---------------|--------------|----------|
-| User guide | [`bak/user-guide/`](user-guide/getting-started.md) | `docs/user-guide/` | EN |
+| User guide | [`bak/user-guide/`](user-guide/manual.md) | `docs/user-guide/` | manual: 中文 · rest EN |
 | Algorithms (math & principles) | [`bak/algorithms/`](algorithms/README.md) | `docs/algorithms/` | EN · 中文 content ok |
 | Engineering mechanisms | [`bak/technical/`](technical/README.md) | `docs/technical/` | EN · 中文 content ok |
 | Cases & verification records | [`bak/cases/`](cases/README.md) | `docs/cases/` | EN/中文 |

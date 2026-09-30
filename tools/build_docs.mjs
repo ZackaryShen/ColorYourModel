@@ -205,7 +205,7 @@ const NAV_GROUPS = [
     { label: "Changelog", repo: "CHANGELOG.md" },
     { label: "Contributing", repo: "CONTRIBUTING.md" },
   ]],
-  ["User Guide", ["docs/bak/user-guide/getting-started.md", "docs/bak/user-guide/auto-segmentation.md", "docs/bak/user-guide/seed-tools.md", "docs/bak/user-guide/painting-tools.md", "docs/bak/user-guide/exporting.md"]],
+  ["User Guide", ["docs/bak/user-guide/manual.md", "docs/bak/user-guide/getting-started.md", "docs/bak/user-guide/auto-segmentation.md", "docs/bak/user-guide/seed-tools.md", "docs/bak/user-guide/painting-tools.md", "docs/bak/user-guide/exporting.md"]],
   ["Algorithms", ["docs/bak/algorithms/README.md", "docs/bak/algorithms/segmentation.md", "docs/bak/algorithms/seed-grow-fuse.md", "docs/bak/algorithms/eye-detection.md"]],
   ["Technical", ["docs/bak/technical/README.md", "docs/bak/technical/bvh-face-picking.md", "docs/bak/technical/shader-segment-highlight.md", "docs/bak/technical/fill-routing.md", "docs/bak/technical/undo-redo-history.md", "docs/bak/technical/export-pipeline.md", "docs/bak/technical/crash-diagnostics.md", "docs/bak/technical/bench-fuse-recommend.md"]],
   ["Developer", ["docs/bak/developer/ipc-reference.md", "docs/bak/developer/development.md"]],
