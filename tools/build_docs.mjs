@@ -160,7 +160,8 @@ const safeDecode = (s) => {
 function rewriteLinks(html, src) {
   const pageOut = OUT_MAP.get(src); // e.g. "docs/technical/fill-routing.html"
   const baseDir = dirname(pageOut);
-  return html.replace(/href="([^"]*)"/g, (full, href) => {
+  const srcDir = dirname(src); // the bak/ md — the base GitHub anchors relative links to
+  return html.replace(/(href|src)="([^"]*)"/g, (full, attr, href) => {
     if (/^(https?:|mailto:|#|data:)/.test(href)) return full;
 
     const hashIdx = href.indexOf("#");
@@ -171,7 +172,20 @@ function rewriteLinks(html, src) {
     // Anchor to ROOT, not process.cwd(): baseDir is repo-relative, so a bare
     // resolve(baseDir, …) would follow whatever directory the script was
     // invoked from and silently corrupt every relative link.
-    const abs = resolve(ROOT, baseDir, safeDecode(pathPart));
+    //
+    // Authors write links relative to the bak/ md (that is the file GitHub
+    // renders), while the generated page lives one level shallower in docs/.
+    // When the link resolves to an EXISTING file from the source dir, that is
+    // the author's intent (repo-root assets like samples/) — prefer it.
+    // Otherwise fall back to the legacy output-dir resolution (older pages
+    // word samples/ paths relative to the docs/ tree). Both interpretations
+    // agree for docs/-internal links because bak/ mirrors docs/ 1:1.
+    const fromSrc = resolve(ROOT, srcDir, safeDecode(pathPart));
+    const relFromSrc = relative(ROOT, fromSrc).split(sep).join("/");
+    let abs = resolve(ROOT, baseDir, safeDecode(pathPart));
+    if (!relFromSrc.startsWith("..") && existsSync(fromSrc)) {
+      abs = fromSrc;
+    }
     const relAbs = relative(ROOT, abs).split(sep).join("/");
     if (relAbs.startsWith("..")) return full; // outside the repo — leave as-is
 
@@ -179,18 +193,26 @@ function rewriteLinks(html, src) {
     if (pathPart.endsWith(".md")) {
       // Root documents (README/CHANGELOG/…) have no generated archive —
       // GitHub renders the markdown itself, so link there.
-      if (!relAbs.startsWith("docs/")) return `href="${blob(relAbs)}${anchor}"`;
+      if (!relAbs.startsWith("docs/")) return `${attr}="${blob(relAbs)}${anchor}"`;
       outPath = outForAbs(abs);
     } else if (/\.[a-zA-Z0-9]+$/.test(pathPart)) {
-      return `href="${blob(relAbs)}${anchor}"`;
+      if (attr === "src") {
+        // Committed assets (samples/ images) must stay repo-relative files —
+        // the Pages artifact ships samples/ verbatim, and a blob URL would
+        // break the offline double-click archive.
+        if (relAbs.startsWith("..")) return full;
+        const rel = relative(baseDir, relAbs).split(sep).join("/");
+        return `src="${encodeURI(rel)}${anchor}"`;
+      }
+      return `${attr}="${blob(relAbs)}${anchor}"`;
     } else if (existsSync(abs) && statSync(abs).isDirectory()) {
       outPath = outForAbs(join(abs, "README.md"));
     } else {
       // repo file without extension (LICENSE, …) → GitHub blob
-      return `href="${blob(relAbs)}${anchor}"`;
+      return `${attr}="${blob(relAbs)}${anchor}"`;
     }
     const rel = relative(baseDir, outPath).split(sep).join("/");
-    return `href="${encodeURI(rel)}${anchor}"`;
+    return `${attr}="${encodeURI(rel)}${anchor}"`;
   });
 }
 
@@ -419,14 +441,14 @@ const walkHtml = (dir) => {
 };
 walkHtml(DOCS);
 
-// Existence check: every in-tree relative href must resolve to a real file
-// (grep alone can't prove a rewritten link is alive). `#anchor` fragments are
-// stripped before the check.
+// Existence check: every in-tree relative href AND img src must resolve to a
+// real file (grep alone can't prove a rewritten link is alive). `#anchor`
+// fragments are stripped before the check.
 let broken = 0;
 for (const page of pages) {
   const html = readFileSync(join(ROOT, page), "utf8");
   const pageDir = dirname(page);
-  for (const m of html.matchAll(/href="([^"]*)"/g)) {
+  for (const m of html.matchAll(/(?:href|src)="([^"]*)"/g)) {
     const href = m[1];
     if (/^(https?:|mailto:|#|data:)/.test(href)) continue;
     const pathOnly = decodeURIComponent(href.split("#")[0]);
