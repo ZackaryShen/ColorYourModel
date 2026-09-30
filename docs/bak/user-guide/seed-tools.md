@@ -3,6 +3,10 @@
 > Part of the CYM wiki — seed-based segmentation: place seeds, grow regions, fuse results.
 > Internals: [Algorithms: Seed Grow & Fuse](../algorithms/seed-grow-fuse.md).
 
+Seeds → fuse → export, end to end:
+
+<video controls width="640" src="https://github.com/ZackaryShen/ColorYourModel/releases/download/media/partition-and-export-demo.mp4"></video>
+
 The **Seed panel** gives fine-grained control on figure-type models where generic auto segmentation needs help. It has two modes:
 
 - **Auto (fuse)** — recommend seeds automatically, grow, then fuse with tiny-region cleanup

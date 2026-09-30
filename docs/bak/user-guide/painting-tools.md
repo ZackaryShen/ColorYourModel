@@ -2,6 +2,10 @@
 
 > Part of the CYM wiki — the colouring toolbox and everything around it.
 
+The tools in action:
+
+<video controls width="640" src="https://github.com/ZackaryShen/ColorYourModel/releases/download/media/painting-tools-demo.mp4"></video>
+
 ## The tools
 
 | Tool | What it does |

@@ -27,7 +27,24 @@ flowchart LR
 | Contribute code or docs | [Development Guide](developer/development.md) |
 | See a real end-to-end result | [3MF verification case](cases/01-3mf-end-to-end.md) |
 | Browse screenshots of real runs (13 models) | [Examples Gallery](cases/examples.md) |
+| Watch the app in action | **Demo videos** below |
 | Read how an algorithm works inside | [Algorithms](algorithms/README.md) |
+
+## Demo videos
+
+Hosted as [release assets](https://github.com/ZackaryShen/ColorYourModel/releases/tag/media) — they play in place and never bloat the git clone.
+
+**Segmentation & export** — seed-based fuse segmentation, then per-region 3MF export:
+
+<video controls width="640" src="https://github.com/ZackaryShen/ColorYourModel/releases/download/media/partition-and-export-demo.mp4"></video>
+
+**Painting tools** — brush / spray / fill on the segmented model (details: [Painting Tools](user-guide/painting-tools.md)):
+
+<video controls width="640" src="https://github.com/ZackaryShen/ColorYourModel/releases/download/media/painting-tools-demo.mp4"></video>
+
+**Full-plate slicing bug fix** — verifying the fixed full-plate slicing export in the target slicer:
+
+<video controls width="640" src="https://github.com/ZackaryShen/ColorYourModel/releases/download/media/full-plate-slicing-bugfix-demo.mp4"></video>
 
 ## Document map
 
