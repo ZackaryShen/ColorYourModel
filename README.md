@@ -26,6 +26,8 @@ flowchart TD
     F --> G["Snapmaker Orca / OrcaSlicer<br/>slice & print"]
 ```
 
+> **New here?** Start with the **[User Manual](docs/bak/user-guide/manual.md)** (简体中文) · **[English manual](docs/bak/user-guide/manual.en.md)** — every button, shortcut, camera trick, segmentation workflow, export step, and the current limitations, explained for first-time users.
+
 ## Screenshots
 
 | | |
@@ -203,6 +205,7 @@ RUST_LOG=debug npm run tauri dev
 
 Markdown sources live in [`docs/bak/`](docs/bak/README.md) (mirroring the docs tree); the committed HTML archives they generate are the official, readable pages. Short version:
 
+- **[User Manual / 使用手册](docs/bak/user-guide/manual.md)** (简体中文, [English](docs/bak/user-guide/manual.en.md)) — the complete how-to with screenshots. **Start here.**
 - [docs/algorithms/](docs/bak/algorithms/) — segmentation & detection algorithms (math and principles)
 - [docs/technical/](docs/bak/technical/) — engineering mechanisms (picking, highlight, undo/redo, export pipeline)
 - [docs/cases/](docs/bak/cases/) — case showcase & verification records

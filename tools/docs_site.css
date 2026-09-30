@@ -13,7 +13,30 @@
   --code-ink: #e2e8f0;
   --radius: 12px;
   --sidebar-w: 272px;
+  color-scheme: light;
 }
+/* Dark theme — toggled by the topbar 🌙/☀️ button, persisted in localStorage
+   under "cym-docs-theme"; falls back to prefers-color-scheme on first visit. */
+:root[data-theme="dark"] {
+  --bg: #0b1220;
+  --panel: #111a2c;
+  --ink: #e2e8f0;
+  --ink-soft: #b6c2d4;
+  --ink-faint: #7c8aa0;
+  --line: #24304a;
+  --accent: #93a5ff;
+  --accent-soft: #1b2440;
+  --accent-line: #33406b;
+  --code-bg: #0a101d;
+  --code-ink: #dbe4f3;
+  color-scheme: dark;
+}
+:root[data-theme="dark"] #topbar { background: rgba(13, 20, 36, .92); box-shadow: none; }
+:root[data-theme="dark"] article code { color: #a5b4fc; }
+:root[data-theme="dark"] article th { background: #16213a; }
+:root[data-theme="dark"] article tbody tr:nth-child(even) { background: #131c31; }
+:root[data-theme="dark"] pre.mermaid { background: #0f1830; }
+:root[data-theme="dark"] #sidebar { box-shadow: 4px 0 18px rgba(0, 0, 0, .35); }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
@@ -46,6 +69,12 @@ body {
 .gh-link:hover { filter: brightness(.96); }
 #menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
   border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+#theme-btn {
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 999px; padding: 4px 11px; font-size: 14px; cursor: pointer;
+  line-height: 1.4; white-space: nowrap;
+}
+#theme-btn:hover { filter: brightness(.96); }
 
 /* ── Layout ──────────────────────────────────────────── */
 #layout { display: flex; align-items: flex-start; }

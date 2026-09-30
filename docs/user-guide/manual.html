@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CYM 使用手册（v0.1.0） · ColorYourModel Docs</title>
+<meta property="og:title" content="CYM 使用手册（v0.1.0） · ColorYourModel Docs">
+<meta property="og:description" content="Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.">
+<meta property="og:image" content="https://raw.githubusercontent.com/ZackaryShen/ColorYourModel/main/assets/icon.png">
+<link rel="icon" href="../icon.png">
+<script>
+// Theme bootstrap — runs before first paint so there is no flash.
+try {
+  var t = localStorage.getItem("cym-docs-theme");
+  if (t !== "dark" && t !== "light") {
+    t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.documentElement.dataset.theme = t;
+} catch (e) {}
+</script>
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+  color-scheme: light;
+}
+/* Dark theme — toggled by the topbar 🌙/☀️ button, persisted in localStorage
+   under "cym-docs-theme"; falls back to prefers-color-scheme on first visit. */
+:root[data-theme="dark"] {
+  --bg: #0b1220;
+  --panel: #111a2c;
+  --ink: #e2e8f0;
+  --ink-soft: #b6c2d4;
+  --ink-faint: #7c8aa0;
+  --line: #24304a;
+  --accent: #93a5ff;
+  --accent-soft: #1b2440;
+  --accent-line: #33406b;
+  --code-bg: #0a101d;
+  --code-ink: #dbe4f3;
+  color-scheme: dark;
+}
+:root[data-theme="dark"] #topbar { background: rgba(13, 20, 36, .92); box-shadow: none; }
+:root[data-theme="dark"] article code { color: #a5b4fc; }
+:root[data-theme="dark"] article th { background: #16213a; }
+:root[data-theme="dark"] article tbody tr:nth-child(even) { background: #131c31; }
+:root[data-theme="dark"] pre.mermaid { background: #0f1830; }
+:root[data-theme="dark"] #sidebar { box-shadow: 4px 0 18px rgba(0, 0, 0, .35); }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand-icon { height: 22px; width: 22px; vertical-align: -5px; margin-right: 7px; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+#theme-btn {
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 999px; padding: 4px 11px; font-size: 14px; cursor: pointer;
+  line-height: 1.4; white-space: nowrap;
+}
+#theme-btn:hover { filter: brightness(.96); }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="../README.html"><img class="brand-icon" src="../icon.png" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    <a class="gh-link" id="lang-btn" href="manual.en.html" title="Switch to English">EN</a>
+    <button id="theme-btn" aria-label="Toggle dark / light theme" title="Toggle theme">🌙</button>
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.md">Home (EN) ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.zh-CN.md">首页（中文） ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CHANGELOG.md">Changelog ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CONTRIBUTING.md">Contributing ↗</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="manual.html" aria-current="page">CYM 使用手册（v0.1.0）</a></li>
+<li><a href="manual.en.html">CYM User Manual (v0.1.0)</a></li>
+<li><a href="getting-started.html">Getting Started</a></li>
+<li><a href="auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="seed-tools.html">Seed Tools</a></li>
+<li><a href="painting-tools.html">Painting Tools</a></li>
+<li><a href="exporting.html">Exporting</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="../algorithms/README.html">Algorithms</a></li>
+<li><a href="../algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="../algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="../algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="../technical/README.html">Technical Mechanisms</a></li>
+<li><a href="../technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="../technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="../technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="../technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="../technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li>
+<li><a href="../technical/bench-fuse-recommend.html">Fuse / Recommend Stage Benchmark</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
+<li><a href="../developer/development.html">Development Guide</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
+<li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="../03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="../04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="../05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="../06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="../07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="../08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="../09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="cym-使用手册v010">CYM 使用手册（v0.1.0）</h1>
+<blockquote>
+<p><strong>简体中文</strong> | <a href="manual.en.html">English</a></p>
+<p>面向使用者的完整操作说明：每个按钮是干什么的、每个快捷键是什么、每一类交互怎么用，以及哪些能力目前收益有限、用前要有预期。以零基础视角编写；与代码行为冲突时以源码为准。本文对应 <strong>v0.1.0（Windows x64）</strong>，界面默认中文。</p>
+<p>操作演示与更多成品见 <a href="../cases/examples.html">Examples Gallery</a>；构建与开发环境见 <a href="getting-started.html">Getting Started</a>。</p>
+</blockquote>
+<h2 id="这款软件是干什么的">这款软件是干什么的？</h2>
+<p>3D 打印社区流传着大量&quot;白模&quot;STL——一整块单色三角面片，没有&quot;区域&quot;、没有颜色。想在切片软件里给手办上色，只能对着成千上万个小三角一个个点，细节稍多就不可能完成。</p>
+<p><strong>ColorYourModel（CYM）把这件事变成&quot;点几下&quot;</strong>：它先把网格自动切成有意义的分区（头盔、皮肤、底座……），你按分区上色，最后导出带分区颜色的标准 3MF——切片软件（Snapmaker Orca / OrcaSlicer）打开就是配置好的多耗材打印任务，不用再手动指颜色。</p>
+<table>
+<thead>
+<tr>
+<th>适合</th>
+<th>不太适合</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>手办 / 雕塑（人物、生物、带眼睛的头部）</td>
+<td>精确 CAD 零件建模（这不是建模软件）</td>
+</tr>
+<tr>
+<td>招牌 / 门头 / 建筑硬表面</td>
+<td>需要 UV 贴图绘制的场景（CYM 是分区纯色）</td>
+</tr>
+<tr>
+<td>AI 生成模型（Tripo 等）导出的 STL</td>
+<td>含破洞严重的网格（拾取会穿透，见第 6 节）</td>
+</tr>
+<tr>
+<td>情景模型 / 微缩场景</td>
+<td></td>
+</tr>
+</tbody></table>
+<pre class="mermaid">flowchart LR
+    A[&quot;导入 STL 白模&quot;] --&gt; B[&quot;智能分区&lt;br/&gt;（融合生成 / 种子生长）&quot;]
+    B --&gt; C[&quot;精修分区&lt;br/&gt;（合并 / 拆分 / 重命名）&quot;]
+    C --&gt; D[&quot;按区上色&lt;br/&gt;（填充 / 画笔 / 喷罐）&quot;]
+    D --&gt; E[&quot;导出 3MF&lt;br/&gt;（颜色 + 机型工艺预设）&quot;]
+    E --&gt; F[&quot;切片软件&lt;br/&gt;多材料打印&quot;]
+</pre>
+<blockquote>
+<p>下载安装包：<a href="https://github.com/ZackaryShen/ColorYourModel/releases">GitHub Releases</a>。当前 v0.1.0 提供 Windows 安装包与 Linux 包（暂无 macOS）。</p>
+</blockquote>
+<h2 id="界面总览">界面总览</h2>
+<p>窗口分五块：<strong>左侧工具栏</strong>（导入/导出、10 个工具、撤销重做）、<strong>中间视口</strong>（3D 模型）、<strong>右侧面板</strong>（分区列表、画笔设置、颜色）、<strong>底部状态栏</strong>（提示 / 工具 / 面数 / 语言 / 主题）、视口底边还有一条<strong>快捷操作提示</strong>。</p>
+<p><img src="../../samples/manual/01-interface.png" alt="导入白模后的 CYM 界面"></p>
+<p><em>导入白模后的界面：左侧工具栏、中间视口（50 万面卡通白模）、右侧「分区 / 画笔设置 / 颜色」三个面板、底部状态栏。</em></p>
+<h2 id="1-导入模型">1. 导入模型</h2>
+<ol>
+<li>点左上角 <strong>📂</strong> 按钮，选择一个 <strong>STL 文件</strong>（二进制或 ASCII 均可）。</li>
+<li>大模型（如 150 万面）加载约 3–4 秒，期间显示进度条；完成后状态栏显示总面数。</li>
+</ol>
+<p>导入即完成——<strong>导入后模型没有任何分区</strong>（通体一个区），这是有意设计：模型立刻可浏览、可查看，分区由你在第 4 节显式发起。此时就可以直接用画笔/填充涂色（填充按半径生效，不依赖分区）。</p>
+<p><strong>关于文件格式</strong>：</p>
+<ul>
+<li>目前<strong>只支持 STL</strong>。文件选择器只显示 <code>.stl</code>。</li>
+<li>想给 3MF 拆件模型上色：先用转换工具把 3MF 转成 STL 再导入。注意切片软件拆出的分件 STL 是&quot;打印排布&quot;坐标（零件平铺在板上），不是装配位置——多个零件导入会散开，且碎件会干扰自动分区，建议逐件处理。</li>
+<li>球面类&quot;同一纬度环共享轴坐标&quot;的 STL 曾经会闪退，v0.1.0 已修复，可放心导入。</li>
+</ul>
+<h2 id="2-各类画笔与快捷键">2. 各类画笔与快捷键</h2>
+<p>左侧工具栏的 10 个工具<strong>同时只能激活一个</strong>（选中的有蓝色描边）。鼠标悬停按钮有中文提示；画笔、喷罐、智能笔三个工具的提示里还会实时显示当前半径和强度。</p>
+<table>
+<thead>
+<tr>
+<th>图标</th>
+<th>工具</th>
+<th>行为</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>🖐️</td>
+<td>查看/导航</td>
+<td>纯相机操作，不涂色</td>
+<td>左键旋转、右键平移、中键/滚轮缩放</td>
+</tr>
+<tr>
+<td>🪣</td>
+<td>填充</td>
+<td>点击处上色，规则随分区状态变化</td>
+<td><strong>有分区时：普通点击 = 整个分区一键上色</strong>；<strong>未分区时：普通点击 = 半径限定的一团上色</strong>；<strong>Shift+点击 = 沿表面连通洪水</strong>（有分区时止步于分区边界；未分区时会淹没全模型，慎用）</td>
+</tr>
+<tr>
+<td>🖌️</td>
+<td>画笔</td>
+<td>按住拖动平滑涂色，边缘渐变</td>
+<td>适合自由绘制；一笔拖动只算一条撤销记录</td>
+</tr>
+<tr>
+<td>💨</td>
+<td>喷罐</td>
+<td>半径内随机散点喷涂</td>
+<td>模拟喷漆颗粒感；散点密度固定（暂无滑杆），半径/强度共用画笔设置</td>
+</tr>
+<tr>
+<td>🎯</td>
+<td>智能笔</td>
+<td>画笔 + 只涂同一分区 + 法向过滤</td>
+<td>不会涂出分区边界，也不会透过薄壁涂到背面；未分区时法向过滤仍然生效（依旧防背面穿透），只是没有分区边界约束</td>
+</tr>
+<tr>
+<td>💧</td>
+<td>吸管</td>
+<td>从模型表面拾取颜色</td>
+<td>点击即吸取到当前颜色；只在按下瞬间生效，拖动不重复吸取</td>
+</tr>
+<tr>
+<td>🧹</td>
+<td>橡皮</td>
+<td>擦除颜色，恢复默认底色</td>
+<td>只受半径影响——强度滑杆对橡皮无效（擦除是硬复位，不做渐变）</td>
+</tr>
+<tr>
+<td>✂️</td>
+<td>分区画笔</td>
+<td>拖拽涂选一片面，松开鼠标即建成新分区</td>
+<td>手动分区的第一手段；可在融合结果上补切</td>
+</tr>
+<tr>
+<td>📍</td>
+<td>选点套索</td>
+<td>依次点击顶点围出一个区域，回起点闭合（青色吸附点提示）</td>
+<td>边界沿表面走最短路径，贴合几何；详见第 4 节</td>
+</tr>
+<tr>
+<td>🌱</td>
+<td>种子分区</td>
+<td>点放种子点，配合右侧弹出的 Seed 面板生长分区</td>
+<td>详见第 4 节</td>
+</tr>
+</tbody></table>
+<p><strong>画笔设置</strong>（右侧面板）：<strong>半径</strong> 0.5–200mm、<strong>强度</strong> 10%–100%、<strong>衰减</strong>（平滑 / 线性 / 阶梯——注意&quot;阶梯&quot;的实际着色半径约为显示值的一半）、<strong>着色模式</strong>（平整色=所见即所得的精确颜色；有光影=保留形体明暗，方便观察结构）。</p>
+<p><strong>颜色面板</strong>（右侧）：当前颜色预览 + HEX 值 + 系统取色器（可选任意颜色），下方 <strong>AMS 调色板</strong> 15 个常用色。这里的颜色槽位在导出 3MF 时对应耗材槽位（见第 5 节）。</p>
+<h3 id="撤销--重做">撤销 / 重做</h3>
+<p>涂色、擦除、手动分区、套索全部走同一条撤销时间线（后端统一管理）：<strong>Ctrl+Z</strong> 撤销、<strong>Ctrl+Y</strong> 或 <strong>Ctrl+Shift+Z</strong> 重做，也可以点工具栏 ↶ / ↷。一次拖动产生的整条笔画是一条记录，不会被拆成几十条。注意：<strong>「🗑 清空分区」和「重置」不可撤销</strong>。</p>
+<h3 id="快捷键总表当前版本全部快捷键">快捷键总表（当前版本全部快捷键）</h3>
+<table>
+<thead>
+<tr>
+<th>按键</th>
+<th>生效场景</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Alt</code>（按住）</td>
+<td>任何工具激活时</td>
+<td>临时旋转视角（松开回到原工具行为）</td>
+</tr>
+<tr>
+<td><code>Ctrl+滚轮</code></td>
+<td>画笔/喷罐/智能笔/橡皮悬停在模型上</td>
+<td>调节笔刷半径（0.5–200mm），状态栏实时显示</td>
+</tr>
+<tr>
+<td><code>Ctrl+Z</code></td>
+<td>全局（输入框内除外）</td>
+<td>撤销；套索工具下若有未闭合选点则先逐点回退</td>
+</tr>
+<tr>
+<td><code>Ctrl+Y</code> / <code>Ctrl+Shift+Z</code></td>
+<td>全局</td>
+<td>重做（套索未闭合的选点没有重做）</td>
+</tr>
+<tr>
+<td><code>Backspace</code></td>
+<td>套索工具</td>
+<td>删除最后一个选点</td>
+</tr>
+<tr>
+<td><code>Esc</code></td>
+<td>套索工具</td>
+<td>取消当前未闭合的套索</td>
+</tr>
+<tr>
+<td><code>Enter</code></td>
+<td>套索工具</td>
+<td>闭合选区（至少 3 个点）</td>
+</tr>
+<tr>
+<td><code>Esc</code> / <code>Backspace</code></td>
+<td>种子工具</td>
+<td>清空全部已放种子，并退出擦除模式</td>
+</tr>
+<tr>
+<td><code>Esc</code></td>
+<td>Seed 面板打开时</td>
+<td>关闭面板<strong>并清空全部已放种子</strong>，同时切回查看工具（面板上的 × 关闭也一样清空；种子无法只靠关面板保留）</td>
+</tr>
+<tr>
+<td><code>Ctrl+Shift+L</code></td>
+<td>全局</td>
+<td>开关调试日志面板（🐞）</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>工具本身目前<strong>没有</strong>数字键快捷键，切换工具请点左侧工具栏。输入框内打字时撤销快捷键不会误触。</p>
+</blockquote>
+<h2 id="3-视角与交互相机缩放小技巧">3. 视角与交互（相机、缩放小技巧）</h2>
+<p>CYM 使用<strong>正交相机</strong>：缩放改变的是视图倍率而非透视距离，模型不会发生近大远小的畸变——这对检查涂色均匀度很友好。</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>滚轮</td>
+<td>缩放，范围 <strong>0.1×–500×</strong>（500 倍可看清亚毫米细节）</td>
+</tr>
+<tr>
+<td>中键拖拽</td>
+<td>缩放（等价滚轮，可平滑连续变焦）</td>
+</tr>
+<tr>
+<td>左键拖拽</td>
+<td>旋转（🖐️ 查看工具下；或任何工具在<strong>空白处</strong>按下时）</td>
+</tr>
+<tr>
+<td>右键拖拽</td>
+<td>平移</td>
+</tr>
+<tr>
+<td><code>Alt</code>+左键</td>
+<td>任何工具下强制旋转</td>
+</tr>
+</tbody></table>
+<p>小技巧：</p>
+<ul>
+<li><strong>涂色时转视角</strong>：画到一半想换角度，不需要切回查看工具——把鼠标移出模型到空白处拖左键，或按住 <code>Alt</code> 拖左键即可旋转，松手继续画。</li>
+<li><strong>画细部</strong>：<code>Ctrl+滚轮</code> 把笔刷缩到 1–2mm，滚轮放大到 50×–100×，配合&quot;平整色&quot;模式点涂。</li>
+<li><strong>没有惯性</strong>：松手即停（刻意关闭了阻尼），拖多少转多少，不会&quot;滑头&quot;。</li>
+<li>鼠标悬停在填充/吸管/分区画笔工具下时，光标下的整个分区会<strong>高亮</strong>——先看清楚会涂到哪，再下手。</li>
+<li>画笔工具下有一个跟随鼠标的 <strong>3D 圆环</strong>，实时显示笔刷半径和当前颜色。</li>
+<li>有分区之后，视口<strong>右上角</strong>出现 <strong>🎨 涂色视图 / 🗺️ 分区视图</strong> 切换：分区视图按区域编号着色并描出边界线（深色主题为黄色、浅色主题为橙棕色），用于检查分区质量；相邻分区基本不会同色（30 色槽位 + 相邻避让分配），不会看混。</li>
+</ul>
+<p><img src="../../samples/manual/03-segments.png" alt="分区视图：融合生成的 13 个分区，相邻不同色"></p>
+<p><em>分区视图：50 万面卡通模型在折角阈值 5° 下融合出的 13 个分区，相邻区颜色不同，边界线清晰。</em></p>
+<h2 id="4-智能分区">4. 智能分区</h2>
+<p>分区的入口是 <strong>🌱 种子分区工具</strong>：点工具栏 🌱，模型上会弹出一个可拖动的 <strong>Seed 面板</strong>（拖标题栏移动，双击标题栏或点 📍 复位，× 或 <code>Esc</code> 关闭——注意关闭会把已放的种子一并清空）。</p>
+<p><img src="../../samples/manual/02-seed-panel.png" alt="Seed 面板：自动（融合）标签页"></p>
+<p>*Seed 面板的「自动（融合）」标签页：模式切换、眼睛识别入口、图层独显按钮、折角阈值滑杆与「🧿 融合生成」。*面板分两个标签页：</p>
+<pre class="mermaid">flowchart TD
+    P[&quot;🌱 Seed 面板&quot;] --&gt; AUTO[&quot;🧩 自动（融合）&quot;]
+    P --&gt; MANU[&quot;🌱 手动（生长）&quot;]
+    AUTO --&gt; F[&quot;折角阈值 → 融合生成&lt;br/&gt;平面 + 多视角 + 折角 边级投票&quot;]
+    MANU --&gt; S[&quot;放种子 / 推荐种子 / 平面·多视角检测&quot;]
+    S --&gt; G[&quot;屏障角度 → 生长&quot;]
+    F --&gt; R[&quot;分区结果&lt;br/&gt;（可再合并/拆分/套索修补）&quot;]
+    G --&gt; R
+</pre>
+<h3 id="自动融合推荐首选">自动（融合）——推荐首选</h3>
+<p>一键出结果：<strong>折角阈值</strong>（0–35°，默认 2°）+ <strong>🧩 融合生成</strong>。它按&quot;平面区域 + 多视角证据 + 折角骨干&quot;三通道对每条边投票，多数票通过才切开——抗过切，结果成块。运行时有分阶段进度条（检测平面区域 → 多视角证据渲染 → 边级投票融合分区）。</p>
+<p><strong>折角阈值怎么选</strong>（这是唯一需要理解的参数）：</p>
+<table>
+<thead>
+<tr>
+<th>模型类型</th>
+<th>建议值</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>雕塑手办（人物/生物，哥斯拉类）</td>
+<td><strong>0–3°</strong></td>
+<td>雕塑的肩、颈、胯折角被摊平在大量 &lt;5° 的小面上，只有低阈值能切出头/四肢/尾巴</td>
+</tr>
+<tr>
+<td>硬表面（招牌/门头/建筑件）</td>
+<td><strong>5–15°</strong></td>
+<td>棱角本身是硬边界，高阈值保持大平面完整</td>
+</tr>
+</tbody></table>
+<p>越低切得越细、越高越粗；切太碎就调高再融合，切不开就调低。150 万面模型 0° 融合约需 1 分钟，属正常耗时。已检出的<strong>眼睛区域会被自动保护</strong>，不会被融合切开。</p>
+<h3 id="手动生长精细控制">手动（生长）——精细控制</h3>
+<ol>
+<li>在模型上<strong>点击放种子</strong>（每点一个绿色圆点 = 一个未来区域的起点）；<code>Backspace</code>/<code>Esc</code> 清空全部，<strong>🩹 擦除模式</strong>下点击某个种子可单个删除。</li>
+<li>不想手动放？用面板里的自动建议：<strong>💡 推荐种子</strong>（按显著性挑点，可调&quot;推荐数量 2–40、曲率权重、凹度权重&quot;）、<strong>🟦 平面种子</strong>（检测大平面）、<strong>👁 多视角</strong>（多角度共识块）。建议以品红色幽灵点出现，点它附近即采纳。</li>
+<li>调<strong>屏障角度</strong>（10–90°，默认 45°：相邻面法线差超过它就断开，区域不越界），可选勾<strong>智能优化（合并微小区域）</strong>，点 <strong>🌱 生长</strong>。</li>
+<li>未被任何种子覆盖的角落会归给最近的种子。</li>
+</ol>
+<p><strong>眼睛识别</strong>（两个入口，都在面板下方）：</p>
+<ul>
+<li><strong>👁 自动识别眼睛</strong>：全网格扫描对称的眼部凸起并自动成区，无需任何前置条件。</li>
+<li><strong>👁 眼睛识别</strong>：对<strong>当前选中分区</strong>做精细分解，切出眼球/眼白/眼睑/眼眶四个子区域。需要先选中一个包围眼睛的分区——先融合一次，再用「🖱 点选分区」在模型上点那块区域（或点选后回面板）。</li>
+</ul>
+<h3 id="分区面板右侧精修">分区面板（右侧）——精修</h3>
+<p>融合/生长的结果只是起点，右侧<strong>分区</strong>面板负责收拾：</p>
+<ul>
+<li><strong>选中</strong>：单击列表项或直接在模型上点分区（视图高亮）。</li>
+<li><strong>合并</strong>：<code>Ctrl+点击</code> 多选（先选的作为合并目标），点合并。</li>
+<li><strong>重命名</strong>：双击列表项。</li>
+<li><strong>拆分</strong>：对过大的分区按内部棱角再切（棱角阈值默认 30°）。</li>
+<li><strong>再切</strong>：对单个分区换算法重切（管状肢体凸分解切不开时的解法），8 个算法可选，见第 6 节。</li>
+<li><strong>重置</strong>：清空全部分区与上色（<strong>不可撤销</strong>，弹确认框）。</li>
+</ul>
+<p>套索（📍）是分区精修的最后一环：几何上没有边界可借的地方（光滑脸颊、平坦墙面），用套索手画一个区。依次点击顶点，回起点闭合或按 <code>Enter</code>（≥3 点）；闭合后有进度条（吸附 → 沿表面补全边界 → 圈选 → 平滑 → 写入），百万面模型上每一步都是真实计算，请稍候。</p>
+<h2 id="5-导出-3mf">5. 导出 3MF</h2>
+<p>点工具栏 <strong>💾</strong>（需已加载模型）打开导出对话框：</p>
+<ol>
+<li><strong>格式</strong>：3MF（切片软件，默认）/ OBJ（带颜色）。</li>
+<li><strong>厂商 / 机型</strong>：当前内置 <strong>Snapmaker U1</strong> 的完整预设（无需安装任何机型配置）。</li>
+<li><strong>喷嘴直径</strong>：0.2 / 0.4 / 0.6 / 0.8，选完工艺列表自动过滤。</li>
+<li><strong>工艺</strong>：该机型+喷嘴下可用的打印配置（0.20 Standard 等）。</li>
+<li><strong>耗材（每槽位）</strong>：每个调色板槽位指定一种耗材；可勾选多个槽位后<strong>套用到所选</strong>，或<strong>一键套用全部</strong>。导出前有槽位颜色预览。</li>
+<li><strong>目标切片器</strong>：Snapmaker Orca（默认）或 OrcaSlicer（通用），决定写入文件的机型标识。</li>
+<li><strong>选择保存位置并导出</strong>。机型/喷嘴/工艺/耗材/切片器的选择会被记住，下次打开自动恢复（格式开关除外，每次打开默认回到 3MF）。</li>
+</ol>
+<p><img src="../../samples/manual/04-export-dialog.png" alt="导出对话框：机型、喷嘴、工艺与按槽位指定耗材"></p>
+<p><em>导出对话框：13 个分区对应 13 个耗材槽位，每个槽位可单独选耗材，也可勾选后批量套用。</em></p>
+<p>导出的 3MF 已做端到端验证：导入 Snapmaker Orca (U1) 后机型、工艺、多耗材颜色一次到位（见<a href="../cases/01-3mf-end-to-end.html">验证案例</a>）。</p>
+<p><strong>OBJ</strong>：输出 <code>.obj</code> + <code>.mtl</code>，逐面写入颜色（量化到最多 256 色），不需要机型/工艺选择。给 Blender / MeshLab / 在线查看器用；要打印还是选 3MF。</p>
+<h2 id="6-实验性功能与当前局限">6. 实验性功能与当前局限</h2>
+<p>以下能力<strong>能用，但用前要知道边界</strong>——不是缺陷，是当前阶段的真实水位。</p>
+<h3 id="实验性功能">实验性功能</h3>
+<table>
+<thead>
+<tr>
+<th>功能</th>
+<th>现状</th>
+<th>建议</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>「再切」的 5 个进阶算法：SDF 图割 / 凹度场 / 凸分解 V-HACD / 曲线骨架 / FH 图分割</td>
+<td>前两个在代码里明确标注 experimental；五个都是后加的算法，在测试基准上能把数百碎片收敛成 4–7 个语义块，但参数敏感</td>
+<td>默认用曲率 K-Means / 二面角 / 形态直径即可；不够时逐个 A/B 试</td>
+</tr>
+<tr>
+<td>✂️ 截面检测（Seed 面板）</td>
+<td>纯视觉证据：画出特征截面轮廓，<strong>不生成分区、不参与投票</strong></td>
+<td>当作分析工具看，别等它出分区</td>
+</tr>
+<tr>
+<td>👁 眼睛识别</td>
+<td>眼白（Sclera）是启发式判定，置信度低；眼球/眼睑/眼眶较可靠</td>
+<td>结果只当参考底稿，手动再修</td>
+</tr>
+<tr>
+<td>👁 多视角检测</td>
+<td>第二意见通道，12 视角投影共识</td>
+<td>与平面种子配合用，单独用信号较弱</td>
+</tr>
+<tr>
+<td>🐞 调试日志（<code>Ctrl+Shift+L</code>）</td>
+<td>面向排障：显示前端运行日志</td>
+<td>报 bug 时可附截图</td>
+</tr>
+</tbody></table>
+<h3 id="已知局限v010">已知局限（v0.1.0）</h3>
+<ul>
+<li><strong>一笔内重复经过同一处，颜色会加深</strong>：同一笔画内同一面被多次着色时叠加。放慢笔画或用填充/智能笔规避。</li>
+<li><strong>&quot;阶梯&quot;衰减的笔刷实际半径约为显示值的一半</strong>，UI 不单独提示。</li>
+<li><strong>分区边界有锯齿</strong>：边界平滑只能缓解，做不到笔直线条。</li>
+<li><strong>网格有破洞时</strong>，点击拾取可能穿透落空（射线从洞里穿过去）。</li>
+<li><strong>超大模型（400 万面+）</strong>：融合分区耗时长且可能卡界面，建议拆件或降面后再分区；首次切到分区视图会有一次同步计算的小卡顿。</li>
+<li><strong>OBJ 导出最多 256 色</strong>：超出的颜色会被量化合并。</li>
+<li><strong>机型预设目前只有 Snapmaker U1</strong>：其他机型选 OrcaSlicer（通用）导出后，在切片软件里自行指派耗材。</li>
+<li><strong>分区视图的分区颜色 ≠ 你涂的颜色</strong>：分区视图是按区域编号的&quot;诊断色&quot;，最终颜色以涂色视图为准（标签是权威，颜色是输出）。</li>
+</ul>
+<h3 id="反馈">反馈</h3>
+<p>遇到崩溃、分区明显不合理、导出打不开：请到 <a href="https://github.com/ZackaryShen/ColorYourModel/issues">GitHub Issues</a> 提交，附上面数（状态栏有）、操作系统、<code>Ctrl+Shift+L</code> 日志截图。</p>
+<h2 id="附状态栏语言与主题">附：状态栏、语言与主题</h2>
+<ul>
+<li><strong>状态栏</strong>：左侧是实时提示（套索、种子工具激活时会显示完整用法，其余时刻保留最近一条消息），中间是当前工具名和模型面数，右侧是操作提示与三个开关：<strong>🐞 调试日志</strong>、<strong>🌙/☀️ 深浅色主题</strong>、<strong>中/EN 界面语言</strong>（主题与语言自动持久化，下次启动保持）。</li>
+<li>右侧「分区」面板在没有分区时（未导入、或导入后还没生成分区）显示&quot;暂无分区，请先导入模型&quot;；涂色/分区视图切换按钮只在有分区后出现。</li>
+</ul>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#这款软件是干什么的">这款软件是干什么的？</a></li><li class="toc-h2"><a href="#界面总览">界面总览</a></li><li class="toc-h2"><a href="#1-导入模型">1. 导入模型</a></li><li class="toc-h2"><a href="#2-各类画笔与快捷键">2. 各类画笔与快捷键</a></li><li class="toc-h3"><a href="#撤销--重做">撤销 / 重做</a></li><li class="toc-h3"><a href="#快捷键总表当前版本全部快捷键">快捷键总表（当前版本全部快捷键）</a></li><li class="toc-h2"><a href="#3-视角与交互相机缩放小技巧">3. 视角与交互（相机、缩放小技巧）</a></li><li class="toc-h2"><a href="#4-智能分区">4. 智能分区</a></li><li class="toc-h3"><a href="#自动融合推荐首选">自动（融合）——推荐首选</a></li><li class="toc-h3"><a href="#手动生长精细控制">手动（生长）——精细控制</a></li><li class="toc-h3"><a href="#分区面板右侧精修">分区面板（右侧）——精修</a></li><li class="toc-h2"><a href="#5-导出-3mf">5. 导出 3MF</a></li><li class="toc-h2"><a href="#6-实验性功能与当前局限">6. 实验性功能与当前局限</a></li><li class="toc-h3"><a href="#实验性功能">实验性功能</a></li><li class="toc-h3"><a href="#已知局限v010">已知局限（v0.1.0）</a></li><li class="toc-h3"><a href="#反馈">反馈</a></li><li class="toc-h2"><a href="#附状态栏语言与主题">附：状态栏、语言与主题</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  var dark = document.documentElement.dataset.theme === "dark";
+  var themeBtn = document.getElementById("theme-btn");
+  if (themeBtn) {
+    themeBtn.textContent = dark ? "\u2600\uFE0F" : "\uD83C\uDF19";
+    themeBtn.addEventListener("click", function () {
+      var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      try { localStorage.setItem("cym-docs-theme", next); } catch (e) {}
+      // Reload so the mermaid diagrams re-render under the new theme.
+      location.reload();
+    });
+  }
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "base", securityLevel: "loose",
+      themeVariables: dark
+        ? { primaryColor: "#1b2440", primaryTextColor: "#e2e8f0", primaryBorderColor: "#33406b",
+            lineColor: "#7c8aa0", fontSize: "14px",
+            fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" }
+        : { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+            lineColor: "#64748b", fontSize: "14px",
+            fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>

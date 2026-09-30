@@ -205,7 +205,7 @@ const NAV_GROUPS = [
     { label: "Changelog", repo: "CHANGELOG.md" },
     { label: "Contributing", repo: "CONTRIBUTING.md" },
   ]],
-  ["User Guide", ["docs/bak/user-guide/getting-started.md", "docs/bak/user-guide/auto-segmentation.md", "docs/bak/user-guide/seed-tools.md", "docs/bak/user-guide/painting-tools.md", "docs/bak/user-guide/exporting.md"]],
+  ["User Guide", ["docs/bak/user-guide/manual.md", "docs/bak/user-guide/manual.en.md", "docs/bak/user-guide/getting-started.md", "docs/bak/user-guide/auto-segmentation.md", "docs/bak/user-guide/seed-tools.md", "docs/bak/user-guide/painting-tools.md", "docs/bak/user-guide/exporting.md"]],
   ["Algorithms", ["docs/bak/algorithms/README.md", "docs/bak/algorithms/segmentation.md", "docs/bak/algorithms/seed-grow-fuse.md", "docs/bak/algorithms/eye-detection.md"]],
   ["Technical", ["docs/bak/technical/README.md", "docs/bak/technical/bvh-face-picking.md", "docs/bak/technical/shader-segment-highlight.md", "docs/bak/technical/fill-routing.md", "docs/bak/technical/undo-redo-history.md", "docs/bak/technical/export-pipeline.md", "docs/bak/technical/crash-diagnostics.md", "docs/bak/technical/bench-fuse-recommend.md"]],
   ["Developer", ["docs/bak/developer/ipc-reference.md", "docs/bak/developer/development.md"]],
@@ -252,6 +252,14 @@ function buildSidebar(currentSrc) {
   return `<nav id="sidebar-nav">${groups}</nav>`;
 }
 
+/** Pages with a real translation counterpart — the topbar 中/EN button is
+ *  rendered only on these (switching language elsewhere would be a lie).
+ *  Key = source, value = the counterpart source it links to. */
+const LANG_PAIRS = new Map([
+  [join(ROOT, "docs/bak/user-guide/manual.md"), join(ROOT, "docs/bak/user-guide/manual.en.md")],
+  [join(ROOT, "docs/bak/user-guide/manual.en.md"), join(ROOT, "docs/bak/user-guide/manual.md")],
+]);
+
 const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 function pageCss() {
@@ -265,13 +273,18 @@ function iconRel(src) {
 
 function renderPage(src, article, toc) {
   const title = PAGE_TITLES.get(src);
+  const lang = src.endsWith("manual.md") ? "zh" : "en";
+  const pairSrc = LANG_PAIRS.get(src);
+  const langBtn = pairSrc
+    ? `<a class="gh-link" id="lang-btn" href="${encodeURI(relative(dirname(OUT_MAP.get(src)), OUT_MAP.get(pairSrc)).split(sep).join("/"))}" title="${lang === "zh" ? "Switch to English" : "切换到中文"}">${lang === "zh" ? "EN" : "中文"}</a>`
+    : "";
   const tocHtml = toc.length
     ? `<details class="toc" open><summary>On this page</summary><ul>${toc
         .map(([d, id, text]) => `<li class="toc-h${d}"><a href="#${id}">${escapeHtml(text)}</a></li>`)
         .join("")}</ul></details>`
     : "";
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -280,6 +293,16 @@ function renderPage(src, article, toc) {
 <meta property="og:description" content="Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.">
 <meta property="og:image" content="${raw("assets/icon.png")}">
 <link rel="icon" href="${iconRel(src)}">
+<script>
+// Theme bootstrap — runs before first paint so there is no flash.
+try {
+  var t = localStorage.getItem("cym-docs-theme");
+  if (t !== "dark" && t !== "light") {
+    t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.documentElement.dataset.theme = t;
+} catch (e) {}
+</script>
 <style>
 ${pageCss()}
 </style>
@@ -289,6 +312,8 @@ ${pageCss()}
   <button id="menu-btn" aria-label="Toggle navigation">☰</button>
   <a class="brand" href="${encodeURI(relative(dirname(OUT_MAP.get(src)), "docs/README.html").split(sep).join("/"))}"><img class="brand-icon" src="${iconRel(src)}" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
   <div class="topbar-right">
+    ${langBtn}
+    <button id="theme-btn" aria-label="Toggle dark / light theme" title="Toggle theme">🌙</button>
     <a class="gh-link" href="${REPO_URL}" title="GitHub repository">GitHub ↗</a>
   </div>
 </header>
@@ -308,11 +333,26 @@ ${article}
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script>
 window.addEventListener("DOMContentLoaded", function () {
+  var dark = document.documentElement.dataset.theme === "dark";
+  var themeBtn = document.getElementById("theme-btn");
+  if (themeBtn) {
+    themeBtn.textContent = dark ? "\\u2600\\uFE0F" : "\\uD83C\\uDF19";
+    themeBtn.addEventListener("click", function () {
+      var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      try { localStorage.setItem("cym-docs-theme", next); } catch (e) {}
+      // Reload so the mermaid diagrams re-render under the new theme.
+      location.reload();
+    });
+  }
   if (window.mermaid) {
-    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
-      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
-        lineColor: "#64748b", fontSize: "14px",
-        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+    mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "base", securityLevel: "loose",
+      themeVariables: dark
+        ? { primaryColor: "#1b2440", primaryTextColor: "#e2e8f0", primaryBorderColor: "#33406b",
+            lineColor: "#7c8aa0", fontSize: "14px",
+            fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" }
+        : { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+            lineColor: "#64748b", fontSize: "14px",
+            fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
       flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
   } else {
     document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });

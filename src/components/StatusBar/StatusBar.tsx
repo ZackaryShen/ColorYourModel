@@ -10,6 +10,8 @@ export function StatusBar() {
   const setLanguage = useAppStore((s) => s.setLanguage);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
+  const debugLogOpen = useAppStore((s) => s.debugLogOpen);
+  const setDebugLogOpen = useAppStore((s) => s.setDebugLogOpen);
 
   return (
     <div style={styles.container}>
@@ -26,6 +28,16 @@ export function StatusBar() {
         </span>
       )}
       <span style={styles.tip}>{t("status.tip")}</span>
+      {/* Debug log toggle joins the theme/language row: the old floating
+          bottom-right 🐞 button sat on top of the language switch. */}
+      <button
+        onClick={() => setDebugLogOpen(!debugLogOpen)}
+        className="cym-btn"
+        style={{ ...styles.themeBtn, ...(debugLogOpen ? styles.debugActive : {}) }}
+        title="调试日志 (Ctrl+Shift+L)"
+      >
+        🐞
+      </button>
       <button
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         className="cym-btn"
@@ -76,6 +88,10 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontSize: 12,
     whiteSpace: "nowrap" as const,
+  },
+  debugActive: {
+    borderColor: "var(--accent, #4a9eff)",
+    color: "var(--accent, #4a9eff)",
   },
   langBtn: {
     padding: "2px 8px",

@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CYM User Manual (v0.1.0) · ColorYourModel Docs</title>
+<meta property="og:title" content="CYM User Manual (v0.1.0) · ColorYourModel Docs">
+<meta property="og:description" content="Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.">
+<meta property="og:image" content="https://raw.githubusercontent.com/ZackaryShen/ColorYourModel/main/assets/icon.png">
+<link rel="icon" href="../icon.png">
+<script>
+// Theme bootstrap — runs before first paint so there is no flash.
+try {
+  var t = localStorage.getItem("cym-docs-theme");
+  if (t !== "dark" && t !== "light") {
+    t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.documentElement.dataset.theme = t;
+} catch (e) {}
+</script>
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+  color-scheme: light;
+}
+/* Dark theme — toggled by the topbar 🌙/☀️ button, persisted in localStorage
+   under "cym-docs-theme"; falls back to prefers-color-scheme on first visit. */
+:root[data-theme="dark"] {
+  --bg: #0b1220;
+  --panel: #111a2c;
+  --ink: #e2e8f0;
+  --ink-soft: #b6c2d4;
+  --ink-faint: #7c8aa0;
+  --line: #24304a;
+  --accent: #93a5ff;
+  --accent-soft: #1b2440;
+  --accent-line: #33406b;
+  --code-bg: #0a101d;
+  --code-ink: #dbe4f3;
+  color-scheme: dark;
+}
+:root[data-theme="dark"] #topbar { background: rgba(13, 20, 36, .92); box-shadow: none; }
+:root[data-theme="dark"] article code { color: #a5b4fc; }
+:root[data-theme="dark"] article th { background: #16213a; }
+:root[data-theme="dark"] article tbody tr:nth-child(even) { background: #131c31; }
+:root[data-theme="dark"] pre.mermaid { background: #0f1830; }
+:root[data-theme="dark"] #sidebar { box-shadow: 4px 0 18px rgba(0, 0, 0, .35); }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand-icon { height: 22px; width: 22px; vertical-align: -5px; margin-right: 7px; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+#theme-btn {
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 999px; padding: 4px 11px; font-size: 14px; cursor: pointer;
+  line-height: 1.4; white-space: nowrap;
+}
+#theme-btn:hover { filter: brightness(.96); }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="../README.html"><img class="brand-icon" src="../icon.png" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    <a class="gh-link" id="lang-btn" href="manual.html" title="切换到中文">中文</a>
+    <button id="theme-btn" aria-label="Toggle dark / light theme" title="Toggle theme">🌙</button>
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.md">Home (EN) ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.zh-CN.md">首页（中文） ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CHANGELOG.md">Changelog ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CONTRIBUTING.md">Contributing ↗</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="manual.html">CYM 使用手册（v0.1.0）</a></li>
+<li><a href="manual.en.html" aria-current="page">CYM User Manual (v0.1.0)</a></li>
+<li><a href="getting-started.html">Getting Started</a></li>
+<li><a href="auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="seed-tools.html">Seed Tools</a></li>
+<li><a href="painting-tools.html">Painting Tools</a></li>
+<li><a href="exporting.html">Exporting</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="../algorithms/README.html">Algorithms</a></li>
+<li><a href="../algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="../algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="../algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="../technical/README.html">Technical Mechanisms</a></li>
+<li><a href="../technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="../technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="../technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="../technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="../technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li>
+<li><a href="../technical/bench-fuse-recommend.html">Fuse / Recommend Stage Benchmark</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
+<li><a href="../developer/development.html">Development Guide</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
+<li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="../03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="../04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="../05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="../06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="../07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="../08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="../09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="cym-user-manual-v010">CYM User Manual (v0.1.0)</h1>
+<blockquote>
+<p><strong>English</strong> | <a href="manual.html">简体中文</a></p>
+<p>The complete operator&#39;s manual: what every button does, every keyboard shortcut, every kind of interaction — plus which capabilities are experimental or have known limitations right now. Written for first-time users; when this page and the code disagree, the source code wins. This page matches <strong>v0.1.0 (Windows x64)</strong>; the app UI is Chinese-first, and the status-bar 中/EN button switches it to English.</p>
+<p>For real-run demos see the <a href="../cases/examples.html">Examples Gallery</a>; for build &amp; development setup see <a href="getting-started.html">Getting Started</a>.</p>
+</blockquote>
+<h2 id="what-is-this-software-for">What is this software for?</h2>
+<p>The 3D-printing community is full of &quot;white models&quot; — single-colour STL files that are just a pile of unstructured triangles, with no &quot;regions&quot; and no colour. Colouring such a model in a slicer means clicking thousands of tiny triangles one by one — hopeless for anything detailed.</p>
+<p><strong>ColorYourModel (CYM) turns that into a few clicks</strong>: it first segments the mesh into meaningful regions (helmet, skin, base…), you paint region by region, and the final export is a standards-compliant 3MF carrying per-region colours — the slicer (Snapmaker Orca / OrcaSlicer) opens it as a fully configured multi-material job, no manual filament mapping.</p>
+<table>
+<thead>
+<tr>
+<th>Good fit</th>
+<th>Poor fit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Figures / sculptures (characters, creatures, heads with eyes)</td>
+<td>Precise CAD part modelling (this is not a CAD tool)</td>
+</tr>
+<tr>
+<td>Signs / facades / hard-surface architecture</td>
+<td>Work that needs UV texture painting (CYM paints flat region colours)</td>
+</tr>
+<tr>
+<td>AI-generated meshes (Tripo etc.) exported as STL</td>
+<td>Heavily holed meshes (picking falls through — see section 6)</td>
+</tr>
+<tr>
+<td>Dioramas / miniatures</td>
+<td></td>
+</tr>
+</tbody></table>
+<pre class="mermaid">flowchart LR
+    A[&quot;Import STL white model&quot;] --&gt; B[&quot;Smart segmentation&lt;br/&gt;(fuse / seed grow)&quot;]
+    B --&gt; C[&quot;Refine regions&lt;br/&gt;(merge / split / rename)&quot;]
+    C --&gt; D[&quot;Paint by region&lt;br/&gt;(fill / brush / spray)&quot;]
+    D --&gt; E[&quot;Export 3MF&lt;br/&gt;(colour + machine presets)&quot;]
+    E --&gt; F[&quot;Slicer&lt;br/&gt;multi-material print&quot;]
+</pre>
+<blockquote>
+<p>Download: <a href="https://github.com/ZackaryShen/ColorYourModel/releases">GitHub Releases</a>. v0.1.0 ships Windows installers and Linux packages (no macOS yet).</p>
+</blockquote>
+<h2 id="interface-overview">Interface overview</h2>
+<p>The window has five parts: the <strong>left toolbar</strong> (import/export, 10 tools, undo/redo), the <strong>viewport</strong> (the 3D model), the <strong>right panels</strong> (Regions, Brush Settings, Color), the <strong>bottom status bar</strong> (hints / tool / face count / language / theme), plus a <strong>shortcut hint bar</strong> along the bottom edge of the viewport.</p>
+<p><img src="../../samples/manual/01-interface.png" alt="CYM interface after importing a white model"></p>
+<p><em>The interface after import: left toolbar, viewport (a 500K-face cartoon white model), the three right-hand panels (Regions / Brush Settings / Color), and the status bar.</em></p>
+<h2 id="1-importing-a-model">1. Importing a model</h2>
+<ol>
+<li>Click the <strong>📂</strong> button (top-left) and pick an <strong>STL file</strong> (binary or ASCII).</li>
+<li>A large model (1.5M faces) loads in ~3–4 seconds behind a progress bar; the status bar shows the total face count when done.</li>
+</ol>
+<p>Import is the whole load — <strong>the model comes in with no regions</strong> (one big region). That is deliberate: the model is browsable immediately, and segmentation is something you start explicitly in section 4. You can already paint right away — Fill&#39;s normal click works radius-bounded without regions.</p>
+<p><strong>About formats</strong>:</p>
+<ul>
+<li>Only <strong>STL</strong> is supported; the file picker shows <code>.stl</code> only.</li>
+<li>To colour a split 3MF: convert the 3MF to STL first. Note that slicer-split part STLs use &quot;print layout&quot; coordinates (parts laid flat on the plate), not assembly positions — importing several parts scatters them, and fragmented plates confuse auto-segmentation, so process them one at a time.</li>
+<li>Sphere-like STLs (&quot;same-latitude rings sharing axis coordinates&quot;) used to crash the import; fixed well before v0.1.0.</li>
+</ul>
+<h2 id="2-brushes-and-shortcuts">2. Brushes and shortcuts</h2>
+<p>The 10 tools in the left toolbar are <strong>mutually exclusive</strong> (the active one gets a blue outline). Hover any button for a Chinese tooltip; brush, spray and smart brush also show their live radius and strength there.</p>
+<table>
+<thead>
+<tr>
+<th>Icon</th>
+<th>Tool</th>
+<th>Behaviour</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>🖐️</td>
+<td>View / Navigate</td>
+<td>Camera only, never paints</td>
+<td>Left rotate, right pan, middle/wheel zoom</td>
+</tr>
+<tr>
+<td>🪣</td>
+<td>Fill</td>
+<td>Paints from the clicked face; the rule depends on segmentation</td>
+<td><strong>With regions: normal click paints the whole region in one shot</strong>; <strong>without regions: normal click paints a radius-bounded blob</strong>; <strong>Shift+click floods along the surface</strong> (stops at region boundaries when segmented; floods the whole model when not — careful)</td>
+</tr>
+<tr>
+<td>🖌️</td>
+<td>Brush</td>
+<td>Smooth continuous painting with edge falloff</td>
+<td>Best for freehand; one drag = one undo entry</td>
+</tr>
+<tr>
+<td>💨</td>
+<td>Spray</td>
+<td>Random scattered dots inside the radius</td>
+<td>Spray-can texture; scatter density is fixed (no slider yet); shares radius/strength with the brush</td>
+</tr>
+<tr>
+<td>🎯</td>
+<td>Smart brush</td>
+<td>Brush constrained to one region + normal filtering</td>
+<td>Never crosses region boundaries and never bleeds through thin walls; unsegmented, the normal filter still protects back faces</td>
+</tr>
+<tr>
+<td>💧</td>
+<td>Eyedropper</td>
+<td>Picks the colour under the cursor</td>
+<td>Acts only on the initial click — dragging does not re-pick</td>
+</tr>
+<tr>
+<td>🧹</td>
+<td>Eraser</td>
+<td>Strips colour back to the default base</td>
+<td>Affected by radius only — the strength slider does nothing here (erase is a hard reset, no falloff)</td>
+</tr>
+<tr>
+<td>✂️</td>
+<td>Segment brush</td>
+<td>Drag across faces, release to create a new region</td>
+<td>The primary manual segmentation tool; good for patching fuse results</td>
+</tr>
+<tr>
+<td>📍</td>
+<td>Lasso</td>
+<td>Click vertices to enclose an area, close at the start point (cyan snap hint)</td>
+<td>The boundary follows the surface shortest path, hugging the geometry; see section 4</td>
+</tr>
+<tr>
+<td>🌱</td>
+<td>Seed</td>
+<td>Drop seed points, driven from the Seed panel</td>
+<td>See section 4</td>
+</tr>
+</tbody></table>
+<p><strong>Brush Settings</strong> (right panel): <strong>Radius</strong> 0.5–200 mm, <strong>Strength</strong> 10%–100%, <strong>Falloff</strong> (Smooth / Linear / Step — note &quot;Step&quot; actually paints about half the shown radius), <strong>Shading</strong> (Flat = exact WYSIWYG colour; Shaded = keeps form lighting so you can read the shape).</p>
+<p><strong>Color panel</strong> (right): current-colour swatch + HEX + the system colour picker (any colour), plus the <strong>AMS palette</strong> of 15 common colours. Palette slots map to filament slots at export time (section 5).</p>
+<h3 id="undo--redo">Undo / redo</h3>
+<p>Painting, erasing, manual regions and lasso all share one undo timeline (managed by the backend): <strong>Ctrl+Z</strong> undo, <strong>Ctrl+Y</strong> or <strong>Ctrl+Shift+Z</strong> redo, or the ↶ / ↷ toolbar buttons. One whole drag stroke is one entry — never dozens. Note that <strong>🗑 Reset partition and Reset are NOT undoable</strong>.</p>
+<h3 id="shortcut-table-every-shortcut-in-this-release">Shortcut table (every shortcut in this release)</h3>
+<table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>Context</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Alt</code> (hold)</td>
+<td>Any tool active</td>
+<td>Temporarily rotate the camera (release returns to the tool)</td>
+</tr>
+<tr>
+<td><code>Ctrl+Wheel</code></td>
+<td>Brush/spray/smart/eraser hovering the model</td>
+<td>Resize the brush (0.5–200 mm), live in the status bar</td>
+</tr>
+<tr>
+<td><code>Ctrl+Z</code></td>
+<td>Global (except while typing)</td>
+<td>Undo; with the lasso, pops the last point while a loop is open</td>
+</tr>
+<tr>
+<td><code>Ctrl+Y</code> / <code>Ctrl+Shift+Z</code></td>
+<td>Global</td>
+<td>Redo (no per-point redo for open lasso loops)</td>
+</tr>
+<tr>
+<td><code>Backspace</code></td>
+<td>Lasso tool</td>
+<td>Remove the last placed point</td>
+</tr>
+<tr>
+<td><code>Esc</code></td>
+<td>Lasso tool</td>
+<td>Cancel the open loop</td>
+</tr>
+<tr>
+<td><code>Enter</code></td>
+<td>Lasso tool</td>
+<td>Close the region (at least 3 points)</td>
+</tr>
+<tr>
+<td><code>Esc</code> / <code>Backspace</code></td>
+<td>Seed tool</td>
+<td>Clear all placed seeds and exit eraser mode</td>
+</tr>
+<tr>
+<td><code>Esc</code></td>
+<td>Seed panel open</td>
+<td>Closes the panel <strong>and clears all placed seeds</strong>, returning to the View tool (the panel&#39;s × does the same; closing never keeps seeds)</td>
+</tr>
+<tr>
+<td><code>Ctrl+Shift+L</code></td>
+<td>Global</td>
+<td>Toggle the debug log panel (🐞)</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>Tools themselves have <strong>no</strong> number-key shortcuts — switch tools via the toolbar. Undo shortcuts are inert while you type in a text field.</p>
+</blockquote>
+<h2 id="3-camera-and-interaction">3. Camera and interaction</h2>
+<p>CYM uses an <strong>orthographic camera</strong>: zooming changes the view scale, not perspective — the model never distorts, which makes checking paint coverage easy.</p>
+<table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Scroll wheel</td>
+<td>Zoom, range <strong>0.1×–500×</strong> (500× resolves sub-millimetre detail)</td>
+</tr>
+<tr>
+<td>Middle-drag</td>
+<td>Zoom (equivalent to the wheel, continuously smooth)</td>
+</tr>
+<tr>
+<td>Left-drag</td>
+<td>Rotate (View tool; or any tool pressed on <strong>empty space</strong>)</td>
+</tr>
+<tr>
+<td>Right-drag</td>
+<td>Pan</td>
+</tr>
+<tr>
+<td><code>Alt</code>+Left</td>
+<td>Force-rotate under any tool</td>
+</tr>
+</tbody></table>
+<p>Tips:</p>
+<ul>
+<li><strong>Rotate while painting</strong>: no need to switch back to View — move the mouse off the model and drag, or hold <code>Alt</code> and drag. Release and keep painting.</li>
+<li><strong>Fine detail</strong>: <code>Ctrl+Wheel</code> down to a 1–2 mm brush, zoom to 50×–100×, paint dots in Flat shading.</li>
+<li><strong>No inertia</strong>: drags stop dead on release (damping is intentionally off) — what you drag is what you get.</li>
+<li>With the fill/eyedropper/segment tools, the region under the cursor <strong>highlights</strong> on hover — see what you are about to paint before clicking.</li>
+<li>Brush-class tools show a <strong>3D ring</strong> that follows the mouse with the live radius and colour.</li>
+<li>Once regions exist, a <strong>🎨 Paint view / 🗺️ Segment view</strong> toggle appears in the <strong>top-right</strong> of the viewport: segment view colourises regions by label and outlines boundaries (yellow in the dark theme, amber-brown in light) for quality checks; neighbouring regions are essentially never the same colour (30 palette slots with adjacency-aware allocation).</li>
+</ul>
+<p><img src="../../samples/manual/03-segments.png" alt="Segment view: 13 fused regions, neighbours never sharing a colour"></p>
+<p><em>Segment view: the 500K-face cartoon model fused at fold threshold 5° into 13 regions — adjacent regions in different colours, boundaries outlined.</em></p>
+<h2 id="4-smart-segmentation">4. Smart segmentation</h2>
+<p>Segmentation starts from the <strong>🌱 seed tool</strong>: click 🌱 in the toolbar and a draggable <strong>Seed panel</strong> pops over the model (drag the title bar to move, double-click it or press 📍 to reset, close with × or <code>Esc</code> — note closing also clears any placed seeds).</p>
+<p><img src="../../samples/manual/02-seed-panel.png" alt="The Seed panel, Auto (fuse) tab"></p>
+<p><em>The Seed panel&#39;s Auto (fuse) tab: mode tabs, eye-detection entries, per-layer solo buttons, the fold-threshold slider and &quot;Fuse &amp; generate&quot;.</em></p>
+<pre class="mermaid">flowchart TD
+    P[&quot;🌱 Seed panel&quot;] --&gt; AUTO[&quot;🧩 Auto (fuse)&quot;]
+    P --&gt; MANU[&quot;🌱 Manual (grow)&quot;]
+    AUTO --&gt; F[&quot;Fold threshold → Fuse &amp; generate&lt;br/&gt;planar + multiview + dihedral edge vote&quot;]
+    MANU --&gt; S[&quot;Place seeds / suggest / planar·multiview detect&quot;]
+    S --&gt; G[&quot;Barrier angle → Grow&quot;]
+    F --&gt; R[&quot;Regions&lt;br/&gt;(then merge/split/lasso to refine)&quot;]
+    G --&gt; R
+</pre>
+<h3 id="auto-fuse--the-recommended-first-stop">Auto (fuse) — the recommended first stop</h3>
+<p>One click produces the partition: <strong>Fold threshold</strong> (0–35°, default 2°) + <strong>🧩 Fuse &amp; generate</strong>. It votes every edge across three channels — planar regions, multi-view evidence, and the dihedral backbone — and only cuts when the cut votes win, which suppresses over-splitting and keeps regions chunky. A staged progress bar runs while it works (detecting planar regions → rendering multi-view evidence → fusing by edge vote).</p>
+<p><strong>Choosing the fold threshold</strong> (the one parameter that matters):</p>
+<table>
+<thead>
+<tr>
+<th>Model class</th>
+<th>Suggested value</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Sculpted figures (characters / creatures)</td>
+<td><strong>0–3°</strong></td>
+<td>Sculpt folds at neck/shoulders/hips spread over many sub-5° edges; only a low threshold separates head / limbs / tail</td>
+</tr>
+<tr>
+<td>Hard surface (signs / kiosks / architecture)</td>
+<td><strong>5–15°</strong></td>
+<td>Creases are already hard boundaries; a higher threshold keeps flat walls whole</td>
+</tr>
+</tbody></table>
+<p>Lower = finer, higher = coarser. Too fragmented? Raise it and fuse again. Not splitting? Lower it. A 1.5M-face model takes about a minute at 0° — that is normal. Detected <strong>eye regions are protected</strong> and survive the fuse.</p>
+<h3 id="manual-grow--fine-control">Manual (grow) — fine control</h3>
+<ol>
+<li><strong>Click the model to place seeds</strong> (each green dot = one future region); <code>Backspace</code>/<code>Esc</code> clears all, and <strong>🩹 Eraser mode</strong> deletes a single seed on click.</li>
+<li>Or let the panel suggest them: <strong>💡 Suggest seeds</strong> (saliency-based; tunable count 2–40, curvature weight, concavity weight), <strong>🟦 Planar seeds</strong> (flat-patch detection), <strong>👁 MultiView</strong> (multi-angle consensus). Suggestions appear as magenta ghosts — click near one to accept it.</li>
+<li>Set the <strong>Barrier angle</strong> (10–90°, default 45°: adjacent faces whose normals differ more stop the growth), optionally tick <strong>Optimize (merge tiny regions)</strong>, then <strong>🌱 Grow</strong>.</li>
+<li>Patches no seed claims fall to the nearest seed.</li>
+</ol>
+<p><strong>Eye detection</strong> (two entries at the bottom of the panel):</p>
+<ul>
+<li><strong>👁 Auto eye detect</strong>: scans the whole mesh for symmetric eye bumps and regions them — no prerequisites.</li>
+<li><strong>👁 Eye detect</strong>: decomposes the <strong>currently selected region</strong> into globe / sclera / eyelid / socket sub-regions. Requires a selected region first — fuse once, then use <strong>🖱 Pick a partition</strong> to click the eye-area region on the model.</li>
+</ul>
+<h3 id="regions-panel-right--refining">Regions panel (right) — refining</h3>
+<p>Fuse/grow results are a starting point; the <strong>Regions</strong> panel cleans up:</p>
+<ul>
+<li><strong>Select</strong>: click a list entry, or click a region on the model (highlight in the viewport).</li>
+<li><strong>Merge</strong>: <code>Ctrl+click</code> multi-select (first pick is the survivor), then merge.</li>
+<li><strong>Rename</strong>: double-click an entry.</li>
+<li><strong>Split</strong>: re-cut an oversized region along its internal creases (default threshold 30°).</li>
+<li><strong>Re-cut</strong>: re-run a whole algorithm inside one region (the fix for tubular limbs convex decomposition can&#39;t cut); 8 algorithms, see section 6.</li>
+<li><strong>Reset</strong>: wipe all regions and paint (<strong>not undoable</strong>; asks for confirmation).</li>
+</ul>
+<p>The lasso (📍) is the last mile of refinement — where geometry offers no boundary (a smooth cheek, a flat wall band), draw the region by hand. Click vertices in turn, close at the start point or press <code>Enter</code> (≥3 points); closing runs a progress bar (snap → surface boundary completion → enclosure → smoothing → commit) because on million-face meshes every stage is real work.</p>
+<h2 id="5-exporting-3mf">5. Exporting 3MF</h2>
+<p>Click <strong>💾</strong> in the toolbar (a model must be loaded) to open the export dialog:</p>
+<ol>
+<li><strong>Format</strong>: 3MF (for slicers, default) / OBJ (with colour).</li>
+<li><strong>Vendor / Machine</strong>: currently the embedded <strong>Snapmaker U1</strong> preset (nothing to install).</li>
+<li><strong>Nozzle diameter</strong>: 0.2 / 0.4 / 0.6 / 0.8 — the process list filters automatically.</li>
+<li><strong>Process</strong>: the print profiles available for that machine + nozzle (0.20 Standard etc.).</li>
+<li><strong>Filament (per slot)</strong>: one filament per palette slot; tick several slots and <strong>Apply to selected</strong>, or <strong>Apply to all</strong>. A slot colour preview renders before export.</li>
+<li><strong>Target slicer</strong>: Snapmaker Orca (default) or OrcaSlicer (generic) — decides the machine id written into the file.</li>
+<li><strong>Choose location &amp; export</strong>. Machine/nozzle/process/filaments/slicer are remembered for next time (the format switch is not — it resets to 3MF).</li>
+</ol>
+<p><img src="../../samples/manual/04-export-dialog.png" alt="Export dialog: machine, nozzle, process and per-slot filaments"></p>
+<p><em>The export dialog: 13 regions map to 13 filament slots, each selectable individually or in bulk.</em></p>
+<p>The exported 3MF is verified end-to-end: imported into Snapmaker Orca (U1), machine, process and multi-filament colours all land correctly (see the <a href="../cases/01-3mf-end-to-end.html">verification case</a>).</p>
+<p><strong>OBJ</strong>: writes <code>.obj</code> + <code>.mtl</code> with per-face colours (quantized to at most 256) and needs no machine/process picks. For Blender / MeshLab / web viewers; for printing, use 3MF.</p>
+<h2 id="6-experimental-features-and-current-limitations">6. Experimental features and current limitations</h2>
+<p>These work today, but know their edges — not bugs, just the honest water level of v0.1.0.</p>
+<h3 id="experimental">Experimental</h3>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Advice</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>The 5 advanced re-cut algorithms: SDF graph-cut / concavity fields / convex decomposition (V-HACD) / curve skeleton / FH graph</td>
+<td>The first two are marked experimental in code; all five are recent additions that collapsed hundreds of fragments into 4–7 semantic parts in benchmarks, but are parameter-sensitive</td>
+<td>Stick to curvature k-means / dihedral / shape diameter by default; A/B the rest when those fall short</td>
+</tr>
+<tr>
+<td>✂️ Cross-section detection (Seed panel)</td>
+<td>Purely visual evidence: draws feature cross-sections, <strong>creates no regions and never votes</strong></td>
+<td>Treat it as an analysis overlay, not a segmenter</td>
+</tr>
+<tr>
+<td>👁 Eye detection</td>
+<td>Sclera is heuristic and low-confidence; globe/eyelid/socket are more reliable</td>
+<td>Use as an underlay, refine by hand</td>
+</tr>
+<tr>
+<td>👁 MultiView detection</td>
+<td>A second-opinion channel (12-view projection consensus)</td>
+<td>Pair with planar seeds; weak alone</td>
+</tr>
+<tr>
+<td>🐞 Debug log (<code>Ctrl+Shift+L</code>)</td>
+<td>Diagnostics: shows the frontend log ring</td>
+<td>Attach a screenshot when filing bugs</td>
+</tr>
+</tbody></table>
+<h3 id="known-limitations-v010">Known limitations (v0.1.0)</h3>
+<ul>
+<li><strong>Repeated passes within one stroke darken the colour</strong>: the same face gets mixed multiple times inside a stroke. Slow down, or use fill/smart brush to avoid it.</li>
+<li><strong>&quot;Step&quot; falloff paints about half the shown radius</strong>, with no separate UI indication.</li>
+<li><strong>Region boundaries are jagged</strong>: boundary smoothing only mitigates; ruler-straight edges need a different approach.</li>
+<li><strong>Holes in the mesh</strong> let click-picking fall through (the ray escapes through the hole).</li>
+<li><strong>Very large models (4M+ faces)</strong>: fusing takes long and can stall the UI — split or decimate first; the first switch to segment view also computes once with a visible hitch.</li>
+<li><strong>OBJ export quantizes to at most 256 colours</strong>; beyond that, colours merge.</li>
+<li><strong>The machine preset library currently holds only the Snapmaker U1</strong>: other machines should export with OrcaSlicer (generic) and assign filaments in the slicer.</li>
+<li><strong>Segment-view colours ≠ your paint</strong>: segment view shows diagnostic colours by region label; the shipped colours are what you painted (labels are the truth, colour is the output).</li>
+</ul>
+<h3 id="feedback">Feedback</h3>
+<p>Crashes, clearly wrong segmentations, unimportable exports: please file at <a href="https://github.com/ZackaryShen/ColorYourModel/issues">GitHub Issues</a> with the face count (status bar), OS, and a <code>Ctrl+Shift+L</code> log screenshot.</p>
+<h2 id="appendix-status-bar-language-theme">Appendix: status bar, language, theme</h2>
+<ul>
+<li><strong>Status bar</strong>: live hints on the left (lasso and seed tools print full usage on activation; otherwise the last message stays), the active tool and face count in the middle, and on the right the input cheatsheet plus three switches: the <strong>🐞 debug log</strong>, <strong>🌙/☀️ dark/light theme</strong>, and the <strong>中/EN UI language</strong> (theme and language persist across restarts).</li>
+<li>The Regions panel shows &quot;no regions yet&quot; whenever there is nothing to list (before import, or after import before segmenting); the paint/segment view toggle appears only once regions exist.</li>
+</ul>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#what-is-this-software-for">What is this software for?</a></li><li class="toc-h2"><a href="#interface-overview">Interface overview</a></li><li class="toc-h2"><a href="#1-importing-a-model">1. Importing a model</a></li><li class="toc-h2"><a href="#2-brushes-and-shortcuts">2. Brushes and shortcuts</a></li><li class="toc-h3"><a href="#undo--redo">Undo / redo</a></li><li class="toc-h3"><a href="#shortcut-table-every-shortcut-in-this-release">Shortcut table (every shortcut in this release)</a></li><li class="toc-h2"><a href="#3-camera-and-interaction">3. Camera and interaction</a></li><li class="toc-h2"><a href="#4-smart-segmentation">4. Smart segmentation</a></li><li class="toc-h3"><a href="#auto-fuse--the-recommended-first-stop">Auto (fuse) — the recommended first stop</a></li><li class="toc-h3"><a href="#manual-grow--fine-control">Manual (grow) — fine control</a></li><li class="toc-h3"><a href="#regions-panel-right--refining">Regions panel (right) — refining</a></li><li class="toc-h2"><a href="#5-exporting-3mf">5. Exporting 3MF</a></li><li class="toc-h2"><a href="#6-experimental-features-and-current-limitations">6. Experimental features and current limitations</a></li><li class="toc-h3"><a href="#experimental">Experimental</a></li><li class="toc-h3"><a href="#known-limitations-v010">Known limitations (v0.1.0)</a></li><li class="toc-h3"><a href="#feedback">Feedback</a></li><li class="toc-h2"><a href="#appendix-status-bar-language-theme">Appendix: status bar, language, theme</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  var dark = document.documentElement.dataset.theme === "dark";
+  var themeBtn = document.getElementById("theme-btn");
+  if (themeBtn) {
+    themeBtn.textContent = dark ? "\u2600\uFE0F" : "\uD83C\uDF19";
+    themeBtn.addEventListener("click", function () {
+      var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      try { localStorage.setItem("cym-docs-theme", next); } catch (e) {}
+      // Reload so the mermaid diagrams re-render under the new theme.
+      location.reload();
+    });
+  }
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "base", securityLevel: "loose",
+      themeVariables: dark
+        ? { primaryColor: "#1b2440", primaryTextColor: "#e2e8f0", primaryBorderColor: "#33406b",
+            lineColor: "#7c8aa0", fontSize: "14px",
+            fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" }
+        : { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+            lineColor: "#64748b", fontSize: "14px",
+            fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>
