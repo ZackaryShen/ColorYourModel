@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { subscribeLog, type LogEntry } from "../utils/logger";
+import { useAppStore } from "../store/appStore";
 
 /// In-app debug log viewer (iteration 59). Tauri release builds disable the
 /// webview devtools, so the existing console.* diagnostics are invisible to the
 /// user. This panel renders the same log ring directly in the app so the
 /// seed-click / segmentation diagnostics can be read without devtools.
 ///
-/// Toggle with the keyboard shortcut Ctrl+Shift+L (or the floating "🐞" button
-/// at the bottom-right). Auto-scrolls to the newest entry.
+/// Toggled with Ctrl+Shift+L or the 🐞 button in the status bar (the panel
+/// used to own a floating bottom-right button, but it covered the status
+/// bar's language switch). Auto-scrolls to the newest entry.
 export function DebugLogViewer() {
-  const [open, setOpen] = useState(false);
+  const open = useAppStore((s) => s.debugLogOpen);
+  const setOpen = useAppStore((s) => s.setDebugLogOpen);
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -18,12 +21,12 @@ export function DebugLogViewer() {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && (e.key === "L" || e.key === "l")) {
         e.preventDefault();
-        setOpen((o) => !o);
+        setOpen(!open);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [open, setOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -39,29 +42,6 @@ export function DebugLogViewer() {
 
   return (
     <>
-      {/* Floating toggle button */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        title="调试日志 (Ctrl+Shift+L)"
-        style={{
-          position: "fixed",
-          bottom: 12,
-          right: 12,
-          zIndex: 9999,
-          width: 36,
-          height: 36,
-          borderRadius: "50%",
-          border: "1px solid var(--border, #555)",
-          background: "var(--bg-panel, #2d2d2d)",
-          color: open ? "#4a9eff" : "var(--text-2, #ccc)",
-          cursor: "pointer",
-          fontSize: 16,
-          lineHeight: 1,
-        }}
-      >
-        🐞
-      </button>
-
       {open && (
         <div
           style={{

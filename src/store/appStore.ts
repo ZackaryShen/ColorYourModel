@@ -57,6 +57,12 @@ interface AppStore {
 
   // Status
   statusMessage: string;
+  /** DebugLogViewer panel visibility. Lives in the store so the StatusBar's
+   *  🐞 button (same row as theme/language — the old floating corner button
+   *  covered the language switch) can toggle the panel mounted in App.
+   *  Transient: NOT persisted (see partialize whitelist). */
+  debugLogOpen: boolean;
+  setDebugLogOpen: (v: boolean) => void;
   isLoading: boolean;
   importProgress: number;
   importStage: string;
@@ -424,6 +430,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   // StatusBar renders it via `t()`, which returns unknown keys verbatim, so
   // runtime messages pushed by setStatusMessage still display unchanged.
   statusMessage: "status.ready",
+  debugLogOpen: false,
   isLoading: false,
   importProgress: 0,
   importStage: "",
@@ -543,6 +550,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   markHistoryDirty: () => set({ canUndo: true, canRedo: false }),
   resetHistory: () => set({ canUndo: false, canRedo: false }),
   setStatusMessage: (msg) => set({ statusMessage: msg }),
+  setDebugLogOpen: (v) => set({ debugLogOpen: v }),
 
   seedPoints: [],
   addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),
