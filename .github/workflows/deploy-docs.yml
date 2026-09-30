@@ -31,14 +31,22 @@ jobs:
       - name: Stage HTML-only artifact
         run: |
           mkdir -p pages
+          # '/index.html' (Vite app entry) is excluded: without it the site
+          # root would serve an empty React shell.
           rsync -a --prune-empty-dirs \
             --exclude '.git' --exclude 'node_modules' --exclude 'dist' \
-            --exclude 'src' --exclude 'src-tauri' \
+            --exclude 'src' --exclude 'src-tauri' --exclude '/index.html' \
             --include 'samples/' --include 'samples/**/' \
             --include 'samples/**/*.png' \
             --exclude 'samples' --exclude 'examples' \
             --include '*/' --include '*.html' --exclude '*' \
             ./ ./pages/
+          # Site root redirects to the docs hub.
+          printf '%s\n' \
+            '<!DOCTYPE html>' \
+            '<meta http-equiv="refresh" content="0;url=docs/README.html">' \
+            '<a href="docs/README.html">ColorYourModel docs</a>' \
+            > pages/index.html
       - uses: actions/configure-pages@v5
         with:
           enablement: true
