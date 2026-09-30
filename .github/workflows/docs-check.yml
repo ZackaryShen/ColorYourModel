@@ -40,9 +40,16 @@ jobs:
       - run: npm run docs:build
       - name: Fail if HTML archives are stale
         run: |
+          echo "--- git env diagnostics ---"
+          git --version
+          git config --show-origin --list | grep -iE "autocrlf|eol|filemode" || echo "(no eol-related config)"
+          git check-attr text eol -- tools/docs_site.css docs/README.html
           dirty="$(git status --porcelain --untracked-files=all -- '*.html')"
           if [ -n "$dirty" ]; then
             echo "HTML archives are out of date. Run 'npm run docs:build' and commit:"
             echo "$dirty"
+            echo "--- sample byte diff (docs/README.html) ---"
+            git diff -- docs/README.html | head -20
+            od -c docs/README.html | head -3
             exit 1
           fi
