@@ -49,12 +49,12 @@ body {
 #topbar .brand-icon { height: 22px; width: 22px; vertical-align: -5px; margin-right: 7px; }
 #topbar .brand span { color: var(--ink-faint); font-weight: 400; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
-.lang-toggle, .gh-link {
+.gh-link {
   font-size: 13px; color: var(--accent); text-decoration: none;
   padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
   background: var(--accent-soft); white-space: nowrap;
 }
-.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+.gh-link:hover { filter: brightness(.96); }
 #menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
   border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
 
@@ -195,19 +195,18 @@ pre.mermaid.mermaid-offline::after {
 <body>
 <header id="topbar">
   <button id="menu-btn" aria-label="Toggle navigation">☰</button>
-  <a class="brand" href="../../README.html"><img class="brand-icon" src="../icon.png" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
+  <a class="brand" href="../README.html"><img class="brand-icon" src="../icon.png" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
   <div class="topbar-right">
-    
     <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
   </div>
 </header>
 <div id="layout">
   <aside id="sidebar">
     <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
-    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
-<li><a href="../../README.zh-CN.html">首页（中文）</a></li>
-<li><a href="../../CHANGELOG.html">Changelog</a></li>
-<li><a href="../../CONTRIBUTING.html">Contributing to ColorYourModel</a></li></ul></div>
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.md">Home (EN) ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.zh-CN.md">首页（中文） ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CHANGELOG.md">Changelog ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CONTRIBUTING.md">Contributing ↗</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
 <li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
 <li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>

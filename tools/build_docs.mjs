@@ -2,13 +2,13 @@
 //! Convert documentation markdown sources into the official HTML archives.
 //!
 //! Source layout: markdown lives in `docs/bak/` (a mirror of the `docs/`
-//! tree — editable sources/backup) plus the repo-root trio (README.md,
-//! README.zh-CN.md, CHANGELOG.md, which GitHub renders directly). Output is
-//! 1:1 with the bak/ segment stripped: `docs/bak/X/Y.md` → `docs/X/Y.html`,
-//! `README.md` → `README.html`. The HTML pages are the committed, readable
-//! documentation; links between pages are relative, so navigation works from
-//! a plain double-click (file://, no fetch, classic scripts only) and on
-//! GitHub Pages.
+//! tree — editable sources/backup). Output is 1:1 with the bak/ segment
+//! stripped: `docs/bak/X/Y.md` → `docs/X/Y.html`. The HTML pages are the
+//! committed, readable documentation; links between pages are relative, so
+//! navigation works from a plain double-click (file://, no fetch, classic
+//! scripts only) and on GitHub Pages. Root documents (README.md,
+//! CHANGELOG.md, …) are NOT duplicated as HTML — GitHub renders the
+//! markdown directly; the sidebar links to them on GitHub.
 //!
 //! Determinism: output contains no timestamps, no absolute paths, so
 //! `git status -- '*.html'` after a rebuild is a valid freshness check (CI).
@@ -44,10 +44,6 @@ function collectDocs(dir) {
 const BAK_POSIX = "docs/bak/";
 
 const SOURCES = [
-  join(ROOT, "README.md"),
-  join(ROOT, "README.zh-CN.md"),
-  join(ROOT, "CHANGELOG.md"),
-  join(ROOT, "CONTRIBUTING.md"),
   ...collectDocs(join(ROOT, "docs", "bak")).filter(
     // The internal dev journal stays in git (docs/bak/) but is not
     // published on the documentation site.
@@ -56,8 +52,7 @@ const SOURCES = [
 ];
 
 // Output path (posix, relative to ROOT) for a source md: the bak/ segment is
-// stripped so sources render to the official docs/ locations. Root files map
-// next to themselves (README.md → README.html).
+// stripped so sources render to the official docs/ locations.
 const outRel = (src) => {
   let rel = relative(ROOT, src).split(sep).join("/");
   if (rel.startsWith(BAK_POSIX)) rel = "docs/" + rel.slice(BAK_POSIX.length);
@@ -182,6 +177,9 @@ function rewriteLinks(html, src) {
 
     let outPath;
     if (pathPart.endsWith(".md")) {
+      // Root documents (README/CHANGELOG/…) have no generated archive —
+      // GitHub renders the markdown itself, so link there.
+      if (!relAbs.startsWith("docs/")) return `href="${blob(relAbs)}${anchor}"`;
       outPath = outForAbs(abs);
     } else if (/\.[a-zA-Z0-9]+$/.test(pathPart)) {
       return `href="${blob(relAbs)}${anchor}"`;
@@ -199,7 +197,14 @@ function rewriteLinks(html, src) {
 // ── Page template ────────────────────────────────────────────────────────────
 
 const NAV_GROUPS = [
-  ["Overview", ["README.md", "README.zh-CN.md", "CHANGELOG.md", "CONTRIBUTING.md"]],
+  // Root documents are not part of the generated archive — entries as
+  // {label, repo} link out to GitHub, which renders the markdown directly.
+  ["Overview", [
+    { label: "Home (EN)", repo: "README.md" },
+    { label: "首页（中文）", repo: "README.zh-CN.md" },
+    { label: "Changelog", repo: "CHANGELOG.md" },
+    { label: "Contributing", repo: "CONTRIBUTING.md" },
+  ]],
   ["User Guide", ["docs/bak/user-guide/getting-started.md", "docs/bak/user-guide/auto-segmentation.md", "docs/bak/user-guide/seed-tools.md", "docs/bak/user-guide/painting-tools.md", "docs/bak/user-guide/exporting.md"]],
   ["Algorithms", ["docs/bak/algorithms/README.md", "docs/bak/algorithms/segmentation.md", "docs/bak/algorithms/seed-grow-fuse.md", "docs/bak/algorithms/eye-detection.md"]],
   ["Technical", ["docs/bak/technical/README.md", "docs/bak/technical/bvh-face-picking.md", "docs/bak/technical/shader-segment-highlight.md", "docs/bak/technical/fill-routing.md", "docs/bak/technical/undo-redo-history.md", "docs/bak/technical/export-pipeline.md", "docs/bak/technical/crash-diagnostics.md", "docs/bak/technical/bench-fuse-recommend.md"]],
@@ -219,9 +224,6 @@ const PAGE_TITLES = new Map(
 );
 
 const navLabel = (src) => {
-  const base = relative(ROOT, src).split(sep).join("/");
-  if (base === "README.md") return "Home (EN)";
-  if (base === "README.zh-CN.md") return "首页（中文）";
   let t = PAGE_TITLES.get(src);
   if (src.endsWith("TEMPLATE.md")) t = "Case template";
   return t.length > 42 ? t.slice(0, 41) + "…" : t;
@@ -234,8 +236,11 @@ const toAbs = (p) => (isAbsolute(p) ? p : join(ROOT, p));
 function buildSidebar(currentSrc) {
   const groups = NAV_GROUPS.map(([label, srcs]) => {
     const items = srcs
-      .map((rawSrc) => {
-        const src = toAbs(rawSrc);
+      .map((entry) => {
+        if (typeof entry === "object") {
+          return `<li><a href="${blob(entry.repo)}">${escapeHtml(entry.label)} ↗</a></li>`;
+        }
+        const src = toAbs(entry);
         const out = OUT_MAP.get(src);
         const rel = relative(dirname(OUT_MAP.get(currentSrc)), out).split(sep).join("/");
         const cur = src === currentSrc ? ' aria-current="page"' : "";
@@ -248,19 +253,6 @@ function buildSidebar(currentSrc) {
 }
 
 const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-const LANG_PAIR = new Map([
-  [join(ROOT, "README.md"), "README.zh-CN.md"],
-  [join(ROOT, "README.zh-CN.md"), "README.md"],
-]);
-
-function langToggle(src) {
-  const other = LANG_PAIR.get(src);
-  if (!other) return "";
-  const rel = relative(dirname(OUT_MAP.get(src)), OUT_MAP.get(join(ROOT, other))).split(sep).join("/");
-  const label = src.endsWith(".zh-CN.md") ? "English" : "简体中文";
-  return `<a class="lang-toggle" href="${encodeURI(rel)}">${label}</a>`;
-}
 
 function pageCss() {
   return readFileSync(join(ROOT, "tools", "docs_site.css"), "utf8");
@@ -295,9 +287,8 @@ ${pageCss()}
 <body>
 <header id="topbar">
   <button id="menu-btn" aria-label="Toggle navigation">☰</button>
-  <a class="brand" href="${encodeURI(relative(dirname(OUT_MAP.get(src)), "README.html").split(sep).join("/"))}"><img class="brand-icon" src="${iconRel(src)}" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
+  <a class="brand" href="${encodeURI(relative(dirname(OUT_MAP.get(src)), "docs/README.html").split(sep).join("/"))}"><img class="brand-icon" src="${iconRel(src)}" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
   <div class="topbar-right">
-    ${langToggle(src)}
     <a class="gh-link" href="${REPO_URL}" title="GitHub repository">GitHub ↗</a>
   </div>
 </header>
@@ -360,10 +351,10 @@ for (const src of SOURCES) {
 copyFileSync(join(ROOT, "assets", "icon.png"), join(DOCS, "icon.png"));
 
 // Prune generated html whose markdown source is gone (renames/deletions) so
-// the archive never drifts into stale pages. Strictly bounded: the repo root
-// only ever yields the three known root archives (the Vite entry index.html
-// lives there too and must never be touched); under docs/ every html file is
-// generator-owned.
+// the archive never drifts into stale pages. Strictly bounded: ROOT_ARCHIVES
+// are legacy root twins the generator no longer emits — prune them if found
+// (the Vite entry index.html must never be touched); under docs/ every html
+// file is generator-owned.
 const generated = new Set(pages);
 const ROOT_ARCHIVES = new Set(["README.html", "README.zh-CN.html", "CHANGELOG.html", "CONTRIBUTING.html"]);
 for (const entry of readdirSync(ROOT)) {
@@ -417,4 +408,4 @@ if (broken) {
   process.exit(1);
 }
 console.log(`OK: ${pages.length} HTML archives, ${mermaidPages} with mermaid diagrams, 0 broken links.`);
-console.log("Double-click README.html (or any doc) to browse.");
+console.log("Double-click docs/README.html (or any doc) to browse.");

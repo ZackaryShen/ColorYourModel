@@ -21,7 +21,7 @@ Pre-commit convention: if tests fail, compare against a stash baseline to prove 
 
 ## Docs workflow (this wiki)
 
-Markdown sources live in `docs/bak/` — a mirror of the `docs/` tree — plus the repo-root trio (`README.md`, `README.zh-CN.md`, `CHANGELOG.md`, which GitHub renders directly). The committed `*.html` pages under `docs/` (and the root `README.html` etc.) are generated from them and are the official, readable archive. After editing any md:
+Markdown sources live in `docs/bak/` — a mirror of the `docs/` tree. The committed `*.html` pages under `docs/` are generated from them and are the official, readable archive; root documents (`README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, …) are not duplicated as HTML — GitHub renders them directly. After editing any md:
 
 ```bash
 npm run docs:build     # regenerates archives, prunes stale ones, asserts links

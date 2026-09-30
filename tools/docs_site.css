@@ -38,12 +38,12 @@ body {
 #topbar .brand-icon { height: 22px; width: 22px; vertical-align: -5px; margin-right: 7px; }
 #topbar .brand span { color: var(--ink-faint); font-weight: 400; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
-.lang-toggle, .gh-link {
+.gh-link {
   font-size: 13px; color: var(--accent); text-decoration: none;
   padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
   background: var(--accent-soft); white-space: nowrap;
 }
-.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+.gh-link:hover { filter: brightness(.96); }
 #menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
   border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
 

@@ -17,6 +17,10 @@
   - CI 策略：`npx tsc --noEmit` 为硬门禁，vitest 步骤 `continue-on-error` 直至修复（见 `.github/workflows/ci.yml`）
 - **超大模型融合投票阶段超时**：house2（472 万面）在 vote 阶段 >30min 未完成（godzilla 150 万面全程 ~12.7s）。`MAX_AUTO_REGIONS=4096`（`postprocess.rs:59`）尚未接入 fuse 投票路径，超大面数下候选区爆炸。详见基准报告 `docs/technical/bench-fuse-recommend.html`（模型不入库，路径需自备或设 `CYM_BENCH_STL`）
 
+### Changed — 根目录不再生成 HTML 孪生文件（2026-09-29）
+
+- 主页清理：删除 `README.html`/`README.zh-CN.html`/`CHANGELOG.html`/`CONTRIBUTING.html` 且不再生成——GitHub 原生渲染 markdown，孪生 HTML 在主页纯属噪音且易让贡献者困惑「改哪个」。文档站侧边栏 Overview 组改为外链 GitHub（GitHub 直接渲染 md）；文档内指向根文档的 md 链接重写为 GitHub blob URL；顶栏品牌链接落点改为 `docs/README.html`
+
 ### Added — 开源准备：示例图库与社区文档（2026-09-08）
 
 - **示例图库**（`docs/cases/examples.html`）：13 个真实案例——手办雕塑（sanji 187 万面 37 区、armoured hero 91 区）、AI 生成模型（Tripo 菠萝屋 76 区）、招牌/建筑件（KFC 系、house2）——每案例配核实过的截图与面数/区数说明，附模型版权与来源声明（CYM 不附带任何模型，仅跟踪验证截图）

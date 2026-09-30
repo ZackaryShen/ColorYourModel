@@ -49,12 +49,12 @@ body {
 #topbar .brand-icon { height: 22px; width: 22px; vertical-align: -5px; margin-right: 7px; }
 #topbar .brand span { color: var(--ink-faint); font-weight: 400; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
-.lang-toggle, .gh-link {
+.gh-link {
   font-size: 13px; color: var(--accent); text-decoration: none;
   padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
   background: var(--accent-soft); white-space: nowrap;
 }
-.lang-toggle:hover, .gh-link:hover { filter: brightness(.96); }
+.gh-link:hover { filter: brightness(.96); }
 #menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
   border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
 
@@ -195,19 +195,18 @@ pre.mermaid.mermaid-offline::after {
 <body>
 <header id="topbar">
   <button id="menu-btn" aria-label="Toggle navigation">☰</button>
-  <a class="brand" href="../../README.html"><img class="brand-icon" src="../icon.png" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
+  <a class="brand" href="../README.html"><img class="brand-icon" src="../icon.png" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
   <div class="topbar-right">
-    
     <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
   </div>
 </header>
 <div id="layout">
   <aside id="sidebar">
     <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
-    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="../../README.html">Home (EN)</a></li>
-<li><a href="../../README.zh-CN.html">首页（中文）</a></li>
-<li><a href="../../CHANGELOG.html">Changelog</a></li>
-<li><a href="../../CONTRIBUTING.html">Contributing to ColorYourModel</a></li></ul></div>
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.md">Home (EN) ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.zh-CN.md">首页（中文） ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CHANGELOG.md">Changelog ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CONTRIBUTING.md">Contributing ↗</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/getting-started.html">Getting Started</a></li>
 <li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
 <li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
@@ -249,7 +248,7 @@ pre.mermaid.mermaid-offline::after {
 </blockquote>
 <h2 id="stack--layout">Stack &amp; layout</h2>
 <p>Tauri 2 desktop app: React 18 + TypeScript + Three.js frontend (<code>src/</code>), Rust backend (<code>src-tauri/</code>).
-The full annotated tree lives in the <a href="../../README.html#project-structure">README</a>; deep-dive stubs live under <a href="../algorithms/README.html">algorithms/</a> and <a href="../technical/README.html">technical/</a>.</p>
+The full annotated tree lives in the <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.md#project-structure">README</a>; deep-dive stubs live under <a href="../algorithms/README.html">algorithms/</a> and <a href="../technical/README.html">technical/</a>.</p>
 <h2 id="everyday-commands">Everyday commands</h2>
 <pre><code class="language-bash">npm run tauri dev                  # dev app (vite HMR + debug exe)
 npx tsc --noEmit                   # TypeScript check
@@ -259,7 +258,7 @@ npm run docs:build                 # regenerate HTML archives after editing docs
 </code></pre>
 <p>Pre-commit convention: if tests fail, compare against a stash baseline to prove the failure pre-dates your change.</p>
 <h2 id="docs-workflow-this-wiki">Docs workflow (this wiki)</h2>
-<p>Markdown sources live in <code>docs/bak/</code> — a mirror of the <code>docs/</code> tree — plus the repo-root trio (<code>README.md</code>, <code>README.zh-CN.md</code>, <code>CHANGELOG.md</code>, which GitHub renders directly). The committed <code>*.html</code> pages under <code>docs/</code> (and the root <code>README.html</code> etc.) are generated from them and are the official, readable archive. After editing any md:</p>
+<p>Markdown sources live in <code>docs/bak/</code> — a mirror of the <code>docs/</code> tree. The committed <code>*.html</code> pages under <code>docs/</code> are generated from them and are the official, readable archive; root documents (<code>README.md</code>, <code>CHANGELOG.md</code>, <code>CONTRIBUTING.md</code>, …) are not duplicated as HTML — GitHub renders them directly. After editing any md:</p>
 <pre><code class="language-bash">npm run docs:build     # regenerates archives, prunes stale ones, asserts links
 git add -A &#39;*.html&#39; docs/   # include regenerated archives
 </code></pre>
@@ -299,7 +298,7 @@ git add -A &#39;*.html&#39; docs/   # include regenerated archives
 <ul>
 <li><strong>Commits</strong>: <a href="https://www.conventionalcommits.org/">Conventional Commits</a>, English, atomic; commit messages carry test evidence (pass counts).</li>
 <li><strong>Branches</strong>: <code>feature_*</code> / <code>bugfix_*</code>; PRs squash-merged to <code>main</code>.</li>
-<li><strong>Adversarial development loop</strong>: every non-trivial change passes <code>PLAN → REFUTE → REVISE → IMPLEMENT → TEST → RETROSPECT</code>; per-round records live in <a href="../../CHANGELOG.html">CHANGELOG.md</a>.</li>
+<li><strong>Adversarial development loop</strong>: every non-trivial change passes <code>PLAN → REFUTE → REVISE → IMPLEMENT → TEST → RETROSPECT</code>; per-round records live in <a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</li>
 <li><strong>Region authority principle</strong>: region <strong>labels</strong> are the truth, colours are output — algorithms must never use colour to decide region identity (see <a href="../technical/fill-routing.html">Fill Routing</a>).</li>
 <li><strong>Thresholds carry provenance</strong>: every magic number in a patch needs a source comment or an explicit &quot;v1 default&quot; marker.</li>
 </ul>
