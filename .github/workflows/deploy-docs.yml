@@ -33,10 +33,10 @@ jobs:
           mkdir -p pages
           rsync -a --prune-empty-dirs \
             --exclude '.git' --exclude 'node_modules' --exclude 'dist' \
-            --exclude 'src' --exclude 'src-tauri' --exclude 'legacy' \
+            --exclude 'src' --exclude 'src-tauri' \
             --include 'samples/' --include 'samples/**/' \
             --include 'samples/**/*.png' \
-            --exclude 'samples' --exclude 'examples' --exclude 'tests' \
+            --exclude 'samples' --exclude 'examples' \
             --include '*/' --include '*.html' --exclude '*' \
             ./ ./pages/
       - uses: actions/configure-pages@v5

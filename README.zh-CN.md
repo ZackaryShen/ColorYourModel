@@ -121,7 +121,6 @@ ColorYourModel/
 ├── docs/                         # HTML 文档（可编辑 md 源在 docs/bak/）
 ├── tools/                        # 预设萃取与 3MF/fill 验证脚本
 ├── examples/                     # 示例产物（paint_color_sample.3mf）
-├── legacy/                       # 已废弃的 Python 原型
 └── CHANGELOG.md
 ```
 

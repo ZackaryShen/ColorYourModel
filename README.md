@@ -121,7 +121,6 @@ ColorYourModel/
 ├── docs/                         # HTML documentation (editable md sources in docs/bak/)
 ├── tools/                        # preset extraction & 3MF/fill verification scripts
 ├── examples/                     # sample output (paint_color_sample.3mf)
-├── legacy/                       # deprecated Python prototype
 └── CHANGELOG.md
 ```
 
