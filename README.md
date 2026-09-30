@@ -65,6 +65,7 @@ Thirteen real runs — sculpts, AI-generated meshes, signage, architecture — l
 |------|---------------|
 | [Segmentation & export](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/partition-and-export-demo.mp4) | Seed-based fuse segmentation, then per-region 3MF export |
 | [Painting tools](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/painting-tools-demo.mp4) | Brush / spray / fill painting on the segmented model |
+| [3MF showcase](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/3mf-showcase-demo.mp4) | The exported multi-color 3MF loaded in Snapmaker Orca, regions mapped to filament assignments |
 
 > Videos are hosted as [release assets](https://github.com/ZackaryShen/ColorYourModel/releases/tag/media) — they stream in place and never bloat the git clone.
 

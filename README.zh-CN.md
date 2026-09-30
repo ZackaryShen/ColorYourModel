@@ -65,6 +65,7 @@ flowchart TD
 |------|------|
 | [分区与导出](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/partition-and-export-demo.mp4) | 种子融合分割 → 按区 3MF 导出全流程 |
 | [绘制工具](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/painting-tools-demo.mp4) | 画笔 / 喷涂 / 填充等上色工具 |
+| [3MF 成果呈现](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/3mf-showcase-demo.mp4) | 导出的多色 3MF 载入 Snapmaker Orca，分区映射为耗材分配 |
 
 > 视频以 [Release 资产](https://github.com/ZackaryShen/ColorYourModel/releases/tag/media)方式托管——点击即播放，不会增大 git clone 体积。
 

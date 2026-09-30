@@ -42,6 +42,10 @@ Hosted as [release assets](https://github.com/ZackaryShen/ColorYourModel/release
 
 <video controls width="640" src="https://github.com/ZackaryShen/ColorYourModel/releases/download/media/painting-tools-demo.mp4"></video>
 
+**3MF showcase** — the exported multi-color 3MF loaded in Snapmaker Orca, regions mapped to filament assignments:
+
+<video controls width="640" src="https://github.com/ZackaryShen/ColorYourModel/releases/download/media/3mf-showcase-demo.mp4"></video>
+
 ## Document map
 
 | Kind | Source (bak/) | HTML archive | Language |
