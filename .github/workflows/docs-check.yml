@@ -5,6 +5,7 @@
 name: Docs freshness
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "README.md"
@@ -14,6 +15,8 @@ on:
       - "tools/build_docs.mjs"
       - "tools/docs_site.css"
       - "package-lock.json"
+      - ".gitattributes"
+      - ".github/workflows/docs-check.yml"
   pull_request:
     paths:
       - "README.md"
@@ -23,6 +26,8 @@ on:
       - "tools/build_docs.mjs"
       - "tools/docs_site.css"
       - "package-lock.json"
+      - ".gitattributes"
+      - ".github/workflows/docs-check.yml"
 
 permissions:
   contents: read
