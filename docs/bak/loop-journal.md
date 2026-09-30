@@ -32,13 +32,13 @@
 ### 修订方案（逐条 采纳/反驳/backlog）
 - 采纳 #1：球度改用**球-平面 inlier 计数比** `R = sphere_inliers/(sphere_inliers+plane_inliers)`，face 同时拟合球与平面，取 inlier 数 → **彻底消除平面退化**。
 - 采纳 #2：距离判据改为三层环带——ROI 边缘 < 0.4·r_roi = 眼白(外缘)、0.4~0.85 = 眼球(中环)、>0.85 = socket 内壁；单色模型简化为环带。
-- 采纳 #3：**v1 入口 = 仅 lasso**（先生手动圈选眼部），MultiView 自动 ROI 退 v2（前提证伪）。
+- 采纳 #3：**v1 入口 = 仅 lasso**（需求方手动圈选眼部），MultiView 自动 ROI 退 v2（前提证伪）。
 - 采纳 #4：concavity 用 `vertex_concavity` 0/1 flag 做面投票（≥2/3 顶点凹 → 凹面）；折痕 vs 眼眶靠二面角峰度区分。
 - 采纳 #5：闭眼 fallback——ROI 内凸球冠 < 30 face → globe/sclera 标 absent，状态栏提示「未发现眼球，疑似闭眼」。
 - 采纳 #6：删 `compactness_threshold`。
 - 反驳 #7：候选 B 否决理由改为「全 mesh 形态聚类无簇锚点，跨模型不可靠」（撤回「内存爆」）。
 - 采纳 #8：v1 sclera 标 **Heuristic label**，confidence ≤ 0.5（单色本质限制）。
-- 采纳 #10：`EyeRegion → (point, face_index) → SeedSuggestion` adapter，先生点 ghost marker 采纳。
+- 采纳 #10：`EyeRegion → (point, face_index) → SeedSuggestion` adapter，需求方点 ghost marker 采纳。
 - REVISE 全文见 `docs/10` §12。
 
 ### 改动文件（实现阶段）
@@ -52,7 +52,7 @@
 - 前端 tsc 干净 + vitest（含按钮/状态路径回归）。
 
 ### E2E 证据
-- 先生装包 → 圈 cat 眼睛（lasso）→ 点「👁 眼睛识别」→ 看标签（琥珀=眼球、粉=眼睑、靛=眼眶；眼白为 Heuristic 置信度低）。
+- 需求方装包 → 圈 cat 眼睛（lasso）→ 点「👁 眼睛识别」→ 看标签（琥珀=眼球、粉=眼睑、靛=眼眶；眼白为 Heuristic 置信度低）。
 
 ### 遗留 backlog（v2）
 - MultiView 自动 ROI（前提未验证，需先实测 cat.stl 上 MultiView 产物规模）。
@@ -109,13 +109,13 @@
 - NSIS 3.3MB + MSI 5.0MB。
 
 ### E2E 期望
-- 先生: 加载青蛙 → Fuse & generate (35 区) → 点眼睛区域 → Eye detect (出现绿/蓝/青 overlay) → 再点 Fuse & generate → 眼睛区域变为独立分区 (而不是被吸收)。
-- 改走 Grow: 先生不重 Fuse, 直接点 Grow → 状态栏显示 "...+ 眼 3", 眼睛区保持独立 label, grow 后 overlay 还在。
+- 需求方: 加载青蛙 → Fuse & generate (35 区) → 点眼睛区域 → Eye detect (出现绿/蓝/青 overlay) → 再点 Fuse & generate → 眼睛区域变为独立分区 (而不是被吸收)。
+- 改走 Grow: 需求方不重 Fuse, 直接点 Grow → 状态栏显示 "...+ 眼 3", 眼睛区保持独立 label, grow 后 overlay 还在。
 - 拖 panel 到右下角, 缩小窗口到 panel 高 > 窗口高 → panel 自动 clamp 到 top + margin (而不是 overflow 隐藏)。
 - 点 📍 复位: panel 落在右下 + 16px margin。
 
 ### 遗留 backlog (deferred to v2)
-- 「auto-ROI」(无 selectedSegment 时 MultiView 自动选最像眼睛区域作 ROI) — 等先生决定。
+- 「auto-ROI」(无 selectedSegment 时 MultiView 自动选最像眼睛区域作 ROI) — 等需求方决定。
 - EyeRegion 进 SegmentsPanel 列表 (作为特殊 label 显示, 让用户在分区面板里也能 "选中眼睛区")。
 - EyeRegion 在 export 3MF 时保存 semantic 信息 (globe/sclera/eyelid/socket 各自单独颜色组)。
 

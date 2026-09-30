@@ -44,8 +44,8 @@
 
 ### Verified — 3MF 导出端到端验证（2026-08-27）
 
-- 真实 STL 走通完整链路：CYM 分区/种子上色 → 导出 3MF → **Snapmaker Orca (U1)** 导入，多耗材颜色正确、工艺下拉框正确出现内嵌预设 `0.20 Standard @Snapmaker U1 (0.4 nozzle)`。先生确认"当前的3mf导出是合理的"
-- 证据：`samples/梁圣/example01*.png`；[docs/04](docs/04-缺陷与遗留问题清单.md) P0-4 就此关闭。P0-1/2/3（fill 路由簇）随 `a7700df` 修复，待真机复验后关闭
+- 真实 STL 走通完整链路：CYM 分区/种子上色 → 导出 3MF → **Snapmaker Orca (U1)** 导入，多耗材颜色正确、工艺下拉框正确出现内嵌预设 `0.20 Standard @Snapmaker U1 (0.4 nozzle)`。人工验收结论："当前的3mf导出是合理的"
+- 证据：`samples/liangsheng/example01*.png`（改名前为 `samples/梁圣/`）；[docs/04](docs/04-缺陷与遗留问题清单.md) P0-4 就此关闭。P0-1/2/3（fill 路由簇）随 `a7700df` 修复，待真机复验后关闭
 
 ### Added — 文档骨架 + 双语 README（2026-08-27）
 
@@ -77,7 +77,7 @@
 - **收口硬编码**：工具栏导入后的自动分区改用 `autoSegmentV2(buildAlgorithm(持久化 or 默认 dihedral 30°, 参数))`，消除 `Toolbar.tsx:89,105` 与 `useTauriCommand.ts:41` 三处字面量 `30.0`；旧 `autoSegment` / `autoSegmentSmart` 钩子退役，统一走 `auto_segment_v2` IPC（后端 `b087c3c` 已落地，golden-sample 测试 74 passed）。
 - 改动文件：`IntelligentSegmentPanel.tsx`（新增）、`Toolbar.tsx`、`useTauriCommand.ts`、`appStore.ts`、`i18n.ts`。
 
-> 待先生 `cargo tauri dev` 手动复验：面板切算法 + 拖滑块后分区结果是否符合预期（headless 无法自动验证 Tauri 渲染）。
+> 待需求方 `cargo tauri dev` 手动复验：面板切算法 + 拖滑块后分区结果是否符合预期（headless 无法自动验证 Tauri 渲染）。
 
 ### Changed — 着色器分区高亮（方案 B，2026-08-08, `eea2fd1` + `485aa7d` + `f192f98`）
 - **高亮改为 GPU 着色器方案 α**：删除 `SegmentHighlight`（重建几何叠加，是 giant 段卡死根因）与 `FillFaceHighlight`；主材质经 `onBeforeCompile` 注入 per-vertex `aSegLabel` + `uHighlightLabel`/`uHighlightColor` uniform，hover 切换从 O(F) 降到 O(1)，整模型 giant 段也能瞬时高亮

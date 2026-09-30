@@ -118,7 +118,7 @@ mod bench {
     fn bench_import_stages() {
         let _ = env_logger::try_init();
         let path = std::env::var("CYM_BENCH_STL")
-            .unwrap_or_else(|_| "C:/selfDIr/Blender3D/Sanji+Diorama+Detailed_U1.stl".to_string());
+            .unwrap_or_else(|_| "samples/_src/Sanji+Diorama+Detailed_U1.stl".to_string());
 
         let started = Instant::now();
         // Instant is Copy, so the outer scope keeps its own copy for totals.
@@ -217,7 +217,7 @@ mod bench_kdtree {
     #[ignore]
     fn bench_kdtree_build_variants() {
         let path = std::env::var("CYM_BENCH_STL")
-            .unwrap_or_else(|_| "C:/selfDIr/Blender3D/Sanji+Diorama+Detailed_U1.stl".to_string());
+            .unwrap_or_else(|_| "samples/_src/Sanji+Diorama+Detailed_U1.stl".to_string());
         let model = load_stl(std::path::Path::new(&path), &|_, _| {}).expect("load");
 
         let centers = model.face_centers();
@@ -275,7 +275,7 @@ mod bench_determinism {
     #[ignore]
     fn probe_segmentation_determinism() {
         let path = std::env::var("CYM_BENCH_STL")
-            .unwrap_or_else(|_| "C:/selfDIr/Blender3D/Sanji+Diorama+Detailed_U1.stl".to_string());
+            .unwrap_or_else(|_| "samples/_src/Sanji+Diorama+Detailed_U1.stl".to_string());
         let algo = crate::segment::SegmentationAlgorithm::CurvatureKMeans {
             k: 6,
             smoothing_iters: 2,

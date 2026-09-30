@@ -234,8 +234,7 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="docs/06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
 <li><a href="docs/07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
 <li><a href="docs/08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
-<li><a href="docs/09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="docs/loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+<li><a href="docs/09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div></nav>
     <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
   </aside>
   <main id="content">
@@ -280,8 +279,8 @@ pre.mermaid.mermaid-offline::after {
 </ul>
 <h3 id="verified--3mf-导出端到端验证2026-08-27">Verified — 3MF 导出端到端验证（2026-08-27）</h3>
 <ul>
-<li>真实 STL 走通完整链路：CYM 分区/种子上色 → 导出 3MF → <strong>Snapmaker Orca (U1)</strong> 导入，多耗材颜色正确、工艺下拉框正确出现内嵌预设 <code>0.20 Standard @Snapmaker U1 (0.4 nozzle)</code>。先生确认&quot;当前的3mf导出是合理的&quot;</li>
-<li>证据：<code>samples/梁圣/example01*.png</code>；<a href="docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">docs/04</a> P0-4 就此关闭。P0-1/2/3（fill 路由簇）随 <code>a7700df</code> 修复，待真机复验后关闭</li>
+<li>真实 STL 走通完整链路：CYM 分区/种子上色 → 导出 3MF → <strong>Snapmaker Orca (U1)</strong> 导入，多耗材颜色正确、工艺下拉框正确出现内嵌预设 <code>0.20 Standard @Snapmaker U1 (0.4 nozzle)</code>。人工验收结论：&quot;当前的3mf导出是合理的&quot;</li>
+<li>证据：<code>samples/liangsheng/example01*.png</code>（改名前为 <code>samples/梁圣/</code>）；<a href="docs/04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">docs/04</a> P0-4 就此关闭。P0-1/2/3（fill 路由簇）随 <code>a7700df</code> 修复，待真机复验后关闭</li>
 </ul>
 <h3 id="added--文档骨架--双语-readme2026-08-27">Added — 文档骨架 + 双语 README（2026-08-27）</h3>
 <ul>
@@ -315,7 +314,7 @@ pre.mermaid.mermaid-offline::after {
 <li>改动文件：<code>IntelligentSegmentPanel.tsx</code>（新增）、<code>Toolbar.tsx</code>、<code>useTauriCommand.ts</code>、<code>appStore.ts</code>、<code>i18n.ts</code>。</li>
 </ul>
 <blockquote>
-<p>待先生 <code>cargo tauri dev</code> 手动复验：面板切算法 + 拖滑块后分区结果是否符合预期（headless 无法自动验证 Tauri 渲染）。</p>
+<p>待需求方 <code>cargo tauri dev</code> 手动复验：面板切算法 + 拖滑块后分区结果是否符合预期（headless 无法自动验证 Tauri 渲染）。</p>
 </blockquote>
 <h3 id="changed--着色器分区高亮方案-b2026-08-08-eea2fd1--485aa7d--f192f98">Changed — 着色器分区高亮（方案 B，2026-08-08, <code>eea2fd1</code> + <code>485aa7d</code> + <code>f192f98</code>）</h3>
 <ul>

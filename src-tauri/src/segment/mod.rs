@@ -506,23 +506,23 @@ mod stl_comparison_harness {
     const FIXTURES: &[Fixture] = &[
         Fixture {
             name: "Sphere",
-            path: r"C:\Users\Administrator\Desktop\Sphere.stl",
+            path: r"samples/_src/Sphere.stl",
         },
         Fixture {
             name: "Fire_Bambuslicer",
-            path: r"C:\Users\Administrator\Desktop\Fire_Bambuslicer.stl",
+            path: r"samples/_src/Fire_Bambuslicer.stl",
         },
         Fixture {
             name: "dargon",
-            path: r"C:\Users\Administrator\Desktop\dargon.stl",
+            path: r"samples/_src/dargon.stl",
         },
         Fixture {
             name: "KamenRider",
-            path: r"C:\selfDIr\Blender3D\假面骑士ZZZ灾厄2.stl",
+            path: r"samples/_src/kamen_rider.stl",
         },
         Fixture {
             name: "Sanji",
-            path: r"C:\selfDIr\Blender3D\Sanji+Diorama+Detailed_U1.stl",
+            path: r"samples/_src/Sanji+Diorama+Detailed_U1.stl",
         },
     ];
 
@@ -660,7 +660,7 @@ mod godzilla_diagnosis {
     use crate::segment::planar::{detect_planar_regions, PlanarParams};
     use crate::segment::multiview::{detect_multiview_regions, MultiViewParams};
 
-    pub(crate) const GODZILLA: &str = r"C:\selfDIr\3D_3mf\stls\哥斯拉_U1.stl";
+    pub(crate) const GODZILLA: &str = r"samples/_src/godzilla_U1.stl";
     const OUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), r"\target\diag_godzilla");
 
     pub(crate) fn noop_progress() -> Box<ProgressFn> {
@@ -1090,10 +1090,10 @@ mod godzilla_diagnosis {
     #[ignore = "reads large STL files from disk; run explicitly"]
     fn fuse_floor_e2e() {
         let fixtures: &[(&str, &str, bool)] = &[
-            ("godzilla", r"C:\selfDIr\3D_3mf\stls\哥斯拉_U1.stl", true),
-            ("pug", r"C:\selfDIr\Projects\ColorYourModel\samples\_src\pug.stl", false),
-            ("dragon_whisker", r"C:\selfDIr\Projects\ColorYourModel\samples\_src\dragon-whisker.stl", false),
-            ("kfc_station", r"C:\selfDIr\Projects\ColorYourModel\samples\_src\kfc_station.stl", false),
+            ("godzilla", r"samples/_src/godzilla_U1.stl", true),
+            ("pug", r"samples/_src/pug.stl", false),
+            ("dragon_whisker", r"samples/_src/dragon-whisker.stl", false),
+            ("kfc_station", r"samples/_src/kfc_station.stl", false),
         ];
         for (name, path, do_render) in fixtures {
             let p = std::path::Path::new(path);
@@ -1284,8 +1284,8 @@ mod fuse_floor_regression {
     use std::collections::HashMap;
 
     const FIXTURES: &[(&str, &str)] = &[
-        ("ring_stand", r"C:\selfDIr\Projects\ColorYourModel\samples\_src\ring-stand.stl"),
-        ("cyberpunk_mask", r"C:\selfDIr\Projects\ColorYourModel\samples\_src\cyberpunk-mask.stl"),
+        ("ring_stand", r"samples/_src/ring-stand.stl"),
+        ("cyberpunk_mask", r"samples/_src/cyberpunk-mask.stl"),
     ];
 
     #[test]
@@ -1538,7 +1538,7 @@ mod bench_fuse {
     #[ignore]
     fn bench_fuse_and_recommend_stages() {
         let path = std::env::var("CYM_BENCH_STL")
-            .unwrap_or_else(|_| "C:/selfDIr/Blender3D/Sanji+Diorama+Detailed_U1.stl".to_string());
+            .unwrap_or_else(|_| "samples/_src/Sanji+Diorama+Detailed_U1.stl".to_string());
         let dihedral_settings: Vec<f32> = std::env::var("CYM_BENCH_DIHEDRAL")
             .map(|s| {
                 s.split(',')

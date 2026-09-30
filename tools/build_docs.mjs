@@ -48,7 +48,11 @@ const SOURCES = [
   join(ROOT, "README.zh-CN.md"),
   join(ROOT, "CHANGELOG.md"),
   join(ROOT, "CONTRIBUTING.md"),
-  ...collectDocs(join(ROOT, "docs", "bak")),
+  ...collectDocs(join(ROOT, "docs", "bak")).filter(
+    // The internal dev journal stays in git (docs/bak/) but is not
+    // published on the documentation site.
+    (s) => !/loop-journal\.md$/.test(s),
+  ),
 ];
 
 // Output path (posix, relative to ROOT) for a source md: the bak/ segment is
@@ -194,7 +198,6 @@ const NAV_GROUPS = [
   ["Developer", ["docs/bak/developer/ipc-reference.md", "docs/bak/developer/development.md"]],
   ["Cases", ["docs/bak/cases/README.md", "docs/bak/cases/01-3mf-end-to-end.md", "docs/bak/cases/TEMPLATE.md"]],
   ["Working docs · 中文", SOURCES.filter((s) => /docs[/\\]bak[/\\]0\d-/.test(s)).sort()],
-  ["Internal", ["docs/bak/loop-journal.md"]],
 ];
 
 const PAGE_TITLES = new Map(

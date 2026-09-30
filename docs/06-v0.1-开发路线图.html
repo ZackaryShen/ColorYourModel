@@ -234,8 +234,7 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html" aria-current="page">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
 <li><a href="07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
 <li><a href="08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
-<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">Internal</div><ul><li><a href="loop-journal.html">Loop Journal — Adversarial Development Lo…</a></li></ul></div></nav>
+<li><a href="09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div></nav>
     <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
   </aside>
   <main id="content">
@@ -313,7 +312,7 @@ pre.mermaid.mermaid-offline::after {
 <td><strong>Gate 0b</strong></td>
 <td>3MF 格式前置验证</td>
 <td>🟢 <strong>核心完成</strong>（预设库 <code>2e4e070</code>）</td>
-<td>清单 v2 第 1–5 项 ✅；<code>cargo test --lib</code> 66 passed；sample 解包验证 printer_settings_id 逐字相等、machine 78 keys 含 gcode 宏、inherits_group 8 元素。<strong>剩余</strong>：D6-a 非静默预览 UI（下轮）+ spool 三处复验（待先生）</td>
+<td>清单 v2 第 1–5 项 ✅；<code>cargo test --lib</code> 66 passed；sample 解包验证 printer_settings_id 逐字相等、machine 78 keys 含 gcode 宏、inherits_group 8 元素。<strong>剩余</strong>：D6-a 非静默预览 UI（下轮）+ spool 三处复验（待需求方）</td>
 </tr>
 <tr>
 <td>├ paint_color 编码器</td>
@@ -343,12 +342,12 @@ pre.mermaid.mermaid-offline::after {
 <td>├ D6-a 非静默量化预览</td>
 <td>量化改色须告知用户</td>
 <td>⬜ 未开工</td>
-<td>当前静默改色，违 WYSIWYG。backlog：待先生确认导出交互后迭代</td>
+<td>当前静默改色，违 WYSIWYG。backlog：待需求方确认导出交互后迭代</td>
 </tr>
 <tr>
 <td>└ spool 卡三处复验（箭头所指）</td>
 <td>Orca 重开 <code>paint_color_sample.3mf</code></td>
-<td>🟡 <strong>待先生复验</strong></td>
+<td>🟡 <strong>待需求方复验</strong></td>
 <td>新 sample（<code>2e4e070</code> selected 路径）：下拉框应显示 <strong>Snapmaker U1 (0.4 nozzle)</strong>、喷嘴 0.4、工艺 0.20 Standard、spool 卡完整。首次弹 &quot;Customized Preset&quot; 确认框属正常（勾选不再提醒）</td>
 </tr>
 <tr>
@@ -373,7 +372,7 @@ pre.mermaid.mermaid-offline::after {
 <td>├ S2 运行期验证 v2</td>
 <td>Ctrl+Z/Y、笔画合并、分区撤销可见性</td>
 <td>✅ <strong>通过</strong></td>
-<td>命名 <code>39736dd</code> / 合并 <code>f7d2f83</code> / 拆分 <code>72455f3</code> 全部接入后端时间线且可撤销，先生多轮实测无回归反馈</td>
+<td>命名 <code>39736dd</code> / 合并 <code>f7d2f83</code> / 拆分 <code>72455f3</code> 全部接入后端时间线且可撤销，需求方多轮实测无回归反馈</td>
 </tr>
 <tr>
 <td>└ 重出含 embedded preset 的构建</td>
@@ -385,7 +384,7 @@ pre.mermaid.mermaid-offline::after {
 <td><strong>Gate 0c</strong></td>
 <td>150 万面撤销性能（≤200ms/op、≤256MB@50 深）</td>
 <td>⬜ 未开工</td>
-<td>D8 后由「决策门」降级为「验收实测」；backlog：待先生确认撤销交互后迭代</td>
+<td>D8 后由「决策门」降级为「验收实测」；backlog：待需求方确认撤销交互后迭代</td>
 </tr>
 <tr>
 <td><strong>Gate 0d</strong></td>
@@ -505,7 +504,7 @@ pre.mermaid.mermaid-offline::after {
 <td><strong>Phase 4</strong></td>
 <td>3MF 收口（A9）</td>
 <td>🟡 阻塞</td>
-<td>依赖 spool 复验 + 先生确认导出交互后迭代 D6-a + 双基线 E2E</td>
+<td>依赖 spool 复验 + 需求方确认导出交互后迭代 D6-a + 双基线 E2E</td>
 </tr>
 <tr>
 <td><strong>Phase 5</strong></td>
@@ -514,12 +513,12 @@ pre.mermaid.mermaid-offline::after {
 <td>—</td>
 </tr>
 </tbody></table>
-<p><strong>当前等待先生复验（多类，均需真实 Tauri runtime / 切片器，headless 不可覆盖）</strong>：</p>
+<p><strong>当前等待需求方复验（多类，均需真实 Tauri runtime / 切片器，headless 不可覆盖）</strong>：</p>
 <ol>
 <li><strong>智能分区效果</strong> — 装甲人偶经 <code>eac4a64</code>（默认 curvatureKMeans）+ <code>82b7366</code>（crease 45°）应拆成 ~7–10 个分区（头/躯干/臂/腿），不再是 89 区 / 1 整块。</li>
 <li><strong>阶段进度条 + 转圈</strong>（<code>b1d523c</code>）— 点「智能分区」应看到「阶段 X/Y · 名称」+ 旋转环，不再出现&quot;卡死/无反馈&quot;。</li>
 <li><strong>Lasso 第 3 点</strong>（<code>71e8d34</code>）— 胸前细电缆上连续点 3 点：第 3 点应正常放置、不误报黄色&quot;ready to close&quot;；只有点回起点顶点附近才变黄闭合。</li>
-<li><strong>Sphere.stl 导入不再崩</strong>（<code>69a17ea</code>）— 安装最新 NSIS，打开 <code>C:\Users\Administrator\Desktop\Sphere.stl</code> 确认不闪退。</li>
+<li><strong>Sphere.stl 导入不再崩</strong>（<code>69a17ea</code>）— 安装最新 NSIS，打开 <code>samples/_src/Sphere.stl</code> 确认不闪退。</li>
 <li><strong>Gate 0b 预设库复验</strong> — 在切片器打开 <code>examples/paint_color_sample.3mf</code>：下拉框 <strong>Snapmaker U1 (0.4 nozzle)</strong>、喷嘴 0.4、工艺 0.20 Standard、spool 卡完整；首次弹 &quot;Customized Preset&quot; 确认框属正常。</li>
 <li><em>(不阻塞)</em> D6-a 非静默预览 UI — 可下轮排。</li>
 </ol>
@@ -1142,8 +1141,8 @@ pre.mermaid.mermaid-offline::after {
 <td>本机双份源码均在，可从 CLI 起步</td>
 </tr>
 </tbody></table>
-<h5 id="refute-42026-08-07先生二轮反馈箭头指的地方驱动">REFUTE-4（2026-08-07，先生二轮反馈「箭头指的地方」驱动）</h5>
-<p>先生二轮实测：<code>project_settings.config</code> 扩到 41 字段（<code>b10bd20</code>）后，spool 卡仍 <strong>Bed type 空 / Diameter 显示 <code>&lt;&lt;mm</code> / spool 名截断</strong>。先生原话「缺少 resources」精准——缺的是 <strong>embedded preset files</strong>（ORCA 的 resources）。派独立 Explore subagent 在双基线（Snapmaker fork <code>bbs_3mf.cpp</code> + 上游 stock）复核 <code>_extract_project_embedded_presets_from_archive</code>，推翻 4 点：</p>
+<h5 id="refute-42026-08-07需求方二轮反馈箭头指的地方驱动">REFUTE-4（2026-08-07，需求方二轮反馈「箭头指的地方」驱动）</h5>
+<p>需求方二轮实测：<code>project_settings.config</code> 扩到 41 字段（<code>b10bd20</code>）后，spool 卡仍 <strong>Bed type 空 / Diameter 显示 <code>&lt;&lt;mm</code> / spool 名截断</strong>。需求方原话「缺少 resources」精准——缺的是 <strong>embedded preset files</strong>（ORCA 的 resources）。派独立 Explore subagent 在双基线（Snapmaker fork <code>bbs_3mf.cpp</code> + 上游 stock）复核 <code>_extract_project_embedded_presets_from_archive</code>，推翻 4 点：</p>
 <table>
 <thead>
 <tr>
@@ -1184,7 +1183,7 @@ pre.mermaid.mermaid-offline::after {
 <li><strong>失败分支已触发</strong>：格式需重写，单列子任务，<strong>不阻塞 Phase 1/2</strong></li>
 </ul>
 <h5 id="refute-672026-08-07预设库实现前证伪2e4e070-落地">REFUTE-6/7（2026-08-07，预设库实现前证伪，<code>2e4e070</code> 落地）</h5>
-<p>先生需求升级：导出时可选<strong>厂商/机型/工艺/耗材</strong>，3mf 打开即识别为 Snapmaker U1 + 0.4mm 喷嘴（不依赖用户已装 Snapmaker vendor profile）。实现前派独立 Explore subagent 审计 <code>SnapMakerOrcaMain</code> 源码 + 双基线交叉验证，推翻两个关键假设：</p>
+<p>需求方需求升级：导出时可选<strong>厂商/机型/工艺/耗材</strong>，3mf 打开即识别为 Snapmaker U1 + 0.4mm 喷嘴（不依赖用户已装 Snapmaker vendor profile）。实现前派独立 Explore subagent 审计 <code>SnapMakerOrcaMain</code> 源码 + 双基线交叉验证，推翻两个关键假设：</p>
 <table>
 <thead>
 <tr>
@@ -1221,7 +1220,7 @@ pre.mermaid.mermaid-offline::after {
 </tbody></table>
 <p><strong>IMPL（<code>2e4e070</code>）</strong>：<code>tools/extract_orca_presets.py</code>（vendor 索引白名单 → 265KB <code>snapmaker_u1.json</code>：4 变体/30 工艺/113 耗材）；<code>presets.rs</code>（OnceLock + <code>ExportSelection::resolve</code> 悬空名报错）；<code>project_config.rs</code> 重写（扁平 config + <code>inherits_group</code> + selected/generic 双路径）；<code>threemf.rs</code> 3 参签名（selected 写 6 entry 无 filament 文件）；前端 <code>ExportDialog</code>（厂商→机型→喷嘴→工艺→每槽耗材→目标切片器）+ zustand persist <code>lastExportSelection</code>。<code>cargo test --lib</code> <strong>66 passed</strong>（含 selected-export zip 往返断言）；<code>verify_3mf.py</code> 解包：printer_settings_id 相等、machine 78 keys 含 start gcode、inherits_group 8 元素、无 @slotN。</p>
 <ul>
-<li><strong>待先生复验</strong>：切片器打开新 <code>examples/paint_color_sample.3mf</code> → 下拉框 Snapmaker U1 (0.4 nozzle)、喷嘴 0.4、spool 卡完整。首次弹 &quot;Customized Preset&quot; 确认框属正常（validate_presets 对非 system 预设的行为，勾选&quot;不再提醒&quot;）</li>
+<li><strong>待需求方复验</strong>：切片器打开新 <code>examples/paint_color_sample.3mf</code> → 下拉框 Snapmaker U1 (0.4 nozzle)、喷嘴 0.4、spool 卡完整。首次弹 &quot;Customized Preset&quot; 确认框属正常（validate_presets 对非 system 预设的行为，勾选&quot;不再提醒&quot;）</li>
 </ul>
 <h4 id="gate-0b--撤销架构归一决策r4-级见-25-已裁决d7--d8">Gate 0b′ — 撤销架构归一决策（R4 级，见 §2.5）✅ <strong>已裁决（D7 + D8）</strong></h4>
 <p><strong>书面契约（用户已确认，2026-08-06）</strong></p>
@@ -1351,7 +1350,7 @@ pre.mermaid.mermaid-offline::after {
 </li>
 <li><p><input checked="" disabled="" type="checkbox"> <strong>实现 S2（前端）</strong>：切到后端 undo，删除 <code>pushUndo</code> 等 8 项 + <code>PaintSnapshot</code> + 退役 <code>restore_face_colors</code> / <code>manual_region_undo</code>（<code>7522659</code> + <code>7eaef39</code>）</p>
 </li>
-<li><p><input disabled="" type="checkbox"> <strong>实现 S3</strong>：Gate 0c 实测校准（backlog：待先生确认撤销交互后迭代）</p>
+<li><p><input disabled="" type="checkbox"> <strong>实现 S3</strong>：Gate 0c 实测校准（backlog：待需求方确认撤销交互后迭代）</p>
 </li>
 </ul>
 <h4 id="gate-0c--a6-大规模撤销实测性质已变更">Gate 0c — A6 大规模撤销实测（性质已变更）</h4>
@@ -1370,7 +1369,7 @@ pre.mermaid.mermaid-offline::after {
 <li><input checked="" disabled="" type="checkbox"> <strong>方案 α 落地</strong>（<code>eea2fd1</code>）：主材质 <code>onBeforeCompile</code> 注入 <code>uHighlightLabel</code>/<code>uHighlightColor</code> + per-vertex <code>aSegLabel</code>（non-indexed 几何，面 f → 顶点 3f/3f+1/3f+2 同值）；<code>&lt;color_fragment&gt;</code> 后 0.45 mix；hover 切换 O(1)。删 <code>SegmentHighlight</code>/<code>FillFaceHighlight</code>/<code>giantSegmentIds</code>/<code>WHOLE_SEGMENT_MAX_SHARE</code>/<code>emptySet</code></li>
 <li><input checked="" disabled="" type="checkbox"> <strong>性能优化</strong>（<code>485aa7d</code>，经 <code>/adversarial-development-loop</code> REFUTE 证伪 P1 全局 demand / P2 gl_PrimitiveID / P3 Uint32）：条件性 demand（<code>IdleFrameloop</code>，静止 1.5s 切 demand，任意交互唤醒）；删 <code>preserveDrawingBuffer:true</code>；<code>aSegLabel</code> varying 加 <code>flat</code></li>
 <li><input checked="" disabled="" type="checkbox"> <strong>工具门控</strong>（<code>f192f98</code>）：高亮仅 <code>fill|picker|segment</code> 工具计算；其余工具 <code>renderedHighlightLabel</code> 返 null → uniform -1 短路，消除 brush 拖涂 60fps 重渲染风暴</li>
-<li><input checked="" disabled="" type="checkbox"> <strong>DoD</strong>：<code>tsc --noEmit</code> exit 0；<code>vite build</code> 631 模块通过；<code>cargo test --lib</code> 67 passed。视觉一致性 + 卡顿消失待先生装包复验（见 §0 待复验清单）</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>DoD</strong>：<code>tsc --noEmit</code> exit 0；<code>vite build</code> 631 模块通过；<code>cargo test --lib</code> 67 passed。视觉一致性 + 卡顿消失待需求方装包复验（见 §0 待复验清单）</li>
 <li><input disabled="" type="checkbox"> <strong>失败分支</strong>（已规避）：α 与主题色/vertexColors 耦合风险经 <code>onBeforeCompile</code> chunk 注入化解；若未来自定义 ShaderMaterial 冲突再回退 δ</li>
 </ul>
 <h4 id="gate-0e--切片器环境可获得性新增见-d3-通过">Gate 0e — 切片器环境可获得性（新增，见 D3）✅ <strong>通过</strong></h4>
@@ -1433,14 +1432,14 @@ pre.mermaid.mermaid-offline::after {
 <hr>
 <h3 id="phase-1--删除式重构解决-p0-1--p0-2--p0-3">Phase 1 — 删除式重构（解决 P0-1 / P0-2 / P0-3）</h3>
 <blockquote>
-<p>Gate 0a（仪器）、0d（性能方案）→ <strong>两者均已完成</strong>。本 Phase 实际落地与 §2.1 字面方案有偏差（见下），但 D1/D2 语义目标已达成（hover 降级为纯视觉提示、整段填充不降级）。<strong>本 Phase 需单独 REFUTE</strong> 已不阻塞 —— 实现已过且先生将装包复验。</p>
+<p>Gate 0a（仪器）、0d（性能方案）→ <strong>两者均已完成</strong>。本 Phase 实际落地与 §2.1 字面方案有偏差（见下），但 D1/D2 语义目标已达成（hover 降级为纯视觉提示、整段填充不降级）。<strong>本 Phase 需单独 REFUTE</strong> 已不阻塞 —— 实现已过且需求方将装包复验。</p>
 </blockquote>
 <h4 id="1a--统一-hover-语义所见侧稳定-已完成7b74707">1a — 统一 hover 语义（「所见」侧稳定）✅ <strong>已完成（<code>7b74707</code>）</strong></h4>
 <ul>
 <li><input checked="" disabled="" type="checkbox"> 替换 iter30 v7 过度粘性守卫（<code>if (!(prevIsManual &amp;&amp; lbl &lt; MANUAL_SEGMENT_OFFSET))</code>）：改为<strong>真实区域一律接管高亮</strong>；仅光标落极小碎面 crumb（<code>faceCount &lt; max(16, 总面数*0.001)</code>）才允许手动段保持粘性（覆盖 seg=0 碎片误填，不阻挡正常区域切换）</li>
 <li><input checked="" disabled="" type="checkbox"> 加 <code>segmentFaceCount</code> 映射（id→faceCount）；加陈旧清除 effect（标签不在 <code>segmentIds</code> 立即清空）；无命中时 <code>nextHover = null</code></li>
 <li><input checked="" disabled="" type="checkbox"> 删 <code>lastValidHoveredSegmentRef</code> 复活逻辑（§2.1 #5）</li>
-<li><input checked="" disabled="" type="checkbox"> <strong>手动验证</strong>：hover 手动区 A → 移到 auto 区 B → 高亮立即切到 B；移出模型 → 高亮消失（先生多轮实测无粘滞回归，迭代 35 后 hover 始终跟随光标）</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>手动验证</strong>：hover 手动区 A → 移到 auto 区 B → 高亮立即切到 B；移出模型 → 高亮消失（需求方多轮实测无粘滞回归，迭代 35 后 hover 始终跟随光标）</li>
 </ul>
 <h4 id="1b--收敛-fill-决策--删闸门--基本完成eea2fd1--早轮-optswholeregion-改动">1b — 收敛 fill 决策 + 删闸门 ✅ <strong>基本完成（<code>eea2fd1</code> + 早轮 <code>!opts?.wholeRegion</code> 改动）</strong></h4>
 <ul>
@@ -1448,7 +1447,7 @@ pre.mermaid.mermaid-offline::after {
 <li><input checked="" disabled="" type="checkbox"> 删除 <code>WHOLE_SEGMENT_MAX_SHARE</code> / <code>MANUAL_REGION_MAX_SHARE</code> 常量及引用（§2.1 #3 配套）；删除 <code>giantSegmentIds</code> 及 <code>autoSegs.length &lt;= 1</code> 早退（§2.1 #4，原依赖 0d —— 现 0d 已完成故已删）</li>
 <li><input checked="" disabled="" type="checkbox"> <code>SegmentHighlight</code>/<code>FillFaceHighlight</code>（几何重建叠加）已删，高亮改走方案 α 着色器（Gate 0d）；hover 不再压制 giant 段</li>
 <li><input checked="" disabled="" type="checkbox"> <code>lastValidHoveredSegmentRef</code> 复活通路（§2.1 #5）已在 1a 一并删除；<code>Viewport.tsx</code> sticky 块经 1a 重写为 cursor-follow</li>
-<li><input checked="" disabled="" type="checkbox"> <strong>手动验证</strong>：Fill 整段 = 高亮整段，HUD 无 MISMATCH（先生实测 fill 整段填充，无&quot;高亮 A 填 B&quot;反馈；A4 系统复验仍留 Phase 2）</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>手动验证</strong>：Fill 整段 = 高亮整段，HUD 无 MISMATCH（需求方实测 fill 整段填充，无&quot;高亮 A 填 B&quot;反馈；A4 系统复验仍留 Phase 2）</li>
 </ul>
 <h4 id="1c--渲染契约前置改造为-phase-3-铺路见-27-由-0d-方案吸收无需再做">1c — 渲染契约前置改造（为 Phase 3 铺路，见 §2.7）✅ <strong>由 0d 方案吸收，无需再做</strong></h4>
 <p>原任务是把 <code>SegmentHighlight</code>/<code>SegmentOutline</code> 入参从 <code>selectedSegment: number</code> 改成集合，为 Phase 3 多选铺路。Gate 0d 已删除这两个几何重建组件，高亮统一走着色器 uniform（hover/选中都写 <code>uHighlightLabel</code>，不存在&quot;两个面集&quot;），§2.7 描述的叠加冲突被方案 α <strong>结构性化解</strong>。</p>
@@ -1462,7 +1461,7 @@ pre.mermaid.mermaid-offline::after {
 <ul>
 <li><input checked="" disabled="" type="checkbox"> <code>npx tsc --noEmit</code> exit 0（持续通过）</li>
 <li><input checked="" disabled="" type="checkbox"> <code>cargo test --lib</code> 不回退（≥13，现 103）</li>
-<li><input checked="" disabled="" type="checkbox"> HUD 无 MISMATCH（先生实测无&quot;高亮 A 填 B&quot;反馈；A4 系统复验仍留 Phase 2）</li>
+<li><input checked="" disabled="" type="checkbox"> HUD 无 MISMATCH（需求方实测无&quot;高亮 A 填 B&quot;反馈；A4 系统复验仍留 Phase 2）</li>
 <li><input disabled="" type="checkbox"> 同步更新 PRD：<code>FR-PNT-02</code>（取消半径降级）、<code>FR-PNT-03</code>（click 权威）— ⚠️ <strong>PRD 仍未同步</strong>（当前 PRD 仍是旧语义），待补</li>
 </ul>
 <hr>
@@ -1475,7 +1474,7 @@ pre.mermaid.mermaid-offline::after {
 <hr>
 <h3 id="phase-3--分区合并d4-已完成并入智能分区泳道">Phase 3 — 分区合并（D4）✅ <strong>已完成（并入智能分区泳道）</strong></h3>
 <blockquote>
-<p>撤销架构（0b′）与渲染契约（1c）已在上游关闭；实现 <code>f7d2f83</code>（合并）+ <code>72455f3</code>（拆分）+ <code>39736dd</code>（命名）已全部落地并通过先生实测。</p>
+<p>撤销架构（0b′）与渲染契约（1c）已在上游关闭；实现 <code>f7d2f83</code>（合并）+ <code>72455f3</code>（拆分）+ <code>39736dd</code>（命名）已全部落地并通过需求方实测。</p>
 </blockquote>
 <ul>
 <li><input checked="" disabled="" type="checkbox"> 后端 <code>merge_segments(target_label, source_labels)</code>：重写 <code>segment_labels</code> + <code>rebuild_segments()</code>（<code>f7d2f83</code>）</li>
@@ -1530,7 +1529,7 @@ pre.mermaid.mermaid-offline::after {
 <tr>
 <td>A2</td>
 <td>智能分区</td>
-<td>双立方体分出 2 段；块体+薄板凹接合处边界合理（可配置多算法：曲率 K-Means / 形态直径 SDF / 二面角，前端 <code>IntelligentSegmentPanel</code> <code>b087c3c</code>+<code>47004d9</code>；golden 拓扑断言 cube→6 / sphere→1 / 双球→2 已通过；先生多轮实测并驱动默认算法 <code>eac4a64</code> + crease 阈值 <code>82b7366</code> 迭代）</td>
+<td>双立方体分出 2 段；块体+薄板凹接合处边界合理（可配置多算法：曲率 K-Means / 形态直径 SDF / 二面角，前端 <code>IntelligentSegmentPanel</code> <code>b087c3c</code>+<code>47004d9</code>；golden 拓扑断言 cube→6 / sphere→1 / 双球→2 已通过；需求方多轮实测并驱动默认算法 <code>eac4a64</code> + crease 阈值 <code>82b7366</code> 迭代）</td>
 <td>5</td>
 <td>✅ <strong>完成</strong></td>
 </tr>
@@ -1539,7 +1538,7 @@ pre.mermaid.mermaid-offline::after {
 <td>套索闭合</td>
 <td>吸附跟随流畅；点回起点必闭合；无「点完消失」</td>
 <td>5</td>
-<td>🟡 修复中（<code>156f673</code>+<code>71e8d34</code> 已修两轮，待先生最新包复验）</td>
+<td>🟡 修复中（<code>156f673</code>+<code>71e8d34</code> 已修两轮，待需求方最新包复验）</td>
 </tr>
 <tr>
 <td>A4</td>
@@ -1706,17 +1705,17 @@ pre.mermaid.mermaid-offline::after {
 <tr>
 <td><strong>REFUTE-4</strong></td>
 <td>2026-08-07</td>
-<td>Gate 0b 续：先生二轮反馈 spool 卡 Bed type 空 / Diameter <code>&lt;&lt;mm</code> / spool 名截断。派独立 subagent 在双基线复核 embedded preset 提取机制，推翻 4 点（①spool 卡读 embedded preset，须带 <code>*_settings_id</code>；②6 filament 须唯一名防塌色；③<code>temperature</code>/<code>bed_plate_temp</code> 在 obsolete ignore 集改 <code>nozzle_temperature</code>/<code>hot_plate_temp</code>；④<code>default_bed_type</code> 是 coString 非 coEnum）。<code>project_config.rs</code> 拆 4 类 writer + 10 单测，<code>threemf.rs</code> 写 project+machine+process+N filament 共 6+N 份 config；<code>cargo test --lib</code> 26 passed，sample 解包 12 entry 全绿。新版 Tauri bundle（exe/msi/nsis）构建中（<code>ztWW4u</code>），待先生复验三处</td>
+<td>Gate 0b 续：需求方二轮反馈 spool 卡 Bed type 空 / Diameter <code>&lt;&lt;mm</code> / spool 名截断。派独立 subagent 在双基线复核 embedded preset 提取机制，推翻 4 点（①spool 卡读 embedded preset，须带 <code>*_settings_id</code>；②6 filament 须唯一名防塌色；③<code>temperature</code>/<code>bed_plate_temp</code> 在 obsolete ignore 集改 <code>nozzle_temperature</code>/<code>hot_plate_temp</code>；④<code>default_bed_type</code> 是 coString 非 coEnum）。<code>project_config.rs</code> 拆 4 类 writer + 10 单测，<code>threemf.rs</code> 写 project+machine+process+N filament 共 6+N 份 config；<code>cargo test --lib</code> 26 passed，sample 解包 12 entry 全绿。新版 Tauri bundle（exe/msi/nsis）构建中（<code>ztWW4u</code>），待需求方复验三处</td>
 </tr>
 <tr>
 <td><strong>REFUTE-6/7 + IMPL</strong></td>
 <td>2026-08-07</td>
-<td>Gate 0b 预设库落地（<code>2e4e070</code>）：先生需求升级为导出可选厂商/机型/工艺/耗材。实现前证伪 4 点（⑥<code>printer_model_id</code> 是 plate 切片元数据与预设选择无关，须嵌入 machine preset 且 <code>printer_settings_id</code> 逐字相等；⑦嵌入 machine preset 须完整配置含 gcode 宏，白名单已补；⑧filament 颜色与预设名无关，<code>@slotN</code> 有害，selected 路径写零 filament 文件；⑨<code>inherits_group</code> 是 N+2 数组）。落地：<code>extract_orca_presets.py</code> + <code>snapmaker_u1.json</code>（4 变体/30 工艺/113 耗材）、<code>presets.rs</code>、<code>project_config.rs</code> 重写、<code>threemf.rs</code> 3 参签名、前端 <code>ExportDialog</code> + persist。<code>cargo test --lib</code> <strong>66 passed</strong>、tsc exit 0、vite build ok、<code>verify_3mf.py</code> 解包全绿。待先生复验新 sample（下拉框应显示 U1 (0.4 nozzle)）</td>
+<td>Gate 0b 预设库落地（<code>2e4e070</code>）：需求方需求升级为导出可选厂商/机型/工艺/耗材。实现前证伪 4 点（⑥<code>printer_model_id</code> 是 plate 切片元数据与预设选择无关，须嵌入 machine preset 且 <code>printer_settings_id</code> 逐字相等；⑦嵌入 machine preset 须完整配置含 gcode 宏，白名单已补；⑧filament 颜色与预设名无关，<code>@slotN</code> 有害，selected 路径写零 filament 文件；⑨<code>inherits_group</code> 是 N+2 数组）。落地：<code>extract_orca_presets.py</code> + <code>snapmaker_u1.json</code>（4 变体/30 工艺/113 耗材）、<code>presets.rs</code>、<code>project_config.rs</code> 重写、<code>threemf.rs</code> 3 参签名、前端 <code>ExportDialog</code> + persist。<code>cargo test --lib</code> <strong>66 passed</strong>、tsc exit 0、vite build ok、<code>verify_3mf.py</code> 解包全绿。待需求方复验新 sample（下拉框应显示 U1 (0.4 nozzle)）</td>
 </tr>
 <tr>
 <td><strong>IMPL-2（高亮 / 导入健壮性）</strong></td>
 <td>2026-08-08→09</td>
-<td>用户亲验方案 B 后进入大幅优化与健壮性修复：①<strong>方案 α 着色器高亮落地</strong>（<code>eea2fd1</code>）—— 删 <code>SegmentHighlight</code>/<code>FillFaceHighlight</code>/<code>giantSegmentIds</code>/<code>WHOLE_SEGMENT_MAX_SHARE</code>，主材质 <code>onBeforeCompile</code> 注入 <code>aSegLabel</code>+<code>uHighlightLabel</code>/<code>uHighlightColor</code>，hover 切换 O(1)，giant 段瞬时高亮；②<strong>着色器性能优化</strong>（<code>485aa7d</code>）—— 条件性 demand <code>IdleFrameloop</code> + 删 <code>preserveDrawingBuffer</code> + <code>flat</code> varying（REFUTE 推翻全局 demand / gl_PrimitiveID / Uint32 三候选）；③<strong>高亮按工具门控</strong>（<code>f192f98</code>）—— 仅 fill/picker/segment 计算 hover，消除 brush 拖涂 60fps 重渲染；④<strong>hover 解粘滞</strong>（<code>7b74707</code>）—— 替换 iter30 v7 过度粘性守卫为 cursor-follow + crumb 粘性 + 陈旧立即清除；⑤<strong>Sphere.stl 导入崩溃修复</strong>（<code>69a17ea</code>）—— kiddo KdTree 在重合轴点 &gt;32 时 panic，按 index 加 ~1e-4 确定性扰动，回归测试 <code>kdtree_coincident_axis_no_panic</code>，<code>cargo test --lib</code> <strong>67 passed</strong>。NSIS 重打包供先生装包复验</td>
+<td>用户亲验方案 B 后进入大幅优化与健壮性修复：①<strong>方案 α 着色器高亮落地</strong>（<code>eea2fd1</code>）—— 删 <code>SegmentHighlight</code>/<code>FillFaceHighlight</code>/<code>giantSegmentIds</code>/<code>WHOLE_SEGMENT_MAX_SHARE</code>，主材质 <code>onBeforeCompile</code> 注入 <code>aSegLabel</code>+<code>uHighlightLabel</code>/<code>uHighlightColor</code>，hover 切换 O(1)，giant 段瞬时高亮；②<strong>着色器性能优化</strong>（<code>485aa7d</code>）—— 条件性 demand <code>IdleFrameloop</code> + 删 <code>preserveDrawingBuffer</code> + <code>flat</code> varying（REFUTE 推翻全局 demand / gl_PrimitiveID / Uint32 三候选）；③<strong>高亮按工具门控</strong>（<code>f192f98</code>）—— 仅 fill/picker/segment 计算 hover，消除 brush 拖涂 60fps 重渲染；④<strong>hover 解粘滞</strong>（<code>7b74707</code>）—— 替换 iter30 v7 过度粘性守卫为 cursor-follow + crumb 粘性 + 陈旧立即清除；⑤<strong>Sphere.stl 导入崩溃修复</strong>（<code>69a17ea</code>）—— kiddo KdTree 在重合轴点 &gt;32 时 panic，按 index 加 ~1e-4 确定性扰动，回归测试 <code>kdtree_coincident_axis_no_panic</code>，<code>cargo test --lib</code> <strong>67 passed</strong>。NSIS 重打包供需求方装包复验</td>
 </tr>
 <tr>
 <td><strong>IMPL-3（智能分区全能力 / 性能 / lasso）</strong></td>

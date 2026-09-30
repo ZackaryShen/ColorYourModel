@@ -776,7 +776,7 @@ mod tests {
     #[ignore]
     fn probe_sdf_par_vs_seq_bitwise() {
         let path = std::env::var("CYM_BENCH_STL").unwrap_or_else(|_| {
-            "C:/selfDIr/Blender3D/Sanji+Diorama+Detailed_U1.stl".to_string()
+            "samples/_src/Sanji+Diorama+Detailed_U1.stl".to_string()
         });
         let mesh =
             crate::mesh::loader::load_stl(std::path::Path::new(&path), &|_, _| {}).expect("load");

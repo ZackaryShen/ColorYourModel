@@ -39,7 +39,6 @@ flowchart LR
 | Cases & verification records | [`bak/cases/`](cases/README.md) | `docs/cases/` | EN/中文 |
 | Developer reference | [`bak/developer/`](developer/ipc-reference.md) | `docs/developer/` | EN |
 | Numbered working documents | `bak/01…10-*.md` | `docs/` | 中文 |
-| Iteration journal | [`bak/loop-journal.md`](loop-journal.md) | `docs/loop-journal.html` | 中文 |
 
 ## Numbered series (working documents, 中文)
 

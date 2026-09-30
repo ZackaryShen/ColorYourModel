@@ -5,8 +5,8 @@
 //! a 2.4GB SAM checkpoint on a large-scene pipeline, and segments *object-level*
 //! instances rather than the *intra-part* regions we want. But its pipeline's
 //! step ④ is a pure-geometric graph cut that drops straight onto our
-//! face-adjacency dual graph. See `.workbuddy/memory/loop-journal.md` "迭代 55"
-//! for the full rejection rationale; this file is the one reusable piece.
+//! face-adjacency dual graph. This file is the one reusable piece of that
+//! evaluation.
 //!
 //! ## Why FH, and not another k-means / GMM variant
 //!
