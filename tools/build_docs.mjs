@@ -15,7 +15,7 @@
 //!
 //! Usage: npm run docs:build
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync, statSync, copyFileSync } from "node:fs";
 import { join, dirname, relative, resolve, sep, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -145,6 +145,11 @@ function repoUrl() {
 
 const blob = (repoPath) => `${REPO_URL}/blob/main/${repoPath.replace(/\\/g, "/")}`;
 
+// Absolute raw-content URL (og:image etc.) — the github.com/<owner>/<repo>
+// host is swapped for raw.githubusercontent.com.
+const raw = (repoPath) =>
+  `https://raw.githubusercontent.com/${REPO_URL.replace(/^https:\/\/github\.com\//, "")}/main/${repoPath.replace(/\\/g, "/")}`;
+
 const safeDecode = (s) => {
   try { return decodeURIComponent(s); } catch { return s; }
 };
@@ -258,6 +263,11 @@ function pageCss() {
   return readFileSync(join(ROOT, "tools", "docs_site.css"), "utf8");
 }
 
+/** Depth-aware href from a page to the site icon (copied to docs/icon.png). */
+function iconRel(src) {
+  return encodeURI(relative(dirname(OUT_MAP.get(src)), join(DOCS, "icon.png")).split(sep).join("/"));
+}
+
 function renderPage(src, article, toc) {
   const title = PAGE_TITLES.get(src);
   const tocHtml = toc.length
@@ -271,7 +281,10 @@ function renderPage(src, article, toc) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)} · ColorYourModel Docs</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<meta property="og:title" content="${escapeHtml(title)} · ColorYourModel Docs">
+<meta property="og:description" content="Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.">
+<meta property="og:image" content="${raw("assets/icon.png")}">
+<link rel="icon" href="${iconRel(src)}">
 <style>
 ${pageCss()}
 </style>
@@ -279,7 +292,7 @@ ${pageCss()}
 <body>
 <header id="topbar">
   <button id="menu-btn" aria-label="Toggle navigation">☰</button>
-  <a class="brand" href="${encodeURI(relative(dirname(OUT_MAP.get(src)), "README.html"))}">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <a class="brand" href="${encodeURI(relative(dirname(OUT_MAP.get(src)), "README.html"))}"><img class="brand-icon" src="${iconRel(src)}" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
   <div class="topbar-right">
     ${langToggle(src)}
     <a class="gh-link" href="${REPO_URL}" title="GitHub repository">GitHub ↗</a>
@@ -338,6 +351,10 @@ for (const src of SOURCES) {
   writeFileSync(outPath, renderPage(src, article, extractToc(article)));
   pages.push(OUT_MAP.get(src));
 }
+
+// Site icon: copied into the archive root so every page (and a future GitHub
+// Pages deploy) can reference it with a plain relative href.
+copyFileSync(join(ROOT, "assets", "icon.png"), join(DOCS, "icon.png"));
 
 // Prune generated html whose markdown source is gone (renames/deletions) so
 // the archive never drifts into stale pages. Strictly bounded: the repo root

@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Painting Tools · ColorYourModel Docs</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+<meta property="og:title" content="Painting Tools · ColorYourModel Docs">
+<meta property="og:description" content="Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.">
+<meta property="og:image" content="https://raw.githubusercontent.com/ZackaryShen/ColorYourModel/main/assets/icon.png">
+<link rel="icon" href="../icon.png">
 <style>
 /* ColorYourModel docs site — light, modern, file://-safe (all inline). */
 :root {
@@ -43,6 +46,7 @@ body {
   border-bottom: 1px solid var(--line);
 }
 #topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand-icon { height: 22px; width: 22px; vertical-align: -5px; margin-right: 7px; }
 #topbar .brand span { color: var(--ink-faint); font-weight: 400; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
 .lang-toggle, .gh-link {
@@ -191,7 +195,7 @@ pre.mermaid.mermaid-offline::after {
 <body>
 <header id="topbar">
   <button id="menu-btn" aria-label="Toggle navigation">☰</button>
-  <a class="brand" href="..%5C..%5CREADME.html">🎨 <strong>ColorYourModel</strong> <span>Docs</span></a>
+  <a class="brand" href="..%5C..%5CREADME.html"><img class="brand-icon" src="../icon.png" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
   <div class="topbar-right">
     
     <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>

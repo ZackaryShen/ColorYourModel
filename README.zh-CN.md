@@ -1,4 +1,8 @@
-# ColorYourModel 🎨
+<p align="center">
+  <img src="assets/icon.png" alt="ColorYourModel 标志" width="128">
+</p>
+
+# ColorYourModel
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
