@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Discussions
+    url: https://github.com/ZackaryShen/ColorYourModel/discussions
+    about: Questions, showcase and ideas — 中文 / English both welcome.
   - name: Documentation wiki
     url: https://github.com/ZackaryShen/ColorYourModel/tree/main/docs/bak/README.md
     about: User guide, algorithms, developer reference — check here before filing.

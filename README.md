@@ -9,6 +9,7 @@
 > Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/badge/release-v0.1.0-blue)](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.0)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
 ![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 
@@ -25,31 +26,6 @@ flowchart TD
     F --> G["Snapmaker Orca / OrcaSlicer<br/>slice & print"]
 ```
 
-## Features
-
-### Working today ✅
-
-- **STL import** — binary + ASCII, ~4 s for 1.5M-face-class models, with progress events
-- **Segmentation** — SeedPanel one-click **fuse** (planar / multiview / dihedral / eye four-channel vote) or manual seed growing; 8 interchangeable algorithms behind one backend interface, exposed per-region through the SegmentsPanel resegment picker. Import does **not** auto-segment — region generation is an explicit step
-- **Seed-based segmentation** — recommended seeds (planar / multiview / cross-section / saliency), point-by-point manual grow, and auto fuse with tiny-region merging
-- **Eye-region detection** — one-click detection for figure models, global (no ROI needed)
-- **Region management** — merge / split / rename regions, resegment a single region
-- **Paint tools** — brush, spray, smart brush (region-boundary aware), fill, eraser, colour picker
-- **Label-authority fill** — fill targets strictly the region you clicked, so two regions can safely share the same colour (regression-tested)
-- **Unified undo / redo** — one timeline covering paint, fill, erase and manual edits
-- **Segment view** — region-coloured visualization with boundary outlines; hover highlight is a GPU shader (per-vertex label attribute, O(1) switch, on-demand rendering)
-- **BVH face picking** — `three-mesh-bvh` accelerated CPU raycasting; stable hits on 1.5M-face meshes
-- **Export 3MF** — verified end-to-end (2026-08): multi-filament colours import correctly into Snapmaker Orca; embedded machine preset makes the slicer show *Snapmaker U1 (0.4 nozzle)* out of the box. Export dialog: machine → nozzle → process → filament slots → target slicer, with multi-region selection and apply-all
-- **Export OBJ** — per-face colours via MTL material groups, quantized to at most 256 colours
-- **Ergonomics** — 3D brush-cursor ring, Space-to-pan, progress bars, crash diagnostics (JS error bridge)
-- **i18n** — Chinese (default) and English UI, choice persisted
-
-### Planned 🗓
-
-- [ ] Colour palette presets + colour history
-- [ ] Batch processing of similar models
-- [ ] OrcaSlicer plugin-form integration
-
 ## Screenshots
 
 | | |
@@ -58,6 +34,17 @@ flowchart TD
 | 1.87M-face figure → 37 regions, ready for per-part colour | Painted bust — this model drove the end-to-end 3MF verification |
 
 Thirteen real runs — sculpts, AI-generated meshes, signage, architecture — live in the [**Examples Gallery**](docs/bak/cases/examples.md).
+
+## Download
+
+Ready-to-run installers live on the [**releases**](https://github.com/ZackaryShen/ColorYourModel/releases) page — current: [v0.1.0](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.0).
+
+| Platform | Installer |
+|----------|-----------|
+| Windows | [`x64-setup.exe`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_x64-setup.exe) (recommended) · [`x64_en-US.msi`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_x64_en-US.msi) |
+| Linux | [`amd64.deb`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_amd64.deb) · [`x86_64.rpm`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel-0.1.0-1.x86_64.rpm) · [`AppImage`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_amd64.AppImage) (bundles WebKit, ~80 MB) |
+
+> No macOS builds yet (no signing identity). The UI is Chinese-first, English is one setting away. To build from source, see [Getting started](#getting-started).
 
 ## Demo videos
 
@@ -68,6 +55,42 @@ Thirteen real runs — sculpts, AI-generated meshes, signage, architecture — l
 | [3MF showcase](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/3mf-showcase-demo.mp4) | The exported multi-color 3MF loaded in Snapmaker Orca, regions mapped to filament assignments |
 
 > Videos are hosted as [release assets](https://github.com/ZackaryShen/ColorYourModel/releases/tag/media) — they stream in place and never bloat the git clone.
+
+## Features
+
+### Working today ✅
+
+**Import & segmentation**
+
+- **STL import** — binary + ASCII, ~4 s for 1.5M-face-class models, with progress events
+- **Segmentation** — SeedPanel one-click **fuse** (planar / multiview / dihedral / eye four-channel vote) or manual seed growing; 8 interchangeable algorithms behind one backend interface, exposed per-region through the SegmentsPanel resegment picker. Import does **not** auto-segment — region generation is an explicit step
+- **Seed-based segmentation** — recommended seeds (planar / multiview / cross-section / saliency), point-by-point manual grow, and auto fuse with tiny-region merging
+- **Eye-region detection** — one-click detection for figure models, global (no ROI needed)
+- **Region management** — merge / split / rename regions, resegment a single region
+
+**Painting**
+
+- **Paint tools** — brush, spray, smart brush (region-boundary aware), fill, eraser, colour picker
+- **Label-authority fill** — fill targets strictly the region you clicked, so two regions can safely share the same colour (regression-tested)
+- **Unified undo / redo** — one timeline covering paint, fill, erase and manual edits
+
+**Export**
+
+- **Export 3MF** — verified end-to-end (2026-08): multi-filament colours import correctly into Snapmaker Orca; embedded machine preset makes the slicer show *Snapmaker U1 (0.4 nozzle)* out of the box. Export dialog: machine → nozzle → process → filament slots → target slicer, with multi-region selection and apply-all
+- **Export OBJ** — per-face colours via MTL material groups, quantized to at most 256 colours
+
+**Viewport & ergonomics**
+
+- **Segment view** — region-coloured visualization with boundary outlines; hover highlight is a GPU shader (per-vertex label attribute, O(1) switch, on-demand rendering)
+- **BVH face picking** — `three-mesh-bvh` accelerated CPU raycasting; stable hits on 1.5M-face meshes
+- **Ergonomics** — 3D brush-cursor ring, Space-to-pan, progress bars, crash diagnostics (JS error bridge)
+- **i18n** — Chinese (default) and English UI, choice persisted
+
+### Planned 🗓
+
+- [ ] Colour palette presets + colour history
+- [ ] Batch processing of similar models
+- [ ] OrcaSlicer plugin-form integration
 
 ## Tech stack
 
@@ -176,7 +199,9 @@ RUST_LOG=debug npm run tauri dev
 
 ## Documentation
 
-Markdown sources live in [`docs/bak/`](docs/bak/README.md) (mirroring the docs tree); the committed HTML archives they generate are the official, readable pages — open any `*.html` locally, or see [docs/bak/README.md](docs/bak/README.md) for the full index. Short version:
+📖 **Online docs: <https://zackaryshen.github.io/ColorYourModel/>** — user guide, algorithms, technical notes, examples gallery.
+
+Markdown sources live in [`docs/bak/`](docs/bak/README.md) (mirroring the docs tree); the committed HTML archives they generate are the official, readable pages. Short version:
 
 - [docs/algorithms/](docs/bak/algorithms/) — segmentation & detection algorithms (math and principles)
 - [docs/technical/](docs/bak/technical/) — engineering mechanisms (picking, highlight, undo/redo, export pipeline)
@@ -188,17 +213,19 @@ The project is developed with an adversarial development loop (`PLAN → REFUTE 
 
 ## Roadmap
 
-> No release tags yet. Status is measured against PRD acceptance criteria, not "code exists".
+> [v0.1.0](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.0) is the first tagged release. Status is measured against PRD acceptance criteria, not "code exists".
 
-- [x] **v0.1 core loop** — STL import → segmentation → painting → verified 3MF export (Aug 2026)
+- [x] **v0.1 core loop** — STL import → segmentation → painting → verified 3MF export (Aug 2026, released as v0.1.0 Sep 2026)
   - 3MF export verified end-to-end on Snapmaker Orca (U1); fill routing regression-tested
   - Remaining: real-machine re-verification of the fill cluster (see [docs/04](docs/bak/04-缺陷与遗留问题清单.md))
 - [ ] **v0.2** — palette presets + colour history, UX polish
 - [ ] **v1.0** — batch processing, OrcaSlicer plugin-form integration
 
-## Contributing
+## Community
 
-Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the build, the test commands and the docs workflow. Please follow [Conventional Commits](https://www.conventionalcommits.org/). By contributing you agree that your contributions are licensed under AGPL-3.0.
+- 💬 [**Discussions**](https://github.com/ZackaryShen/ColorYourModel/discussions) — ask in Q&A, show off your painted models in Show and tell, pitch ideas. 中文 / English both welcome.
+- 🐛 [Issues](https://github.com/ZackaryShen/ColorYourModel/issues) — bug reports & feature requests (templates provided: face count / OS / version)
+- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — build, test commands, docs workflow. Please follow [Conventional Commits](https://www.conventionalcommits.org/); by contributing you agree that your contributions are licensed under AGPL-3.0.
 
 ## License
 

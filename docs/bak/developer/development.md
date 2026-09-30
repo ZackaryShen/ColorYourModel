@@ -53,4 +53,4 @@ git add -A '*.html' docs/   # include regenerated archives
 
 ## Release status
 
-No release tags yet; v0.1 core loop is functionally complete with 3MF export verified end-to-end (2026-08). The defect tracker with P0/P1/P2 states lives in [docs/04](../04-缺陷与遗留问题清单.md) (中文).
+First tagged release [v0.1.0](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.0) is out (2026-09); installers are built by `.github/workflows/release.yml` (workflow_dispatch → tauri-action, Windows + Linux). The defect tracker with P0/P1/P2 states lives in [docs/04](../04-缺陷与遗留问题清单.md) (中文).

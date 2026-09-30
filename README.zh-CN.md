@@ -9,6 +9,7 @@
 > 把 3D 打印白模 STL 变成基于分区的彩色 3MF，直接多耗材彩色打印。
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/badge/release-v0.1.0-blue)](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.0)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
 ![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 
@@ -25,31 +26,6 @@ flowchart TD
     F --> G["Snapmaker Orca / OrcaSlicer<br/>切片打印"]
 ```
 
-## 功能特性
-
-### 当前可用 ✅
-
-- **STL 导入**——二进制 + ASCII，1.5M 面级模型约 4 秒加载，带进度事件
-- **分割**——种子面板一键**融合**（平面 / 多视角 / 二面角 / 眼睛四通道投票）或手动种子生长；8 种可互换算法收于同一后端接口，经分区面板的「重分割」按区域选用。导入**不做**自动分割——分区生成是显式步骤
-- **种子分区**——推荐种子（平面 / 多视角 / 截面 / 显著性）、逐点手动生长、自动融合 + 小分区合并
-- **眼睛区域检测**——手办模型一键识别，全局检测（无需 ROI）
-- **分区管理**——合并 / 拆分 / 重命名分区，单区域重分割
-- **上色工具**——画笔、喷漆、智能笔（分区边界感知）、填充、橡皮、吸管
-- **标签权威填充**——填充严格作用于点击面所属分区，两个分区可安全共用同一颜色（有回归测试保护）
-- **统一撤销 / 重做**——一条时间线覆盖画笔、填充、橡皮与手动编辑
-- **分区视图**——分区彩色可视化 + 边界描边；hover 高亮为 GPU 着色器方案（逐顶点标签属性，O(1) 切换，按需渲染）
-- **BVH 面拾取**——`three-mesh-bvh` 加速的 CPU 射线求交，1.5M 面模型稳定命中
-- **3MF 导出**——已端到端验证（2026-08）：多耗材颜色正确导入 Snapmaker Orca；内嵌机型预设让切片器开箱即显示 *Snapmaker U1 (0.4 nozzle)*。导出对话框：机型 → 喷嘴 → 工艺 → 耗材槽位 → 目标切片器，支持多分区选择 + 一键套用
-- **OBJ 导出**——经 MTL 材质分组实现逐面颜色，最多量化到 256 色
-- **交互细节**——3D 画笔光标环、Space 平移、进度条、崩溃诊断（JS 错误桥接）
-- **i18n**——中文（默认）/ 英文界面，选择持久化
-
-### 计划中 🗓
-
-- [ ] 调色板预设 + 颜色历史
-- [ ] 同类模型批量处理
-- [ ] OrcaSlicer 插件形态集成
-
 ## 截图
 
 | | |
@@ -58,6 +34,17 @@ flowchart TD
 | 187 万面手办 → 37 区，可逐部件上色 | 上色胸像——3MF 端到端验证用的就是这个模型 |
 
 十三个真实案例——手办、AI 生成模型、招牌、建筑件——见[**示例图库**](docs/bak/cases/examples.md)。
+
+## 下载安装
+
+到 [**Releases**](https://github.com/ZackaryShen/ColorYourModel/releases) 页下载即用安装包——当前版本 [v0.1.0](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.0)。
+
+| 平台 | 安装包 |
+|------|--------|
+| Windows | [`x64-setup.exe`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_x64-setup.exe)（推荐）· [`x64_en-US.msi`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_x64_en-US.msi) |
+| Linux | [`amd64.deb`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_amd64.deb) · [`x86_64.rpm`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel-0.1.0-1.x86_64.rpm) · [`AppImage`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_amd64.AppImage)（自带 WebKit，约 80 MB） |
+
+> 暂无 macOS 包（无签名证书）。界面默认中文，可一键切换英文。源码构建见[快速开始](#快速开始)。
 
 ## 演示视频
 
@@ -68,6 +55,42 @@ flowchart TD
 | [3MF 成果呈现](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/3mf-showcase-demo.mp4) | 导出的多色 3MF 载入 Snapmaker Orca，分区映射为耗材分配 |
 
 > 视频以 [Release 资产](https://github.com/ZackaryShen/ColorYourModel/releases/tag/media)方式托管——点击即播放，不会增大 git clone 体积。
+
+## 功能特性
+
+### 当前可用 ✅
+
+**导入与分割**
+
+- **STL 导入**——二进制 + ASCII，1.5M 面级模型约 4 秒加载，带进度事件
+- **分割**——种子面板一键**融合**（平面 / 多视角 / 二面角 / 眼睛四通道投票）或手动种子生长；8 种可互换算法收于同一后端接口，经分区面板的「重分割」按区域选用。导入**不做**自动分割——分区生成是显式步骤
+- **种子分区**——推荐种子（平面 / 多视角 / 截面 / 显著性）、逐点手动生长、自动融合 + 小分区合并
+- **眼睛区域检测**——手办模型一键识别，全局检测（无需 ROI）
+- **分区管理**——合并 / 拆分 / 重命名分区，单区域重分割
+
+**上色**
+
+- **上色工具**——画笔、喷漆、智能笔（分区边界感知）、填充、橡皮、吸管
+- **标签权威填充**——填充严格作用于点击面所属分区，两个分区可安全共用同一颜色（有回归测试保护）
+- **统一撤销 / 重做**——一条时间线覆盖画笔、填充、橡皮与手动编辑
+
+**导出**
+
+- **3MF 导出**——已端到端验证（2026-08）：多耗材颜色正确导入 Snapmaker Orca；内嵌机型预设让切片器开箱即显示 *Snapmaker U1 (0.4 nozzle)*。导出对话框：机型 → 喷嘴 → 工艺 → 耗材槽位 → 目标切片器，支持多分区选择 + 一键套用
+- **OBJ 导出**——经 MTL 材质分组实现逐面颜色，最多量化到 256 色
+
+**视口与交互**
+
+- **分区视图**——分区彩色可视化 + 边界描边；hover 高亮为 GPU 着色器方案（逐顶点标签属性，O(1) 切换，按需渲染）
+- **BVH 面拾取**——`three-mesh-bvh` 加速的 CPU 射线求交，1.5M 面模型稳定命中
+- **交互细节**——3D 画笔光标环、Space 平移、进度条、崩溃诊断（JS 错误桥接）
+- **i18n**——中文（默认）/ 英文界面，选择持久化
+
+### 计划中 🗓
+
+- [ ] 调色板预设 + 颜色历史
+- [ ] 同类模型批量处理
+- [ ] OrcaSlicer 插件形态集成
 
 ## 技术栈
 
@@ -176,7 +199,9 @@ RUST_LOG=debug npm run tauri dev
 
 ## 文档
 
-Markdown 源文件在 [`docs/bak/`](docs/bak/README.md)（与 docs 树镜像）；由它生成的 HTML 存档是正式的可读文档——本地双击任意 `*.html` 即可浏览，完整索引见 [docs/bak/README.md](docs/bak/README.md)。简版：
+📖 **在线文档：<https://zackaryshen.github.io/ColorYourModel/>** —— 用户指南、算法、技术文档、案例图库。
+
+Markdown 源文件在 [`docs/bak/`](docs/bak/README.md)（与 docs 树镜像）；由它生成的 HTML 存档是正式的可读文档。简版：
 
 - [docs/algorithms/](docs/bak/algorithms/) —— 分割与检测算法（数学原理）
 - [docs/technical/](docs/bak/technical/) —— 工程机制（拾取、高亮、撤销/重做、导出管线）
@@ -188,17 +213,19 @@ Markdown 源文件在 [`docs/bak/`](docs/bak/README.md)（与 docs 树镜像）�
 
 ## 路线图
 
-> 尚无 release tag。状态以 PRD 验收标准衡量，不以"代码写完"衡量。
+> [v0.1.0](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.0) 已发布。状态以 PRD 验收标准衡量，不以"代码写完"衡量。
 
-- [x] **v0.1 核心闭环** —— STL 导入 → 分割 → 上色 → 已验证的 3MF 导出（2026-08）
+- [x] **v0.1 核心闭环** —— STL 导入 → 分割 → 上色 → 已验证的 3MF 导出（2026-08 完成，2026-09 发布为 v0.1.0）
   - 3MF 已在 Snapmaker Orca (U1) 端到端验证；fill 路由有回归测试保护
   - 待办：fill 簇真机复验（见 [docs/04](docs/bak/04-缺陷与遗留问题清单.md)）
 - [ ] **v0.2** —— 调色板预设 + 颜色历史、体验打磨
 - [ ] **v1.0** —— 批量处理、OrcaSlicer 插件形态集成
 
-## 贡献
+## 社区
 
-欢迎 Issue 和 PR——构建方式、测试命令与文档流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。请遵循 [Conventional Commits](https://www.conventionalcommits.org/)。提交即表示同意贡献内容按 AGPL-3.0 授权。
+- 💬 [**讨论区 Discussions**](https://github.com/ZackaryShen/ColorYourModel/discussions) —— Q&A 求助、Show and tell 晒作品、Ideas 提想法。中文 / English 均可。
+- 🐛 [Issues](https://github.com/ZackaryShen/ColorYourModel/issues) —— 报 bug 与功能请求（有模板：面数 / 系统 / 版本）
+- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) —— 构建、测试命令与文档流程。请遵循 [Conventional Commits](https://www.conventionalcommits.org/)；提交即表示同意贡献内容按 AGPL-3.0 授权。
 
 ## 许可证
 
