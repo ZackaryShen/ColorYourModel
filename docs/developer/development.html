@@ -8,6 +8,16 @@
 <meta property="og:description" content="Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.">
 <meta property="og:image" content="https://raw.githubusercontent.com/ZackaryShen/ColorYourModel/main/assets/icon.png">
 <link rel="icon" href="../icon.png">
+<script>
+// Theme bootstrap — runs before first paint so there is no flash.
+try {
+  var t = localStorage.getItem("cym-docs-theme");
+  if (t !== "dark" && t !== "light") {
+    t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.documentElement.dataset.theme = t;
+} catch (e) {}
+</script>
 <style>
 /* ColorYourModel docs site — light, modern, file://-safe (all inline). */
 :root {
@@ -24,7 +34,30 @@
   --code-ink: #e2e8f0;
   --radius: 12px;
   --sidebar-w: 272px;
+  color-scheme: light;
 }
+/* Dark theme — toggled by the topbar 🌙/☀️ button, persisted in localStorage
+   under "cym-docs-theme"; falls back to prefers-color-scheme on first visit. */
+:root[data-theme="dark"] {
+  --bg: #0b1220;
+  --panel: #111a2c;
+  --ink: #e2e8f0;
+  --ink-soft: #b6c2d4;
+  --ink-faint: #7c8aa0;
+  --line: #24304a;
+  --accent: #93a5ff;
+  --accent-soft: #1b2440;
+  --accent-line: #33406b;
+  --code-bg: #0a101d;
+  --code-ink: #dbe4f3;
+  color-scheme: dark;
+}
+:root[data-theme="dark"] #topbar { background: rgba(13, 20, 36, .92); box-shadow: none; }
+:root[data-theme="dark"] article code { color: #a5b4fc; }
+:root[data-theme="dark"] article th { background: #16213a; }
+:root[data-theme="dark"] article tbody tr:nth-child(even) { background: #131c31; }
+:root[data-theme="dark"] pre.mermaid { background: #0f1830; }
+:root[data-theme="dark"] #sidebar { box-shadow: 4px 0 18px rgba(0, 0, 0, .35); }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
@@ -57,6 +90,12 @@ body {
 .gh-link:hover { filter: brightness(.96); }
 #menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
   border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+#theme-btn {
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 999px; padding: 4px 11px; font-size: 14px; cursor: pointer;
+  line-height: 1.4; white-space: nowrap;
+}
+#theme-btn:hover { filter: brightness(.96); }
 
 /* ── Layout ──────────────────────────────────────────── */
 #layout { display: flex; align-items: flex-start; }
@@ -197,6 +236,8 @@ pre.mermaid.mermaid-offline::after {
   <button id="menu-btn" aria-label="Toggle navigation">☰</button>
   <a class="brand" href="../README.html"><img class="brand-icon" src="../icon.png" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
   <div class="topbar-right">
+    
+    <button id="theme-btn" aria-label="Toggle dark / light theme" title="Toggle theme">🌙</button>
     <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
   </div>
 </header>
@@ -208,6 +249,7 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CHANGELOG.md">Changelog ↗</a></li>
 <li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CONTRIBUTING.md">Contributing ↗</a></li></ul></div>
 <div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="../user-guide/manual.html">CYM 使用手册（v0.1.0）</a></li>
+<li><a href="../user-guide/manual.en.html">CYM User Manual (v0.1.0)</a></li>
 <li><a href="../user-guide/getting-started.html">Getting Started</a></li>
 <li><a href="../user-guide/auto-segmentation.html">Auto Segmentation</a></li>
 <li><a href="../user-guide/seed-tools.html">Seed Tools</a></li>
@@ -313,11 +355,26 @@ git add -A &#39;*.html&#39; docs/   # include regenerated archives
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script>
 window.addEventListener("DOMContentLoaded", function () {
+  var dark = document.documentElement.dataset.theme === "dark";
+  var themeBtn = document.getElementById("theme-btn");
+  if (themeBtn) {
+    themeBtn.textContent = dark ? "\u2600\uFE0F" : "\uD83C\uDF19";
+    themeBtn.addEventListener("click", function () {
+      var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      try { localStorage.setItem("cym-docs-theme", next); } catch (e) {}
+      // Reload so the mermaid diagrams re-render under the new theme.
+      location.reload();
+    });
+  }
   if (window.mermaid) {
-    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
-      themeVariables: { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
-        lineColor: "#64748b", fontSize: "14px",
-        fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+    mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "base", securityLevel: "loose",
+      themeVariables: dark
+        ? { primaryColor: "#1b2440", primaryTextColor: "#e2e8f0", primaryBorderColor: "#33406b",
+            lineColor: "#7c8aa0", fontSize: "14px",
+            fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" }
+        : { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+            lineColor: "#64748b", fontSize: "14px",
+            fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
       flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
   } else {
     document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
