@@ -65,7 +65,6 @@ Thirteen real runs — sculpts, AI-generated meshes, signage, architecture — l
 |------|---------------|
 | [Segmentation & export](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/partition-and-export-demo.mp4) | Seed-based fuse segmentation, then per-region 3MF export |
 | [Painting tools](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/painting-tools-demo.mp4) | Brush / spray / fill painting on the segmented model |
-| [Full-plate slicing bug fix](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/full-plate-slicing-bugfix-demo.mp4) | Verifying the fixed full-plate slicing export in the target slicer |
 
 > Videos are hosted as [release assets](https://github.com/ZackaryShen/ColorYourModel/releases/tag/media) — they stream in place and never bloat the git clone.
 

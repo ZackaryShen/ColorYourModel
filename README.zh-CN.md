@@ -65,7 +65,6 @@ flowchart TD
 |------|------|
 | [分区与导出](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/partition-and-export-demo.mp4) | 种子融合分割 → 按区 3MF 导出全流程 |
 | [绘制工具](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/painting-tools-demo.mp4) | 画笔 / 喷涂 / 填充等上色工具 |
-| [满盘切片 bug 修复](https://github.com/ZackaryShen/ColorYourModel/releases/download/media/full-plate-slicing-bugfix-demo.mp4) | 目标切片器中满盘切片导出修复后的验证 |
 
 > 视频以 [Release 资产](https://github.com/ZackaryShen/ColorYourModel/releases/tag/media)方式托管——点击即播放，不会增大 git clone 体积。
 

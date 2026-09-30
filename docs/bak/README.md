@@ -42,10 +42,6 @@ Hosted as [release assets](https://github.com/ZackaryShen/ColorYourModel/release
 
 <video controls width="640" src="https://github.com/ZackaryShen/ColorYourModel/releases/download/media/painting-tools-demo.mp4"></video>
 
-**Full-plate slicing bug fix** — verifying the fixed full-plate slicing export in the target slicer:
-
-<video controls width="640" src="https://github.com/ZackaryShen/ColorYourModel/releases/download/media/full-plate-slicing-bugfix-demo.mp4"></video>
-
 ## Document map
 
 | Kind | Source (bak/) | HTML archive | Language |
