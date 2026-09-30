@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+### Known Issues — 开源前已知问题记录（2026-09-29）
+
+以下问题已确认并记录在案，**不在 v0.1.0 发布前修复**（决策 D3=B：记录而非修复）：
+
+- **SeedPanel 测试 3/10 失败（前置存在，非本次回归）**：`src/ui/components/__tests__/SeedPanel.test.tsx` 中 3 个用例失败（`npx vitest run` 实测 7 passed | 3 failed）。根因是选择器过时，非产品代码 bug——测试文件在 209–210 行自我记载 `/生长/` 正则会误点手动生长 Tab：
+  - `只有 suggestedSeeds（无 accepted seedPoints）也能生长` — Unable to find button `/推荐种子/`
+  - `手动种子与建议种子共同参与生长（并集）` — AssertionError: expected false to be true
+  - `什么种子都没有 → 不调 seed_grow，给出提示` — Found multiple elements with `/生长/`
+  - CI 策略：`npx tsc --noEmit` 为硬门禁，vitest 步骤 `continue-on-error` 直至修复（见 `.github/workflows/ci.yml`）
+- **超大模型融合投票阶段超时**：house2（472 万面）在 vote 阶段 >30min 未完成（godzilla 150 万面全程 ~12.7s）。`MAX_AUTO_REGIONS=4096`（`postprocess.rs:59`）尚未接入 fuse 投票路径，超大面数下候选区爆炸。详见基准报告 `docs/technical/bench-fuse-recommend.html`（模型不入库，路径需自备或设 `CYM_BENCH_STL`）
+
 ### Added — 开源准备：示例图库与社区文档（2026-09-08）
 
 - **示例图库**（`docs/cases/examples.html`）：13 个真实案例——手办雕塑（sanji 187 万面 37 区、armoured hero 91 区）、AI 生成模型（Tripo 菠萝屋 76 区）、招牌/建筑件（KFC 系、house2）——每案例配核实过的截图与面数/区数说明，附模型版权与来源声明（CYM 不附带任何模型，仅跟踪验证截图）
