@@ -34,7 +34,7 @@ flowchart LR
 
 The window has five parts: the **left toolbar** (import/export, 10 tools, undo/redo), the **viewport** (the 3D model), the **right panels** (Regions, Brush Settings, Color), the **bottom status bar** (hints / tool / face count / language / theme), plus a **shortcut hint bar** along the bottom edge of the viewport.
 
-![CYM interface after importing a white model](../../samples/manual/01-interface.png)
+![CYM interface after importing a white model](../../../samples/manual/01-interface.png)
 
 *The interface after import: left toolbar, viewport (a 500K-face cartoon white model), the three right-hand panels (Regions / Brush Settings / Color), and the status bar.*
 
@@ -114,7 +114,7 @@ Tips:
 - Brush-class tools show a **3D ring** that follows the mouse with the live radius and colour.
 - Once regions exist, a **🎨 Paint view / 🗺️ Segment view** toggle appears in the **top-right** of the viewport: segment view colourises regions by label and outlines boundaries (yellow in the dark theme, amber-brown in light) for quality checks; neighbouring regions are essentially never the same colour (30 palette slots with adjacency-aware allocation).
 
-![Segment view: 13 fused regions, neighbours never sharing a colour](../../samples/manual/03-segments.png)
+![Segment view: 13 fused regions, neighbours never sharing a colour](../../../samples/manual/03-segments.png)
 
 *Segment view: the 500K-face cartoon model fused at fold threshold 5° into 13 regions — adjacent regions in different colours, boundaries outlined.*
 
@@ -122,7 +122,7 @@ Tips:
 
 Segmentation starts from the **🌱 seed tool**: click 🌱 in the toolbar and a draggable **Seed panel** pops over the model (drag the title bar to move, double-click it or press 📍 to reset, close with × or `Esc` — note closing also clears any placed seeds).
 
-![The Seed panel, Auto (fuse) tab](../../samples/manual/02-seed-panel.png)
+![The Seed panel, Auto (fuse) tab](../../../samples/manual/02-seed-panel.png)
 
 *The Seed panel's Auto (fuse) tab: mode tabs, eye-detection entries, per-layer solo buttons, the fold-threshold slider and "Fuse & generate".*
 
@@ -187,7 +187,7 @@ Click **💾** in the toolbar (a model must be loaded) to open the export dialog
 6. **Target slicer**: Snapmaker Orca (default) or OrcaSlicer (generic) — decides the machine id written into the file.
 7. **Choose location & export**. Machine/nozzle/process/filaments/slicer are remembered for next time (the format switch is not — it resets to 3MF).
 
-![Export dialog: machine, nozzle, process and per-slot filaments](../../samples/manual/04-export-dialog.png)
+![Export dialog: machine, nozzle, process and per-slot filaments](../../../samples/manual/04-export-dialog.png)
 
 *The export dialog: 13 regions map to 13 filament slots, each selectable individually or in bulk.*
 

@@ -28,7 +28,7 @@ adjacent regions are always rendered in **different palette colours** so the
 partition is readable at a glance.
 
 <div align="center">
-<img src="../../samples/sanji-diorama/example02.png" alt="1.87M-face figure on a flame base, 37 regions" width="720">
+<img src="../../../samples/sanji-diorama/example02.png" alt="1.87M-face figure on a flame base, 37 regions" width="720">
 </div>
 
 **sanji-diorama** — 1,879,325 faces → 37 regions. Coat / waistcoat / trousers /
@@ -36,7 +36,7 @@ flame base separate cleanly; the region list on the right shows per-region face
 counts with Split and Re-cut one click away.
 
 <div align="center">
-<img src="../../samples/dragon/example02.png" alt="Armoured hero figure, 91 regions" width="720">
+<img src="../../../samples/dragon/example02.png" alt="Armoured hero figure, 91 regions" width="720">
 </div>
 
 **dragon** — armoured hero figure, 1,499,428 faces → 91 regions. Armour plates,
@@ -44,7 +44,7 @@ joints and body splits follow the sculpt's own folds; 91 regions stay
 navigable because the panel sorts by size.
 
 <div align="center">
-<img src="../../samples/single-color/example02.png" alt="Cartoon figure, 12 colour-block regions, lasso stroke visible" width="720">
+<img src="../../../samples/single-color/example02.png" alt="Cartoon figure, 12 colour-block regions, lasso stroke visible" width="720">
 </div>
 
 **single-color** — 500,000 faces → 12 regions. Deliberately coarse: the model
@@ -53,7 +53,7 @@ hand-drawn region mid-stroke (lasso finalization now reports the same stage
 progress bar as the fuse).
 
 <div align="center">
-<img src="../../samples/liangsheng/example01.png" alt="Bust split into 11 painted regions" width="720">
+<img src="../../../samples/liangsheng/example01.png" alt="Bust split into 11 painted regions" width="720">
 </div>
 
 **liangsheng** — 148,460 faces → 11 regions. This is also the model of the
@@ -63,7 +63,7 @@ exported and imported into Snapmaker Orca as real filament assignments.
 ## AI-generated and imported meshes
 
 <div align="center">
-<img src="../../samples/tripo-pineapple-house/example02.png" alt="AI-generated pineapple house, 76 regions, lasso loops around leaves and windows" width="720">
+<img src="../../../samples/tripo-pineapple-house/example02.png" alt="AI-generated pineapple house, 76 regions, lasso loops around leaves and windows" width="720">
 </div>
 
 **tripo-pineapple-house** — a Tripo-generated pineapple house, 469,336 faces →
@@ -71,7 +71,7 @@ exported and imported into Snapmaker Orca as real filament assignments.
 windows and wall bands, and lasso strokes (orange) fix up what the vote missed.
 
 <div align="center">
-<img src="../../samples/catastorm/example01.png" alt="Crayon sign with chains, 46 regions" width="720">
+<img src="../../../samples/catastorm/example01.png" alt="Crayon sign with chains, 46 regions" width="720">
 </div>
 
 **catastorm** — crayon sign with chain links, 780,718 faces → 46 regions.
@@ -85,7 +85,7 @@ sit at the higher end of the fold-angle slider (5–15°); the slider floor of 0
 exists for the sculpts above, not for these.
 
 <div align="center">
-<img src="../../samples/kfc-sign/example01.png" alt="KFC lettering sign, 43 regions" width="720">
+<img src="../../../samples/kfc-sign/example01.png" alt="KFC lettering sign, 43 regions" width="720">
 </div>
 
 **kfc-sign** — 2,382 faces → 43 regions. Every letter of the signboard becomes
@@ -95,7 +95,7 @@ its own region — the classic multi-colour sign-printing use case. Sibling runs
 segmentation / result).
 
 <div align="center">
-<img src="../../samples/house2/example02.png" alt="Two-room house interior, 25 regions at 15 degrees" width="720">
+<img src="../../../samples/house2/example02.png" alt="Two-room house interior, 25 regions at 15 degrees" width="720">
 </div>
 
 **house2** — a two-room interior with furniture walls, 1,354 faces → 25 regions
