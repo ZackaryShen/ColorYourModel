@@ -55,6 +55,11 @@ interface AppStore {
   // i18n
   language: Lang;
 
+  // True when painting/segmentation changes exist that have not been exported
+  // since the last export. Drives the exit confirmation (issue #7); never
+  // persisted - a fresh session always starts clean.
+  paintDirty: boolean;
+
   // Status
   statusMessage: string;
   /** DebugLogViewer panel visibility. Lives in the store so the StatusBar's
@@ -210,6 +215,7 @@ interface AppStore {
   setLoading: (loading: boolean) => void;
   setImportProgress: (progress: number, stage: string) => void;
   setLanguage: (lang: Lang) => void;
+  markPaintExported: () => void;
   setLastPaintDebug: (s: string | null) => void;
   setHoverProbe: (s: string | null) => void;
   setLastExportSelection: (s: PersistedExportSelection | null) => void;
@@ -428,6 +434,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   // persisted and wins over this default (see mergePrefs).
   language: navigator.language?.toLowerCase().startsWith("zh") ? "zh" : "en",
 
+  paintDirty: false,
+
   // M8: stored as an i18n KEY, not a literal. Once `language` is persisted the
   // app can boot in English, and a hard-coded 中文 default would leak through.
   // StatusBar renders it via `t()`, which returns unknown keys verbatim, so
@@ -455,12 +463,14 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       isLoaded: true,
       canUndo: false,
       canRedo: false,
+      paintDirty: false,
       segments: projectSegments(data.segments),
       statusMessage: `已加载 ${data.faceCount.toLocaleString()} 个面`,
     }),
 
   updateSegmentLabels: (labels, segments, faceColors) =>
     set((state) => ({
+      paintDirty: true,
       meshData:
         state.meshData
           ? {
@@ -510,6 +520,9 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       fc[o + 2] = c[2];
       fc[o + 3] = c[3] ?? 255;
     }
+    // In-place color mutation must still flag unsaved work (issue #7). Nothing
+    // subscribes to paintDirty during painting, so this adds no re-render cost.
+    set({ paintDirty: true });
   },
 
   // Tools are mutually exclusive. Switching tools must also wipe every
@@ -645,6 +658,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setLoading: (loading) => set({ isLoading: loading }),
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),
   setLanguage: (lang) => set({ language: lang }),
+  markPaintExported: () => set({ paintDirty: false }),
   setLastPaintDebug: (s) => set({ lastPaintDebug: s }),
   setHoverProbe: (s) => set({ hoverProbe: s }),
   setLastExportSelection: (s) => set({ lastExportSelection: s }),

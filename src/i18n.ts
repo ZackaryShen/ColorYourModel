@@ -224,6 +224,15 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.exporting": { zh: "导出中…", en: "Exporting…" },
   "export.success": { zh: "导出成功：{0}", en: "Exported: {0}" },
   "export.successObj": { zh: "导出成功（含 .mtl 材质）：{0}", en: "Exported (with .mtl): {0}" },
+
+  // Exit confirmation (issue #7)
+  "exit.confirmTitle": { zh: "未保存的涂装工作", en: "Unsaved painting work" },
+  "exit.stay": { zh: "留在应用", en: "Stay" },
+  "exit.quit": { zh: "直接退出", en: "Quit anyway" },
+  "exit.confirmBody": {
+    zh: "模型上有尚未导出的涂装/分区修改，退出将会丢失。确定要退出吗？",
+    en: "This model has painting or segmentation changes that have not been exported yet. Quit anyway?",
+  },
   "export.failure": { zh: "导出失败：{0}", en: "Export failed: {0}" },
 
   // Algorithm display names for the SegmentsPanel resegment picker.

@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Viewport } from "./components/Viewport/Viewport";
 import { Toolbar } from "./components/Toolbar/Toolbar";
 import { ColorPanel } from "./components/ColorPanel/ColorPanel";
@@ -6,16 +7,47 @@ import { SegmentsPanel } from "./components/SegmentsPanel/SegmentsPanel";
 import { BrushSettings } from "./components/BrushSettings/BrushSettings";
 import { StatusBar } from "./components/StatusBar/StatusBar";
 import { DebugLogViewer } from "./components/DebugLogViewer";
+import { ExitConfirmDialog } from "./components/ExitConfirmDialog";
 import { useAppStore } from "./store/appStore";
+import { useT } from "./i18n";
 
 function App() {
   const theme = useAppStore((s) => s.theme);
+  const language = useAppStore((s) => s.language);
+  const [confirmExit, setConfirmExit] = useState(false);
+  const t = useT();
 
   // Sync the chosen theme to <html data-theme> so the static CSS variables in
   // theme.css resolve. No FOUC: theme.css is imported in main.tsx at load.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  // Issue #7: with a close-requested listener attached, Tauri never
+  // auto-closes the window - we must destroy() it ourselves. Re-subscribed on
+  // language change so the dialog text always matches the active locale.
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    getCurrentWindow()
+      .onCloseRequested(async (event) => {
+        const { meshData, paintDirty } = useAppStore.getState();
+        // Nothing at stake -> fall through to the default close path.
+        if (!meshData || !paintDirty) return;
+        event.preventDefault();
+        setConfirmExit(true);
+      })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+    // t is re-created each render; language is the only real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
 
   return (
     <div style={styles.root}>
@@ -45,6 +77,10 @@ function App() {
       {/* In-app debug log viewer (iteration 59): release builds can't open
           devtools, so logs surface here instead. */}
       <DebugLogViewer />
+
+      {/* Issue #7: in-app exit confirmation (dark-themed, replaces the
+          white native MessageBox). */}
+      {confirmExit && <ExitConfirmDialog onCancel={() => setConfirmExit(false)} />}
     </div>
   );
 }

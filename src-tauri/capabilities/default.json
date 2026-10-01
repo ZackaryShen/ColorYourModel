@@ -2,10 +2,13 @@
   "$schema": "https://raw.githubusercontent.com/nicoverbruggen/tauri-v2-schema/main/capability.json",
   "identifier": "default",
   "description": "Default capabilities for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "dialog:default",
-    "fs:default"
+    "fs:default",
+    "core:window:allow-destroy"
   ]
 }
