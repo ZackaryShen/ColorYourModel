@@ -7,9 +7,17 @@ import { useT } from "../i18n";
 import { log } from "../utils/logger";
 import { ExportDialog } from "./ExportDialog/ExportDialog";
 
-/** GitHub Pages site (docs/ tree, deployed by deploy-docs.yml). */
-const WIKI_URL = "https://zackaryshen.github.io/ColorYourModel/";
+/** GitHub Pages site (docs/ tree, deployed by deploy-docs.yml). The site root
+ *  redirects to docs/README.html; the manuals and example gallery are the
+ *  pages users actually need from the Help menu. */
+const SITE_URL = "https://zackaryshen.github.io/ColorYourModel";
+const MANUAL_URL: Record<"zh" | "en", string> = {
+  zh: `${SITE_URL}/docs/user-guide/manual.html`,
+  en: `${SITE_URL}/docs/user-guide/manual.en.html`,
+};
+const EXAMPLES_URL = `${SITE_URL}/docs/cases/examples.html`;
 const REPO_URL = "https://github.com/ZackaryShen/ColorYourModel";
+const DISCUSSIONS_URL = `${REPO_URL}/discussions`;
 
 type MenuId = "file" | "view" | "help";
 
@@ -33,6 +41,9 @@ export function MenuBar() {
   const setTheme = useAppStore((s) => s.setTheme);
   const debugLogOpen = useAppStore((s) => s.debugLogOpen);
   const setDebugLogOpen = useAppStore((s) => s.setDebugLogOpen);
+  // Mirrors the Toolbar export button's disabled={!isLoaded} guard: without a
+  // mesh there are no presets/palette to pick in the ExportDialog.
+  const hasMesh = useAppStore((s) => s.meshData !== null);
 
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -68,7 +79,7 @@ export function MenuBar() {
     id: MenuId;
     label: string;
     items: (
-      | { kind: "item"; label: string; danger?: boolean; onClick: () => void }
+      | { kind: "item"; label: string; disabled?: boolean; hint?: string; danger?: boolean; onClick: () => void }
       | { kind: "sep" }
     )[];
   }[] = [
@@ -77,7 +88,13 @@ export function MenuBar() {
       label: t("menu.file"),
       items: [
         { kind: "item", label: t("menu.import"), onClick: () => importStl() },
-        { kind: "item", label: t("menu.export"), onClick: () => setExportDialogOpen(true) },
+        {
+          kind: "item",
+          label: t("menu.export"),
+          disabled: !hasMesh,
+          hint: hasMesh ? undefined : t("export.needModel"),
+          onClick: () => setExportDialogOpen(true),
+        },
         { kind: "sep" },
         // close() re-enters the onCloseRequested handler, so unexported work
         // still gets the exit confirmation; a clean state just closes.
@@ -98,7 +115,13 @@ export function MenuBar() {
       id: "help",
       label: t("menu.help"),
       items: [
-        { kind: "item", label: t("menu.wiki"), onClick: () => openExternal(WIKI_URL) },
+        // Language-aware manual: the zh UI links the Chinese manual, the en
+        // UI the English one (both exist in the deployed docs tree).
+        { kind: "item", label: t("menu.userGuide"), onClick: () => openExternal(MANUAL_URL[language]) },
+        { kind: "item", label: t("menu.examples"), onClick: () => openExternal(EXAMPLES_URL) },
+        { kind: "item", label: t("menu.wiki"), onClick: () => openExternal(SITE_URL) },
+        { kind: "sep" },
+        { kind: "item", label: t("menu.discussions"), onClick: () => openExternal(DISCUSSIONS_URL) },
         { kind: "sep" },
         { kind: "item", label: t("menu.about"), onClick: () => setAboutOpen(true) },
       ],
@@ -131,8 +154,14 @@ export function MenuBar() {
                   <button
                     key={i}
                     className="cym-btn"
-                    style={{ ...styles.item, ...(item.danger ? styles.itemDanger : {}) }}
+                    style={{
+                      ...styles.item,
+                      ...(item.danger ? styles.itemDanger : {}),
+                      ...(item.disabled ? styles.itemDisabled : {}),
+                    }}
                     role="menuitem"
+                    disabled={item.disabled}
+                    title={item.hint}
                     onClick={act(item.onClick)}
                   >
                     {item.label}
@@ -261,6 +290,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   itemDanger: {
     color: "var(--danger, #e5484d)",
+  },
+  itemDisabled: {
+    color: "var(--text-3, #777)",
+    cursor: "not-allowed",
+    opacity: 0.6,
   },
   sep: {
     height: 1,

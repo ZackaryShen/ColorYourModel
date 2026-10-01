@@ -247,6 +247,9 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.successObj": { zh: "导出成功（含 .mtl 材质）：{0}", en: "Exported (with .mtl): {0}" },
   "export.failure": { zh: "导出失败：{0}", en: "Export failed: {0}" },
   "export.presetLoadFailed": { zh: "导出配置加载失败：{0}", en: "Failed to load export presets: {0}" },
+  "export.needModel": { zh: "请先导入模型", en: "Import a model first" },
+  "export.noModel": { zh: "尚未导入模型", en: "No model loaded" },
+  "export.noModelHint": { zh: "导出需要先导入 STL 模型并完成涂装，请先从「文件 → 导入 STL…」或左侧工具栏导入。", en: "Exporting needs an imported (and painted) STL model first — use File → Import STL… or the left toolbar." },
 
   // Exit confirmation (issue #7)
   "exit.confirmTitle": { zh: "未保存的涂装工作", en: "Unsaved painting work" },
@@ -264,12 +267,17 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.import": { zh: "导入 STL…", en: "Import STL…" },
   "menu.export": { zh: "导出涂装模型…", en: "Export painted model…" },
   "menu.quit": { zh: "退出", en: "Quit" },
-  // Target-language convention, same as the StatusBar lang-switch tooltip.
-  "menu.language": { zh: "切换到 English", en: "切换到中文" },
+  // Describes the action in the CURRENT language (the menu must read fully
+  // localized in both languages); the StatusBar tooltip keeps the
+  // target-language convention, which fits a one-word toggle better.
+  "menu.language": { zh: "切换到 English", en: "Switch to Chinese" },
   "menu.themeToLight": { zh: "切换到浅色主题", en: "Switch to light theme" },
   "menu.themeToDark": { zh: "切换到深色主题", en: "Switch to dark theme" },
   "menu.debugLog": { zh: "调试日志 (Ctrl+Shift+L)", en: "Debug log (Ctrl+Shift+L)" },
-  "menu.wiki": { zh: "帮助文档（Wiki）", en: "Documentation (Wiki)" },
+  "menu.wiki": { zh: "文档总览（Wiki）", en: "Documentation (Wiki)" },
+  "menu.userGuide": { zh: "用户手册", en: "User Guide" },
+  "menu.examples": { zh: "示例画廊", en: "Example Gallery" },
+  "menu.discussions": { zh: "GitHub 讨论区", en: "GitHub Discussions" },
   "menu.about": { zh: "关于 ColorYourModel", en: "About ColorYourModel" },
 
   // About dialog
