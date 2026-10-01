@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { Viewport } from "./components/Viewport/Viewport";
 import { Toolbar } from "./components/Toolbar/Toolbar";
 import { ColorPanel } from "./components/ColorPanel/ColorPanel";
@@ -7,15 +9,48 @@ import { BrushSettings } from "./components/BrushSettings/BrushSettings";
 import { StatusBar } from "./components/StatusBar/StatusBar";
 import { DebugLogViewer } from "./components/DebugLogViewer";
 import { useAppStore } from "./store/appStore";
+import { useT } from "./i18n";
 
 function App() {
   const theme = useAppStore((s) => s.theme);
+  const language = useAppStore((s) => s.language);
+  const t = useT();
 
   // Sync the chosen theme to <html data-theme> so the static CSS variables in
   // theme.css resolve. No FOUC: theme.css is imported in main.tsx at load.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  // Issue #7: with a close-requested listener attached, Tauri never
+  // auto-closes the window - we must destroy() it ourselves. Re-subscribed on
+  // language change so the dialog text always matches the active locale.
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    getCurrentWindow()
+      .onCloseRequested(async (event) => {
+        const { meshData, paintDirty } = useAppStore.getState();
+        // Nothing at stake -> fall through to the default close path.
+        if (!meshData || !paintDirty) return;
+        event.preventDefault();
+        const quit = await ask(t("exit.confirmBody"), {
+          title: t("exit.confirmTitle"),
+          kind: "warning",
+        });
+        if (quit) await getCurrentWindow().destroy();
+      })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+    // t is re-created each render; language is the only real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
 
   return (
     <div style={styles.root}>

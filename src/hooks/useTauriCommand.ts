@@ -18,6 +18,7 @@ export function useTauriCommand() {
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
   const setSegmentMetadata = useAppStore((s) => s.setSegmentMetadata);
   const markHistoryDirty = useAppStore((s) => s.markHistoryDirty);
+  const markPaintExported = useAppStore((s) => s.markPaintExported);
   const setToast = useAppStore((s) => s.setToast);
 
   const loadModel = async (path: string) => {
@@ -237,6 +238,7 @@ export function useTauriCommand() {
         selection: selection ?? null,
       });
       log.info("useTauriCommand", "export3mf complete", { msg });
+      markPaintExported();
       setStatusMessage("Export complete");
       setToast(t("export.success", msg.replace(/^Exported to /, "")));
       return msg;
@@ -259,6 +261,7 @@ export function useTauriCommand() {
       setStatusMessage("Exporting...");
       const msg: string = await invoke("export_obj_command", { path });
       log.info("useTauriCommand", "exportObj complete", { msg });
+      markPaintExported();
       setStatusMessage("Export complete");
       setToast(t("export.successObj", msg.replace(/^Exported to /, "")));
       return msg;
