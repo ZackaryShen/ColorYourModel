@@ -2483,13 +2483,37 @@ const progressStyles: Record<string, React.CSSProperties> = {
 /// Shows the last paint/pick operation detail as a small monospace line. This
 /// replaces the F12 console (unavailable in Tauri release builds) so the user
 /// can verify, without devtools, that painting lands on the face under the
-/// cursor (iteration 14).
+/// cursor (iteration 14). The box itself stays pointer-transparent so it never
+/// blocks viewport input; only the collapse/expand affordance is clickable
+/// (child pointer-events:auto overrides the box's none). Collapsed state is
+/// component-local: fresh diagnostics still arrive but stay folded until the
+/// user expands again.
 function DebugHud() {
+  const t = useT();
   const debug = useAppStore((s) => s.lastPaintDebug);
   const probe = useAppStore((s) => s.hoverProbe);
+  const [collapsed, setCollapsed] = useState(false);
   if (!debug && !probe) return null;
+  if (collapsed) {
+    return (
+      <button
+        onClick={() => setCollapsed(false)}
+        style={debugStyles.icon}
+        title={t("debugHud.expand")}
+      >
+        ⓘ
+      </button>
+    );
+  }
   return (
     <div style={debugStyles.box}>
+      <button
+        onClick={() => setCollapsed(true)}
+        style={debugStyles.collapseBtn}
+        title={t("debugHud.collapse")}
+      >
+        –
+      </button>
       {probe && <div style={debugStyles.probe}>{probe}</div>}
       {debug && <div>{debug}</div>}
     </div>
@@ -2505,7 +2529,7 @@ const debugStyles: Record<string, React.CSSProperties> = {
     color: "var(--success, #9fe7a0)",
     border: "1px solid var(--success-border, #2e7d32)",
     borderRadius: 6,
-    padding: "4px 8px",
+    padding: "4px 24px 4px 8px",
     fontSize: 11,
     fontFamily: "ui-monospace, Menlo, Consolas, monospace",
     zIndex: 6,
@@ -2519,6 +2543,39 @@ const debugStyles: Record<string, React.CSSProperties> = {
     borderBottom: "1px dashed rgba(255,212,121,0.4)",
     paddingBottom: 2,
     marginBottom: 2,
+  },
+  collapseBtn: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    width: 18,
+    height: 18,
+    lineHeight: "18px",
+    padding: 0,
+    border: "none",
+    borderRadius: 4,
+    background: "transparent",
+    color: "inherit",
+    cursor: "pointer",
+    fontSize: 12,
+    // The parent box is pointer-transparent; re-enable hits for the button
+    // alone so the diagnostics text still never blocks viewport input.
+    pointerEvents: "auto",
+  },
+  icon: {
+    position: "absolute",
+    bottom: 32,
+    left: 12,
+    width: 24,
+    height: 24,
+    padding: 0,
+    border: "1px solid var(--success-border, #2e7d32)",
+    borderRadius: 6,
+    background: "var(--debug-bg, rgba(20,24,28,0.85))",
+    color: "var(--success, #9fe7a0)",
+    cursor: "pointer",
+    fontSize: 13,
+    zIndex: 6,
   },
 };
 

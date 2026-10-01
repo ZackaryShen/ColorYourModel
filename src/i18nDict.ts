@@ -208,6 +208,10 @@ const dict: Record<string, Record<Lang, string>> = {
   "debugLog.empty": { zh: "暂无日志", en: "No logs yet" },
   "debugLog.openTitle": { zh: "调试日志 (Ctrl+Shift+L)", en: "Debug log (Ctrl+Shift+L)" },
 
+  // Debug HUD (bottom-left paint-diagnostics overlay)
+  "debugHud.collapse": { zh: "收起诊断信息", en: "Collapse diagnostics" },
+  "debugHud.expand": { zh: "展开诊断信息", en: "Expand diagnostics" },
+
   // Language
   "lang.switch": { zh: "EN", en: "中" },
 
