@@ -1,6 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { Viewport } from "./components/Viewport/Viewport";
 import { Toolbar } from "./components/Toolbar/Toolbar";
 import { ColorPanel } from "./components/ColorPanel/ColorPanel";
@@ -8,12 +7,14 @@ import { SegmentsPanel } from "./components/SegmentsPanel/SegmentsPanel";
 import { BrushSettings } from "./components/BrushSettings/BrushSettings";
 import { StatusBar } from "./components/StatusBar/StatusBar";
 import { DebugLogViewer } from "./components/DebugLogViewer";
+import { ExitConfirmDialog } from "./components/ExitConfirmDialog";
 import { useAppStore } from "./store/appStore";
 import { useT } from "./i18n";
 
 function App() {
   const theme = useAppStore((s) => s.theme);
   const language = useAppStore((s) => s.language);
+  const [confirmExit, setConfirmExit] = useState(false);
   const t = useT();
 
   // Sync the chosen theme to <html data-theme> so the static CSS variables in
@@ -34,11 +35,7 @@ function App() {
         // Nothing at stake -> fall through to the default close path.
         if (!meshData || !paintDirty) return;
         event.preventDefault();
-        const quit = await ask(t("exit.confirmBody"), {
-          title: t("exit.confirmTitle"),
-          kind: "warning",
-        });
-        if (quit) await getCurrentWindow().destroy();
+        setConfirmExit(true);
       })
       .then((fn) => {
         if (disposed) fn();
@@ -80,6 +77,10 @@ function App() {
       {/* In-app debug log viewer (iteration 59): release builds can't open
           devtools, so logs surface here instead. */}
       <DebugLogViewer />
+
+      {/* Issue #7: in-app exit confirmation (dark-themed, replaces the
+          white native MessageBox). */}
+      {confirmExit && <ExitConfirmDialog onCancel={() => setConfirmExit(false)} />}
     </div>
   );
 }

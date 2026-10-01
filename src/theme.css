@@ -54,6 +54,8 @@ body {
   --accent-strong: #4a6fa5;
   --accent-border: #6a9fd5;
   --accent-text: #4a9eff; /* readable on dark */
+  --danger: #e5484d;
+  --danger-border: #b3373c;
 
   --success: #9fe7a0;
   --success-border: #2e7d32;
@@ -90,6 +92,8 @@ body {
   --accent-strong: #2d7dd2;
   --accent-border: #1565c0;
   --accent-text: #1565c0; /* darker blue — 5.4:1 on white (M4) */
+  --danger: #d93a3f;
+  --danger-border: #a02830;
 
   --success: #2e7d32;
   --success-border: #1e6b34;

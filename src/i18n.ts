@@ -227,6 +227,8 @@ const dict: Record<string, Record<Lang, string>> = {
 
   // Exit confirmation (issue #7)
   "exit.confirmTitle": { zh: "未保存的涂装工作", en: "Unsaved painting work" },
+  "exit.stay": { zh: "留在应用", en: "Stay" },
+  "exit.quit": { zh: "直接退出", en: "Quit anyway" },
   "exit.confirmBody": {
     zh: "模型上有尚未导出的涂装/分区修改，退出将会丢失。确定要退出吗？",
     en: "This model has painting or segmentation changes that have not been exported yet. Quit anyway?",
