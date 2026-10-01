@@ -1,5 +1,6 @@
 /**
- * Lightweight i18n system — Chinese (default) / English.
+ * Lightweight i18n system — English fallback, Chinese in Chinese locales
+ * (default follows the OS locale; see appStore).
  * Usage: const t = useT();  then  t("toolbar.import")
  */
 import { useAppStore } from "./store/appStore";

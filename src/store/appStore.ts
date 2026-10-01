@@ -423,7 +423,10 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   canUndo: false,
   canRedo: false,
 
-  language: "zh",
+  // Default UI language follows the OS locale: Chinese locales keep Chinese,
+  // everything else falls back to English. An explicitly chosen language is
+  // persisted and wins over this default (see mergePrefs).
+  language: navigator.language?.toLowerCase().startsWith("zh") ? "zh" : "en",
 
   // M8: stored as an i18n KEY, not a literal. Once `language` is persisted the
   // app can boot in English, and a hard-coded 中文 default would leak through.
