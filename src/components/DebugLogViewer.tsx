@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { subscribeLog, type LogEntry } from "../utils/logger";
 import { useAppStore } from "../store/appStore";
+import { useT } from "../i18n";
 
 /// In-app debug log viewer (iteration 59). Tauri release builds disable the
 /// webview devtools, so the existing console.* diagnostics are invisible to the
@@ -11,6 +12,7 @@ import { useAppStore } from "../store/appStore";
 /// used to own a floating bottom-right button, but it covered the status
 /// bar's language switch). Auto-scrolls to the newest entry.
 export function DebugLogViewer() {
+  const t = useT();
   const open = useAppStore((s) => s.debugLogOpen);
   const setOpen = useAppStore((s) => s.setDebugLogOpen);
   const [entries, setEntries] = useState<LogEntry[]>([]);
@@ -73,7 +75,7 @@ export function DebugLogViewer() {
               fontSize: 12,
             }}
           >
-            <span>🐞 调试日志（{entries.length} 条）</span>
+            <span>{t("debugLog.title", entries.length)}</span>
             <button
               onClick={() => setEntries([])}
               style={{
@@ -86,7 +88,7 @@ export function DebugLogViewer() {
                 fontSize: 11,
               }}
             >
-              清空
+              {t("debugLog.clear")}
             </button>
           </div>
           <div
@@ -101,7 +103,7 @@ export function DebugLogViewer() {
             }}
           >
             {entries.length === 0 && (
-              <div style={{ color: "#777" }}>暂无日志</div>
+              <div style={{ color: "#777" }}>{t("debugLog.empty")}</div>
             )}
             {entries.map((e, i) => (
               <div

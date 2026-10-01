@@ -672,7 +672,7 @@ export function SeedPanel() {
         const med = fuseLast.regionSizeMedian ?? 0;
         const mx = fuseLast.regionSizeMax ?? 0;
         setStatusMessage(
-          `🧩 融合完成：${result.segments.length} 区（通道 平面${c.planar ?? 0}/多视角${c.multiview ?? 0}/折痕${c.dihedral ?? 0}/眼${c.eye ?? 0}, 边 ${cut}/${ec} 切, 区大小 min=${min} med=${med} max=${mx}）`,
+          t("seed.fuseDetail", result.segments.length, c.planar ?? 0, c.multiview ?? 0, c.dihedral ?? 0, c.eye ?? 0, cut, ec, min, med, mx),
         );
       }
     } catch {
@@ -703,7 +703,7 @@ export function SeedPanel() {
       clearSuggestedSeeds();
       setSeedEraseMode(false);
       setSeedPickMode(false);
-      setStatusMessage("✅ 已清空分区（恢复导入时的干净状态）");
+      setStatusMessage(t("seed.resetAllDone"));
     } catch {
       // status already surfaced via useTauriCommand
     } finally {
@@ -795,7 +795,7 @@ export function SeedPanel() {
     }
     setGrowing(true);
     setStatusMessage(
-      `🌱 准备生长（${seeds.length} 个种子（手 ${seedPoints.length} + 推 ${suggestedSeeds.length} + 眼 ${eyeSeeds.length}），barrier=${barrierDeg}°，optimizer=${optimizer}）…`,
+      t("seed.growPrep", seeds.length, seedPoints.length, suggestedSeeds.length, eyeSeeds.length, barrierDeg, String(optimizer)),
     );
     try {
       const result = await seedGrow(seeds, barrierDeg, optimizer);
@@ -814,7 +814,7 @@ export function SeedPanel() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       log.error("SeedPanel", "seedGrow failed", { error: msg });
-      setStatusMessage(`🌱 种子分区失败：${msg}`);
+      setStatusMessage(t("seed.growFailedPanel", msg));
     } finally {
       setGrowing(false);
     }

@@ -99,7 +99,7 @@ pub fn resegment_region(
     let k = max_sub + 1;
     if k <= 1 {
         return Err(
-            "所选算法在该区域内未产生进一步划分（整块仍为一个区域）".to_string(),
+            "no further subdivision produced (the region stays whole)".to_string(),
         );
     }
 

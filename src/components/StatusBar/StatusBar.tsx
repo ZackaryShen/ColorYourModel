@@ -34,7 +34,7 @@ export function StatusBar() {
         onClick={() => setDebugLogOpen(!debugLogOpen)}
         className="cym-btn"
         style={{ ...styles.themeBtn, ...(debugLogOpen ? styles.debugActive : {}) }}
-        title="调试日志 (Ctrl+Shift+L)"
+        title={t("debugLog.openTitle")}
       >
         🐞
       </button>

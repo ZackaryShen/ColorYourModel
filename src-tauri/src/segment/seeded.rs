@@ -114,21 +114,21 @@ pub fn seed_grow(
     params: &SeedGrowParams,
 ) -> Result<SeedGrowResult, String> {
     if seeds.is_empty() {
-        return Err("至少需要一个种子点 (at least one seed required)".into());
+        return Err("at least one seed required".into());
     }
     let n = mesh.faces.len();
     if n == 0 {
-        return Err("mesh 没有面 (mesh has no faces)".into());
+        return Err("mesh has no faces".into());
     }
 
     // 1. Snap each seed click to a face.
     let mut seed_faces: Vec<u32> = Vec::with_capacity(seeds.len());
     for s in seeds {
         let (vi, _snapped) = snap_point_to_vertex_on_face(mesh, &s.point, s.face_index)
-            .ok_or_else(|| "种子点无法吸附到面 (seed did not snap to a face)".to_string())?;
+            .ok_or_else(|| "seed did not snap to a face".to_string())?;
         let fid = mesh
             .face_of_vertex(vi)
-            .ok_or_else(|| format!("vertex {vi} 没有相邻面 (no incident face)"))?;
+            .ok_or_else(|| format!("seed vertex {vi} has no incident face"))?;
         seed_faces.push(fid);
     }
 

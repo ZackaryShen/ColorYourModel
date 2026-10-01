@@ -100,7 +100,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         }
       } catch (e) {
         log.error("ExportDialog", "failed to load presets", { error: String(e) });
-        setStatusMessage(`导出配置加载失败：${e}`);
+        setStatusMessage(t("export.presetLoadFailed", String(e)));
       }
     })();
     return () => {
@@ -227,11 +227,37 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       onClose();
     } catch (e) {
       log.error("ExportDialog", "export failed", { error: String(e) });
-      setStatusMessage(`导出失败：${e}`);
+      setStatusMessage(t("export.failure", String(e)));
     } finally {
       setExporting(false);
     }
   };
+
+  // No model loaded: nothing to export. The Toolbar button and File menu both
+  // disable their export entries, but this guard makes the empty state
+  // explicit for any path that still opens the dialog (e.g. a model unloaded
+  // while the dialog was already queued) instead of showing empty pickers.
+  const meshData = useAppStore((s) => s.meshData);
+  if (!meshData) {
+    return (
+      <div style={styles.overlay} onClick={onClose}>
+        <div
+          style={styles.dialog}
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div style={styles.header}>{t("export.noModel")}</div>
+          <div style={styles.note}>{t("export.noModelHint")}</div>
+          <div style={styles.footer}>
+            <button className="cym-btn" style={styles.btn} onClick={onClose}>
+              {t("export.cancel")}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.overlay} onClick={onClose}>

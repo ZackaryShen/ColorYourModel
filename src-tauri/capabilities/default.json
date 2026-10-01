@@ -9,6 +9,7 @@
     "core:default",
     "dialog:default",
     "fs:default",
-    "core:window:allow-destroy"
+    "core:window:allow-destroy",
+    "opener:default"
   ]
 }
