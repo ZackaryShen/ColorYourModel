@@ -1188,7 +1188,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       (p) => [p.x, p.y, p.z] as [number, number, number]
     );
     if (pts.length < 3) {
-      setStatusMessage("至少需要 3 个点才能闭合选区");
+      setStatusMessage(t("lasso.need3"));
       return;
     }
     const faceIdx = lassoFaceIndicesRef.current.slice();
@@ -1249,8 +1249,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         return;
       }
       setStatusMessage(
-        `套索：已选 ${next.length} 个点` +
-          (next.length >= 2 ? "（点击起点附近闭合，或按 Enter）" : "")
+        t("lasso.selected", next.length) +
+          (next.length >= 2 ? t("lasso.closeOrEnter") : "")
       );
     },
     [manualRegionAddPoint, finalizeLasso, setStatusMessage, closeThreshold, meshData, vertexData]
@@ -1277,7 +1277,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           // Incremental color update on GPU
           updateFaceColors([result.faceId], [result.color as unknown as [number, number, number, number]]);
           setLastPaintDebug(
-            `✏️ 分区笔 face=${faceId} → label=${result.segmentLabel}`
+            t("segBrush.commit", faceId, result.segmentLabel)
           );
           useAppStore.getState().markHistoryDirty();
         }
@@ -1909,7 +1909,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         const cur = useAppStore.getState().brushRadius;
         const next = Math.min(200, Math.max(0.5, cur - e.deltaY * 0.02));
         useAppStore.getState().setBrushRadius(next);
-        setStatusMessage(`笔刷半径 ${next.toFixed(1)}mm（Ctrl+滚轮）`);
+        setStatusMessage(t("brush.sizeStatus", next.toFixed(1)));
       }
     };
     const wheelTarget = canvas.parentElement ?? canvas;
@@ -1982,7 +1982,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         setLassoPoints(next);
         setLassoClosing(false);
         setStatusMessage(
-          t("lasso.undoPoint") + (next.length > 0 ? `（剩 ${next.length} 个点）` : "")
+          t("lasso.undoPoint") + (next.length > 0 ? t("lasso.pointsLeft", next.length) : "")
         );
       };
       if (e.key === "Escape") {
@@ -2002,7 +2002,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         if (lassoPointsRef.current.length >= 3) {
           finalizeLasso();
         } else {
-          setStatusMessage("至少需要 3 个点才能闭合选区");
+          setStatusMessage(t("lasso.need3"));
         }
         return;
       }
@@ -2054,7 +2054,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           setLassoPoints(next);
           setLassoClosing(false);
           setStatusMessage(
-            t("lasso.undoPoint") + (next.length > 0 ? `（剩 ${next.length} 个点）` : "")
+            t("lasso.undoPoint") + (next.length > 0 ? t("lasso.pointsLeft", next.length) : "")
           );
         } else {
           // No lasso region open → backend undo (also reverts the last lasso
@@ -2534,10 +2534,10 @@ function ControlsHelp() {
   // resizes the brush (brush tools only).
   const hint =
     activeTool === "view"
-      ? "左键 旋转 · 右键 平移 · 中键 缩放 · 滚轮 缩放"
+      ? t("controls.viewHint")
       : isBrush
-      ? "模型上 左键绘制 · 空白处左键旋转 · 右键 平移 · Ctrl+滚轮 调笔刷"
-      : "左键 绘制/选取 · 右键 平移 · 中键 缩放 · 滚轮 缩放";
+      ? t("controls.brushHint")
+      : t("controls.editHint");
   return (
     <div style={helpStyles.bar}>
       <span style={helpStyles.item}>{hint}</span>

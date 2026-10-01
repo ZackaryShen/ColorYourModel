@@ -100,7 +100,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         }
       } catch (e) {
         log.error("ExportDialog", "failed to load presets", { error: String(e) });
-        setStatusMessage(`导出配置加载失败：${e}`);
+        setStatusMessage(t("export.presetLoadFailed", String(e)));
       }
     })();
     return () => {
@@ -227,7 +227,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       onClose();
     } catch (e) {
       log.error("ExportDialog", "export failed", { error: String(e) });
-      setStatusMessage(`导出失败：${e}`);
+      setStatusMessage(t("export.failure", String(e)));
     } finally {
       setExporting(false);
     }

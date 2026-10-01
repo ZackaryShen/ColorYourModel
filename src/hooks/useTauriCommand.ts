@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useT } from "../i18n";
+import { useT, translateError } from "../i18n";
 import { useAppStore } from "../store/appStore";
 import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
@@ -8,6 +8,10 @@ import { log } from "../utils/logger";
 
 export function useTauriCommand() {
   const t = useT();
+  // Backend rejects carry stable English error strings (fuse/seeded/resegment);
+  // localise them against the *live* language so a mid-flight switch still
+  // renders the right one.
+  const tErr = (e: unknown) => translateError(String(e), useAppStore.getState().language);
   const setMeshData = useAppStore((s) => s.setMeshData);
   const updateSegmentLabels = useAppStore((s) => s.updateSegmentLabels);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
@@ -24,7 +28,7 @@ export function useTauriCommand() {
   const loadModel = async (path: string) => {
     log.info("useTauriCommand", `loadModel("${path}")`);
     try {
-      setStatusMessage("Loading model...");
+      setStatusMessage(t("toolbar.startImport"));
       const t0 = performance.now();
       const data = await invoke<MeshData>("load_model", { path });
       const dt = (performance.now() - t0).toFixed(1);
@@ -39,11 +43,11 @@ export function useTauriCommand() {
 
       setMeshData(data);
       log.info("useTauriCommand", "meshData stored in appStore");
-      setStatusMessage(`Loaded: ${data.faceCount} faces`);
+      setStatusMessage(t("status.loaded", data.faceCount.toLocaleString()));
       return data;
     } catch (e) {
       log.error("useTauriCommand", "loadModel failed", { path, error: String(e) });
-      setStatusMessage(`Load failed: ${e}`);
+      setStatusMessage(`${t("toolbar.importFailed")}: ${e}`);
       throw e;
     }
   };
@@ -56,15 +60,15 @@ export function useTauriCommand() {
    */
   const resetSegmentation = async (): Promise<void> => {
     try {
-      setStatusMessage("正在重置分区…");
+      setStatusMessage(t("cmd.reset.working"));
       const result = await invoke<SegmentResult>("reset_segmentation");
       // faceColors length matches meshData.faceColors, so the store guard passes
       // and the canvas repaints to neutral grey.
       updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
-      setStatusMessage("已重置：分区与上色均已清除");
+      setStatusMessage(t("cmd.reset.done"));
     } catch (e) {
       log.error("useTauriCommand", "resetSegmentation failed", { error: String(e) });
-      setStatusMessage(`重置失败：${e}`);
+      setStatusMessage(t("cmd.reset.failed", String(e)));
       throw e;
     }
   };
@@ -87,7 +91,7 @@ export function useTauriCommand() {
       return true;
     } catch (e) {
       log.error("useTauriCommand", "renameSegment failed", { segmentId, error: String(e) });
-      setStatusMessage(`重命名失败：${e}`);
+      setStatusMessage(t("cmd.rename.failed", String(e)));
       return false;
     }
   };
@@ -124,7 +128,7 @@ export function useTauriCommand() {
         sourceIds,
         error: String(e),
       });
-      setStatusMessage(`合并失败：${e}`);
+      setStatusMessage(t("cmd.merge.failed", String(e)));
       return null;
     }
   };
@@ -153,7 +157,7 @@ export function useTauriCommand() {
       return result;
     } catch (e) {
       log.error("useTauriCommand", "splitSegment failed", { segmentId, error: String(e) });
-      setStatusMessage(`拆分失败：${e}`);
+      setStatusMessage(t("cmd.split.failed", String(e)));
       return null;
     }
   };
@@ -204,19 +208,19 @@ export function useTauriCommand() {
         const newLabel = result.segments.reduce((m, s) => Math.max(m, s.id), 0);
         setSelectedSegment(newLabel);
       }
-      setStatusMessage(`手动分区完成（共 ${result.segments.length} 个区域）`);
+      setStatusMessage(t("cmd.manual.done", result.segments.length));
       // REFUTE-driven (iteration 7, problem 3c1): surface a clear success popup
       // so the user knows the partition was created — the whole point of
       // partitioning is to then OPERATE on it (fill / inspect), not to have it
       // silently highlighted.
-      setToast("添加分区成功");
+      setToast(t("cmd.manual.toast"));
       log.info("useTauriCommand", "finalizeManualRegion complete", {
         segments: result.segments.length,
       });
       return result.segments;
     } catch (e) {
       log.error("useTauriCommand", "finalizeManualRegion failed", { error: String(e) });
-      setStatusMessage(`手动分区失败：${e}`);
+      setStatusMessage(t("cmd.manual.failed", String(e)));
     } finally {
       setLoading(false);
     }
@@ -232,19 +236,19 @@ export function useTauriCommand() {
   const export3mf = async (path: string, selection?: ExportSelection) => {
     log.info("useTauriCommand", `export3mf("${path}")`, { selection });
     try {
-      setStatusMessage("Exporting...");
+      setStatusMessage(t("export.exporting"));
       const msg: string = await invoke("export_3mf_command", {
         path,
         selection: selection ?? null,
       });
       log.info("useTauriCommand", "export3mf complete", { msg });
       markPaintExported();
-      setStatusMessage("Export complete");
+      setStatusMessage(t("export.complete"));
       setToast(t("export.success", msg.replace(/^Exported to /, "")));
       return msg;
     } catch (e) {
       log.error("useTauriCommand", "export3mf failed", { error: String(e) });
-      setStatusMessage(`Export failed: ${e}`);
+      setStatusMessage(t("export.failure", String(e)));
       setToast(t("export.failure", String(e)));
       throw e;
     }
@@ -258,16 +262,16 @@ export function useTauriCommand() {
   const exportObj = async (path: string) => {
     log.info("useTauriCommand", `exportObj("${path}")`);
     try {
-      setStatusMessage("Exporting...");
+      setStatusMessage(t("export.exporting"));
       const msg: string = await invoke("export_obj_command", { path });
       log.info("useTauriCommand", "exportObj complete", { msg });
       markPaintExported();
-      setStatusMessage("Export complete");
+      setStatusMessage(t("export.complete"));
       setToast(t("export.successObj", msg.replace(/^Exported to /, "")));
       return msg;
     } catch (e) {
       log.error("useTauriCommand", "exportObj failed", { error: String(e) });
-      setStatusMessage(`Export failed: ${e}`);
+      setStatusMessage(t("export.failure", String(e)));
       setToast(t("export.failure", String(e)));
       throw e;
     }
@@ -351,7 +355,7 @@ export function useTauriCommand() {
       }>("finalize_segment", { segmentLabel });
 
       updateSegmentLabels(result.segmentLabels, result.segments);
-      setStatusMessage(`Segment created (${result.segments.length} total regions)`);
+      setStatusMessage(t("cmd.finalizeSegment.done", result.segments.length));
       log.info("useTauriCommand", "finalizeSegment complete", {
         segments: result.segments.length,
       });
@@ -371,14 +375,14 @@ export function useTauriCommand() {
   ): Promise<SegmentResult> => {
     log.info("useTauriCommand", `resegmentRegion(${label}, ${algorithm.type})`);
     try {
-      setStatusMessage("区域内再分区中…");
+      setStatusMessage(t("cmd.resegment.working"));
       const result = await invoke<SegmentResult>("resegment_region", { label, algorithm });
       updateSegmentLabels(result.segmentLabels, result.segments);
-      setStatusMessage(`再分区完成：${result.segments.length} 个区域`);
+      setStatusMessage(t("cmd.resegment.done", result.segments.length));
       return result;
     } catch (e) {
       log.error("useTauriCommand", "resegmentRegion failed", { error: String(e) });
-      setStatusMessage(`再分区失败：${e}`);
+      setStatusMessage(t("cmd.resegment.failed", tErr(e)));
       throw e;
     }
   };
@@ -396,7 +400,7 @@ export function useTauriCommand() {
   ): Promise<SegmentResult> => {
     log.info("useTauriCommand", `seedGrow(${seeds.length} seeds, barrier=${barrierDeg}°)`);
     try {
-      setStatusMessage("种子生长分区中…");
+      setStatusMessage(t("cmd.seed.working"));
       // Map the JS SeedPoint shape ({x,y,z,faceIndex}) to the Rust SeedInput
       // ({point, face_index}) the command expects. Tauri 2 only converts
       // top-level invoke keys (camelCase↔snake_case); nested struct fields
@@ -404,11 +408,11 @@ export function useTauriCommand() {
       const payload = seeds.map((s) => ({ point: [s.x, s.y, s.z], face_index: s.faceIndex }));
       const result = await invoke<SegmentResult>("seed_grow", { seeds: payload, barrierDeg, optimizer });
       updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
-      setStatusMessage(`种子分区完成：${result.segments.length} 个区域`);
+      setStatusMessage(t("seed.done", result.segments.length));
       return result;
     } catch (e) {
       log.error("useTauriCommand", "seedGrow failed", { error: String(e) });
-      setStatusMessage(`种子分区失败：${e}`);
+      setStatusMessage(t("cmd.seed.failed", tErr(e)));
       throw e;
     }
   };
@@ -429,7 +433,7 @@ export function useTauriCommand() {
       `recommendSeeds(${count}, curv=${curvature}, conc=${concavity})`
     );
     try {
-      setStatusMessage("正在推荐种子点位…");
+      setStatusMessage(t("cmd.suggest.working"));
       // Backend returns { point: [x,y,z], faceIndex } — map to the JS SeedPoint
       // shape ({x,y,z,faceIndex}). Tauri 2 only converts top-level invoke keys,
       // so nested field names already match the Rust side (camelCase here).
@@ -443,11 +447,11 @@ export function useTauriCommand() {
         z: r.point[2],
         faceIndex: r.faceIndex,
       }));
-      setStatusMessage(`已推荐 ${seeds.length} 个候选种子（点击接受）`);
+      setStatusMessage(t("cmd.suggest.done", seeds.length));
       return seeds;
     } catch (e) {
       log.error("useTauriCommand", "recommendSeeds failed", { error: String(e) });
-      setStatusMessage(`推荐种子失败：${e}`);
+      setStatusMessage(t("cmd.suggest.failed", String(e)));
       throw e;
     }
   };
@@ -469,7 +473,7 @@ export function useTauriCommand() {
       `detectPlanarRegions(angle=${angleThresholdDeg}°, distFactor=${distThrFactor}, min=${minRegionFaces})`
     );
     try {
-      setStatusMessage("正在检测连续平面区域…");
+      setStatusMessage(t("cmd.planar.working"));
       const raw = await invoke<
         Array<{
           plane: [number, number, number, number];
@@ -490,11 +494,11 @@ export function useTauriCommand() {
         boundaryEdges: r.boundaryEdges,
         faceIndices: r.faceIndices,
       }));
-      setStatusMessage(`已检测 ${regions.length} 个连续平面区域`);
+      setStatusMessage(t("cmd.planar.done", regions.length));
       return regions;
     } catch (e) {
       log.error("useTauriCommand", "detectPlanarRegions failed", { error: String(e) });
-      setStatusMessage(`平面检测失败：${e}`);
+      setStatusMessage(t("cmd.planar.failed", String(e)));
       return [];
     }
   };
@@ -512,7 +516,7 @@ export function useTauriCommand() {
       `detectMultiViewRegions(views=${viewCount}, angle=${angleThresholdDeg}°, min=${minRegionFaces}, match=${matchThreshold})`
     );
     try {
-      setStatusMessage("正在多视角(3→2→3)检测区域…");
+      setStatusMessage(t("cmd.multiview.working"));
       const raw = await invoke<
         Array<{
           faceCount: number;
@@ -532,11 +536,11 @@ export function useTauriCommand() {
         boundaryEdges: r.boundaryEdges,
         faceIndices: r.faceIndices,
       }));
-      setStatusMessage(`已检测 ${regions.length} 个多视角区域`);
+      setStatusMessage(t("cmd.multiview.done", regions.length));
       return regions;
     } catch (e) {
       log.error("useTauriCommand", "detectMultiViewRegions failed", { error: String(e) });
-      setStatusMessage(`多视角检测失败：${e}`);
+      setStatusMessage(t("cmd.multiview.failed", String(e)));
       return [];
     }
   };
@@ -554,7 +558,7 @@ export function useTauriCommand() {
       `detectCrossSectionRegions(planesPerAxis=${planesPerAxis}, featureThreshold=${featureThreshold})`
     );
     try {
-      setStatusMessage("正在截面(射线)检测特征…");
+      setStatusMessage(t("cmd.crossSection.working"));
       const raw = await invoke<
         Array<{
           plane: number[];
@@ -576,11 +580,11 @@ export function useTauriCommand() {
         winding: r.winding,
         boundaryEdges: r.boundaryEdges,
       }));
-      setStatusMessage(`已检测 ${regions.length} 个截面特征`);
+      setStatusMessage(t("cmd.crossSection.done", regions.length));
       return regions;
     } catch (e) {
       log.error("useTauriCommand", "detectCrossSectionRegions failed", { error: String(e) });
-      setStatusMessage(`截面检测失败：${e}`);
+      setStatusMessage(t("cmd.crossSection.failed", String(e)));
       return [];
     }
   };
@@ -593,7 +597,7 @@ export function useTauriCommand() {
   const detectEyeRegions = async (roiFaces: number[]): Promise<EyeRegion[]> => {
     log.info("useTauriCommand", `detectEyeRegions(roi=${roiFaces.length} faces)`);
     try {
-      setStatusMessage("正在语义识别眼睛区域…");
+      setStatusMessage(t("cmd.eye.working"));
       const raw = await invoke<
         Array<{
           semantic: EyeRegion["semantic"];
@@ -620,11 +624,11 @@ export function useTauriCommand() {
       const parts = ["globe", "sclera", "eyelid", "socket"]
         .map((k) => `${k}:${tally[k] ?? 0}`)
         .join(" ");
-      setStatusMessage(`已识别 ${regions.length} 个眼睛子区域 (${parts})`);
+      setStatusMessage(t("cmd.eye.done", regions.length, parts));
       return regions;
     } catch (e) {
       log.error("useTauriCommand", "detectEyeRegions failed", { error: String(e) });
-      setStatusMessage(`眼睛识别失败：${e}`);
+      setStatusMessage(t("cmd.eye.failed", String(e)));
       return [];
     }
   };
@@ -635,7 +639,7 @@ export function useTauriCommand() {
   const detectEyeRegionsAuto = async (): Promise<EyeRegion[]> => {
     log.info("useTauriCommand", "detectEyeRegionsAuto()");
     try {
-      setStatusMessage("正在自动识别眼睛…");
+      setStatusMessage(t("cmd.eyeAuto.working"));
       const raw = await invoke<
         Array<{
           semantic: EyeRegion["semantic"];
@@ -659,11 +663,11 @@ export function useTauriCommand() {
       const parts = ["globe", "sclera", "eyelid", "socket"]
         .map((k) => `${k}:${tally[k] ?? 0}`)
         .join(" ");
-      setStatusMessage(`自动识别到 ${regions.length} 个眼睛子区域 (${parts})`);
+      setStatusMessage(t("cmd.eyeAuto.done", regions.length, parts));
       return regions;
     } catch (e) {
       log.error("useTauriCommand", "detectEyeRegionsAuto failed", { error: String(e) });
-      setStatusMessage(`自动眼睛识别失败：${e}`);
+      setStatusMessage(t("cmd.eyeAuto.failed", String(e)));
       return [];
     }
   };
@@ -689,7 +693,7 @@ export function useTauriCommand() {
       `fuseSegmentation(cutThreshold=${cutThreshold}, minRegionFaces=${minRegionFaces}, dihedralDeg=${dihedralDeg}, eyeSets=${eyeFaceIndices?.length ?? 0})`
     );
     try {
-      setStatusMessage("融合生成分区中…");
+      setStatusMessage(t("cmd.fuse.working"));
       // The backend parameter is `eye_face_indices` (snake_case). Tauri 2
       // converts top-level invoke keys but the nested `Vec<Vec<u32>>` shape is
       // already what serde expects, so we pass through as-is. When the caller
@@ -702,11 +706,11 @@ export function useTauriCommand() {
         eyeFaceIndices: eyeFaceIndices ?? [],
       });
       updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
-      setStatusMessage(`融合分区完成：${result.segments.length} 个区域`);
+      setStatusMessage(t("cmd.fuse.done", result.segments.length));
       return result;
     } catch (e) {
       log.error("useTauriCommand", "fuseSegmentation failed", { error: String(e) });
-      setStatusMessage(`融合分区失败：${e}`);
+      setStatusMessage(t("cmd.fuse.failed", tErr(e)));
       throw e;
     }
   };

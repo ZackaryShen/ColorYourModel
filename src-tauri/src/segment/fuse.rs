@@ -152,14 +152,14 @@ pub fn fuse_region_sets(
 ) -> Result<FuseResult, String> {
     let n = mesh.faces.len();
     if n == 0 {
-        return Err("mesh 没有面 (mesh has no faces)".into());
+        return Err("mesh has no faces".into());
     }
     if planar_sets.is_empty()
         && multiview_sets.is_empty()
         && dihedral_sets.is_empty()
         && eye_sets.is_empty()
     {
-        return Err("所有算法均未检测到区域 (all detectors returned no regions)".into());
+        return Err("all detectors returned no regions".into());
     }
 
     let planar_label = label_from_sets(n, planar_sets);

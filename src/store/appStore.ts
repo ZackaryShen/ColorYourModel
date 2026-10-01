@@ -2,7 +2,7 @@ import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { MeshData, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
-import type { Lang } from "../i18n";
+import { translate, type Lang } from "../i18nDict";
 import { log } from "../utils/logger";
 import {
   sanitizeAlgorithmParams,
@@ -458,15 +458,15 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   segmentStageKind: null,
 
   setMeshData: (data) =>
-    set({
+    set(() => ({
       meshData: data,
       isLoaded: true,
       canUndo: false,
       canRedo: false,
       paintDirty: false,
       segments: projectSegments(data.segments),
-      statusMessage: `已加载 ${data.faceCount.toLocaleString()} 个面`,
-    }),
+      statusMessage: translate("status.loaded", get().language, data.faceCount.toLocaleString()),
+    })),
 
   updateSegmentLabels: (labels, segments, faceColors) =>
     set((state) => ({
