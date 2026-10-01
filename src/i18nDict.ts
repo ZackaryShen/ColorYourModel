@@ -257,6 +257,32 @@ const dict: Record<string, Record<Lang, string>> = {
     en: "This model has painting or segmentation changes that have not been exported yet. Quit anyway?",
   },
 
+  // Top menu bar (File / View / Help)
+  "menu.file": { zh: "文件", en: "File" },
+  "menu.view": { zh: "视图", en: "View" },
+  "menu.help": { zh: "帮助", en: "Help" },
+  "menu.import": { zh: "导入 STL…", en: "Import STL…" },
+  "menu.export": { zh: "导出涂装模型…", en: "Export painted model…" },
+  "menu.quit": { zh: "退出", en: "Quit" },
+  // Target-language convention, same as the StatusBar lang-switch tooltip.
+  "menu.language": { zh: "切换到 English", en: "切换到中文" },
+  "menu.themeToLight": { zh: "切换到浅色主题", en: "Switch to light theme" },
+  "menu.themeToDark": { zh: "切换到深色主题", en: "Switch to dark theme" },
+  "menu.debugLog": { zh: "调试日志 (Ctrl+Shift+L)", en: "Debug log (Ctrl+Shift+L)" },
+  "menu.wiki": { zh: "帮助文档（Wiki）", en: "Documentation (Wiki)" },
+  "menu.about": { zh: "关于 ColorYourModel", en: "About ColorYourModel" },
+
+  // About dialog
+  "about.desc": {
+    zh: "给 3D 打印手办上色的桌面工具：导入 STL，智能分区，涂色后导出带颜色的 3MF/OBJ。",
+    en: "A desktop tool for painting 3D-print figures: import an STL, partition it smartly, paint, and export coloured 3MF/OBJ.",
+  },
+  "about.version": { zh: "版本", en: "Version" },
+  "about.tech": { zh: "技术栈", en: "Built with" },
+  "about.license": { zh: "开源协议", en: "License" },
+  "about.repo": { zh: "源码仓库", en: "Repository" },
+  "about.close": { zh: "关闭", en: "Close" },
+
   // Fill tool status (usePaintTool)
   "fill.done": { zh: "已填充分区 {0}（{1} 个面）颜色 {2}", en: "Filled region {0} ({1} faces) with colour {2}" },
   "fill.failed": { zh: "分区填充失败：{0}", en: "Region fill failed: {0}" },

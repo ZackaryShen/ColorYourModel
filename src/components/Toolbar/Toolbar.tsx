@@ -1,10 +1,10 @@
-import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { PaintTool } from "../../types/mesh";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo } from "../../hooks/useHistory";
+import { useImportStl } from "../../hooks/useImportStl";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 import { ExportDialog } from "../ExportDialog/ExportDialog";
@@ -40,6 +40,7 @@ export function Toolbar() {
   const brushStrength = useAppStore((s) => s.brushStrength);
   const { loadModel, undo, redo, historyState } = useTauriCommand();
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
+  const handleImport = useImportStl();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {
@@ -65,40 +66,8 @@ export function Toolbar() {
     };
   }, [setImportProgress, setSegmentProgress, setLoadingKind]);
 
-  const handleImport = async () => {
-    log.info("Toolbar", "Import button clicked");
-    const selected = await open({
-      multiple: false,
-      filters: [{ name: "3D Models", extensions: ["stl"] }],
-    });
-    if (!selected) {
-      log.debug("Toolbar", "File dialog cancelled");
-      return;
-    }
-
-    log.info("Toolbar", `File selected: ${selected}`);
-    setLoading(true);
-    setImportProgress(0, t("toolbar.startImport"));
-
-    try {
-      await loadModel(selected);
-    } catch (e) {
-      log.error("Toolbar", "Import failed", { error: String(e) });
-      setStatusMessage(`${t("toolbar.importFailed")}: ${e}`);
-      return;
-    }
-
-    // No automatic segmentation on import (removed 2026-08-29): the fuse flow
-    // (SeedPanel → 融合生成) never consumed it — fuse_segmentation builds its
-    // own planar/multiview/dihedral vote channels and wipes existing labels
-    // before re-labelling — so the 30s+ of per-import compute was dead work.
-    // Region generation now starts explicitly from the Seed panel; Fill's
-    // normal click stays radius-bounded without regions (only Shift+click's
-    // explicit whole-region flood needs a partition).
-    setImportProgress(1, t("toolbar.importComplete"));
-    setStatusMessage(t("toolbar.importComplete"));
-    setLoading(false);
-  };
+  // handleImport comes from the shared useImportStl hook (also used by the
+  // File menu): file picker → import progress → loadModel → status messages.
 
   const handleExport = () => {
     setExportDialogOpen(true);

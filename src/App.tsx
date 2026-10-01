@@ -6,6 +6,7 @@ import { ColorPanel } from "./components/ColorPanel/ColorPanel";
 import { SegmentsPanel } from "./components/SegmentsPanel/SegmentsPanel";
 import { BrushSettings } from "./components/BrushSettings/BrushSettings";
 import { StatusBar } from "./components/StatusBar/StatusBar";
+import { MenuBar } from "./components/MenuBar";
 import { DebugLogViewer } from "./components/DebugLogViewer";
 import { ExitConfirmDialog } from "./components/ExitConfirmDialog";
 import { useAppStore } from "./store/appStore";
@@ -51,6 +52,10 @@ function App() {
 
   return (
     <div style={styles.root}>
+      {/* Top menu bar (File / View / Help) — conventional desktop entry
+          points alongside the left tool Toolbar. */}
+      <MenuBar />
+
       {/* Main layout */}
       <div style={styles.main}>
         {/* Left toolbar */}
