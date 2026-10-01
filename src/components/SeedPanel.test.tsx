@@ -42,6 +42,9 @@ const resetStore = () => {
     seedPoints: [],
     suggestedSeeds: [],
     statusMessage: "",
+    // Pin UI language: the app default now follows the OS locale, but these
+    // tests assert Chinese strings regardless of the environment locale.
+    language: "zh",
   } as Partial<ReturnType<typeof useAppStore.getState>>);
 };
 
