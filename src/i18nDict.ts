@@ -260,6 +260,14 @@ const dict: Record<string, Record<Lang, string>> = {
     en: "This model has painting or segmentation changes that have not been exported yet. Quit anyway?",
   },
 
+  // View gizmo (Orca-style view cube, bottom-right of the viewport)
+  "gizmo.top": { zh: "顶部视图（XY 平面）", en: "Top view (XY plane)" },
+  "gizmo.bottom": { zh: "底部视图（XY 平面）", en: "Bottom view (XY plane)" },
+  "gizmo.front": { zh: "前视图（XZ 平面）", en: "Front view (XZ plane)" },
+  "gizmo.back": { zh: "后视图（XZ 平面）", en: "Back view (XZ plane)" },
+  "gizmo.right": { zh: "右视图（YZ 平面）", en: "Right view (YZ plane)" },
+  "gizmo.left": { zh: "左视图（YZ 平面）", en: "Left view (YZ plane)" },
+
   // Top menu bar (File / View / Help)
   "menu.file": { zh: "文件", en: "File" },
   "menu.view": { zh: "视图", en: "View" },

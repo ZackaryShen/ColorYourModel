@@ -13,6 +13,8 @@ import { useT } from "../../i18n";
 import { SeedPanel } from "../SeedPanel";
 import { resolveSegmentStage } from "../../segmentStages";
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
+import { ViewGizmo } from "./ViewGizmo";
+import { isPointerInGizmo } from "./viewGizmoModel";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
 // Patched ONCE at module load. `acceleratedRaycast` falls back to the native
@@ -1487,6 +1489,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
+      // View-gizmo corner owns its pointers — never paint/lasso/seed from
+      // there (ViewGizmo also disables OrbitControls inside the rect).
+      if (isPointerInGizmo(e.clientX, e.clientY, canvas)) return;
       // View mode or Alt held → let OrbitControls handle it (rotate); never paint.
       if (isViewTool || _altHeld) return;
       // Iteration 78: Pick-for-Eye sub-mode intercepts clicks BEFORE the
@@ -1669,6 +1674,24 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         updateBrushCursor(hit && hit.faceIndex != null ? hit : null);
         if (hit && hit.faceIndex != null) {
           enqueuePaint(hit.faceIndex);
+        }
+        return;
+      }
+
+      // View-gizmo corner: treat as empty space — no hover raycast, no lasso
+      // preview, no brush ring — so the gizmo never drives paint state.
+      // (Deliberately AFTER the isPainting branch: a drag that started on the
+      // model keeps painting while it sweeps across the corner.)
+      if (isPointerInGizmo(e.clientX, e.clientY, canvas)) {
+        updateBrushCursor(null);
+        if (overModelRef.current) {
+          overModelRef.current = false;
+          applyCameraButtons();
+        }
+        if (useAppStore.getState().hoveredSegment !== null) setHoveredSegment(null);
+        if (isLassoTool) {
+          setLassoPreview(null);
+          setLassoClosing(false);
         }
         return;
       }
@@ -1903,6 +1926,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // the canvas itself does NOT preempt a same-element listener registered
     // earlier — confirmed against three-stdlib OrbitControls, REFUTE P3.)
     const onWheel = (e: WheelEvent) => {
+      // No brush resizing from the gizmo corner (wheel there is dead space —
+      // ViewGizmo keeps OrbitControls disabled inside its rect).
+      if (isPointerInGizmo(e.clientX, e.clientY, canvas)) return;
       if (e.ctrlKey && isRadiusTool && overModelRef.current) {
         e.preventDefault();
         e.stopPropagation();
@@ -2800,6 +2826,7 @@ export function Viewport() {
         <ControlsBridge />
         {isLoaded && <MeshDisplay />}
         <AdaptiveGrid />
+        <ViewGizmo />
       </Canvas>
       {isLoaded && activeTool === "seed" && <SeedPanel />}
       <ProgressBar />
