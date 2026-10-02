@@ -18,10 +18,10 @@ import * as THREE from "three";
  *  rect stays in lock-step with the rendered gizmo position. */
 export const GIZMO_MARGIN_X = 72;
 export const GIZMO_MARGIN_Y = 96;
-/** Half extent of the interactive corner square (cube + axis heads + slack).
+/** Half extent of the interactive corner square (guard ring + slack).
  *  Generous on purpose: a click that misses the gizmo visuals but lands in
  *  the corner must not paint or orbit — it hits dead space instead. */
-export const GIZMO_HALF_EXTENT = 96;
+export const GIZMO_HALF_EXTENT = 84;
 
 export interface GizmoRect {
   /** Canvas-local centre (CSS px, top-left origin). */

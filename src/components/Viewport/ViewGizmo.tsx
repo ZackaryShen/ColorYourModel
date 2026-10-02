@@ -52,10 +52,14 @@ interface ControlsLike {
 const S = 58; // group scale
 const CUBE = 0.8; // cube edge (46px) — half-extent 0.4
 const SHAFT_R = 0.032;
-const POS_SHAFT_LEN = 0.86; // 0.42 → 1.28
-const POS_HEAD_AT = 1.4;
-const NEG_SHAFT_LEN = 0.62; // 0.42 → 1.04
-const NEG_HEAD_AT = 1.14;
+const POS_SHAFT_LEN = 0.42; // 0.42 → 0.84
+const POS_HEAD_AT = 0.98;
+const NEG_SHAFT_LEN = 0.32; // 0.42 → 0.74
+const NEG_HEAD_AT = 0.86;
+// Outer guard ring: a thin screen-aligned circle framing the whole widget.
+// Must clear the arrow heads (POS_HEAD_AT + half head ≈ 1.15).
+const RING_R = 1.26;
+const RING_W = 0.02;
 const DRAG_THRESHOLD_PX = 4;
 const ROT_SPEED = 0.008; // rad per CSS px of drag
 const SNAP_DURATION = 0.28; // seconds
@@ -308,7 +312,14 @@ function GizmoContent({
     },
     [controls, mainCamera, setStatusMessage, t]
   );
+  const ringRef = useRef<THREE.Mesh>(null);
   useFrame((_, delta) => {
+    // Guard ring stays screen-aligned while the cube counter-rotates: the
+    // gizmo group carries camQ⁻¹, so a child needs localQ = camQ² for its
+    // world orientation to equal the camera's (a billboard facing the viewer).
+    if (ringRef.current) {
+      ringRef.current.quaternion.copy(mainCamera.quaternion).multiply(mainCamera.quaternion);
+    }
     const a = animRef.current;
     if (!a) return;
     a.t = Math.min(1, a.t + delta / SNAP_DURATION);
@@ -391,6 +402,19 @@ function GizmoContent({
       <lineSegments geometry={cubeEdges} scale={1.001}>
         <lineBasicMaterial color={pal.edge} toneMapped={false} />
       </lineSegments>
+
+      {/* Outer guard ring (thin, screen-aligned — quaternion set per frame) */}
+      <mesh ref={ringRef}>
+        <ringGeometry args={[RING_R, RING_R + RING_W, 96]} />
+        <meshBasicMaterial
+          color={pal.faceText}
+          opacity={0.35}
+          transparent
+          side={THREE.DoubleSide}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
 
       {/* Labelled faces */}
       {GIZMO_FACES.map((f, i) => (
