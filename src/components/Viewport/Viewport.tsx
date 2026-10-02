@@ -195,11 +195,19 @@ function CameraFit() {
     // Using 1.3× the XZ span keeps most grid visible while not wasting space.
     const spanXZ = Math.max(dimX, dimZ);
     const effectiveDim = Math.max(maxDim, spanXZ * 1.3);
-    const fit = Math.min(size.width, size.height) / effectiveDim;
-    cam.zoom = Math.min(fit * 0.88, 500); // 0.88 fills ~88% of viewport; clamped to maxZoom (iteration 22)
-    cam.near = Math.max(0.1, viewDist - maxDim * 2);
-    cam.far = viewDist + maxDim * 2;
-    cam.updateProjectionMatrix();
+      const fit = Math.min(size.width, size.height) / effectiveDim;
+      cam.zoom = Math.min(fit * 0.88, 500); // 0.88 fills ~88% of viewport; clamped to maxZoom (iteration 22)
+      // Under ortho, near/far ONLY clip — they never distort size or parallax.
+      // The ±2·maxDim bracket used to swallow the floor grid's near edge at
+      // low/below-horizon camera angles (jagged line cuts at the grid's
+      // front, healing on rotate — the gizmo's free orbit + bottom-view snap
+      // make those poses routine now), so bracket generously instead: the
+      // grid spans ~1.25·spanXZ around the model and every camera op here
+      // (orbit, gizmo drag, snap) preserves the target distance, so a wide
+      // static bracket stays valid.
+      cam.near = Math.max(0.1, viewDist - maxDim * 6);
+      cam.far = viewDist + maxDim * 6;
+      cam.updateProjectionMatrix();
 
     // CRITICAL: OrbitControls orbits and pans around its `target`. If we only
     // move the camera but leave target at the default (0,0,0), the pivot is
