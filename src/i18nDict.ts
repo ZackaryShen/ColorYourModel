@@ -267,6 +267,13 @@ const dict: Record<string, Record<Lang, string>> = {
   "gizmo.back": { zh: "后视图（XZ 平面）", en: "Back view (XZ plane)" },
   "gizmo.right": { zh: "右视图（YZ 平面）", en: "Right view (YZ plane)" },
   "gizmo.left": { zh: "左视图（YZ 平面）", en: "Left view (YZ plane)" },
+  // Short direction words baked into the cube faces (Orca-style)
+  "gizmo.face.top": { zh: "顶部", en: "TOP" },
+  "gizmo.face.bottom": { zh: "底部", en: "BOTTOM" },
+  "gizmo.face.front": { zh: "正面", en: "FRONT" },
+  "gizmo.face.back": { zh: "背面", en: "BACK" },
+  "gizmo.face.right": { zh: "右侧", en: "RIGHT" },
+  "gizmo.face.left": { zh: "左侧", en: "LEFT" },
 
   // Top menu bar (File / View / Help)
   "menu.file": { zh: "文件", en: "File" },

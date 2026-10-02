@@ -4,6 +4,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { GizmoHelper } from "@react-three/drei";
 import { useAppStore } from "../../store/appStore";
 import { useT } from "../../i18n";
+import { translate } from "../../i18nDict";
 import {
   GIZMO_AXES,
   GIZMO_FACES,
@@ -52,14 +53,18 @@ interface ControlsLike {
 const S = 58; // group scale
 const CUBE = 0.8; // cube edge (46px) — half-extent 0.4
 const SHAFT_R = 0.032;
-const POS_SHAFT_LEN = 0.42; // 0.42 → 0.84
-const POS_HEAD_AT = 0.98;
-const NEG_SHAFT_LEN = 0.32; // 0.42 → 0.74
-const NEG_HEAD_AT = 0.86;
+// Corner axis triad: anchored at the cube's bottom-right, sized to match the
+// cube. The anchor lives in the counter-rotated frame, so it stays put on
+// screen while the arrows sweep/foreshorten with the camera.
+const TRIAD_ORIGIN: [number, number, number] = [0.62, -0.62, 0];
+const TRIAD_SHAFT_LEN = 0.52;
+const TRIAD_HEAD_AT = 0.6;
 // Outer guard ring: a thin screen-aligned circle framing the whole widget.
-// Must clear the arrow heads (POS_HEAD_AT + half head ≈ 1.15).
-const RING_R = 1.26;
+// Hidden by default; fades in only while the pointer hovers the CUBE.
+// Must clear the triad's worst-case reach (TRIAD_ORIGIN + head + half sprite).
+const RING_R = 1.44;
 const RING_W = 0.02;
+const RING_OPACITY = 0.35;
 const DRAG_THRESHOLD_PX = 4;
 const ROT_SPEED = 0.008; // rad per CSS px of drag
 const SNAP_DURATION = 0.28; // seconds
@@ -107,7 +112,9 @@ function makeFaceTexture(label: string, pal: GizmoPalette): THREE.CanvasTexture 
   ctx.strokeStyle = pal.faceBorder;
   ctx.lineWidth = 4;
   ctx.strokeRect(0, 0, 128, 128);
-  ctx.font = 'bold 40px "Segoe UI", Arial, sans-serif';
+  // Shrink long direction words (BOTTOM/FRONT) so they stay inside the face.
+  const px = label.length >= 5 ? 30 : 42;
+  ctx.font = `bold ${px}px "Segoe UI", Arial, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = pal.faceText;
@@ -220,32 +227,32 @@ function GizmoContent({
   // the click pick below must raycast with.
   const hudCamera = useThree((s) => s.camera);
   const theme = useAppStore((s) => s.theme);
+  const language = useAppStore((s) => s.language);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const [hoverView, setHoverView] = useState<number | null>(null);
+  // Hover target: which view it highlights, and whether it lives on the cube
+  // (drives the guard-ring fade-in).
+  const [hover, setHover] = useState<{ view: number; onCube: boolean } | null>(null);
 
   const pal = THEME[theme];
-  const faceTextures = useMemo(() => {
-    const m = new Map<string, THREE.CanvasTexture>();
-    for (const p of ["XY", "XZ", "YZ"] as const) m.set(p, makeFaceTexture(p, pal));
-    return m;
-  }, [pal]);
+  // Orca-style direction words (顶部/正面/... or TOP/FRONT/...), re-baked on
+  // language and theme changes.
+  const faceTextures = useMemo(
+    () =>
+      GIZMO_FACES.map((f) =>
+        makeFaceTexture(translate(GIZMO_VIEWS[f.viewIndex].faceKey, language), pal)
+      ),
+    [pal, language]
+  );
   const headTextures = useMemo(
     () => GIZMO_AXES.map((a) => makeHeadTexture(a.label, a.color, pal)),
-    [pal]
-  );
-  // Unlettered circles for the negative arrow heads (a sprite without a map
-  // renders as a square, which reads as debris next to the round heads).
-  const negHeadTextures = useMemo(
-    () => GIZMO_AXES.map((a) => makeHeadTexture("", a.color, pal)),
     [pal]
   );
   useEffect(() => {
     return () => {
       faceTextures.forEach((tex) => tex.dispose());
       headTextures.forEach((tex) => tex.dispose());
-      negHeadTextures.forEach((tex) => tex.dispose());
     };
-  }, [faceTextures, headTextures, negHeadTextures]);
+  }, [faceTextures, headTextures]);
 
   const cubeEdges = useMemo(
     () => new THREE.EdgesGeometry(new THREE.BoxGeometry(CUBE, CUBE, CUBE)),
@@ -253,7 +260,7 @@ function GizmoContent({
   );
   useEffect(() => () => cubeEdges.dispose(), [cubeEdges]);
 
-  // Click-pick targets: the 6 face planes + the 6 arrow heads.
+  // Click-pick targets: the 6 face planes + the 3 triad arrow heads.
   const pickables = useRef<(THREE.Mesh | THREE.Sprite)[]>([]);
   const addPickable = useCallback(
     (el: THREE.Mesh | THREE.Sprite | null) => {
@@ -313,12 +320,20 @@ function GizmoContent({
     [controls, mainCamera, setStatusMessage, t]
   );
   const ringRef = useRef<THREE.Mesh>(null);
+  const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const ringOpacityRef = useRef(0);
   useFrame((_, delta) => {
     // Guard ring stays screen-aligned while the cube counter-rotates: the
     // gizmo group carries camQ⁻¹, so a child needs localQ = camQ² for its
     // world orientation to equal the camera's (a billboard facing the viewer).
     if (ringRef.current) {
       ringRef.current.quaternion.copy(mainCamera.quaternion).multiply(mainCamera.quaternion);
+      // Fade in only while the pointer is over the cube; a fixed perfect
+      // circle that never rotates with the gizmo.
+      const target = hover?.onCube ? RING_OPACITY : 0;
+      ringOpacityRef.current += (target - ringOpacityRef.current) * Math.min(1, delta * 14);
+      ringRef.current.visible = ringOpacityRef.current > 0.01;
+      if (ringMatRef.current) ringMatRef.current.opacity = ringOpacityRef.current;
     }
     const a = animRef.current;
     if (!a) return;
@@ -403,12 +418,14 @@ function GizmoContent({
         <lineBasicMaterial color={pal.edge} toneMapped={false} />
       </lineSegments>
 
-      {/* Outer guard ring (thin, screen-aligned — quaternion set per frame) */}
-      <mesh ref={ringRef}>
+      {/* Outer guard ring (thin, screen-aligned circle; opacity driven per
+          frame — fades in while the pointer hovers the cube) */}
+      <mesh ref={ringRef} visible={false}>
         <ringGeometry args={[RING_R, RING_R + RING_W, 96]} />
         <meshBasicMaterial
+          ref={ringMatRef}
           color={pal.faceText}
-          opacity={0.35}
+          opacity={0}
           transparent
           side={THREE.DoubleSide}
           depthWrite={false}
@@ -416,7 +433,7 @@ function GizmoContent({
         />
       </mesh>
 
-      {/* Labelled faces */}
+      {/* Labelled faces (Orca-style direction words) */}
       {GIZMO_FACES.map((f, i) => (
         <mesh
           key={`face-${i}`}
@@ -426,68 +443,68 @@ function GizmoContent({
           userData={{ viewIndex: f.viewIndex }}
           onPointerMove={(e) => {
             e.stopPropagation();
-            if (hoverView !== f.viewIndex) setHoverView(f.viewIndex);
+            if (hover?.view !== f.viewIndex) setHover({ view: f.viewIndex, onCube: true });
           }}
           onPointerOut={(e) => {
             e.stopPropagation();
-            setHoverView((h) => (h === f.viewIndex ? null : h));
+            setHover((h) => (h?.view === f.viewIndex ? null : h));
           }}
         >
           <planeGeometry args={[0.72, 0.72]} />
           <meshBasicMaterial
-            map={faceTextures.get(f.plane) ?? null}
-            color={hoverView === f.viewIndex ? pal.hover : "#ffffff"}
+            map={faceTextures[i] ?? null}
+            color={hover?.view === f.viewIndex ? pal.hover : "#ffffff"}
             toneMapped={false}
           />
         </mesh>
       ))}
 
-      {/* Axis arrows (model space: X, Y=world -Z, Z=world +Y) */}
-      {GIZMO_AXES.map((axis, i) => {
-        const dir = new THREE.Vector3(...axis.worldDir);
-        const shaftQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-        const mkShaft = (len: number) => (
-          <mesh
-            position={dir.clone().multiplyScalar(0.4 + len / 2)}
-            quaternion={shaftQuat}
-          >
-            <cylinderGeometry args={[SHAFT_R, SHAFT_R, len, 12]} />
-            <meshBasicMaterial color={axis.color} toneMapped={false} />
-          </mesh>
-        );
-        const mkHead = (at: number, view: number, labelled: boolean) => (
-          <sprite
-            ref={addPickable}
-            position={dir.clone().multiplyScalar(at)}
-            scale={labelled ? 0.34 : 0.22}
-            userData={{ viewIndex: view }}
-            onPointerMove={(e) => {
-              e.stopPropagation();
-              if (hoverView !== view) setHoverView(view);
-            }}
-            onPointerOut={(e) => {
-              e.stopPropagation();
-              setHoverView((h) => (h === view ? null : h));
-            }}
-          >
-            <spriteMaterial
-              map={labelled ? headTextures[i] : negHeadTextures[i]}
-              color={labelled ? (hoverView === view ? pal.hover : "#ffffff") : "#ffffff"}
-              opacity={labelled ? 1 : 0.55}
-              transparent
-              toneMapped={false}
-            />
-          </sprite>
-        );
-        return (
-          <group key={axis.label}>
-            {mkShaft(POS_SHAFT_LEN)}
-            {mkShaft(NEG_SHAFT_LEN)}
-            {mkHead(POS_HEAD_AT, axis.posView, true)}
-            {mkHead(NEG_HEAD_AT, axis.negView, false)}
-          </group>
-        );
-      })}
+      {/* Corner axis triad (model space: X, Y=world -Z, Z=world +Y), anchored
+          at the cube's bottom-right. The anchor is fixed in the
+          counter-rotated frame, so it stays bottom-right on screen while the
+          arrows foreshorten with the camera. */}
+      <group position={TRIAD_ORIGIN}>
+        <mesh>
+          <sphereGeometry args={[0.07, 16, 12]} />
+          <meshBasicMaterial color={pal.faceText} opacity={0.55} transparent toneMapped={false} />
+        </mesh>
+        {GIZMO_AXES.map((axis, i) => {
+          const dir = new THREE.Vector3(...axis.worldDir);
+          const shaftQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+          const view = axis.posView;
+          return (
+            <group key={axis.label}>
+              <mesh
+                position={dir.clone().multiplyScalar(TRIAD_SHAFT_LEN / 2)}
+                quaternion={shaftQuat}
+              >
+                <cylinderGeometry args={[SHAFT_R, SHAFT_R, TRIAD_SHAFT_LEN, 12]} />
+                <meshBasicMaterial color={axis.color} toneMapped={false} />
+              </mesh>
+              <sprite
+                ref={addPickable}
+                position={dir.clone().multiplyScalar(TRIAD_HEAD_AT)}
+                scale={0.3}
+                userData={{ viewIndex: view }}
+                onPointerMove={(e) => {
+                  e.stopPropagation();
+                  if (hover?.view !== view) setHover({ view, onCube: false });
+                }}
+                onPointerOut={(e) => {
+                  e.stopPropagation();
+                  setHover((h) => (h?.view === view ? null : h));
+                }}
+              >
+                <spriteMaterial
+                  map={headTextures[i]}
+                  color={hover?.view === view ? pal.hover : "#ffffff"}
+                  toneMapped={false}
+                />
+              </sprite>
+            </group>
+          );
+        })}
+      </group>
     </group>
   );
 }

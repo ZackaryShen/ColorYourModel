@@ -21,7 +21,7 @@ export const GIZMO_MARGIN_Y = 96;
 /** Half extent of the interactive corner square (guard ring + slack).
  *  Generous on purpose: a click that misses the gizmo visuals but lands in
  *  the corner must not paint or orbit — it hits dead space instead. */
-export const GIZMO_HALF_EXTENT = 84;
+export const GIZMO_HALF_EXTENT = 86;
 
 export interface GizmoRect {
   /** Canvas-local centre (CSS px, top-left origin). */
@@ -70,25 +70,29 @@ export type GizmoPlane = "XY" | "XZ" | "YZ";
 export interface GizmoView {
   /** i18n key for the status message shown after snapping. */
   key: string;
+  /** i18n key for the short direction word baked into the cube face
+   *  (Orca-style: 顶部/正面/... in zh, TOP/FRONT/... in en). */
+  faceKey: string;
   /** Where the CAMERA sits relative to the orbit target (world axes). */
   dir: [number, number, number];
   /** Screen-up hint: fixes the roll of the snapped view and keeps lookAt
    *  well-defined at the poles (top/bottom). Camera.up itself is untouched
    *  so OrbitControls keeps its Y-up turntable semantics. */
   up: [number, number, number];
-  /** Model plane the user faces in this view (matches the cube face label). */
+  /** Model plane the user faces in this view (status-bar message only —
+   *  the cube faces are labelled with direction words). */
   plane: GizmoPlane;
 }
 
 /** The six axis-aligned views, in GIZMO_FACES/GIZMO_AXES viewIndex order:
  *  0 top, 1 bottom, 2 front, 3 back, 4 right, 5 left. */
 export const GIZMO_VIEWS: GizmoView[] = [
-  { key: "gizmo.top", dir: [0, 1, 0], up: [0, 0, -1], plane: "XY" },
-  { key: "gizmo.bottom", dir: [0, -1, 0], up: [0, 0, -1], plane: "XY" },
-  { key: "gizmo.front", dir: [0, 0, -1], up: [0, 1, 0], plane: "XZ" },
-  { key: "gizmo.back", dir: [0, 0, 1], up: [0, 1, 0], plane: "XZ" },
-  { key: "gizmo.right", dir: [1, 0, 0], up: [0, 1, 0], plane: "YZ" },
-  { key: "gizmo.left", dir: [-1, 0, 0], up: [0, 1, 0], plane: "YZ" },
+  { key: "gizmo.top", faceKey: "gizmo.face.top", dir: [0, 1, 0], up: [0, 0, -1], plane: "XY" },
+  { key: "gizmo.bottom", faceKey: "gizmo.face.bottom", dir: [0, -1, 0], up: [0, 0, -1], plane: "XY" },
+  { key: "gizmo.front", faceKey: "gizmo.face.front", dir: [0, 0, -1], up: [0, 1, 0], plane: "XZ" },
+  { key: "gizmo.back", faceKey: "gizmo.face.back", dir: [0, 0, 1], up: [0, 1, 0], plane: "XZ" },
+  { key: "gizmo.right", faceKey: "gizmo.face.right", dir: [1, 0, 0], up: [0, 1, 0], plane: "YZ" },
+  { key: "gizmo.left", faceKey: "gizmo.face.left", dir: [-1, 0, 0], up: [0, 1, 0], plane: "YZ" },
 ];
 
 /** One labelled face of the cube. */

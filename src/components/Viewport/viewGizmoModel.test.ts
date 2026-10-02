@@ -27,6 +27,7 @@ describe("viewGizmoModel", () => {
     expect(GIZMO_VIEWS).toHaveLength(6);
     const dirs = new Set<string>();
     const keys = new Set<string>();
+    const faceKeys = new Set<string>();
     for (const v of GIZMO_VIEWS) {
       expect(len(v.dir)).toBeCloseTo(1, 6);
       expect(len(v.up)).toBeCloseTo(1, 6);
@@ -35,9 +36,14 @@ describe("viewGizmoModel", () => {
       expect(Math.abs(dot(v.dir, v.up))).toBeLessThan(1e-6);
       dirs.add(v.dir.join(","));
       keys.add(v.key);
+      // Every view carries a distinct cube-face label key (Orca-style
+      // direction words baked into the face textures).
+      expect(v.faceKey).toMatch(/^gizmo\.face\./);
+      faceKeys.add(v.faceKey);
     }
     expect(dirs.size).toBe(6);
     expect(keys.size).toBe(6);
+    expect(faceKeys.size).toBe(6);
   });
 
   it("labels each view with the plane perpendicular to its view direction", () => {
