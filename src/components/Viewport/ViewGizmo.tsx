@@ -53,13 +53,13 @@ interface ControlsLike {
 const S = 58; // group scale
 const CUBE = 0.8; // cube edge (46px) — half-extent 0.4
 const SHAFT_R = 0.032;
-// Corner axis triad: origin pinned to the cube's bottom-right corner region,
-// arrows sized to match the cube. The gizmo group counter-rotates with the
-// camera, so BOTH the anchor offset and the ring need per-frame compensation
-// (see useFrame): localPos = camQ·A keeps the anchor's WORLD (== HUD screen)
-// offset fixed, and localQ = camQ keeps the ring world-identity — the HUD
-// camera is always axis-aligned, so identity IS the screen plane.
-const TRIAD_ORIGIN = new THREE.Vector3(0.55, -0.55, 0);
+// Corner axis triad: the origin must sit ON the cube's bottom-right corner
+// VERTEX — but that vertex moves on screen as the cube rotates, so the anchor
+// is recomputed every frame (see useFrame): h = support distance of the
+// cube's projection along the bottom-right diagonal, anchor = u·(h+GAP) with
+// a small Z lift toward the viewer so arrows never sink behind the cube.
+const TRIAD_GAP = 0.02;
+const TRIAD_Z_LIFT = 0.18;
 const TRIAD_SHAFT_LEN = 0.5;
 const TRIAD_HEAD_AT = 0.58;
 // Outer guard ring: a thin FIXED screen-space circle framing the whole
@@ -168,6 +168,10 @@ const _dq = new THREE.Quaternion();
 const _dummy = new THREE.Object3D();
 const _ray = new THREE.Raycaster();
 const _ndc = new THREE.Vector2();
+const _u = new THREE.Vector3();
+const _anchor = new THREE.Vector3();
+// Screen-space bottom-right diagonal (unit).
+const BR_U = new THREE.Vector3(Math.SQRT1_2, -Math.SQRT1_2, 0);
 
 export function ViewGizmo() {
   const gl = useThree((s) => s.gl);
@@ -342,7 +346,16 @@ function GizmoContent({
       if (ringMatRef.current) ringMatRef.current.opacity = ringOpacityRef.current;
     }
     if (triadRef.current) {
-      triadRef.current.position.copy(TRIAD_ORIGIN).applyQuaternion(mainCamera.quaternion);
+      // Support distance of the cube's projection along the bottom-right
+      // diagonal: h = 0.4·Σ|camQ·u| (max of u·(camQ⁻¹·corner) over the 8
+      // corners). Pin the triad origin right at that silhouette vertex.
+      _u.copy(BR_U).applyQuaternion(mainCamera.quaternion);
+      const h = (CUBE / 2) * (Math.abs(_u.x) + Math.abs(_u.y) + Math.abs(_u.z));
+      _anchor
+        .copy(BR_U)
+        .multiplyScalar(h + TRIAD_GAP)
+        .setZ(TRIAD_Z_LIFT);
+      triadRef.current.position.copy(_anchor).applyQuaternion(mainCamera.quaternion);
     }
     const a = animRef.current;
     if (!a) return;
@@ -469,10 +482,10 @@ function GizmoContent({
       ))}
 
       {/* Corner axis triad (model space: X, Y=world -Z, Z=world +Y), origin
-          pinned beside the cube's bottom-right corner (position compensated
-          per frame inside useFrame); the arrows themselves live in the
+          pinned ON the cube's bottom-right corner vertex (recomputed per
+          frame in useFrame); the arrows themselves live in the
           counter-rotated frame, so they mirror the model axes exactly. */}
-      <group ref={triadRef} position={TRIAD_ORIGIN}>
+      <group ref={triadRef} position={[0.57, -0.57, TRIAD_Z_LIFT]}>
         <mesh>
           <sphereGeometry args={[0.07, 16, 12]} />
           <meshBasicMaterial color={pal.faceText} opacity={0.55} transparent toneMapped={false} />
