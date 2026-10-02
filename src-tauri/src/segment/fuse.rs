@@ -41,7 +41,7 @@ use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 
 use crate::mesh::history::OpKind;
-use crate::mesh::model::{MeshModel, Segment};
+use crate::mesh::model::{MeshModel, Segment, DEFAULT_FACE_COLOR};
 
 /// Max tiny-region merge passes — mirror of [`postprocess::MAX_MERGE_PASSES`].
 /// Each pass absorbs *every* under-sized region (faces below `min_faces`)
@@ -515,7 +515,16 @@ pub fn fuse_region_sets(
             moved += 1;
         }
         mesh.segment_labels[f] = label;
-        mesh.face_colors[f] = MeshModel::manual_label_color(label);
+        // Seed the export buffer with the region identity colour ONLY where the
+        // face is still unpainted. `face_colors` is the buffer the 3MF exporter
+        // reads (see `merge_segments`), so an unconditional write here silently
+        // destroyed every pre-fuse paint stroke (GUI audit 2026-10-02, B1).
+        // Known trade-off: a user who paints the EXACT default grey #8A8A8A via
+        // the custom colour picker still gets re-seeded — accepted, "this face
+        // was never painted" is the weaker assumption on that input.
+        if mesh.face_colors[f] == DEFAULT_FACE_COLOR {
+            mesh.face_colors[f] = MeshModel::manual_label_color(label);
+        }
     }
     for (rid, faces) in &region_faces {
         final_regions.push((*rid, faces.len()));
@@ -626,6 +635,31 @@ mod tests {
         let mut mesh = unit_cube();
         let err = fuse_region_sets(&mut mesh, &[], &[], &[], &[], 1, 2);
         assert!(err.is_err());
+    }
+
+    /// GUI audit 2026-10-02 (B1): fuse seeds identity colours ONLY on faces
+    /// still holding the default grey — a pre-fuse paint stroke is the user's
+    /// export output (`face_colors` is what the 3MF exporter reads) and must
+    /// survive partitioning.
+    #[test]
+    fn fuse_preserves_prefuse_paint() {
+        let mut mesh = unit_cube();
+        let painted: [u8; 4] = [255, 0, 0, 255];
+        mesh.face_colors[0] = painted;
+        let planar = cube_planar_sets();
+        let multiview = cube_multiview_sets();
+        fuse_region_sets(&mut mesh, &planar, &multiview, &[], &[], 1, 2).unwrap();
+        assert_eq!(
+            mesh.face_colors[0], painted,
+            "pre-fuse paint must survive fuse"
+        );
+        assert!(
+            mesh.face_colors
+                .iter()
+                .enumerate()
+                .all(|(i, c)| i == 0 || c != &DEFAULT_FACE_COLOR),
+            "still-unpainted faces get identity colours"
+        );
     }
 
     #[test]

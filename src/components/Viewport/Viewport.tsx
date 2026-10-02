@@ -9,6 +9,7 @@ import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
 import type { HistoryResult } from "../../types/mesh";
 import { log } from "../../utils/logger";
+import { hintKeyForTool } from "../../utils/controlsHint";
 import { useT } from "../../i18n";
 import { SeedPanel } from "../SeedPanel";
 import { resolveSegmentStage } from "../../segmentStages";
@@ -2623,18 +2624,12 @@ const debugStyles: Record<string, React.CSSProperties> = {
 function ControlsHelp() {
   const t = useT();
   const activeTool = useAppStore((s) => s.activeTool);
-  const isBrush =
-    activeTool === "brush" || activeTool === "spray" ||
-    activeTool === "smart" || activeTool === "eraser";
   // Context-sensitive mapping (iteration 15, req #1/#3): over the model LEFT
   // paints, over empty space LEFT rotates, RIGHT always pans, Ctrl+Wheel
-  // resizes the brush (brush tools only).
-  const hint =
-    activeTool === "view"
-      ? t("controls.viewHint")
-      : isBrush
-      ? t("controls.brushHint")
-      : t("controls.editHint");
+  // resizes the brush (brush tools only). Key selection lives in
+  // utils/controlsHint.ts — StatusBar reads the SAME keys, so the two hint
+  // surfaces can never contradict each other (GUI audit 2026-10-02, B4).
+  const hint = t(hintKeyForTool(activeTool));
   return (
     <div style={helpStyles.bar}>
       <span style={helpStyles.item}>{hint}</span>

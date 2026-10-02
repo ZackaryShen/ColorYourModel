@@ -35,6 +35,19 @@ const dict: Record<string, Record<Lang, string>> = {
   "tool.segment": { zh: "✂️ 分区画笔 — 拖拽涂选面，松开鼠标创建分区", en: "✂️ Segment Brush — drag to paint faces, release to create region" },
   "tool.lasso": { zh: "📍 选点套索 — 依次点选顶点围合区域，点击起点闭合", en: "📍 Lasso — click vertices to outline a region; click the start point to close" },
   "tool.seed": { zh: "🌱 种子分区 — 在模型上点选若干种子，算法按几何智能长成区域", en: "🌱 Seed — drop seed points; the algorithm grows each into a region by geometry" },
+  // Short tool names for the status bar (the tool.* keys above are long
+  // tooltips with emoji — wrong register for `工具: <name>`). Keys follow the
+  // PaintTool enum values verbatim, including `picker` for the Eyedropper.
+  "toolName.view": { zh: "视图", en: "View" },
+  "toolName.fill": { zh: "填充", en: "Fill" },
+  "toolName.brush": { zh: "画笔", en: "Brush" },
+  "toolName.spray": { zh: "喷罐", en: "Spray" },
+  "toolName.smart": { zh: "智能笔", en: "Smart" },
+  "toolName.picker": { zh: "吸管", en: "Eyedropper" },
+  "toolName.eraser": { zh: "橡皮", en: "Eraser" },
+  "toolName.segment": { zh: "分区画笔", en: "Segment Brush" },
+  "toolName.lasso": { zh: "套索", en: "Lasso" },
+  "toolName.seed": { zh: "种子", en: "Seed" },
   "seed.hint": { zh: "种子分区：在模型上点击放置种子（每点一个区域），调节屏障角度后点「生长」。未点的区域由最近种子兜底。Backspace/Esc 清空。", en: "Seed: click to place seeds (one region each), tune the barrier angle, then Grow. Un-seeded patches fall back to the nearest seed. Backspace/Esc clears." },
   "seed.barrier": { zh: "屏障角度 (°)", en: "Barrier angle (°)" },
   "seed.barrierHint": { zh: "大于此二面角的棱成为硬边界，区域不会越过折缝", en: "Edges above this dihedral angle are hard boundaries the regions won't cross" },
@@ -198,7 +211,10 @@ const dict: Record<string, Record<Lang, string>> = {
   // StatusBar
   "status.tool": { zh: "工具", en: "Tool" },
   "status.faces": { zh: "面数", en: "Faces" },
-  "status.tip": { zh: "左键: 旋转(查看) | 右键: 平移 | 中键: 缩放 | 滚轮: 缩放 | Alt+左键: 旋转", en: "Left: Rotate (View) | Right: Pan | Middle: Zoom | Scroll: Zoom | Alt+Left: Rotate" },
+  // `status.tip` was removed (GUI audit 2026-10-02, B4): a static
+  // "Left: Rotate (View) | …" string contradicted every non-view tool.
+  // StatusBar now resolves its hint through utils/controlsHint.ts, the same
+  // source as the viewport help bar (controls.viewHint / brushHint / editHint).
   "status.ready": { zh: "就绪", en: "Ready" },
   "status.loaded": { zh: "已加载 {0} 个面", en: "Loaded {0} faces" },
 
@@ -282,6 +298,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.import": { zh: "导入 STL…", en: "Import STL…" },
   "menu.export": { zh: "导出涂装模型…", en: "Export painted model…" },
   "menu.quit": { zh: "退出", en: "Quit" },
+  "menu.quitFailed": { zh: "退出失败：窗口关闭被拒绝，详情见日志", en: "Quit failed: window close was denied — see the log" },
   // Describes the action in the CURRENT language (the menu must read fully
   // localized in both languages); the StatusBar tooltip keeps the
   // target-language convention, which fits a one-word toggle better.

@@ -28,7 +28,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use petgraph::visit::EdgeRef;
 
 use crate::mesh::history::OpKind;
-use crate::mesh::model::{MeshModel, Segment};
+use crate::mesh::model::{MeshModel, Segment, DEFAULT_FACE_COLOR};
 use crate::segment::manual::{shared_edge, snap_point_to_vertex_on_face};
 
 /// f32 wrapper implementing `Ord` so it can key a `BinaryHeap` for Dijkstra.
@@ -336,7 +336,11 @@ pub fn seed_grow(
             moved += 1;
         }
         mesh.segment_labels[f] = r;
-        mesh.face_colors[f] = MeshModel::manual_label_color(r);
+        // Same conditional as fuse: identity colour only on still-unpainted
+        // faces, so a manual grow never wipes existing paint strokes.
+        if mesh.face_colors[f] == DEFAULT_FACE_COLOR {
+            mesh.face_colors[f] = MeshModel::manual_label_color(r);
+        }
     }
     mesh.history
         .record(OpKind::ManualRegion, None, &prev_colors, &prev_labels);
@@ -402,5 +406,35 @@ mod tests {
         let mut mesh = unit_cube();
         let err = seed_grow(&mut mesh, &[], &SeedGrowParams::default());
         assert!(err.is_err());
+    }
+
+    /// GUI audit 2026-10-02 (B1, same defect as fuse): a manual grow seeds
+    /// identity colours only on still-unpainted faces — existing paint is the
+    /// export buffer's content and must not be wiped by re-partitioning.
+    #[test]
+    fn seed_grow_preserves_existing_paint() {
+        let mut mesh = unit_cube();
+        let painted: [u8; 4] = [0, 32, 255, 255];
+        mesh.face_colors[11] = painted;
+        seed_grow(
+            &mut mesh,
+            &[SeedInput {
+                point: [-1.0, -1.0, -1.0],
+                face_index: 0,
+            }],
+            &SeedGrowParams::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            mesh.face_colors[11], painted,
+            "existing paint must survive seed_grow"
+        );
+        assert!(
+            mesh.face_colors
+                .iter()
+                .enumerate()
+                .all(|(i, c)| i == 11 || c != &DEFAULT_FACE_COLOR),
+            "still-unpainted faces get identity colours"
+        );
     }
 }

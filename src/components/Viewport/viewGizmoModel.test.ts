@@ -11,6 +11,7 @@ import {
   gizmoCenterFor,
   isAxisEdgeVisible,
   isPointInGizmoRect,
+  snapRotation,
 } from "./viewGizmoModel";
 
 const len = (v: [number, number, number]) => Math.hypot(v[0], v[1], v[2]);
@@ -151,5 +152,56 @@ describe("viewGizmoModel", () => {
     expect(isAxisEdgeVisible(corner, dirs, 0, flipped, 0.4)).toBe(false);
     expect(isAxisEdgeVisible(corner, dirs, 1, flipped, 0.4)).toBe(false);
     expect(isAxisEdgeVisible(corner, dirs, 2, flipped, 0.4)).toBe(false);
+  });
+
+  // GUI audit 2026-10-02 (B3): the snap quaternion must follow the CAMERA
+  // convention (−Z looks at the target). An Object3D lookAt (−Z → +Z flipped)
+  // landed every snap on the antipode — click 顶部, arrive at the bottom.
+  describe("snapRotation", () => {
+    // Which cube face ends up facing the viewer under a snapped camera:
+    // the HUD renders the gizmo group with camQ⁻¹, so face n faces the
+    // viewer iff (camQ⁻¹·n).z is the largest ≈+1 among all six normals.
+    function faceTowardViewer(q: THREE.Quaternion): number {
+      const inv = q.clone().invert();
+      let best = -1;
+      let bestZ = -Infinity;
+      GIZMO_FACES.forEach((f, i) => {
+        const z = new THREE.Vector3(...f.normal).applyQuaternion(inv).z;
+        if (z > bestZ) {
+          bestZ = z;
+          best = i;
+        }
+      });
+      expect(bestZ).toBeCloseTo(1, 6);
+      return best;
+    }
+
+    it("lands each snap so the CLICKED face faces the viewer", () => {
+      GIZMO_FACES.forEach((face) => {
+        const q = snapRotation(GIZMO_VIEWS[face.viewIndex].dir, GIZMO_VIEWS[face.viewIndex].up);
+        expect(faceTowardViewer(q)).toBe(GIZMO_FACES.indexOf(face));
+      });
+    });
+
+    it("fixes the roll: the view's up hint reads as screen-up (camera-local +Y)", () => {
+      // FACING alone cannot catch a roll — any spin about the view axis passes
+      // it; the face-letter orientation is what the up hint actually pins.
+      for (const v of GIZMO_VIEWS) {
+        const q = snapRotation(v.dir, v.up);
+        const upInCam = new THREE.Vector3(...v.up).applyQuaternion(q.clone().invert());
+        expect(upInCam.x).toBeCloseTo(0, 6);
+        expect(upInCam.y).toBeCloseTo(1, 6);
+        expect(upInCam.z).toBeCloseTo(0, 6);
+      }
+    });
+
+    it("returns a proper rotation (unit quaternion, det +1)", () => {
+      for (const v of GIZMO_VIEWS) {
+        const q = snapRotation(v.dir, v.up);
+        expect(q.length()).toBeCloseTo(1, 6);
+        const m = new THREE.Matrix4().makeRotationFromQuaternion(q);
+        expect(m.determinant()).toBeCloseTo(1, 6);
+      }
+    });
   });
 });

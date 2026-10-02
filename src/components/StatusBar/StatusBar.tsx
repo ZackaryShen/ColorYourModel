@@ -1,5 +1,6 @@
 import { useAppStore } from "../../store/appStore";
 import { useT } from "../../i18n";
+import { hintKeyForTool } from "../../utils/controlsHint";
 
 export function StatusBar() {
   const t = useT();
@@ -20,14 +21,17 @@ export function StatusBar() {
           verbatim, so both paths render correctly. */}
       <span style={styles.status}>{t(statusMessage)}</span>
       <span style={styles.info}>
-        {t("status.tool")}: <strong>{activeTool}</strong>
+        {t("status.tool")}: <strong>{t(`toolName.${activeTool}`)}</strong>
       </span>
       {meshData && (
         <span style={styles.info}>
           {t("status.faces")}: <strong>{meshData.faceCount.toLocaleString()}</strong>
         </span>
       )}
-      <span style={styles.tip}>{t("status.tip")}</span>
+      {/* Same per-tool mapping the viewport help bar uses (utils/controlsHint).
+          The old static `status.tip` ("Left: Rotate (View) | …") contradicted
+          every non-view tool — GUI audit 2026-10-02, B4. */}
+      <span style={styles.tip}>{t(hintKeyForTool(activeTool))}</span>
       {/* Debug log toggle joins the theme/language row: the old floating
           bottom-right 🐞 button sat on top of the language switch. */}
       <button

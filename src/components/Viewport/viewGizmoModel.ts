@@ -139,6 +139,28 @@ export const GIZMO_AXES: GizmoAxisDef[] = [
   { label: "Z", color: "#60a5fa", worldDir: [0, 1, 0], posView: 0, negView: 1 },
 ];
 
+/**
+ * Camera orientation for a canonical gizmo view, as a pure quaternion.
+ *
+ * Builds the rotation a REAL camera needs: local −Z looks at the target from
+ * `dir`, local +Y matches `up`. Constructed via `Matrix4.lookAt(eye, target,
+ * up)` — whose `_z = normalize(eye − target)` lands local +Z on `dir` — so the
+ * caller never instantiates a throwaway camera. This matters: an Object3D's
+ * `lookAt` points +Z at the target (three r170 `three.module.js:7516`), and
+ * feeding that quaternion to the main camera snapped every gizmo view to the
+ * ANTIPODE (click 顶部 → camera lands at the bottom looking up; GUI audit
+ * 2026-10-02, B3).
+ *
+ * `Matrix4.lookAt` also carries the degenerate up‖dir fallback for free, so
+ * no hand-rolled cross products here.
+ */
+export function snapRotation(dir: [number, number, number], up: [number, number, number]): THREE.Quaternion {
+  const eye = new THREE.Vector3(...dir);
+  const target = new THREE.Vector3(0, 0, 0);
+  const m = new THREE.Matrix4().lookAt(eye, target, new THREE.Vector3(...up));
+  return new THREE.Quaternion().setFromRotationMatrix(m);
+}
+
 /** Orientation for a face-label plane: local +Y = faceUp, local +Z = the
  *  outward normal (plane fronts face the viewer). */
 export function facePlaneQuaternion(face: GizmoFaceDef): THREE.Quaternion {

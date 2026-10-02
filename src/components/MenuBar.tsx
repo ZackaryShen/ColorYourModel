@@ -98,7 +98,22 @@ export function MenuBar() {
         { kind: "sep" },
         // close() re-enters the onCloseRequested handler, so unexported work
         // still gets the exit confirmation; a clean state just closes.
-        { kind: "item", label: t("menu.quit"), danger: true, onClick: () => getCurrentWindow().close() },
+        {
+          kind: "item",
+          label: t("menu.quit"),
+          danger: true,
+          onClick: () => {
+            getCurrentWindow()
+              .close()
+              .catch((e) => {
+                // Denied permission or a closed window must not fail silently —
+                // GUI audit 2026-10-02 (B2): without this catch a missing
+                // capability made the Quit item a dead button in release.
+                log.error("MenuBar", "window.close failed", { error: String(e) });
+                useAppStore.getState().setStatusMessage(t("menu.quitFailed"));
+              });
+          },
+        },
       ],
     },
     {
