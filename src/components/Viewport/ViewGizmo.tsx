@@ -13,15 +13,18 @@ import {
   GIZMO_VIEWS,
   clearGizmoRect,
   facePlaneQuaternion,
+  isAxisEdgeVisible,
   isPointerInGizmo,
   setGizmoRect,
 } from "./viewGizmoModel";
 
 // ─── Orca-style view gizmo ────────────────────────────────────────
-// Bottom-right corner widget: a labelled cube (plane codes XY/XZ/YZ) plus
-// model-space X/Y/Z arrows. It mirrors the main camera orientation, can be
-// DRAGGED to orbit the camera, and clicking a face / arrow head snaps
-// (animated) to the matching axis-aligned view.
+// Bottom-right corner widget: a labelled cube (Orca-style direction words:
+// 顶部/正面/... or TOP/FRONT/...) plus model-space X/Y/Z axis rods welded to
+// one cube corner (ImGuizmo ViewManipulate port). It mirrors the main camera
+// orientation, can be DRAGGED anywhere inside its guard circle to orbit the
+// camera, and clicking a face / axis letter snaps (animated) to the matching
+// axis-aligned view.
 //
 // Structure: <ViewGizmo> runs in the MAIN R3F tree — it owns everything that
 // must see the main camera/controls (drag orbit, snap animation, the
@@ -65,7 +68,8 @@ const AXIS_LABEL_AT = 1.02; // from the corner, just past the adjacent vertex
 const AXIS_DIM_ALPHA = 0.6;
 const AXIS_R = 0.035; // rod radius (~2px on screen) — lines alone read too faint
 // Outer guard ring: a thin FIXED screen-space circle framing the whole
-// widget. Hidden by default; fades in only while the pointer hovers the CUBE.
+// widget. Hidden by default; fades in as soon as the pointer enters the
+// circle — the whole disc inside is the drag surface.
 const RING_R = 1.44;
 const RING_W = 0.02;
 const RING_OPACITY = 0.35;
@@ -81,7 +85,6 @@ const THEME = {
     faceBorder: "#22252a",
     faceText: "#e8eaed",
     hover: "#7ab0ff",
-    headText: "#ffffff",
   },
   light: {
     cube: "#e9eaec",
@@ -90,11 +93,10 @@ const THEME = {
     faceBorder: "#b7bcc4",
     faceText: "#2f3237",
     hover: "#2f7de1",
-    headText: "#ffffff",
   },
 } as const;
 
-// ─── Canvas textures (face plane codes / axis letters) ─────────────
+// ─── Canvas textures (face direction words / axis letters) ─────────
 
 interface GizmoPalette {
   cube: string;
@@ -103,7 +105,6 @@ interface GizmoPalette {
   faceBorder: string;
   faceText: string;
   hover: string;
-  headText: string;
 }
 
 function makeFaceTexture(label: string, pal: GizmoPalette): THREE.CanvasTexture {
@@ -163,8 +164,6 @@ const _dq = new THREE.Quaternion();
 const _dummy = new THREE.Object3D();
 const _ray = new THREE.Raycaster();
 const _ndc = new THREE.Vector2();
-const _probe = new THREE.Vector3();
-const _qInv = new THREE.Quaternion();
 const AXIS_DIRS = GIZMO_AXES.map((a) => new THREE.Vector3(...a.worldDir));
 
 export function ViewGizmo() {
@@ -412,23 +411,16 @@ function GizmoContent({
       ringRef.current.visible = ringOpacityRef.current > 0.01;
       if (ringMatRef.current) ringMatRef.current.opacity = ringOpacityRef.current;
     }
-    // ImGuizmo far-side dimming: for each axis edge, probe its two adjacent
-    // face centres (edge midpoint ± half-extent along the other axes); if
-    // both face away from the HUD camera the edge lies on the cube's far
-    // side -> dim the axis instead of occluding it.
-    _qInv.copy(mainCamera.quaternion).invert();
+    // ImGuizmo far-side dimming (see isAxisEdgeVisible): dim an axis whose
+    // cube edge lies on the far side instead of letting it occlude.
     for (let i = 0; i < GIZMO_AXES.length; i++) {
-      let visible = false;
-      for (let j = 1; j <= 2; j++) {
-        _probe.copy(TRIAD_CORNER)
-          .addScaledVector(AXIS_DIRS[i], CUBE / 2)
-          .addScaledVector(AXIS_DIRS[(i + j) % 3], CUBE / 2)
-          .applyQuaternion(_qInv);
-        if (_probe.z > 0) {
-          visible = true;
-          break;
-        }
-      }
+      const visible = isAxisEdgeVisible(
+        TRIAD_CORNER,
+        AXIS_DIRS,
+        i,
+        mainCamera.quaternion,
+        CUBE / 2
+      );
       const alpha = visible ? 1 : AXIS_DIM_ALPHA;
       (axisArt.rods[i].material as THREE.MeshBasicMaterial).opacity = alpha;
       const view = GIZMO_AXES[i].posView;
@@ -519,7 +511,7 @@ function GizmoContent({
       </lineSegments>
 
       {/* Outer guard ring (thin, screen-aligned circle; opacity driven per
-          frame — fades in while the pointer hovers the cube) */}
+          frame — fades in while the pointer is inside the grab circle) */}
       <mesh ref={ringRef} visible={false}>
         <ringGeometry args={[RING_R, RING_R + RING_W, 96]} />
         <meshBasicMaterial

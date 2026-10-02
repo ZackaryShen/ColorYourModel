@@ -420,6 +420,10 @@ const dict: Record<string, Record<Lang, string>> = {
 };
 
 // ─── Pure translate ───────────────────────────────────────────────
+/** Read-only view of the dictionary for tests (completeness / placeholder
+ *  parity). Runtime code goes through translate()/translateError(). */
+export const I18N_DICT: Readonly<Record<string, Readonly<Record<Lang, string>>>> = dict;
+
 /** Translate `key` for `lang` with positional {0}/{1}/… replacement. */
 export function translate(key: string, lang: Lang, ...args: (string | number)[]): string {
   const entry = dict[key];

@@ -148,3 +148,33 @@ export function facePlaneQuaternion(face: GizmoFaceDef): THREE.Quaternion {
   const m = new THREE.Matrix4().makeBasis(right, u, n);
   return new THREE.Quaternion().setFromRotationMatrix(m);
 }
+
+// Scratch for isAxisEdgeVisible — module scope, reused per call (the gizmo
+// calls this 3x per frame; no per-frame allocation).
+const _visInv = new THREE.Quaternion();
+const _visProbe = new THREE.Vector3();
+
+/** ImGuizmo ViewManipulate far-side test, as a pure function: is the cube
+ *  edge starting at `corner` and running along `dirs[axisIndex]` on the near
+ *  side? Probes the edge's two adjacent face centres (edge midpoint ±
+ *  halfExtent along the other two axes); if either faces the viewer the axis
+ *  is fully lit, otherwise the caller dims it. `camQ` is the MAIN camera's
+ *  world quaternion — the HUD overlay camera is axis-aligned (looking down
+ *  -Z), so a probe's world z > 0 means it faces the viewer. */
+export function isAxisEdgeVisible(
+  corner: THREE.Vector3,
+  dirs: readonly THREE.Vector3[],
+  axisIndex: number,
+  camQ: THREE.Quaternion,
+  halfExtent: number
+): boolean {
+  _visInv.copy(camQ).invert();
+  for (let j = 1; j <= 2; j++) {
+    _visProbe.copy(corner)
+      .addScaledVector(dirs[axisIndex], halfExtent)
+      .addScaledVector(dirs[(axisIndex + j) % 3], halfExtent)
+      .applyQuaternion(_visInv);
+    if (_visProbe.z > 0) return true;
+  }
+  return false;
+}

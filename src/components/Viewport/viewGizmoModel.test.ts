@@ -9,6 +9,7 @@ import {
   GIZMO_VIEWS,
   facePlaneQuaternion,
   gizmoCenterFor,
+  isAxisEdgeVisible,
   isPointInGizmoRect,
 } from "./viewGizmoModel";
 
@@ -122,5 +123,33 @@ describe("viewGizmoModel", () => {
     expect(isPointInGizmoRect(700 - GIZMO_HALF_EXTENT, 500, rect)).toBe(true); // edge
     expect(isPointInGizmoRect(700 + GIZMO_HALF_EXTENT + 1, 500, rect)).toBe(false);
     expect(isPointInGizmoRect(700, 500, { x: 700, y: 500, half: 0 })).toBe(false);
+  });
+
+  // Far-side dimming probe (ImGuizmo ViewManipulate semantics). The HUD
+  // overlay camera is axis-aligned looking down -Z, so with the identity
+  // main-camera rotation the corner (-h,-h,+h) is the near vertex: the X and
+  // Z edges are lit, the Y edge (model Y = world -Z) runs away from the
+  // viewer and must dim.
+  it("dims exactly the away-pointing axis edge at the default view", () => {
+    const corner = new THREE.Vector3(-0.4, -0.4, 0.4);
+    const dirs = GIZMO_AXES.map((a) => new THREE.Vector3(...a.worldDir));
+    const identity = new THREE.Quaternion();
+    expect(isAxisEdgeVisible(corner, dirs, 0, identity, 0.4)).toBe(true); // X
+    expect(isAxisEdgeVisible(corner, dirs, 1, identity, 0.4)).toBe(false); // Y (away)
+    expect(isAxisEdgeVisible(corner, dirs, 2, identity, 0.4)).toBe(true); // Z
+  });
+
+  it("dims every edge when the camera turns 180 degrees about world Y", () => {
+    const corner = new THREE.Vector3(-0.4, -0.4, 0.4);
+    const dirs = GIZMO_AXES.map((a) => new THREE.Vector3(...a.worldDir));
+    const flipped = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 1, 0),
+      Math.PI
+    );
+    // rotY(180) sends the toward-viewer axis from +Z to -Z, so the welded
+    // (-h,-h,+h) corner becomes the fully far vertex — all three edges dim.
+    expect(isAxisEdgeVisible(corner, dirs, 0, flipped, 0.4)).toBe(false);
+    expect(isAxisEdgeVisible(corner, dirs, 1, flipped, 0.4)).toBe(false);
+    expect(isAxisEdgeVisible(corner, dirs, 2, flipped, 0.4)).toBe(false);
   });
 });
