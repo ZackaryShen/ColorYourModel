@@ -52,19 +52,19 @@ interface ControlsLike {
 // ortho camera maps 1 unit = 1 CSS px, so S is the pixel size of the cube).
 const S = 58; // group scale
 const CUBE = 0.8; // cube edge (46px) — half-extent 0.4
-const SHAFT_R = 0.032;
-// Corner axis triad: the origin must sit ON the cube's bottom-right corner
-// VERTEX — but that vertex moves on screen as the cube rotates, so the anchor
-// is recomputed every frame (see useFrame): h = support distance of the
-// cube's projection along the bottom-right diagonal, anchor = u·(h+GAP) with
-// a small Z lift toward the viewer so arrows never sink behind the cube.
-const TRIAD_GAP = 0.02;
-const TRIAD_Z_LIFT = 0.18;
-const TRIAD_SHAFT_LEN = 0.5;
-const TRIAD_HEAD_AT = 0.58;
+// Corner axis triad, ported 1:1 from ImGuizmo's ViewManipulate (the widget
+// OrcaSlicer uses for its 3D navigator): the three model axes are WELDED to
+// one fixed corner of the cube — corner = (-h,-h,+h), the front-lower-left
+// vertex in the default view — each running exactly along its cube edge
+// (origin → adjacent vertex, one edge long) with the letter just past the
+// end. Lines are depth-test-free overlays drawn on top; an axis whose edge
+// lies on the far side is dimmed to 35% instead of being occluded.
+const TRIAD_CORNER = new THREE.Vector3(-CUBE / 2, -CUBE / 2, CUBE / 2);
+const AXIS_LINE_LEN = CUBE; // one cube edge
+const AXIS_LABEL_AT = 1.02; // from the corner, just past the adjacent vertex
+const AXIS_DIM_ALPHA = 0.35;
 // Outer guard ring: a thin FIXED screen-space circle framing the whole
 // widget. Hidden by default; fades in only while the pointer hovers the CUBE.
-// Must clear the triad's worst-case reach (diagonal tip ≈ 1.43).
 const RING_R = 1.44;
 const RING_W = 0.02;
 const RING_OPACITY = 0.35;
@@ -127,23 +127,17 @@ function makeFaceTexture(label: string, pal: GizmoPalette): THREE.CanvasTexture 
   return tex;
 }
 
-function makeHeadTexture(label: string, color: string, pal: GizmoPalette): THREE.CanvasTexture {
+function makeHeadTexture(label: string, color: string): THREE.CanvasTexture {
+  // Orca-style bare letter at the line end (no circle backing).
   const canvas = document.createElement("canvas");
   canvas.width = 64;
   canvas.height = 64;
   const ctx = canvas.getContext("2d")!;
-  ctx.beginPath();
-  ctx.arc(32, 32, 26, 0, Math.PI * 2);
-  ctx.closePath();
+  ctx.font = 'bold 38px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   ctx.fillStyle = color;
-  ctx.fill();
-  if (label) {
-    ctx.font = 'bold 30px "Segoe UI", Arial, sans-serif';
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = pal.headText;
-    ctx.fillText(label, 32, 34);
-  }
+  ctx.fillText(label, 32, 34);
   const tex = new THREE.CanvasTexture(canvas);
   tex.anisotropy = 4;
   return tex;
@@ -168,10 +162,9 @@ const _dq = new THREE.Quaternion();
 const _dummy = new THREE.Object3D();
 const _ray = new THREE.Raycaster();
 const _ndc = new THREE.Vector2();
-const _u = new THREE.Vector3();
-const _anchor = new THREE.Vector3();
-// Screen-space bottom-right diagonal (unit).
-const BR_U = new THREE.Vector3(Math.SQRT1_2, -Math.SQRT1_2, 0);
+const _probe = new THREE.Vector3();
+const _qInv = new THREE.Quaternion();
+const AXIS_DIRS = GIZMO_AXES.map((a) => new THREE.Vector3(...a.worldDir));
 
 export function ViewGizmo() {
   const gl = useThree((s) => s.gl);
@@ -251,8 +244,8 @@ function GizmoContent({
     [pal, language]
   );
   const headTextures = useMemo(
-    () => GIZMO_AXES.map((a) => makeHeadTexture(a.label, a.color, pal)),
-    [pal]
+    () => GIZMO_AXES.map((a) => makeHeadTexture(a.label, a.color)),
+    []
   );
   useEffect(() => {
     return () => {
@@ -266,6 +259,46 @@ function GizmoContent({
     []
   );
   useEffect(() => () => cubeEdges.dispose(), [cubeEdges]);
+
+  // Axis overlay lines + letter sprite materials (ImGuizmo ViewManipulate
+  // port — see TRIAD_CORNER comment above). Lines are depth-test-free so
+  // they draw over the cube exactly like ImGuizmo's 2D draw-list lines.
+  const axisArt = useMemo(() => {
+    const lines = GIZMO_AXES.map((a, i) => {
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        TRIAD_CORNER.clone(),
+        TRIAD_CORNER.clone().addScaledVector(AXIS_DIRS[i], AXIS_LINE_LEN),
+      ]);
+      const mat = new THREE.LineBasicMaterial({
+        color: a.color,
+        transparent: true,
+        depthTest: false,
+      });
+      const line = new THREE.Line(geo, mat);
+      line.renderOrder = 999;
+      return line;
+    });
+    const spriteMats = GIZMO_AXES.map(
+      () => new THREE.SpriteMaterial({ transparent: true, depthTest: false })
+    );
+    return { lines, spriteMats };
+  }, []);
+  useEffect(() => {
+    axisArt.spriteMats.forEach((m, i) => {
+      m.map = headTextures[i];
+      m.needsUpdate = true;
+    });
+  }, [axisArt, headTextures]);
+  useEffect(
+    () => () => {
+      axisArt.lines.forEach((l) => {
+        l.geometry.dispose();
+        (l.material as THREE.Material).dispose();
+      });
+      axisArt.spriteMats.forEach((m) => m.dispose());
+    },
+    [axisArt]
+  );
 
   // Click-pick targets: the 6 face planes + the 3 triad arrow heads.
   const pickables = useRef<(THREE.Mesh | THREE.Sprite)[]>([]);
@@ -329,13 +362,11 @@ function GizmoContent({
   const ringRef = useRef<THREE.Mesh>(null);
   const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const ringOpacityRef = useRef(0);
-  const triadRef = useRef<THREE.Group>(null);
   useFrame((_, delta) => {
     // HUD camera is fixed and axis-aligned (it renders the corner overlay),
     // so "screen-aligned" == world-identity. The gizmo group carries camQ⁻¹,
-    // hence the compensations: ring localQ = camQ gives worldQ = I (a fixed
-    // screen-plane circle); triad localPos = camQ·A gives world pos = A (the
-    // anchor stays pinned at the cube's bottom-right instead of orbiting).
+    // hence the ring compensation: localQ = camQ gives worldQ = I (a fixed
+    // screen-plane circle).
     if (ringRef.current) {
       ringRef.current.quaternion.copy(mainCamera.quaternion);
       // Fade in only while the pointer is over the cube; a fixed perfect
@@ -345,17 +376,28 @@ function GizmoContent({
       ringRef.current.visible = ringOpacityRef.current > 0.01;
       if (ringMatRef.current) ringMatRef.current.opacity = ringOpacityRef.current;
     }
-    if (triadRef.current) {
-      // Support distance of the cube's projection along the bottom-right
-      // diagonal: h = 0.4·Σ|camQ·u| (max of u·(camQ⁻¹·corner) over the 8
-      // corners). Pin the triad origin right at that silhouette vertex.
-      _u.copy(BR_U).applyQuaternion(mainCamera.quaternion);
-      const h = (CUBE / 2) * (Math.abs(_u.x) + Math.abs(_u.y) + Math.abs(_u.z));
-      _anchor
-        .copy(BR_U)
-        .multiplyScalar(h + TRIAD_GAP)
-        .setZ(TRIAD_Z_LIFT);
-      triadRef.current.position.copy(_anchor).applyQuaternion(mainCamera.quaternion);
+    // ImGuizmo far-side dimming: for each axis edge, probe its two adjacent
+    // face centres (edge midpoint ± half-extent along the other axes); if
+    // both face away from the HUD camera the edge lies on the cube's far
+    // side -> dim the axis instead of occluding it.
+    _qInv.copy(mainCamera.quaternion).invert();
+    for (let i = 0; i < GIZMO_AXES.length; i++) {
+      let visible = false;
+      for (let j = 1; j <= 2; j++) {
+        _probe.copy(TRIAD_CORNER)
+          .addScaledVector(AXIS_DIRS[i], CUBE / 2)
+          .addScaledVector(AXIS_DIRS[(i + j) % 3], CUBE / 2)
+          .applyQuaternion(_qInv);
+        if (_probe.z > 0) {
+          visible = true;
+          break;
+        }
+      }
+      const alpha = visible ? 1 : AXIS_DIM_ALPHA;
+      (axisArt.lines[i].material as THREE.LineBasicMaterial).opacity = alpha;
+      const view = GIZMO_AXES[i].posView;
+      axisArt.spriteMats[i].opacity = alpha;
+      axisArt.spriteMats[i].color.set(hover?.view === view ? pal.hover : "#ffffff");
     }
     const a = animRef.current;
     if (!a) return;
@@ -481,52 +523,34 @@ function GizmoContent({
         </mesh>
       ))}
 
-      {/* Corner axis triad (model space: X, Y=world -Z, Z=world +Y), origin
-          pinned ON the cube's bottom-right corner vertex (recomputed per
-          frame in useFrame); the arrows themselves live in the
-          counter-rotated frame, so they mirror the model axes exactly. */}
-      <group ref={triadRef} position={[0.57, -0.57, TRIAD_Z_LIFT]}>
-        <mesh>
-          <sphereGeometry args={[0.07, 16, 12]} />
-          <meshBasicMaterial color={pal.faceText} opacity={0.55} transparent toneMapped={false} />
-        </mesh>
-        {GIZMO_AXES.map((axis, i) => {
-          const dir = new THREE.Vector3(...axis.worldDir);
-          const shaftQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-          const view = axis.posView;
-          return (
-            <group key={axis.label}>
-              <mesh
-                position={dir.clone().multiplyScalar(TRIAD_SHAFT_LEN / 2)}
-                quaternion={shaftQuat}
-              >
-                <cylinderGeometry args={[SHAFT_R, SHAFT_R, TRIAD_SHAFT_LEN, 12]} />
-                <meshBasicMaterial color={axis.color} toneMapped={false} />
-              </mesh>
-              <sprite
-                ref={addPickable}
-                position={dir.clone().multiplyScalar(TRIAD_HEAD_AT)}
-                scale={0.28}
-                userData={{ viewIndex: view }}
-                onPointerMove={(e) => {
-                  e.stopPropagation();
-                  if (hover?.view !== view) setHover({ view, onCube: false });
-                }}
-                onPointerOut={(e) => {
-                  e.stopPropagation();
-                  setHover((h) => (h?.view === view ? null : h));
-                }}
-              >
-                <spriteMaterial
-                  map={headTextures[i]}
-                  color={hover?.view === view ? pal.hover : "#ffffff"}
-                  toneMapped={false}
-                />
-              </sprite>
-            </group>
-          );
-        })}
-      </group>
+      {/* Axis triad welded to the cube's fixed corner (ImGuizmo port): each
+          axis runs exactly along its cube edge as a depth-free overlay line,
+          with the bare letter just past the adjacent vertex; far-side axes
+          dim to 35% (see useFrame). Letter sprites stay clickable for the
+          axis-view snap. */}
+      {GIZMO_AXES.map((axis, i) => {
+        const view = axis.posView;
+        return (
+          <group key={axis.label}>
+            <primitive object={axisArt.lines[i]} />
+            <sprite
+              ref={addPickable}
+              position={TRIAD_CORNER.clone().addScaledVector(AXIS_DIRS[i], AXIS_LABEL_AT)}
+              scale={0.26}
+              material={axisArt.spriteMats[i]}
+              userData={{ viewIndex: view }}
+              onPointerMove={(e) => {
+                e.stopPropagation();
+                if (hover?.view !== view) setHover({ view, onCube: false });
+              }}
+              onPointerOut={(e) => {
+                e.stopPropagation();
+                setHover((h) => (h?.view === view ? null : h));
+              }}
+            />
+          </group>
+        );
+      })}
     </group>
   );
 }
