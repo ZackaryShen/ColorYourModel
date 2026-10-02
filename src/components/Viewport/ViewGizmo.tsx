@@ -53,15 +53,18 @@ interface ControlsLike {
 const S = 58; // group scale
 const CUBE = 0.8; // cube edge (46px) — half-extent 0.4
 const SHAFT_R = 0.032;
-// Corner axis triad: anchored at the cube's bottom-right, sized to match the
-// cube. The anchor lives in the counter-rotated frame, so it stays put on
-// screen while the arrows sweep/foreshorten with the camera.
-const TRIAD_ORIGIN: [number, number, number] = [0.62, -0.62, 0];
-const TRIAD_SHAFT_LEN = 0.52;
-const TRIAD_HEAD_AT = 0.6;
-// Outer guard ring: a thin screen-aligned circle framing the whole widget.
-// Hidden by default; fades in only while the pointer hovers the CUBE.
-// Must clear the triad's worst-case reach (TRIAD_ORIGIN + head + half sprite).
+// Corner axis triad: origin pinned to the cube's bottom-right corner region,
+// arrows sized to match the cube. The gizmo group counter-rotates with the
+// camera, so BOTH the anchor offset and the ring need per-frame compensation
+// (see useFrame): localPos = camQ·A keeps the anchor's WORLD (== HUD screen)
+// offset fixed, and localQ = camQ keeps the ring world-identity — the HUD
+// camera is always axis-aligned, so identity IS the screen plane.
+const TRIAD_ORIGIN = new THREE.Vector3(0.55, -0.55, 0);
+const TRIAD_SHAFT_LEN = 0.5;
+const TRIAD_HEAD_AT = 0.58;
+// Outer guard ring: a thin FIXED screen-space circle framing the whole
+// widget. Hidden by default; fades in only while the pointer hovers the CUBE.
+// Must clear the triad's worst-case reach (diagonal tip ≈ 1.43).
 const RING_R = 1.44;
 const RING_W = 0.02;
 const RING_OPACITY = 0.35;
@@ -322,18 +325,24 @@ function GizmoContent({
   const ringRef = useRef<THREE.Mesh>(null);
   const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const ringOpacityRef = useRef(0);
+  const triadRef = useRef<THREE.Group>(null);
   useFrame((_, delta) => {
-    // Guard ring stays screen-aligned while the cube counter-rotates: the
-    // gizmo group carries camQ⁻¹, so a child needs localQ = camQ² for its
-    // world orientation to equal the camera's (a billboard facing the viewer).
+    // HUD camera is fixed and axis-aligned (it renders the corner overlay),
+    // so "screen-aligned" == world-identity. The gizmo group carries camQ⁻¹,
+    // hence the compensations: ring localQ = camQ gives worldQ = I (a fixed
+    // screen-plane circle); triad localPos = camQ·A gives world pos = A (the
+    // anchor stays pinned at the cube's bottom-right instead of orbiting).
     if (ringRef.current) {
-      ringRef.current.quaternion.copy(mainCamera.quaternion).multiply(mainCamera.quaternion);
+      ringRef.current.quaternion.copy(mainCamera.quaternion);
       // Fade in only while the pointer is over the cube; a fixed perfect
       // circle that never rotates with the gizmo.
       const target = hover?.onCube ? RING_OPACITY : 0;
       ringOpacityRef.current += (target - ringOpacityRef.current) * Math.min(1, delta * 14);
       ringRef.current.visible = ringOpacityRef.current > 0.01;
       if (ringMatRef.current) ringMatRef.current.opacity = ringOpacityRef.current;
+    }
+    if (triadRef.current) {
+      triadRef.current.position.copy(TRIAD_ORIGIN).applyQuaternion(mainCamera.quaternion);
     }
     const a = animRef.current;
     if (!a) return;
@@ -459,11 +468,11 @@ function GizmoContent({
         </mesh>
       ))}
 
-      {/* Corner axis triad (model space: X, Y=world -Z, Z=world +Y), anchored
-          at the cube's bottom-right. The anchor is fixed in the
-          counter-rotated frame, so it stays bottom-right on screen while the
-          arrows foreshorten with the camera. */}
-      <group position={TRIAD_ORIGIN}>
+      {/* Corner axis triad (model space: X, Y=world -Z, Z=world +Y), origin
+          pinned beside the cube's bottom-right corner (position compensated
+          per frame inside useFrame); the arrows themselves live in the
+          counter-rotated frame, so they mirror the model axes exactly. */}
+      <group ref={triadRef} position={TRIAD_ORIGIN}>
         <mesh>
           <sphereGeometry args={[0.07, 16, 12]} />
           <meshBasicMaterial color={pal.faceText} opacity={0.55} transparent toneMapped={false} />
@@ -484,7 +493,7 @@ function GizmoContent({
               <sprite
                 ref={addPickable}
                 position={dir.clone().multiplyScalar(TRIAD_HEAD_AT)}
-                scale={0.3}
+                scale={0.28}
                 userData={{ viewIndex: view }}
                 onPointerMove={(e) => {
                   e.stopPropagation();
