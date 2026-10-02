@@ -241,7 +241,13 @@ function CameraFit() {
     // initial framing — "Undo/Redo 会刷新视图" and "分区画笔点一下就回初始视图"
     // (iteration 18, Issues 4 & 5). The bbox only changes on a real mesh load,
     // which is exactly when an auto-fit IS wanted.
-  }, [meshData?.bbox, camera, size]);
+    //
+    // `size` is deliberately NOT a dependency: ANY viewport-size change
+    // (wrapping status-bar text, scrollbar appearing, window resize) re-ran
+    // the fit and reset a user-rotated view — "点工具栏/推荐分区会重置视角"
+    // (2026-10-02). Resizes must only re-derive the ortho frustum, which R3F
+    // does automatically; the framing itself stays put.
+  }, [meshData?.bbox, camera]);
 
   return null;
 }

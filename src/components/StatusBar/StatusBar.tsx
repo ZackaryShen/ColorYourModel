@@ -71,6 +71,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   status: {
     flex: 1,
+    // Constant bar height: long messages must ellipsize, never wrap — a
+    // wrapping status line resizes the viewport above it, which (historically)
+    // re-fired CameraFit and reset the user's rotated view.
+    whiteSpace: "nowrap" as const,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   info: {
     whiteSpace: "nowrap" as const,
