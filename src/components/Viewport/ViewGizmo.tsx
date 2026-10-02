@@ -62,7 +62,8 @@ const CUBE = 0.8; // cube edge (46px) — half-extent 0.4
 const TRIAD_CORNER = new THREE.Vector3(-CUBE / 2, -CUBE / 2, CUBE / 2);
 const AXIS_LINE_LEN = CUBE; // one cube edge
 const AXIS_LABEL_AT = 1.02; // from the corner, just past the adjacent vertex
-const AXIS_DIM_ALPHA = 0.35;
+const AXIS_DIM_ALPHA = 0.6;
+const AXIS_R = 0.035; // rod radius (~2px on screen) — lines alone read too faint
 // Outer guard ring: a thin FIXED screen-space circle framing the whole
 // widget. Hidden by default; fades in only while the pointer hovers the CUBE.
 const RING_R = 1.44;
@@ -185,27 +186,49 @@ export function ViewGizmo() {
   // the CAPTURE phase on the canvas' PARENT — ancestor capture always fires
   // before the canvas listeners OrbitControls registers, regardless of
   // registration order (same pattern as the Ctrl+wheel brush resizer).
+  // The same listener feeds the "pointer inside the grab circle" flag that
+  // drives the ring's fade-in (the circle is the affordance, not just the
+  // cube) — plain DOM math instead of R3F pointer state, which is per
+  // event-layer inside the Hud portal.
+  const pointerInsideCircle = useRef(false);
   useEffect(() => {
     const parent = gl.domElement.parentElement;
     if (!parent) return;
+    const ringPx = (RING_R + 0.05) * S;
     const sync = (e: PointerEvent | WheelEvent) => {
       if (!controls) return;
-      controls.enabled = !isPointerInGizmo(e.clientX, e.clientY, gl.domElement);
+      const inside = isPointerInGizmo(e.clientX, e.clientY, gl.domElement);
+      controls.enabled = !inside;
+      if (e.target === gl.domElement) {
+        const r = gl.domElement.getBoundingClientRect();
+        pointerInsideCircle.current =
+          Math.hypot(e.clientX - (r.left + r.width - GIZMO_MARGIN_X), e.clientY - (r.top + r.height - GIZMO_MARGIN_Y)) <= ringPx;
+      }
+    };
+    const onLeave = () => {
+      pointerInsideCircle.current = false;
     };
     parent.addEventListener("pointerdown", sync, true);
     parent.addEventListener("pointermove", sync, true);
     parent.addEventListener("wheel", sync, true);
+    gl.domElement.addEventListener("pointerleave", onLeave);
     return () => {
       parent.removeEventListener("pointerdown", sync, true);
       parent.removeEventListener("pointermove", sync, true);
       parent.removeEventListener("wheel", sync, true);
+      gl.domElement.removeEventListener("pointerleave", onLeave);
       if (controls) controls.enabled = true;
     };
   }, [gl, controls]);
 
   return (
     <GizmoHelper alignment="bottom-right" margin={[GIZMO_MARGIN_X, GIZMO_MARGIN_Y]}>
-      <GizmoContent mainCamera={mainCamera} controls={controls} invalidate={invalidate} />
+      <GizmoContent
+        mainCamera={mainCamera}
+        controls={controls}
+        invalidate={invalidate}
+        pointerInsideCircle={pointerInsideCircle}
+      />
     </GizmoHelper>
   );
 }
@@ -216,10 +239,12 @@ function GizmoContent({
   mainCamera,
   controls,
   invalidate,
+  pointerInsideCircle,
 }: {
   mainCamera: THREE.Camera;
   controls: ControlsLike | null;
   invalidate: () => void;
+  pointerInsideCircle: React.MutableRefObject<boolean>;
 }) {
   const t = useT();
   const gl = useThree((s) => s.gl);
@@ -260,28 +285,31 @@ function GizmoContent({
   );
   useEffect(() => () => cubeEdges.dispose(), [cubeEdges]);
 
-  // Axis overlay lines + letter sprite materials (ImGuizmo ViewManipulate
-  // port — see TRIAD_CORNER comment above). Lines are depth-test-free so
-  // they draw over the cube exactly like ImGuizmo's 2D draw-list lines.
+  // Axis overlay rods + letter sprite materials (ImGuizmo ViewManipulate
+  // port — see TRIAD_CORNER comment above). Rods are depth-test-free so they
+  // draw over the cube exactly like ImGuizmo's 2D draw-list lines, but thick
+  // enough to read clearly.
   const axisArt = useMemo(() => {
-    const lines = GIZMO_AXES.map((a, i) => {
-      const geo = new THREE.BufferGeometry().setFromPoints([
-        TRIAD_CORNER.clone(),
-        TRIAD_CORNER.clone().addScaledVector(AXIS_DIRS[i], AXIS_LINE_LEN),
-      ]);
-      const mat = new THREE.LineBasicMaterial({
+    const rods = GIZMO_AXES.map((a, i) => {
+      const geo = new THREE.CylinderGeometry(AXIS_R, AXIS_R, AXIS_LINE_LEN, 10);
+      const mat = new THREE.MeshBasicMaterial({
         color: a.color,
         transparent: true,
         depthTest: false,
+        toneMapped: false,
       });
-      const line = new THREE.Line(geo, mat);
-      line.renderOrder = 999;
-      return line;
+      const rod = new THREE.Mesh(geo, mat);
+      // Cylinder default axis is +Y — orient onto the model axis and centre
+      // the rod on the edge it represents.
+      rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), AXIS_DIRS[i]);
+      rod.position.copy(TRIAD_CORNER).addScaledVector(AXIS_DIRS[i], AXIS_LINE_LEN / 2);
+      rod.renderOrder = 998;
+      return rod;
     });
     const spriteMats = GIZMO_AXES.map(
       () => new THREE.SpriteMaterial({ transparent: true, depthTest: false })
     );
-    return { lines, spriteMats };
+    return { rods, spriteMats };
   }, []);
   useEffect(() => {
     axisArt.spriteMats.forEach((m, i) => {
@@ -291,9 +319,9 @@ function GizmoContent({
   }, [axisArt, headTextures]);
   useEffect(
     () => () => {
-      axisArt.lines.forEach((l) => {
-        l.geometry.dispose();
-        (l.material as THREE.Material).dispose();
+      axisArt.rods.forEach((rod) => {
+        rod.geometry.dispose();
+        (rod.material as THREE.Material).dispose();
       });
       axisArt.spriteMats.forEach((m) => m.dispose());
     },
@@ -362,16 +390,19 @@ function GizmoContent({
   const ringRef = useRef<THREE.Mesh>(null);
   const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const ringOpacityRef = useRef(0);
+  const discRef = useRef<THREE.Mesh>(null);
   useFrame((_, delta) => {
     // HUD camera is fixed and axis-aligned (it renders the corner overlay),
     // so "screen-aligned" == world-identity. The gizmo group carries camQ⁻¹,
     // hence the ring compensation: localQ = camQ gives worldQ = I (a fixed
-    // screen-plane circle).
-    if (ringRef.current) {
+    // screen-plane circle). The invisible grab disc gets the same treatment.
+    if (ringRef.current && discRef.current) {
       ringRef.current.quaternion.copy(mainCamera.quaternion);
-      // Fade in only while the pointer is over the cube; a fixed perfect
-      // circle that never rotates with the gizmo.
-      const target = hover?.onCube ? RING_OPACITY : 0;
+      discRef.current.quaternion.copy(mainCamera.quaternion);
+      // The circle IS the affordance: show it as soon as the pointer enters
+      // the grab disc (not only over the cube) — everything inside is
+      // grabbable. Flag maintained by ViewGizmo's DOM capture listener.
+      const target = pointerInsideCircle.current ? RING_OPACITY : 0;
       ringOpacityRef.current += (target - ringOpacityRef.current) * Math.min(1, delta * 14);
       ringRef.current.visible = ringOpacityRef.current > 0.01;
       if (ringMatRef.current) ringMatRef.current.opacity = ringOpacityRef.current;
@@ -394,7 +425,7 @@ function GizmoContent({
         }
       }
       const alpha = visible ? 1 : AXIS_DIM_ALPHA;
-      (axisArt.lines[i].material as THREE.LineBasicMaterial).opacity = alpha;
+      (axisArt.rods[i].material as THREE.MeshBasicMaterial).opacity = alpha;
       const view = GIZMO_AXES[i].posView;
       axisArt.spriteMats[i].opacity = alpha;
       axisArt.spriteMats[i].color.set(hover?.view === view ? pal.hover : "#ffffff");
@@ -523,16 +554,25 @@ function GizmoContent({
         </mesh>
       ))}
 
+      {/* Invisible grab disc: the whole circle is the drag surface — a
+          pointerdown anywhere inside reaches the group drag handler through
+          bubbling; fully transparent but raycastable. Screen-aligned per
+          frame (see useFrame), same as the ring. */}
+      <mesh ref={discRef} renderOrder={997}>
+        <circleGeometry args={[RING_R, 64]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} depthTest={false} />
+      </mesh>
+
       {/* Axis triad welded to the cube's fixed corner (ImGuizmo port): each
-          axis runs exactly along its cube edge as a depth-free overlay line,
+          axis runs exactly along its cube edge as a depth-free overlay rod,
           with the bare letter just past the adjacent vertex; far-side axes
-          dim to 35% (see useFrame). Letter sprites stay clickable for the
+          dim to 60% (see useFrame). Letter sprites stay clickable for the
           axis-view snap. */}
       {GIZMO_AXES.map((axis, i) => {
         const view = axis.posView;
         return (
           <group key={axis.label}>
-            <primitive object={axisArt.lines[i]} />
+            <primitive object={axisArt.rods[i]} />
             <sprite
               ref={addPickable}
               position={TRIAD_CORNER.clone().addScaledVector(AXIS_DIRS[i], AXIS_LABEL_AT)}
