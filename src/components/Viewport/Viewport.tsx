@@ -13,6 +13,8 @@ import { useT } from "../../i18n";
 import { SeedPanel } from "../SeedPanel";
 import { resolveSegmentStage } from "../../segmentStages";
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
+import { ViewGizmo } from "./ViewGizmo";
+import { isPointerInGizmo } from "./viewGizmoModel";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
 // Patched ONCE at module load. `acceleratedRaycast` falls back to the native
@@ -193,11 +195,19 @@ function CameraFit() {
     // Using 1.3× the XZ span keeps most grid visible while not wasting space.
     const spanXZ = Math.max(dimX, dimZ);
     const effectiveDim = Math.max(maxDim, spanXZ * 1.3);
-    const fit = Math.min(size.width, size.height) / effectiveDim;
-    cam.zoom = Math.min(fit * 0.88, 500); // 0.88 fills ~88% of viewport; clamped to maxZoom (iteration 22)
-    cam.near = Math.max(0.1, viewDist - maxDim * 2);
-    cam.far = viewDist + maxDim * 2;
-    cam.updateProjectionMatrix();
+      const fit = Math.min(size.width, size.height) / effectiveDim;
+      cam.zoom = Math.min(fit * 0.88, 500); // 0.88 fills ~88% of viewport; clamped to maxZoom (iteration 22)
+      // Under ortho, near/far ONLY clip — they never distort size or parallax.
+      // The ±2·maxDim bracket used to swallow the floor grid's near edge at
+      // low/below-horizon camera angles (jagged line cuts at the grid's
+      // front, healing on rotate — the gizmo's free orbit + bottom-view snap
+      // make those poses routine now), so bracket generously instead: the
+      // grid spans ~1.25·spanXZ around the model and every camera op here
+      // (orbit, gizmo drag, snap) preserves the target distance, so a wide
+      // static bracket stays valid.
+      cam.near = Math.max(0.1, viewDist - maxDim * 6);
+      cam.far = viewDist + maxDim * 6;
+      cam.updateProjectionMatrix();
 
     // CRITICAL: OrbitControls orbits and pans around its `target`. If we only
     // move the camera but leave target at the default (0,0,0), the pivot is
@@ -231,7 +241,13 @@ function CameraFit() {
     // initial framing — "Undo/Redo 会刷新视图" and "分区画笔点一下就回初始视图"
     // (iteration 18, Issues 4 & 5). The bbox only changes on a real mesh load,
     // which is exactly when an auto-fit IS wanted.
-  }, [meshData?.bbox, camera, size]);
+    //
+    // `size` is deliberately NOT a dependency: ANY viewport-size change
+    // (wrapping status-bar text, scrollbar appearing, window resize) re-ran
+    // the fit and reset a user-rotated view — "点工具栏/推荐分区会重置视角"
+    // (2026-10-02). Resizes must only re-derive the ortho frustum, which R3F
+    // does automatically; the framing itself stays put.
+  }, [meshData?.bbox, camera]);
 
   return null;
 }
@@ -1487,6 +1503,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
+      // View-gizmo corner owns its pointers — never paint/lasso/seed from
+      // there (ViewGizmo also disables OrbitControls inside the rect).
+      if (isPointerInGizmo(e.clientX, e.clientY, canvas)) return;
       // View mode or Alt held → let OrbitControls handle it (rotate); never paint.
       if (isViewTool || _altHeld) return;
       // Iteration 78: Pick-for-Eye sub-mode intercepts clicks BEFORE the
@@ -1669,6 +1688,24 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         updateBrushCursor(hit && hit.faceIndex != null ? hit : null);
         if (hit && hit.faceIndex != null) {
           enqueuePaint(hit.faceIndex);
+        }
+        return;
+      }
+
+      // View-gizmo corner: treat as empty space — no hover raycast, no lasso
+      // preview, no brush ring — so the gizmo never drives paint state.
+      // (Deliberately AFTER the isPainting branch: a drag that started on the
+      // model keeps painting while it sweeps across the corner.)
+      if (isPointerInGizmo(e.clientX, e.clientY, canvas)) {
+        updateBrushCursor(null);
+        if (overModelRef.current) {
+          overModelRef.current = false;
+          applyCameraButtons();
+        }
+        if (useAppStore.getState().hoveredSegment !== null) setHoveredSegment(null);
+        if (isLassoTool) {
+          setLassoPreview(null);
+          setLassoClosing(false);
         }
         return;
       }
@@ -1903,6 +1940,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // the canvas itself does NOT preempt a same-element listener registered
     // earlier — confirmed against three-stdlib OrbitControls, REFUTE P3.)
     const onWheel = (e: WheelEvent) => {
+      // No brush resizing from the gizmo corner (wheel there is dead space —
+      // ViewGizmo keeps OrbitControls disabled inside its rect).
+      if (isPointerInGizmo(e.clientX, e.clientY, canvas)) return;
       if (e.ctrlKey && isRadiusTool && overModelRef.current) {
         e.preventDefault();
         e.stopPropagation();
@@ -2800,6 +2840,7 @@ export function Viewport() {
         <ControlsBridge />
         {isLoaded && <MeshDisplay />}
         <AdaptiveGrid />
+        <ViewGizmo />
       </Canvas>
       {isLoaded && activeTool === "seed" && <SeedPanel />}
       <ProgressBar />

@@ -260,6 +260,21 @@ const dict: Record<string, Record<Lang, string>> = {
     en: "This model has painting or segmentation changes that have not been exported yet. Quit anyway?",
   },
 
+  // View gizmo (Orca-style view cube, bottom-right of the viewport)
+  "gizmo.top": { zh: "顶部视图（XY 平面）", en: "Top view (XY plane)" },
+  "gizmo.bottom": { zh: "底部视图（XY 平面）", en: "Bottom view (XY plane)" },
+  "gizmo.front": { zh: "前视图（XZ 平面）", en: "Front view (XZ plane)" },
+  "gizmo.back": { zh: "后视图（XZ 平面）", en: "Back view (XZ plane)" },
+  "gizmo.right": { zh: "右视图（YZ 平面）", en: "Right view (YZ plane)" },
+  "gizmo.left": { zh: "左视图（YZ 平面）", en: "Left view (YZ plane)" },
+  // Short direction words baked into the cube faces (Orca-style)
+  "gizmo.face.top": { zh: "顶部", en: "TOP" },
+  "gizmo.face.bottom": { zh: "底部", en: "BOTTOM" },
+  "gizmo.face.front": { zh: "正面", en: "FRONT" },
+  "gizmo.face.back": { zh: "背面", en: "BACK" },
+  "gizmo.face.right": { zh: "右侧", en: "RIGHT" },
+  "gizmo.face.left": { zh: "左侧", en: "LEFT" },
+
   // Top menu bar (File / View / Help)
   "menu.file": { zh: "文件", en: "File" },
   "menu.view": { zh: "视图", en: "View" },
@@ -405,6 +420,10 @@ const dict: Record<string, Record<Lang, string>> = {
 };
 
 // ─── Pure translate ───────────────────────────────────────────────
+/** Read-only view of the dictionary for tests (completeness / placeholder
+ *  parity). Runtime code goes through translate()/translateError(). */
+export const I18N_DICT: Readonly<Record<string, Readonly<Record<Lang, string>>>> = dict;
+
 /** Translate `key` for `lang` with positional {0}/{1}/… replacement. */
 export function translate(key: string, lang: Lang, ...args: (string | number)[]): string {
   const entry = dict[key];
