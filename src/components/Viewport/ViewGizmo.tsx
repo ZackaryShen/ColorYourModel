@@ -197,10 +197,15 @@ export function ViewGizmo() {
     const ringPx = (RING_R + 0.05) * S;
     const sync = (e: PointerEvent | WheelEvent) => {
       if (!controls) return;
-      const inside = isPointerInGizmo(e.clientX, e.clientY, gl.domElement);
+      // Gesture-owner stability: once a button is down, the gesture keeps its
+      // initial owner — flipping controls.enabled mid-orbit (cursor sweeping
+      // across the corner) visibly freezes the rotation for a few frames.
+      if (e.type === "pointermove" && e.buttons !== 0) return;
+      // One rect read per event, shared by the square guard and the circle test.
+      const r = gl.domElement.getBoundingClientRect();
+      const inside = isPointerInGizmo(e.clientX, e.clientY, gl.domElement, r);
       controls.enabled = !inside;
       if (e.target === gl.domElement) {
-        const r = gl.domElement.getBoundingClientRect();
         pointerInsideCircle.current =
           Math.hypot(e.clientX - (r.left + r.width - GIZMO_MARGIN_X), e.clientY - (r.top + r.height - GIZMO_MARGIN_Y)) <= ringPx;
       }

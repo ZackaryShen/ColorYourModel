@@ -56,9 +56,16 @@ export function isPointInGizmoRect(lx: number, ly: number, rect: GizmoRect): boo
   return Math.abs(lx - rect.x) <= rect.half && Math.abs(ly - rect.y) <= rect.half;
 }
 
-/** Client coords → canvas-local → gizmo hit test. */
-export function isPointerInGizmo(clientX: number, clientY: number, canvas: HTMLCanvasElement): boolean {
-  const r = canvas.getBoundingClientRect();
+/** Client coords → canvas-local → gizmo hit test. Pass a precomputed canvas
+ *  rect to avoid a duplicate getBoundingClientRect when the caller already
+ *  read one (forced-layout reads per pointermove are jank fuel). */
+export function isPointerInGizmo(
+  clientX: number,
+  clientY: number,
+  canvas: HTMLCanvasElement,
+  rect?: DOMRect
+): boolean {
+  const r = rect ?? canvas.getBoundingClientRect();
   if (r.width === 0 || r.height === 0) return false;
   return isPointInGizmoRect(clientX - r.left, clientY - r.top, gizmoRect);
 }
