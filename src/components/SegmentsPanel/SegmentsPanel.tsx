@@ -445,7 +445,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 2,
-    maxHeight: 300,
+    // Capped so a rich partition (100+ regions) doesn't push the brush and
+    // colour panels below the fold — those stay reachable without scrolling
+    // the whole right rail (GUI audit round 2, B16).
+    maxHeight: 180,
     overflowY: "auto",
   },
   item: {

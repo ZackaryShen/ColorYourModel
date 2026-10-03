@@ -135,6 +135,10 @@ interface AppStore {
   setHoveredSegment: (id: number | null) => void;
   setSnapEnabled: (enabled: boolean) => void;
   setSegmentView: (enabled: boolean) => void;
+  /** GUI audit round 3 (B18): bumped by the View menu's "Reset view" item;
+   *  CameraFit re-runs its fit on each tick, restoring the load framing. */
+  viewResetTick: number;
+  bumpViewReset: () => void;
   setToast: (msg: string | null) => void;
   // History flags + actions (frontend owns no timeline; see useHistory bridge).
   setHistoryFlags: (canUndo: boolean, canRedo: boolean) => void;
@@ -559,6 +563,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setHoveredSegment: (id) => set({ hoveredSegment: id }),
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   setSegmentView: (enabled) => set({ segmentView: enabled }),
+  viewResetTick: 0,
+  bumpViewReset: () => set((state) => ({ viewResetTick: state.viewResetTick + 1 })),
   setToast: (msg) => set({ toast: msg }),
   setHistoryFlags: (canUndo, canRedo) => set({ canUndo, canRedo }),
   // Optimistic: a successful paint stroke always creates a history entry, so undo

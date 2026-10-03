@@ -170,14 +170,21 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
   },
   button: {
-    padding: "6px 8px",
+    // Same footprint as the tool buttons: import/export used to render
+    // smaller (6px/8px padding vs the 40×40 tool squares), which read as a
+    // second, mismatched toolbar row (GUI audit round 2, B13).
+    width: 40,
+    height: 40,
     border: "none",
-    borderRadius: 6,
+    borderRadius: 8,
     background: "var(--bg-hover, #444444)",
     color: "var(--text-1, #eeeeee)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: 18,
     whiteSpace: "nowrap" as const,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   toolButton: {
     width: 40,

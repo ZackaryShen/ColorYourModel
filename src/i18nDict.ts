@@ -298,6 +298,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.import": { zh: "导入 STL…", en: "Import STL…" },
   "menu.export": { zh: "导出涂装模型…", en: "Export painted model…" },
   "menu.quit": { zh: "退出", en: "Quit" },
+  "menu.resetView": { zh: "重置视角", en: "Reset view" },
   "menu.quitFailed": { zh: "退出失败：窗口关闭被拒绝，详情见日志", en: "Quit failed: window close was denied — see the log" },
   // Describes the action in the CURRENT language (the menu must read fully
   // localized in both languages); the StatusBar tooltip keeps the

@@ -162,6 +162,9 @@ function useFacePicker(
 function CameraFit() {
   const { camera, size } = useThree();
   const meshData = useAppStore((s) => s.meshData);
+  // View menu "Reset view" (B18): bumping the tick re-runs the fit below,
+  // restoring the load framing without a remount.
+  const viewResetTick = useAppStore((s) => s.viewResetTick);
 
   useEffect(() => {
     if (!meshData?.bbox) return;
@@ -248,7 +251,7 @@ function CameraFit() {
     // the fit and reset a user-rotated view — "点工具栏/推荐分区会重置视角"
     // (2026-10-02). Resizes must only re-derive the ortho frustum, which R3F
     // does automatically; the framing itself stays put.
-  }, [meshData?.bbox, camera]);
+  }, [meshData?.bbox, camera, viewResetTick]);
 
   return null;
 }

@@ -120,6 +120,10 @@ export function MenuBar() {
       id: "view",
       label: t("menu.view"),
       items: [
+        // GUI audit round 3 (B18): the View menu previously held no camera
+        // command at all — every 3D app puts a view reset here.
+        { kind: "item", label: t("menu.resetView"), onClick: act(() => useAppStore.getState().bumpViewReset()) },
+        { kind: "sep" },
         { kind: "item", label: t("menu.language"), onClick: () => setLanguage(language === "zh" ? "en" : "zh") },
         { kind: "item", label: theme === "dark" ? t("menu.themeToLight") : t("menu.themeToDark"), onClick: () => setTheme(theme === "dark" ? "light" : "dark") },
         { kind: "sep" },
