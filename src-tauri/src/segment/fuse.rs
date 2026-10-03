@@ -41,7 +41,7 @@ use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 
 use crate::mesh::history::OpKind;
-use crate::mesh::model::{MeshModel, Segment, DEFAULT_FACE_COLOR};
+use crate::mesh::model::{MeshModel, Segment};
 
 /// Max tiny-region merge passes — mirror of [`postprocess::MAX_MERGE_PASSES`].
 /// Each pass absorbs *every* under-sized region (faces below `min_faces`)
@@ -515,16 +515,11 @@ pub fn fuse_region_sets(
             moved += 1;
         }
         mesh.segment_labels[f] = label;
-        // Seed the export buffer with the region identity colour ONLY where the
-        // face is still unpainted. `face_colors` is the buffer the 3MF exporter
-        // reads (see `merge_segments`), so an unconditional write here silently
-        // destroyed every pre-fuse paint stroke (GUI audit 2026-10-02, B1).
-        // Known trade-off: a user who paints the EXACT default grey #8A8A8A via
-        // the custom colour picker still gets re-seeded — accepted, "this face
-        // was never painted" is the weaker assumption on that input.
-        if mesh.face_colors[f] == DEFAULT_FACE_COLOR {
-            mesh.face_colors[f] = MeshModel::manual_label_color(label);
-        }
+        // `face_colors` is the 3MF export buffer and carries USER paint only
+        // (先生 decision, GUI audit round 3): fuse must not auto-paint regions
+        // with their identity colour — that flooded the export quantizer and
+        // dropped the user's own strokes. Region colours live in segment
+        // metadata (the segment view tints by label), not in this buffer.
     }
     for (rid, faces) in &region_faces {
         final_regions.push((*rid, faces.len()));
@@ -575,6 +570,7 @@ pub fn fuse_region_sets(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mesh::model::DEFAULT_FACE_COLOR;
     use crate::segment::metrics::unit_cube;
     use crate::segment::planar::{detect_planar_regions, PlanarParams};
     use crate::segment::multiview::{detect_multiview_regions, MultiViewParams};
@@ -637,12 +633,12 @@ mod tests {
         assert!(err.is_err());
     }
 
-    /// GUI audit 2026-10-02 (B1): fuse seeds identity colours ONLY on faces
-    /// still holding the default grey — a pre-fuse paint stroke is the user's
-    /// export output (`face_colors` is what the 3MF exporter reads) and must
-    /// survive partitioning.
+    /// GUI audit round 3 (B1, 先生 decision): fuse must NOT auto-paint —
+    /// `face_colors` is the 3MF export buffer and carries USER paint only.
+    /// Region identity colours live in segment metadata (segment view tints by
+    /// label), so a fused-but-unpainted model exports in its base colour.
     #[test]
-    fn fuse_preserves_prefuse_paint() {
+    fn fuse_keeps_user_paint_only() {
         let mut mesh = unit_cube();
         let painted: [u8; 4] = [255, 0, 0, 255];
         mesh.face_colors[0] = painted;
@@ -657,8 +653,8 @@ mod tests {
             mesh.face_colors
                 .iter()
                 .enumerate()
-                .all(|(i, c)| i == 0 || c != &DEFAULT_FACE_COLOR),
-            "still-unpainted faces get identity colours"
+                .all(|(i, c)| i == 0 || c == &DEFAULT_FACE_COLOR),
+            "fuse must not auto-paint unpainted faces (export = user colours only)"
         );
     }
 

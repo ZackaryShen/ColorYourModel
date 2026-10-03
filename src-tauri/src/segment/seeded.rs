@@ -28,7 +28,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use petgraph::visit::EdgeRef;
 
 use crate::mesh::history::OpKind;
-use crate::mesh::model::{MeshModel, Segment, DEFAULT_FACE_COLOR};
+use crate::mesh::model::{MeshModel, Segment};
 use crate::segment::manual::{shared_edge, snap_point_to_vertex_on_face};
 
 /// f32 wrapper implementing `Ord` so it can key a `BinaryHeap` for Dijkstra.
@@ -336,11 +336,8 @@ pub fn seed_grow(
             moved += 1;
         }
         mesh.segment_labels[f] = r;
-        // Same conditional as fuse: identity colour only on still-unpainted
-        // faces, so a manual grow never wipes existing paint strokes.
-        if mesh.face_colors[f] == DEFAULT_FACE_COLOR {
-            mesh.face_colors[f] = MeshModel::manual_label_color(r);
-        }
+        // Same rule as fuse: `face_colors` carries USER paint only — a manual
+        // grow assigns labels (segment view tints by label) but never paints.
     }
     mesh.history
         .record(OpKind::ManualRegion, None, &prev_colors, &prev_labels);
@@ -358,6 +355,7 @@ pub fn seed_grow(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mesh::model::DEFAULT_FACE_COLOR;
     use crate::segment::metrics::unit_cube;
 
     #[test]
@@ -408,11 +406,11 @@ mod tests {
         assert!(err.is_err());
     }
 
-    /// GUI audit 2026-10-02 (B1, same defect as fuse): a manual grow seeds
-    /// identity colours only on still-unpainted faces — existing paint is the
-    /// export buffer's content and must not be wiped by re-partitioning.
+    /// GUI audit round 3 (B1, same rule as fuse): a manual grow assigns labels
+    /// but never paints — existing paint survives, unpainted faces stay at the
+    /// default base colour so only USER colours reach the export buffer.
     #[test]
-    fn seed_grow_preserves_existing_paint() {
+    fn seed_grow_keeps_user_paint_only() {
         let mut mesh = unit_cube();
         let painted: [u8; 4] = [0, 32, 255, 255];
         mesh.face_colors[11] = painted;
@@ -433,8 +431,8 @@ mod tests {
             mesh.face_colors
                 .iter()
                 .enumerate()
-                .all(|(i, c)| i == 11 || c != &DEFAULT_FACE_COLOR),
-            "still-unpainted faces get identity colours"
+                .all(|(i, c)| i == 11 || c == &DEFAULT_FACE_COLOR),
+            "grow must not auto-paint unpainted faces (export = user colours only)"
         );
     }
 }
