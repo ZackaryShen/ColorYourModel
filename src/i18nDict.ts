@@ -133,7 +133,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.eyeNeedSegment": { zh: "请先在分区面板选中一个包围眼睛的分区", en: "Select a partition that bounds an eye first" },
   "seed.eyeNeedFaces": { zh: "该分区面数过少，无法识别眼睛", en: "This partition has too few faces to detect an eye" },
   "seed.eyeNeedSegmentShort": { zh: "请先选中一个包围眼睛的分区（先 Fuse 一次再点其中一块高亮）", en: "Select an eye-adjacent partition first (Fuse then click one region to highlight it)" },
-  "seed.eyeNeedSegmentHint": { zh: "👁 眼睛识别需要先有一个「选中分区」：先点「Fuse & generate」得到几个区域，再用鼠标点其中接近眼睛的那一块让它高亮，最后回来点「眼睛识别」就能跑。", en: "👁 Eye detect needs a selected partition: click \"Fuse & generate\" first, then click any one region in the viewport to highlight it as selected, then click \"Eye detect\" here." },
+  "seed.eyeNeedSegmentHint": { zh: "👁 眼睛识别需要先有一个「选中分区」：先点「🧩 融合生成」得到几个区域，再用鼠标点其中接近眼睛的那一块让它高亮，最后回来点「眼睛识别」就能跑。", en: "👁 Eye detect needs a selected partition: click \"Fuse & generate\" first, then click any one region in the viewport to highlight it as selected, then click \"Eye detect\" here." },
   "seed.eyeNeedBodySeeds": { zh: "👁 眼睛区域只能作为「保护区」参与生长。请先放置几个身体种子，或使用「融合生成」。", en: "👁 Eye regions can only act as a reservation. Place a few body seeds first, or use Fuse & generate." },
   "seed.eyePickHint": { zh: "👁 想识别眼睛？点 [🖱 点选分区] 进入点选模式，鼠标在模型上点击任一区域即可把它设为选中分区（一次命中即自动退出）；空处点击取消选中。", en: "👁 For eye detect: click [🖱 Pick a partition] to enter pick mode, then click any region on the model to set it as the selected partition (auto-exits on first hit); click empty space to clear." },
   "seed.pickMode": { zh: "🖱 点选分区", en: "🖱 Pick a partition" },
