@@ -770,6 +770,22 @@ function MeshDisplay() {
   const setSeedPickMode = useAppStore((s) => s.setSeedPickMode);
   const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
   const acceptSuggestedSeed = useAppStore((s) => s.acceptSuggestedSeed);
+
+  // GUI audit 2026-10-02 (B17): the fill/brush HUD diagnostics are per-model
+  // observations — after loading a DIFFERENT mesh they described faces that no
+  // longer exist. Face count is the cheapest swap signal: partitioning never
+  // changes it (labels do), only a (re)load does. The first observation is
+  // exempt so a fresh page doesn't clear a just-arrived model's diagnostics.
+  const faceCount = meshData?.faceCount ?? null;
+  const prevFaceCountRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (prevFaceCountRef.current !== null && faceCount !== prevFaceCountRef.current) {
+      setLastPaintDebug(null);
+      setHoverProbe(null);
+    }
+    prevFaceCountRef.current = faceCount;
+  }, [faceCount, setLastPaintDebug, setHoverProbe]);
+
 const planarRegions = useAppStore((s) => s.planarRegions);
 const planarRegionsVisible = useAppStore((s) => s.planarRegionsVisible);
 const multiviewRegions = useAppStore((s) => s.multiviewRegions);
@@ -2629,12 +2645,22 @@ function ControlsHelp() {
   // resizes the brush (brush tools only). Key selection lives in
   // utils/controlsHint.ts — StatusBar reads the SAME keys, so the two hint
   // surfaces can never contradict each other (GUI audit 2026-10-02, B4).
-  const hint = t(hintKeyForTool(activeTool));
+  const key = hintKeyForTool(activeTool);
+  const hint = t(key);
+  // The view/edit hints already end with their own wheel-zoom wording; the
+  // standalone "🔍 Scroll: Zoom" chip used to repeat it (GUI audit B11).
+  // Brush tools are the one group whose hint omits plain wheel zoom, so the
+  // chip survives there.
+  const needsZoomChip = key === "controls.brushHint";
   return (
     <div style={helpStyles.bar}>
       <span style={helpStyles.item}>{hint}</span>
-      <span style={helpStyles.sep}>|</span>
-      <span style={helpStyles.item}>{t("controls.scrollZoom")}</span>
+      {needsZoomChip && (
+        <>
+          <span style={helpStyles.sep}>|</span>
+          <span style={helpStyles.item}>{t("controls.scrollZoom")}</span>
+        </>
+      )}
     </div>
   );
 }
@@ -2847,7 +2873,10 @@ export function Viewport() {
         <div
           style={{
             position: "absolute",
-            top: "50%",
+            // Above-centre: dead-centre put the text on top of the floor-grid
+            // diamond, where the grid lines read as a strikethrough (GUI audit
+            // 2026-10-02, B10).
+            top: "38%",
             left: "50%",
             transform: "translate(-50%, -50%)",
             color: "var(--text-3, #888888)",
