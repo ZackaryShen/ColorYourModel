@@ -135,6 +135,13 @@ interface AppStore {
   setHoveredSegment: (id: number | null) => void;
   setSnapEnabled: (enabled: boolean) => void;
   setSegmentView: (enabled: boolean) => void;
+  /** One-shot suggestion card (Viewport top-centre): raised right after the
+   *  auto-fuse lands a partition while the user is NOT in segment view.
+   *  Cleared by honoring it (segment view switched on) or by dismissing.
+   *  Transient: NOT persisted (see partialize whitelist). */
+  segmentViewHint: boolean;
+  requestSegmentViewHint: () => void;
+  dismissSegmentViewHint: () => void;
   /** GUI audit round 3 (B18): bumped by the View menu's "Reset view" item;
    *  CameraFit re-runs its fit on each tick, restoring the load framing. */
   viewResetTick: number;
@@ -562,7 +569,16 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setSelectedSegment: (id) => set({ selectedSegment: id }),
   setHoveredSegment: (id) => set({ hoveredSegment: id }),
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
-  setSegmentView: (enabled) => set({ segmentView: enabled }),
+  setSegmentView: (enabled) =>
+    set((s) => ({
+      segmentView: enabled,
+      // Honoring the post-fuse suggestion clears it; switching the view OFF
+      // must not resurrect an already-dismissed hint.
+      segmentViewHint: enabled ? false : s.segmentViewHint,
+    })),
+  segmentViewHint: false,
+  requestSegmentViewHint: () => set((s) => ({ segmentViewHint: !s.segmentView })),
+  dismissSegmentViewHint: () => set({ segmentViewHint: false }),
   viewResetTick: 0,
   bumpViewReset: () => set((state) => ({ viewResetTick: state.viewResetTick + 1 })),
   setToast: (msg) => set({ toast: msg }),

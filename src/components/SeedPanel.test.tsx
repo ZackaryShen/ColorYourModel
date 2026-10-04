@@ -204,11 +204,13 @@ describe("SeedPanel.onClose — iteration 66「无法退出」修复", () => {
   });
 });
 
-describe("SeedPanel 折角滑杆 — 2° 下限回归（godzilla fuse 探针）", () => {
-  // 后端 fuse 在 2° 才能把光滑雕塑体（哥斯拉 86.7% 巨区 → 13%）分出
-  // 头/四肢/尾巴，见 segment::godzilla_soft_fold_feasibility /
+describe("SeedPanel 折角滑杆 — 下限与默认值回归（godzilla fuse 探针）", () => {
+  // 0° 下限是刻死的：后端 fuse 在 2° 才能把光滑雕塑体（哥斯拉 86.7% 巨区 →
+  // 13%）分出头/四肢/尾巴，见 segment::godzilla_soft_fold_feasibility /
   // fuse_floor_e2e。滑杆若退回 min=5，雕塑类模型会重新退化成一个巨区。
-  it("折角滑杆 min=0（0° 已探针验证可终止）且默认值 2°", () => {
+  // 默认值 2026-10-04 起为 5°（先生产品决策，原 2°）：硬表面模型 5° 首切
+  // 更合理；雕塑类用户按滑杆提示手动调回 2-3°——下限 0° 保证了这条路畅通。
+  it("折角滑杆 min=0（0° 已探针验证可终止）且默认值 5°", () => {
     // 前序失败用例的 /生长/ 选择器会误点「手动（生长）」模式 Tab 并把
     // segmentMode 泄漏为 manual；本用例只关心 auto 模式下的滑杆，显式归位。
     useAppStore.setState({ segmentMode: "auto" });
@@ -219,6 +221,6 @@ describe("SeedPanel 折角滑杆 — 2° 下限回归（godzilla fuse 探针）"
     const fold = ranges.find((r) => r.min === "0");
     expect(fold).toBeTruthy();
     expect(fold!.max).toBe("35");
-    expect(fold!.value).toBe("2");
+    expect(fold!.value).toBe("5");
   });
 });

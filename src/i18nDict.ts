@@ -196,6 +196,13 @@ const dict: Record<string, Record<Lang, string>> = {
   "view.segmentView": { zh: "🗺️ 分区视图", en: "🗺️ Segment View" },
   "view.switchToPaint": { zh: "切换到涂色视图", en: "Switch to paint view" },
   "view.showSegments": { zh: "显示分区着色", en: "Show segment regions" },
+  // Post-fuse segment-view suggestion card (Viewport top-centre)
+  "view.segmentHint": {
+    zh: "分区完成：切换到分区视图查看效果更直观",
+    en: "Partition ready — the segment view shows it best",
+  },
+  "view.segmentHintSwitch": { zh: "切换到分区视图", en: "Switch to segment view" },
+  "view.segmentHintStay": { zh: "留在当前视图", en: "Stay here" },
 
   // Viewport — misc
   "view.loading": { zh: "加载中…", en: "Loading…" },
@@ -312,6 +319,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.examples": { zh: "示例画廊", en: "Example Gallery" },
   "menu.discussions": { zh: "GitHub 讨论区", en: "GitHub Discussions" },
   "menu.about": { zh: "关于 ColorYourModel", en: "About ColorYourModel" },
+  "menu.checkUpdates": { zh: "检查更新…", en: "Check for updates…" },
 
   // About dialog
   "about.desc": {
@@ -323,6 +331,47 @@ const dict: Record<string, Record<Lang, string>> = {
   "about.license": { zh: "开源协议", en: "License" },
   "about.repo": { zh: "源码仓库", en: "Repository" },
   "about.close": { zh: "关闭", en: "Close" },
+  "update.autoCheckToggle": { zh: "启动时检查更新", en: "Check for updates on startup" },
+
+  // Update module (GitHub Releases check / download / passive install).
+  // Versions arrive pre-formatted as "vX.Y.Z"; sizes arrive as "N.N" (MB).
+  "update.availableTitle": { zh: "发现新版本 {0}", en: "Update available: {0}" },
+  "update.currentVersion": { zh: "当前版本 {0}", en: "Current version {0}" },
+  "update.installerSize": { zh: "安装包 {0} MB", en: "{0} MB installer" },
+  "update.unsavedWorkHint": {
+    zh: "更新会关闭应用，未导出的涂装将不会保留。",
+    en: "Updating closes the app — unexported paint will be lost.",
+  },
+  "update.updateNow": { zh: "立即更新", en: "Update now" },
+  "update.goToRelease": { zh: "前往发布页", en: "Open releases page" },
+  "update.later": { zh: "稍后", en: "Later" },
+  "update.skipVersion": { zh: "跳过此版本", en: "Skip this version" },
+  "update.neverRemind": { zh: "不再提醒", en: "Never remind me" },
+  "update.checking": { zh: "正在检查更新…", en: "Checking for updates…" },
+  "update.upToDateTitle": { zh: "暂无更新", en: "You're up to date" },
+  "update.upToDateBody": { zh: "已是最新版本 {0}", en: "You are on the latest version ({0})" },
+  "update.downloading": { zh: "正在下载更新…", en: "Downloading update…" },
+  "update.progressMb": { zh: "已下载 {0} / {1} MB", en: "{0} of {1} MB downloaded" },
+  "update.progressBare": { zh: "已下载 {0} MB", en: "{0} MB downloaded" },
+  "update.cancel": { zh: "取消", en: "Cancel" },
+  "update.downloadComplete": { zh: "下载完成", en: "Download complete" },
+  "update.readyBody": {
+    zh: "{0} 的安装包已就绪，点击下方按钮将退出应用并自动安装。",
+    en: "The installer for {0} is ready — installing exits the app and runs automatically.",
+  },
+  "update.installNow": { zh: "立即安装并重启", en: "Install and restart" },
+  "update.installingTitle": { zh: "正在安装", en: "Installing" },
+  "update.installing": {
+    zh: "正在退出并安装，完成后应用将自动重启…",
+    en: "Exiting to install — the app restarts automatically when done…",
+  },
+  "update.failedTitle": { zh: "更新失败", en: "Update failed" },
+  "update.failedGeneric": {
+    zh: "出了点问题，请稍后重试或前往发布页手动下载。",
+    en: "Something went wrong — try again later or download manually from the releases page.",
+  },
+  "update.retry": { zh: "重试", en: "Retry" },
+  "update.close": { zh: "关闭", en: "Close" },
 
   // Fill tool status (usePaintTool)
   "fill.done": { zh: "已填充分区 {0}（{1} 个面）颜色 {2}", en: "Filled region {0} ({1} faces) with colour {2}" },

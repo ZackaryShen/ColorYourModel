@@ -39,6 +39,9 @@ rayon = "1"
 log = "0.4"
 env_logger = "0.11"
 parry3d = "0.30.2"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
+tokio = { version = "1", features = ["fs", "io-util", "time", "sync"] }
+semver = "1"
 
 # Dev-build runtime speed: the interactive paths (lasso finalize, paint, fuse)
 # are O(mesh) passes over up to 1.5M faces, and unoptimized debug codegen made

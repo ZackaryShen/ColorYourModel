@@ -154,14 +154,17 @@ export function SeedPanel() {
   const [detecting, setDetecting] = useState(false);
   const [detectingEye, setDetectingEye] = useState(false);
   const [fusing, setFusing] = useState(false);
-  // 0° floor (probed: 0° terminates in ~46s on godzilla/1.5M, 82 regions) with
-  // a 2° default (godzilla fuse probe). The old 5° floor kept the whole
-  // smooth-sculpt body in one 86.7% region because sculpt folds spread their
-  // turning over many sub-5° edges; at 2° the same fuse pipeline returns 73
-  // regions (largest 13%) on Godzilla and 75 on pug, and does NOT over-split
-  // clean hard-surface models (ring-stand 64 vs 110 regions, cyberpunk-mask
-  // 76 vs 82). See segment::godzilla_soft_fold_feasibility / fuse_floor_e2e.
-  const [dihedralDeg, setDihedralDeg] = useState(2);
+  // 0° floor (probed: 0° terminates in ~46s on godzilla/1.5M, 82 regions).
+  // Default 5° since 2026-10-04 (先生 product decision; was 2°). History to
+  // keep honest: the old 5° *floor* once kept the whole smooth-sculpt body in
+  // one 86.7% region because sculpt folds spread their turning over many
+  // sub-5° edges; at 2° the same fuse pipeline returns 73 regions (largest
+  // 13%) on Godzilla and 75 on pug, and does NOT over-split clean hard-surface
+  // models (ring-stand 64 vs 110 regions, cyberpunk-mask 76 vs 82). A 5°
+  // DEFAULT is a different trade — the floor stays 0°, so sculpted-figure
+  // users can still dial back to 2-3° (the slider hint teaches exactly that).
+  // See segment::godzilla_soft_fold_feasibility / fuse_floor_e2e.
+  const [dihedralDeg, setDihedralDeg] = useState(5);
   const [resetting, setResetting] = useState(false);
 
   // ── Drag-to-move (iteration 78) ────────────────────────────────────────
@@ -675,6 +678,11 @@ export function SeedPanel() {
           t("seed.fuseDetail", result.segments.length, c.planar ?? 0, c.multiview ?? 0, c.dihedral ?? 0, c.eye ?? 0, cut, ec, min, med, mx),
         );
       }
+      // Partition just landed — if the user is staring at the paint view,
+      // offer the one-click jump to the segment view instead of hoping they
+      // notice the top-right toggle. No-op when the segment view is already
+      // on (the store refuses to raise it then).
+      useAppStore.getState().requestSegmentViewHint();
     } catch {
       // error already surfaced via status message in fuseSegmentation
     } finally {
@@ -1193,8 +1201,9 @@ export function SeedPanel() {
               finer regions; higher = fewer, coarser parts. Floor is 0°: probed on
               godzilla (1.5M faces) 0° terminates in ~46s and returns 82 regions /
               largest 13.7% — no fragmentation explosion, just slightly finer than
-              2°. Default 2°: sculpted figures spread their part folds over sub-5°
-              edges, so only ≤2° lets the fuse separate head/limbs/tail. */}
+              2°. Default 5° (was 2°): sane first-shot for hard-surface models;
+              sculpted figures spread their part folds over sub-5° edges and still
+              want 2-3° — the slider hint says so explicitly. */}
           <div style={styles.row}>
             <span style={styles.label} title={t("seed.fuseDihedralHint")}>
               {t("seed.fuseDihedral")}
