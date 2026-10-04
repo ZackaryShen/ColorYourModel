@@ -2,7 +2,7 @@
 # Docs freshness is covered separately by docs-check.yml.
 #
 # Known state (see CHANGELOG.md "Known Issues"): 3 pre-existing SeedPanel
-# selector failures make vitest 7/10. Until they are fixed, the vitest step
+# selector failures make vitest 57/60. Until they are fixed, the vitest step
 # is informational (continue-on-error) while `tsc --noEmit` stays a hard
 # gate — CI must be green on day one without hiding the failures.
 
