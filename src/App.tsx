@@ -9,6 +9,8 @@ import { StatusBar } from "./components/StatusBar/StatusBar";
 import { MenuBar } from "./components/MenuBar";
 import { DebugLogViewer } from "./components/DebugLogViewer";
 import { ExitConfirmDialog } from "./components/ExitConfirmDialog";
+import { UpdateDialog } from "./components/UpdateDialog/UpdateDialog";
+import { useAutoUpdateCheck } from "./hooks/useAutoUpdateCheck";
 import { useAppStore } from "./store/appStore";
 import { useT } from "./i18n";
 
@@ -20,6 +22,9 @@ function App() {
   const hasMesh = useAppStore((s) => s.meshData !== null);
   const [confirmExit, setConfirmExit] = useState(false);
   const t = useT();
+
+  // Silent startup update check (dev builds and opted-out users never fire).
+  useAutoUpdateCheck();
 
   // Sync the chosen theme to <html data-theme> so the static CSS variables in
   // theme.css resolve. No FOUC: theme.css is imported in main.tsx at load.
@@ -89,6 +94,10 @@ function App() {
       {/* Issue #7: in-app exit confirmation (dark-themed, replaces the
           white native MessageBox). */}
       {confirmExit && <ExitConfirmDialog onCancel={() => setConfirmExit(false)} />}
+
+      {/* Update module: renders nothing while phase === "idle"; owns its own
+          phases (available / downloading / ready / installing / error). */}
+      <UpdateDialog />
     </div>
   );
 }

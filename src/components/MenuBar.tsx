@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore } from "../store/appStore";
+import { useUpdateStore } from "../store/updateStore";
 import { useImportStl } from "../hooks/useImportStl";
 import { useT } from "../i18n";
 import { log } from "../utils/logger";
@@ -140,6 +141,11 @@ export function MenuBar() {
         { kind: "item", label: t("menu.examples"), onClick: () => openExternal(EXAMPLES_URL) },
         { kind: "item", label: t("menu.wiki"), onClick: () => openExternal(SITE_URL) },
         { kind: "sep" },
+        // Manual update check — always available, ignores the auto-check
+        // preference and version skips (asking is consent to see the answer).
+        // The updater's own busy-mutex ignores clicks while a download runs.
+        { kind: "item", label: t("menu.checkUpdates"), onClick: () => useUpdateStore.getState().startManualCheck() },
+        { kind: "sep" },
         { kind: "item", label: t("menu.discussions"), onClick: () => openExternal(DISCUSSIONS_URL) },
         { kind: "sep" },
         { kind: "item", label: t("menu.about"), onClick: () => setAboutOpen(true) },
@@ -199,9 +205,13 @@ export function MenuBar() {
 }
 
 /// Conventional About box: name/version/stack/licence/repo, same overlay
-/// language as the other dialogs. Esc and overlay-click both close.
+/// language as the other dialogs. Esc and overlay-click both close. Carries
+/// the auto-check toggle so "不再提醒" from the update dialog is always
+/// reversible from a discoverable place (update-module plan, config symmetry).
 function AboutDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
+  const autoCheckEnabled = useUpdateStore((s) => s.autoCheckEnabled);
+  const setAutoCheckEnabled = useUpdateStore((s) => s.setAutoCheckEnabled);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -234,6 +244,14 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
           {row(t("about.license"), "AGPL-3.0")}
           {row(t("about.repo"), REPO_URL)}
         </div>
+        <label style={styles.toggleRow}>
+          <input
+            type="checkbox"
+            checked={autoCheckEnabled}
+            onChange={(e) => setAutoCheckEnabled(e.target.checked)}
+          />
+          <span>{t("update.autoCheckToggle")}</span>
+        </label>
         <div style={styles.btnRow}>
           <button className="cym-btn" style={styles.btnPrimary} onClick={onClose}>
             {t("about.close")}
@@ -368,6 +386,16 @@ const styles: Record<string, React.CSSProperties> = {
   aboutVal: {
     color: "var(--text-1, #eee)",
     wordBreak: "break-all",
+  },
+  toggleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 10,
+    fontSize: 12,
+    color: "var(--text-2, #aaa)",
+    cursor: "pointer",
+    userSelect: "none",
   },
   btnRow: {
     display: "flex",
