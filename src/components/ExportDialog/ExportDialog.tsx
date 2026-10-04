@@ -248,7 +248,9 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
           aria-modal="true"
         >
           <div style={styles.header}>{t("export.noModel")}</div>
-          <div style={styles.note}>{t("export.noModelHint")}</div>
+          <div style={styles.body}>
+            <div style={styles.note}>{t("export.noModelHint")}</div>
+          </div>
           <div style={styles.footer}>
             <button className="cym-btn" style={styles.btn} onClick={onClose}>
               {t("export.cancel")}
@@ -269,6 +271,11 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       >
         <div style={styles.header}>{t("export.title")}</div>
 
+        {/* Scrollable body: the 16-slot list alone overshoots the 85vh dialog
+            on the default window, which buried the footer's Export button
+            below the fold (GUI audit 2026-10-02, B6). Header, progress and
+            footer stay pinned outside this wrapper. */}
+        <div style={styles.body}>
         {/* Format toggle — 3MF needs a slicer profile; OBJ writes colour
             directly and hides the machine / process / filament pickers. */}
         <label style={styles.label}>{t("export.format")}</label>
@@ -445,7 +452,9 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <div style={styles.note}>{t("export.objNote")}</div>
         )}
+        </div>
 
+        {/* Progress + footer are pinned: visible at every scroll position. */}
         {exporting && (
           <div style={styles.progressWrap}>
             <div style={{ ...styles.progressBar, width: `${Math.round(progress * 100)}%` }} />
@@ -484,13 +493,21 @@ const styles: Record<string, React.CSSProperties> = {
   dialog: {
     width: 460,
     maxHeight: "85vh",
-    overflowY: "auto",
+    // Flex column + scrollable body (styles.body): header/progress/footer stay
+    // pinned while only the settings list scrolls. The dialog itself no longer
+    // scrolls as a whole — that buried the Export button below the fold.
+    display: "flex",
+    flexDirection: "column",
     background: "var(--bg-panel, #2d2d2d)",
     border: "1px solid var(--border, #555)",
     borderRadius: 10,
     padding: 16,
     color: "var(--text-1, #eee)",
     fontFamily: 'inherit',
+  },
+  body: {
+    overflowY: "auto",
+    minHeight: 0,
   },
   header: {
     fontSize: 15,

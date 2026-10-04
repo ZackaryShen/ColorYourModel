@@ -336,7 +336,8 @@ pub fn seed_grow(
             moved += 1;
         }
         mesh.segment_labels[f] = r;
-        mesh.face_colors[f] = MeshModel::manual_label_color(r);
+        // Same rule as fuse: `face_colors` carries USER paint only — a manual
+        // grow assigns labels (segment view tints by label) but never paints.
     }
     mesh.history
         .record(OpKind::ManualRegion, None, &prev_colors, &prev_labels);
@@ -354,6 +355,7 @@ pub fn seed_grow(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mesh::model::DEFAULT_FACE_COLOR;
     use crate::segment::metrics::unit_cube;
 
     #[test]
@@ -402,5 +404,35 @@ mod tests {
         let mut mesh = unit_cube();
         let err = seed_grow(&mut mesh, &[], &SeedGrowParams::default());
         assert!(err.is_err());
+    }
+
+    /// GUI audit round 3 (B1, same rule as fuse): a manual grow assigns labels
+    /// but never paints — existing paint survives, unpainted faces stay at the
+    /// default base colour so only USER colours reach the export buffer.
+    #[test]
+    fn seed_grow_keeps_user_paint_only() {
+        let mut mesh = unit_cube();
+        let painted: [u8; 4] = [0, 32, 255, 255];
+        mesh.face_colors[11] = painted;
+        seed_grow(
+            &mut mesh,
+            &[SeedInput {
+                point: [-1.0, -1.0, -1.0],
+                face_index: 0,
+            }],
+            &SeedGrowParams::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            mesh.face_colors[11], painted,
+            "existing paint must survive seed_grow"
+        );
+        assert!(
+            mesh.face_colors
+                .iter()
+                .enumerate()
+                .all(|(i, c)| i == 11 || c == &DEFAULT_FACE_COLOR),
+            "grow must not auto-paint unpainted faces (export = user colours only)"
+        );
     }
 }

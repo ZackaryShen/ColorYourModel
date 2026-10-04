@@ -98,13 +98,32 @@ export function MenuBar() {
         { kind: "sep" },
         // close() re-enters the onCloseRequested handler, so unexported work
         // still gets the exit confirmation; a clean state just closes.
-        { kind: "item", label: t("menu.quit"), danger: true, onClick: () => getCurrentWindow().close() },
+        {
+          kind: "item",
+          label: t("menu.quit"),
+          danger: true,
+          onClick: () => {
+            getCurrentWindow()
+              .close()
+              .catch((e) => {
+                // Denied permission or a closed window must not fail silently —
+                // GUI audit 2026-10-02 (B2): without this catch a missing
+                // capability made the Quit item a dead button in release.
+                log.error("MenuBar", "window.close failed", { error: String(e) });
+                useAppStore.getState().setStatusMessage(t("menu.quitFailed"));
+              });
+          },
+        },
       ],
     },
     {
       id: "view",
       label: t("menu.view"),
       items: [
+        // GUI audit round 3 (B18): the View menu previously held no camera
+        // command at all — every 3D app puts a view reset here.
+        { kind: "item", label: t("menu.resetView"), onClick: act(() => useAppStore.getState().bumpViewReset()) },
+        { kind: "sep" },
         { kind: "item", label: t("menu.language"), onClick: () => setLanguage(language === "zh" ? "en" : "zh") },
         { kind: "item", label: theme === "dark" ? t("menu.themeToLight") : t("menu.themeToDark"), onClick: () => setTheme(theme === "dark" ? "light" : "dark") },
         { kind: "sep" },

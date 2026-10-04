@@ -9,6 +9,7 @@ import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
 import type { HistoryResult } from "../../types/mesh";
 import { log } from "../../utils/logger";
+import { hintKeyForTool } from "../../utils/controlsHint";
 import { useT } from "../../i18n";
 import { SeedPanel } from "../SeedPanel";
 import { resolveSegmentStage } from "../../segmentStages";
@@ -161,6 +162,9 @@ function useFacePicker(
 function CameraFit() {
   const { camera, size } = useThree();
   const meshData = useAppStore((s) => s.meshData);
+  // View menu "Reset view" (B18): bumping the tick re-runs the fit below,
+  // restoring the load framing without a remount.
+  const viewResetTick = useAppStore((s) => s.viewResetTick);
 
   useEffect(() => {
     if (!meshData?.bbox) return;
@@ -247,7 +251,7 @@ function CameraFit() {
     // the fit and reset a user-rotated view — "点工具栏/推荐分区会重置视角"
     // (2026-10-02). Resizes must only re-derive the ortho frustum, which R3F
     // does automatically; the framing itself stays put.
-  }, [meshData?.bbox, camera]);
+  }, [meshData?.bbox, camera, viewResetTick]);
 
   return null;
 }
@@ -769,6 +773,22 @@ function MeshDisplay() {
   const setSeedPickMode = useAppStore((s) => s.setSeedPickMode);
   const suggestedSeeds = useAppStore((s) => s.suggestedSeeds);
   const acceptSuggestedSeed = useAppStore((s) => s.acceptSuggestedSeed);
+
+  // GUI audit 2026-10-02 (B17): the fill/brush HUD diagnostics are per-model
+  // observations — after loading a DIFFERENT mesh they described faces that no
+  // longer exist. Face count is the cheapest swap signal: partitioning never
+  // changes it (labels do), only a (re)load does. The first observation is
+  // exempt so a fresh page doesn't clear a just-arrived model's diagnostics.
+  const faceCount = meshData?.faceCount ?? null;
+  const prevFaceCountRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (prevFaceCountRef.current !== null && faceCount !== prevFaceCountRef.current) {
+      setLastPaintDebug(null);
+      setHoverProbe(null);
+    }
+    prevFaceCountRef.current = faceCount;
+  }, [faceCount, setLastPaintDebug, setHoverProbe]);
+
 const planarRegions = useAppStore((s) => s.planarRegions);
 const planarRegionsVisible = useAppStore((s) => s.planarRegionsVisible);
 const multiviewRegions = useAppStore((s) => s.multiviewRegions);
@@ -2623,23 +2643,27 @@ const debugStyles: Record<string, React.CSSProperties> = {
 function ControlsHelp() {
   const t = useT();
   const activeTool = useAppStore((s) => s.activeTool);
-  const isBrush =
-    activeTool === "brush" || activeTool === "spray" ||
-    activeTool === "smart" || activeTool === "eraser";
   // Context-sensitive mapping (iteration 15, req #1/#3): over the model LEFT
   // paints, over empty space LEFT rotates, RIGHT always pans, Ctrl+Wheel
-  // resizes the brush (brush tools only).
-  const hint =
-    activeTool === "view"
-      ? t("controls.viewHint")
-      : isBrush
-      ? t("controls.brushHint")
-      : t("controls.editHint");
+  // resizes the brush (brush tools only). Key selection lives in
+  // utils/controlsHint.ts — StatusBar reads the SAME keys, so the two hint
+  // surfaces can never contradict each other (GUI audit 2026-10-02, B4).
+  const key = hintKeyForTool(activeTool);
+  const hint = t(key);
+  // The view/edit hints already end with their own wheel-zoom wording; the
+  // standalone "🔍 Scroll: Zoom" chip used to repeat it (GUI audit B11).
+  // Brush tools are the one group whose hint omits plain wheel zoom, so the
+  // chip survives there.
+  const needsZoomChip = key === "controls.brushHint";
   return (
     <div style={helpStyles.bar}>
       <span style={helpStyles.item}>{hint}</span>
-      <span style={helpStyles.sep}>|</span>
-      <span style={helpStyles.item}>{t("controls.scrollZoom")}</span>
+      {needsZoomChip && (
+        <>
+          <span style={helpStyles.sep}>|</span>
+          <span style={helpStyles.item}>{t("controls.scrollZoom")}</span>
+        </>
+      )}
     </div>
   );
 }
@@ -2852,7 +2876,10 @@ export function Viewport() {
         <div
           style={{
             position: "absolute",
-            top: "50%",
+            // Above-centre: dead-centre put the text on top of the floor-grid
+            // diamond, where the grid lines read as a strikethrough (GUI audit
+            // 2026-10-02, B10).
+            top: "38%",
             left: "50%",
             transform: "translate(-50%, -50%)",
             color: "var(--text-3, #888888)",

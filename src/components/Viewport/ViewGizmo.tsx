@@ -16,6 +16,7 @@ import {
   isAxisEdgeVisible,
   isPointerInGizmo,
   setGizmoRect,
+  snapRotation,
 } from "./viewGizmoModel";
 
 // ─── Orca-style view gizmo ────────────────────────────────────────
@@ -161,7 +162,6 @@ const _sph = new THREE.Spherical();
 const _offset = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _dq = new THREE.Quaternion();
-const _dummy = new THREE.Object3D();
 const _ray = new THREE.Raycaster();
 const _ndc = new THREE.Vector2();
 const AXIS_DIRS = GIZMO_AXES.map((a) => new THREE.Vector3(...a.worldDir));
@@ -374,14 +374,14 @@ function GizmoContent({
     (viewIndex: number) => {
       const view = GIZMO_VIEWS[viewIndex];
       if (!view || !controls) return;
-      _dummy.position
-        .copy(controls.target)
-        .addScaledVector(new THREE.Vector3(...view.dir), mainCamera.position.distanceTo(controls.target));
-      _dummy.up.set(...view.up);
-      _dummy.lookAt(controls.target);
+      // Pure-model rotation (camera −Z-looks-at-target convention). An
+      // Object3D.lookAt here pointed +Z at the target and snapped every view
+      // to the antipode — click 顶部, land at the bottom (B3, GUI audit
+      // 2026-10-02; the animation's `to·from⁻¹` also carries the position
+      // offset, so the wrong quaternion flips BOTH heading and landing site).
       animRef.current = {
         from: mainCamera.quaternion.clone(),
-        to: _dummy.quaternion.clone(),
+        to: snapRotation(view.dir, view.up),
         offset: mainCamera.position.clone().sub(controls.target),
         target: controls.target.clone(),
         t: 0,

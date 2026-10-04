@@ -515,7 +515,11 @@ pub fn fuse_region_sets(
             moved += 1;
         }
         mesh.segment_labels[f] = label;
-        mesh.face_colors[f] = MeshModel::manual_label_color(label);
+        // `face_colors` is the 3MF export buffer and carries USER paint only
+        // (先生 decision, GUI audit round 3): fuse must not auto-paint regions
+        // with their identity colour — that flooded the export quantizer and
+        // dropped the user's own strokes. Region colours live in segment
+        // metadata (the segment view tints by label), not in this buffer.
     }
     for (rid, faces) in &region_faces {
         final_regions.push((*rid, faces.len()));
@@ -566,6 +570,7 @@ pub fn fuse_region_sets(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mesh::model::DEFAULT_FACE_COLOR;
     use crate::segment::metrics::unit_cube;
     use crate::segment::planar::{detect_planar_regions, PlanarParams};
     use crate::segment::multiview::{detect_multiview_regions, MultiViewParams};
@@ -626,6 +631,31 @@ mod tests {
         let mut mesh = unit_cube();
         let err = fuse_region_sets(&mut mesh, &[], &[], &[], &[], 1, 2);
         assert!(err.is_err());
+    }
+
+    /// GUI audit round 3 (B1, 先生 decision): fuse must NOT auto-paint —
+    /// `face_colors` is the 3MF export buffer and carries USER paint only.
+    /// Region identity colours live in segment metadata (segment view tints by
+    /// label), so a fused-but-unpainted model exports in its base colour.
+    #[test]
+    fn fuse_keeps_user_paint_only() {
+        let mut mesh = unit_cube();
+        let painted: [u8; 4] = [255, 0, 0, 255];
+        mesh.face_colors[0] = painted;
+        let planar = cube_planar_sets();
+        let multiview = cube_multiview_sets();
+        fuse_region_sets(&mut mesh, &planar, &multiview, &[], &[], 1, 2).unwrap();
+        assert_eq!(
+            mesh.face_colors[0], painted,
+            "pre-fuse paint must survive fuse"
+        );
+        assert!(
+            mesh.face_colors
+                .iter()
+                .enumerate()
+                .all(|(i, c)| i == 0 || c == &DEFAULT_FACE_COLOR),
+            "fuse must not auto-paint unpainted faces (export = user colours only)"
+        );
     }
 
     #[test]

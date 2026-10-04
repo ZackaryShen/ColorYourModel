@@ -15,6 +15,9 @@ import { useT } from "./i18n";
 function App() {
   const theme = useAppStore((s) => s.theme);
   const language = useAppStore((s) => s.language);
+  // GUI audit 2026-10-02 (B14): the brush controls do nothing without a mesh;
+  // showing them on the empty state invited dead-slider fiddling.
+  const hasMesh = useAppStore((s) => s.meshData !== null);
   const [confirmExit, setConfirmExit] = useState(false);
   const t = useT();
 
@@ -71,7 +74,7 @@ function App() {
         {/* Right panel */}
         <div style={styles.rightPanel}>
           <SegmentsPanel />
-          <BrushSettings />
+          {hasMesh && <BrushSettings />}
           <ColorPanel />
         </div>
       </div>

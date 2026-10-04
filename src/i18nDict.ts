@@ -35,6 +35,19 @@ const dict: Record<string, Record<Lang, string>> = {
   "tool.segment": { zh: "✂️ 分区画笔 — 拖拽涂选面，松开鼠标创建分区", en: "✂️ Segment Brush — drag to paint faces, release to create region" },
   "tool.lasso": { zh: "📍 选点套索 — 依次点选顶点围合区域，点击起点闭合", en: "📍 Lasso — click vertices to outline a region; click the start point to close" },
   "tool.seed": { zh: "🌱 种子分区 — 在模型上点选若干种子，算法按几何智能长成区域", en: "🌱 Seed — drop seed points; the algorithm grows each into a region by geometry" },
+  // Short tool names for the status bar (the tool.* keys above are long
+  // tooltips with emoji — wrong register for `工具: <name>`). Keys follow the
+  // PaintTool enum values verbatim, including `picker` for the Eyedropper.
+  "toolName.view": { zh: "视图", en: "View" },
+  "toolName.fill": { zh: "填充", en: "Fill" },
+  "toolName.brush": { zh: "画笔", en: "Brush" },
+  "toolName.spray": { zh: "喷罐", en: "Spray" },
+  "toolName.smart": { zh: "智能笔", en: "Smart" },
+  "toolName.picker": { zh: "吸管", en: "Eyedropper" },
+  "toolName.eraser": { zh: "橡皮", en: "Eraser" },
+  "toolName.segment": { zh: "分区画笔", en: "Segment Brush" },
+  "toolName.lasso": { zh: "套索", en: "Lasso" },
+  "toolName.seed": { zh: "种子", en: "Seed" },
   "seed.hint": { zh: "种子分区：在模型上点击放置种子（每点一个区域），调节屏障角度后点「生长」。未点的区域由最近种子兜底。Backspace/Esc 清空。", en: "Seed: click to place seeds (one region each), tune the barrier angle, then Grow. Un-seeded patches fall back to the nearest seed. Backspace/Esc clears." },
   "seed.barrier": { zh: "屏障角度 (°)", en: "Barrier angle (°)" },
   "seed.barrierHint": { zh: "大于此二面角的棱成为硬边界，区域不会越过折缝", en: "Edges above this dihedral angle are hard boundaries the regions won't cross" },
@@ -120,7 +133,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.eyeNeedSegment": { zh: "请先在分区面板选中一个包围眼睛的分区", en: "Select a partition that bounds an eye first" },
   "seed.eyeNeedFaces": { zh: "该分区面数过少，无法识别眼睛", en: "This partition has too few faces to detect an eye" },
   "seed.eyeNeedSegmentShort": { zh: "请先选中一个包围眼睛的分区（先 Fuse 一次再点其中一块高亮）", en: "Select an eye-adjacent partition first (Fuse then click one region to highlight it)" },
-  "seed.eyeNeedSegmentHint": { zh: "👁 眼睛识别需要先有一个「选中分区」：先点「Fuse & generate」得到几个区域，再用鼠标点其中接近眼睛的那一块让它高亮，最后回来点「眼睛识别」就能跑。", en: "👁 Eye detect needs a selected partition: click \"Fuse & generate\" first, then click any one region in the viewport to highlight it as selected, then click \"Eye detect\" here." },
+  "seed.eyeNeedSegmentHint": { zh: "👁 眼睛识别需要先有一个「选中分区」：先点「🧩 融合生成」得到几个区域，再用鼠标点其中接近眼睛的那一块让它高亮，最后回来点「眼睛识别」就能跑。", en: "👁 Eye detect needs a selected partition: click \"Fuse & generate\" first, then click any one region in the viewport to highlight it as selected, then click \"Eye detect\" here." },
   "seed.eyeNeedBodySeeds": { zh: "👁 眼睛区域只能作为「保护区」参与生长。请先放置几个身体种子，或使用「融合生成」。", en: "👁 Eye regions can only act as a reservation. Place a few body seeds first, or use Fuse & generate." },
   "seed.eyePickHint": { zh: "👁 想识别眼睛？点 [🖱 点选分区] 进入点选模式，鼠标在模型上点击任一区域即可把它设为选中分区（一次命中即自动退出）；空处点击取消选中。", en: "👁 For eye detect: click [🖱 Pick a partition] to enter pick mode, then click any region on the model to set it as the selected partition (auto-exits on first hit); click empty space to clear." },
   "seed.pickMode": { zh: "🖱 点选分区", en: "🖱 Pick a partition" },
@@ -198,7 +211,10 @@ const dict: Record<string, Record<Lang, string>> = {
   // StatusBar
   "status.tool": { zh: "工具", en: "Tool" },
   "status.faces": { zh: "面数", en: "Faces" },
-  "status.tip": { zh: "左键: 旋转(查看) | 右键: 平移 | 中键: 缩放 | 滚轮: 缩放 | Alt+左键: 旋转", en: "Left: Rotate (View) | Right: Pan | Middle: Zoom | Scroll: Zoom | Alt+Left: Rotate" },
+  // `status.tip` was removed (GUI audit 2026-10-02, B4): a static
+  // "Left: Rotate (View) | …" string contradicted every non-view tool.
+  // StatusBar now resolves its hint through utils/controlsHint.ts, the same
+  // source as the viewport help bar (controls.viewHint / brushHint / editHint).
   "status.ready": { zh: "就绪", en: "Ready" },
   "status.loaded": { zh: "已加载 {0} 个面", en: "Loaded {0} faces" },
 
@@ -282,6 +298,8 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.import": { zh: "导入 STL…", en: "Import STL…" },
   "menu.export": { zh: "导出涂装模型…", en: "Export painted model…" },
   "menu.quit": { zh: "退出", en: "Quit" },
+  "menu.resetView": { zh: "重置视角", en: "Reset view" },
+  "menu.quitFailed": { zh: "退出失败：窗口关闭被拒绝，详情见日志", en: "Quit failed: window close was denied — see the log" },
   // Describes the action in the CURRENT language (the menu must read fully
   // localized in both languages); the StatusBar tooltip keeps the
   // target-language convention, which fits a one-word toggle better.
