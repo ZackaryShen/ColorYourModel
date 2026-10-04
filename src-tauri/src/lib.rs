@@ -20,6 +20,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
+        .manage(commands::update::UpdateState::new())
         .invoke_handler(tauri::generate_handler![
             commands::mesh::load_model,
             commands::mesh::get_face_color,
@@ -62,6 +63,12 @@ pub fn run() {
             commands::export::export_palette_preview,
             commands::js_bridge::report_js_error,
             commands::js_bridge::report_app_ready,
+            // Update module: GitHub Releases check / download / passive install.
+            commands::update::check_update,
+            commands::update::download_update,
+            commands::update::cancel_update_download,
+            commands::update::discard_update,
+            commands::update::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
