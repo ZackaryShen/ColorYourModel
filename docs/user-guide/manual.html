@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CYM 使用手册（v0.1.0） · ColorYourModel Docs</title>
-<meta property="og:title" content="CYM 使用手册（v0.1.0） · ColorYourModel Docs">
+<title>CYM 使用手册（v0.1.1） · ColorYourModel Docs</title>
+<meta property="og:title" content="CYM 使用手册（v0.1.1） · ColorYourModel Docs">
 <meta property="og:description" content="Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.">
 <meta property="og:image" content="https://raw.githubusercontent.com/ZackaryShen/ColorYourModel/main/assets/icon.png">
 <link rel="icon" href="../icon.png">
@@ -248,8 +248,8 @@ pre.mermaid.mermaid-offline::after {
 <li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.zh-CN.md">首页（中文） ↗</a></li>
 <li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CHANGELOG.md">Changelog ↗</a></li>
 <li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CONTRIBUTING.md">Contributing ↗</a></li></ul></div>
-<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="manual.html" aria-current="page">CYM 使用手册（v0.1.0）</a></li>
-<li><a href="manual.en.html">CYM User Manual (v0.1.0)</a></li>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="manual.html" aria-current="page">CYM 使用手册（v0.1.1）</a></li>
+<li><a href="manual.en.html">CYM User Manual (v0.1.1)</a></li>
 <li><a href="getting-started.html">Getting Started</a></li>
 <li><a href="auto-segmentation.html">Auto Segmentation</a></li>
 <li><a href="seed-tools.html">Seed Tools</a></li>
@@ -285,10 +285,10 @@ pre.mermaid.mermaid-offline::after {
   </aside>
   <main id="content">
     <article>
-<h1 id="cym-使用手册v010">CYM 使用手册（v0.1.0）</h1>
+<h1 id="cym-使用手册v011">CYM 使用手册（v0.1.1）</h1>
 <blockquote>
 <p><strong>简体中文</strong> | <a href="manual.en.html">English</a></p>
-<p>面向使用者的完整操作说明：每个按钮是干什么的、每个快捷键是什么、每一类交互怎么用，以及哪些能力目前收益有限、用前要有预期。以零基础视角编写；与代码行为冲突时以源码为准。本文对应 <strong>v0.1.0（Windows x64）</strong>，界面默认中文。</p>
+<p>面向使用者的完整操作说明：每个按钮是干什么的、每个快捷键是什么、每一类交互怎么用，以及哪些能力目前收益有限、用前要有预期。以零基础视角编写；与代码行为冲突时以源码为准。本文对应 <strong>v0.1.1</strong>，界面语言默认跟随系统（中文环境中文、其他环境英文，可随时切换）。</p>
 <p>操作演示与更多成品见 <a href="../cases/examples.html">Examples Gallery</a>；构建与开发环境见 <a href="getting-started.html">Getting Started</a>。</p>
 </blockquote>
 <h2 id="这款软件是干什么的">这款软件是干什么的？</h2>
@@ -326,12 +326,19 @@ pre.mermaid.mermaid-offline::after {
     E --&gt; F[&quot;切片软件&lt;br/&gt;多材料打印&quot;]
 </pre>
 <blockquote>
-<p>下载安装包：<a href="https://github.com/ZackaryShen/ColorYourModel/releases">GitHub Releases</a>。当前 v0.1.0 提供 Windows 安装包与 Linux 包（暂无 macOS）。</p>
+<p>下载安装包：<a href="https://github.com/ZackaryShen/ColorYourModel/releases">GitHub Releases</a>。当前 v0.1.1 提供 Windows / Linux / macOS（universal，未签名）安装包。</p>
 </blockquote>
 <h2 id="界面总览">界面总览</h2>
 <p>窗口分五块：<strong>左侧工具栏</strong>（导入/导出、10 个工具、撤销重做）、<strong>中间视口</strong>（3D 模型）、<strong>右侧面板</strong>（分区列表、画笔设置、颜色）、<strong>底部状态栏</strong>（提示 / 工具 / 面数 / 语言 / 主题）、视口底边还有一条<strong>快捷操作提示</strong>。</p>
 <p><img src="../../samples/manual/01-interface.png" alt="导入白模后的 CYM 界面"></p>
 <p><em>导入白模后的界面：左侧工具栏、中间视口（50 万面卡通白模）、右侧「分区 / 画笔设置 / 颜色」三个面板、底部状态栏。</em></p>
+<h2 id="0-顶栏菜单栏v011-新增">0. 顶栏菜单栏（v0.1.1 新增）</h2>
+<p>窗口顶部新增经典三菜单，常用操作不再只依赖工具栏：</p>
+<ul>
+<li><strong>文件</strong>：导入 STL、导出涂装模型、退出——有未导出的涂装/分区修改时，退出（含点窗口关闭按钮）会弹出应用内确认：「留在应用 / 直接退出」，防止手滑丢掉涂装；无修改时静默退出；</li>
+<li><strong>视图</strong>：复位视图、界面语言、深浅色主题、调试日志开关；</li>
+<li><strong>帮助</strong>：用户手册（自动跟随当前语言）、示例图库、文档主页、GitHub Discussions、<strong>检查更新…</strong>、关于（版本号 + 「启动时检查更新」开关）。</li>
+</ul>
 <h2 id="1-导入模型">1. 导入模型</h2>
 <ol>
 <li>点左上角 <strong>📂</strong> 按钮，选择一个 <strong>STL 文件</strong>（二进制或 ASCII 均可）。</li>
@@ -524,6 +531,14 @@ pre.mermaid.mermaid-offline::after {
 </ul>
 <p><img src="../../samples/manual/03-segments.png" alt="分区视图：融合生成的 13 个分区，相邻不同色"></p>
 <p><em>分区视图：50 万面卡通模型在折角阈值 5° 下融合出的 13 个分区，相邻区颜色不同，边界线清晰。</em></p>
+<h3 id="视口-gizmov011-新增">视口 gizmo（v0.1.1 新增）</h3>
+<p>视口<strong>右下角</strong>有一个 Orca 风格的导航 gizmo：</p>
+<ul>
+<li><strong>方向立方体</strong>：六个面上印着方向文字（顶部/底部/正面/背面/左面/右面），<strong>点击任意面</strong>，相机会动画吸附到该正交视角，状态栏同步提示；</li>
+<li><strong>轴向指示</strong>：三条彩色轴杆焊在立方体一角，与模型 X/Y/Z 轴一一对应；</li>
+<li><strong>拖拽环绕</strong>：光标进入圆盘后按住拖动即可环绕相机（等价左键旋转）。</li>
+</ul>
+<p>gizmo 区域会隔离涂装/套索/滚轮事件——在它上面误操作不会画到模型上。</p>
 <h2 id="4-智能分区">4. 智能分区</h2>
 <p>分区的入口是 <strong>🌱 种子分区工具</strong>：点工具栏 🌱，模型上会弹出一个可拖动的 <strong>Seed 面板</strong>（拖标题栏移动，双击标题栏或点 📍 复位，× 或 <code>Esc</code> 关闭——注意关闭会把已放的种子一并清空）。</p>
 <p><img src="../../samples/manual/02-seed-panel.png" alt="Seed 面板：自动（融合）标签页"></p>
@@ -538,7 +553,7 @@ pre.mermaid.mermaid-offline::after {
     G --&gt; R
 </pre>
 <h3 id="自动融合推荐首选">自动（融合）——推荐首选</h3>
-<p>一键出结果：<strong>折角阈值</strong>（0–35°，默认 2°）+ <strong>🧩 融合生成</strong>。它按&quot;平面区域 + 多视角证据 + 折角骨干&quot;三通道对每条边投票，多数票通过才切开——抗过切，结果成块。运行时有分阶段进度条（检测平面区域 → 多视角证据渲染 → 边级投票融合分区）。</p>
+<p>一键出结果：<strong>折角阈值</strong>（0–35°，v0.1.1 起默认 5°）+ <strong>🧩 融合生成</strong>。它按&quot;平面区域 + 多视角证据 + 折角骨干&quot;三通道对每条边投票，多数票通过才切开——抗过切，结果成块。运行时有分阶段进度条（检测平面区域 → 多视角证据渲染 → 边级投票融合分区）。</p>
 <p><strong>折角阈值怎么选</strong>（这是唯一需要理解的参数）：</p>
 <table>
 <thead>
@@ -560,6 +575,9 @@ pre.mermaid.mermaid-offline::after {
 </tr>
 </tbody></table>
 <p>越低切得越细、越高越粗；切太碎就调高再融合，切不开就调低。150 万面模型 0° 融合约需 1 分钟，属正常耗时。已检出的<strong>眼睛区域会被自动保护</strong>，不会被融合切开。</p>
+<blockquote>
+<p><strong>v0.1.1 变化</strong>：折角阈值默认从 2° 提高到 5°（手办类雕刻件仍建议手动调回 2–3°）；融合完成后如果你正处在涂装视图，视口顶部会出现「切换到分区视图 / 留在当前视图」的非阻塞提示卡片，选择权在你。</p>
+</blockquote>
 <h3 id="手动生长精细控制">手动（生长）——精细控制</h3>
 <ol>
 <li>在模型上<strong>点击放种子</strong>（每点一个绿色圆点 = 一个未来区域的起点）；<code>Backspace</code>/<code>Esc</code> 清空全部，<strong>🩹 擦除模式</strong>下点击某个种子可单个删除。</li>
@@ -598,6 +616,14 @@ pre.mermaid.mermaid-offline::after {
 <p><em>导出对话框：13 个分区对应 13 个耗材槽位，每个槽位可单独选耗材，也可勾选后批量套用。</em></p>
 <p>导出的 3MF 已做端到端验证：导入 Snapmaker Orca (U1) 后机型、工艺、多耗材颜色一次到位（见<a href="../cases/01-3mf-end-to-end.html">验证案例</a>）。</p>
 <p><strong>OBJ</strong>：输出 <code>.obj</code> + <code>.mtl</code>，逐面写入颜色（量化到最多 256 色），不需要机型/工艺选择。给 Blender / MeshLab / 在线查看器用；要打印还是选 3MF。</p>
+<h2 id="自动更新v011-新增">自动更新（v0.1.1 新增）</h2>
+<ul>
+<li><strong>启动检查</strong>（Windows）：应用启动 4 秒后静默检查一次 GitHub Releases，每个会话只查一次；离线、限流、超时完全无感。发现新版会弹出对话框：<strong>立即更新 / 稍后 / 跳过此版本 / 不再提醒</strong>。</li>
+<li><strong>手动检查</strong>：帮助 → 检查更新…，任何结果都有明确反馈（已是最新 / 出错可重试）。</li>
+<li><strong>更新过程</strong>（Windows）：下载到临时目录（带进度、可取消、30 秒无进展自动判定失败），完成后启动官方安装器被动安装（进度条 + 装完自动重启应用，当前用户权限、无需管理员）。</li>
+<li><strong>开关</strong>：关于对话框里的「启动时检查更新」可随时撤销「不再提醒」。</li>
+<li><strong>macOS / Linux</strong>：收到新版提示后一键跳转 GitHub 发布页，手动下载。</li>
+</ul>
 <h2 id="6-实验性功能与当前局限">6. 实验性功能与当前局限</h2>
 <p>以下能力<strong>能用，但用前要知道边界</strong>——不是缺陷，是当前阶段的真实水位。</p>
 <h3 id="实验性功能">实验性功能</h3>
@@ -635,7 +661,7 @@ pre.mermaid.mermaid-offline::after {
 <td>报 bug 时可附截图</td>
 </tr>
 </tbody></table>
-<h3 id="已知局限v010">已知局限（v0.1.0）</h3>
+<h3 id="已知局限v011">已知局限（v0.1.1）</h3>
 <ul>
 <li><strong>一笔内重复经过同一处，颜色会加深</strong>：同一笔画内同一面被多次着色时叠加。放慢笔画或用填充/智能笔规避。</li>
 <li><strong>&quot;阶梯&quot;衰减的笔刷实际半径约为显示值的一半</strong>，UI 不单独提示。</li>
@@ -655,7 +681,7 @@ pre.mermaid.mermaid-offline::after {
 </ul>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#这款软件是干什么的">这款软件是干什么的？</a></li><li class="toc-h2"><a href="#界面总览">界面总览</a></li><li class="toc-h2"><a href="#1-导入模型">1. 导入模型</a></li><li class="toc-h2"><a href="#2-各类画笔与快捷键">2. 各类画笔与快捷键</a></li><li class="toc-h3"><a href="#撤销--重做">撤销 / 重做</a></li><li class="toc-h3"><a href="#快捷键总表当前版本全部快捷键">快捷键总表（当前版本全部快捷键）</a></li><li class="toc-h2"><a href="#3-视角与交互相机缩放小技巧">3. 视角与交互（相机、缩放小技巧）</a></li><li class="toc-h2"><a href="#4-智能分区">4. 智能分区</a></li><li class="toc-h3"><a href="#自动融合推荐首选">自动（融合）——推荐首选</a></li><li class="toc-h3"><a href="#手动生长精细控制">手动（生长）——精细控制</a></li><li class="toc-h3"><a href="#分区面板右侧精修">分区面板（右侧）——精修</a></li><li class="toc-h2"><a href="#5-导出-3mf">5. 导出 3MF</a></li><li class="toc-h2"><a href="#6-实验性功能与当前局限">6. 实验性功能与当前局限</a></li><li class="toc-h3"><a href="#实验性功能">实验性功能</a></li><li class="toc-h3"><a href="#已知局限v010">已知局限（v0.1.0）</a></li><li class="toc-h3"><a href="#反馈">反馈</a></li><li class="toc-h2"><a href="#附状态栏语言与主题">附：状态栏、语言与主题</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#这款软件是干什么的">这款软件是干什么的？</a></li><li class="toc-h2"><a href="#界面总览">界面总览</a></li><li class="toc-h2"><a href="#0-顶栏菜单栏v011-新增">0. 顶栏菜单栏（v0.1.1 新增）</a></li><li class="toc-h2"><a href="#1-导入模型">1. 导入模型</a></li><li class="toc-h2"><a href="#2-各类画笔与快捷键">2. 各类画笔与快捷键</a></li><li class="toc-h3"><a href="#撤销--重做">撤销 / 重做</a></li><li class="toc-h3"><a href="#快捷键总表当前版本全部快捷键">快捷键总表（当前版本全部快捷键）</a></li><li class="toc-h2"><a href="#3-视角与交互相机缩放小技巧">3. 视角与交互（相机、缩放小技巧）</a></li><li class="toc-h3"><a href="#视口-gizmov011-新增">视口 gizmo（v0.1.1 新增）</a></li><li class="toc-h2"><a href="#4-智能分区">4. 智能分区</a></li><li class="toc-h3"><a href="#自动融合推荐首选">自动（融合）——推荐首选</a></li><li class="toc-h3"><a href="#手动生长精细控制">手动（生长）——精细控制</a></li><li class="toc-h3"><a href="#分区面板右侧精修">分区面板（右侧）——精修</a></li><li class="toc-h2"><a href="#5-导出-3mf">5. 导出 3MF</a></li><li class="toc-h2"><a href="#自动更新v011-新增">自动更新（v0.1.1 新增）</a></li><li class="toc-h2"><a href="#6-实验性功能与当前局限">6. 实验性功能与当前局限</a></li><li class="toc-h3"><a href="#实验性功能">实验性功能</a></li><li class="toc-h3"><a href="#已知局限v011">已知局限（v0.1.1）</a></li><li class="toc-h3"><a href="#反馈">反馈</a></li><li class="toc-h2"><a href="#附状态栏语言与主题">附：状态栏、语言与主题</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

@@ -9,7 +9,7 @@
 > 把 3D 打印白模 STL 变成基于分区的彩色 3MF，直接多耗材彩色打印。
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.1.0-blue)](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.0)
+[![Release](https://img.shields.io/badge/release-v0.1.1-blue)](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.1)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
 ![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 
@@ -39,14 +39,15 @@ flowchart TD
 
 ## 下载安装
 
-到 [**Releases**](https://github.com/ZackaryShen/ColorYourModel/releases) 页下载即用安装包——当前版本 [v0.1.0](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.0)。
+到 [**Releases**](https://github.com/ZackaryShen/ColorYourModel/releases) 页下载即用安装包——当前版本 [v0.1.1](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.1)。
 
 | 平台 | 安装包 |
 |------|--------|
-| Windows | [`x64-setup.exe`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_x64-setup.exe)（推荐）· [`x64_en-US.msi`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_x64_en-US.msi) |
-| Linux | [`amd64.deb`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_amd64.deb) · [`x86_64.rpm`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel-0.1.0-1.x86_64.rpm) · [`AppImage`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_amd64.AppImage)（自带 WebKit，约 80 MB） |
+| Windows | [`x64-setup.exe`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_x64-setup.exe)（推荐）· [`x64_en-US.msi`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_x64_en-US.msi) |
+| Linux | [`amd64.deb`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_amd64.deb) · [`x86_64.rpm`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel-0.1.1-1.x86_64.rpm) · [`AppImage`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_amd64.AppImage)（自带 WebKit，约 80 MB） |
+| macOS | [`universal.dmg`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_universal.dmg)（Apple Silicon + Intel，未签名） |
 
-> 暂无 macOS 包（无签名证书）。界面默认中文，可一键切换英文。源码构建见[快速开始](#快速开始)。
+> macOS 包未签名（无 Apple Developer 账号），首启被 Gatekeeper 拦截时执行 `xattr -cr /Applications/ColorYourModel.app`。界面语言默认跟随系统（中文环境中文、其他环境英文），可随时在 视图 → 语言 切换。源码构建见[快速开始](#快速开始)。
 
 ## 演示视频
 
@@ -86,7 +87,7 @@ flowchart TD
 - **分区视图**——分区彩色可视化 + 边界描边；hover 高亮为 GPU 着色器方案（逐顶点标签属性，O(1) 切换，按需渲染）
 - **BVH 面拾取**——`three-mesh-bvh` 加速的 CPU 射线求交，1.5M 面模型稳定命中
 - **交互细节**——3D 画笔光标环、Space 平移、进度条、崩溃诊断（JS 错误桥接）
-- **i18n**——中文（默认）/ 英文界面，选择持久化
+- **i18n**——语言默认跟随系统（中文环境中文、其他环境英文），选择持久化
 
 ### 计划中 🗓
 
@@ -145,7 +146,7 @@ ColorYourModel/
 │   ├── store/appStore.ts         # Zustand 全局状态（持久化）
 │   ├── types/                    # mesh · segment · export 类型
 │   ├── utils/                    # 日志 · 分区调色板
-│   ├── i18n.ts                   # 中文（默认）/ 英文
+│   ├── i18n.ts · i18nDict.ts     # 中英双语词典 + useT hook
 │   ├── App.tsx · main.tsx
 ├── src-tauri/                    # Rust 后端
 │   ├── src/

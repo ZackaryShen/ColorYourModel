@@ -1,11 +1,21 @@
 # Builds and attaches platform installers to an existing GitHub release.
 #
 # Trigger manually (Actions → Release build → Run workflow, ref = main) and
-# pass the release tag (e.g. v0.1.0). The workflow file must live on main —
+# pass the release tag (e.g. v0.1.1). The workflow file must live on main —
 # the tag itself does not need to contain it — and checks out the tag's tree
-# so the artifacts always match the tagged code. Windows yields msi+nsis,
-# Linux deb/rpm/appimage (tauri.conf.json bundle.targets = "all"). macOS is
-# not built (no signing identity available).
+# so the artifacts always match the tagged code.
+#
+# The release must exist as a DRAFT before dispatch: tauri-action uploads
+# assets into it (releaseDraft: true), and a draft is invisible to
+# /releases/latest — so in-app update checks cannot surface a half-uploaded
+# release. After every job is green and the assets verified, publish with:
+#   gh release edit <tag> --draft=false
+#
+# Linux extra: tauri-bundler hardcodes AppRun.wrapped to mode 0o770 (upstream
+# bug, still present in bundler 2.9.4), which breaks execution as a non-owner
+# (e.g. AppImageHub's firejail sandbox). The post-build step extracts the
+# AppImage, normalizes modes, repacks with the same mksquashfs flags and
+# re-uploads under the original asset name.
 
 name: Release build
 
@@ -15,7 +25,7 @@ on:
       tag:
         description: "Release tag to build and attach artifacts to (must exist)"
         required: true
-        default: "v0.1.0"
+        default: "v0.1.1"
 
 permissions:
   contents: write
@@ -25,7 +35,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest, ubuntu-22.04]
+        include:
+          - platform: windows-latest
+          - platform: ubuntu-22.04
+          - platform: macos-latest
+            args: --target universal-apple-darwin
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +51,8 @@ jobs:
           cache: npm
       - run: npm ci
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -46,9 +62,47 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev \
-            librsvg2-dev patchelf libxdo-dev
+            librsvg2-dev patchelf libxdo-dev xdg-utils squashfs-tools
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ inputs.tag }}
+          releaseDraft: true
+          args: ${{ matrix.args }}
+
+      - name: Fix AppImage AppRun.wrapped permissions (tauri-bundler hardcodes 0o770)
+        if: runner.os == 'Linux'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          VER="${TAG#v}"
+          IMG="ColorYourModel_${VER}_amd64.AppImage"
+          gh release download "$TAG" --pattern "$IMG" --dir appifix --clobber
+          chmod +x "appifix/$IMG"
+          cd appifix
+          # Squashfs offset, reported by the image's own runtime ELF.
+          OFF="$(./"$IMG" --appimage-offset 2>/dev/null || true)"
+          if [ -z "$OFF" ]; then
+            OFF="$(IMG="$IMG" python3 -c '
+          import os
+          data = open(os.environ["IMG"], "rb").read()
+          i = data.find(b"hsqs")
+          while i != -1 and not (data[i+4] == 4 and data[i+5] == 0):
+              i = data.find(b"hsqs", i+1)
+          print(i)
+          ')"
+          fi
+          ./"$IMG" --appimage-extract > /dev/null
+          # Dirs must stay traversable; both entrypoints need o+rx.
+          find squashfs-root -type d -exec chmod 755 {} +
+          chmod 755 squashfs-root/AppRun squashfs-root/AppRun.wrapped
+          test -n "$(find squashfs-root/AppRun.wrapped -perm -0001)" || { echo "AppRun.wrapped still lacks o+x"; exit 1; }
+          mksquashfs squashfs-root out.squashfs -noappend -comp zstd -b 131072 -mkfs-time 0 -all-root > /dev/null
+          head -c "$OFF" "$IMG" > "$IMG.new"
+          cat out.squashfs >> "$IMG.new"
+          chmod 755 "$IMG.new"
+          mv "$IMG.new" "$IMG"
+          cd ..
+          gh release upload "$TAG" "appifix/$IMG" --clobber

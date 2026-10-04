@@ -4,13 +4,47 @@
 
 ---
 
+## [0.1.1] — 2026-10-04
+
+### Added
+
+- **顶栏菜单栏**（#10）：经典 File / View / Help 布局——文件导入/导出/退出（退出经过未保存确认）、视图复位/语言/主题/调试日志、帮助手册/示例图库/检查更新/讨论区/关于；外链经 `tauri-plugin-opener` 打开
+- **Orca 风格视口 gizmo**（#11）：右下角导航件——带方向文字的立方体（点击面即动画吸附到对应视图）、固着角点的轴向三轴、圈内拖拽环绕；一并修复低机位网格裁剪
+- **GitHub Releases 自动更新**（#13，Windows）：启动 4s 后静默检查（每会话一次，失败零打扰）+ Help→检查更新 手动入口 + 关于对话框的启动检查开关；下载流式进度、单写者闸门、30s 停滞检测、最终大小校验；NSIS `/P /R` 被动安装 + 自动重启。macOS/Linux 收到新版提示后跳转发布页
+- **融合后分区视图提示**（#13）：自动融合出分区而用户处于涂装视图时，顶部出现非阻塞卡片（切换到分区视图 / 留在当前视图），选择权在用户
+- **退出确认**（#9，Refs #7）：存在未导出的涂装/分区修改时，退出（含菜单退出与关闭窗口）弹出应用内确认（留在应用 / 直接退出）；无修改时静默退出
+- **调试 HUD 可折叠**（#10）：左下涂装诊断折叠为 24px ⓘ 图标，折叠状态跨诊断刷新保留
+- 用户手册与文档站同步更新（顶栏菜单、视口 gizmo、自动更新、退出确认、折角默认值）
+
+### Changed
+
+- **界面语言默认跟随系统**（#8）：`zh*` 环境默认中文，其余默认英文；手动选择被记住且优先于系统默认
+- **i18n 全量覆盖**（#10）：前后端全部用户可见文案中英双语；后端错误改为稳定英文串 + `translateError()` 本地化回显；词典拆分至零依赖 `i18nDict.ts`
+- **融合折角阈值默认 2° → 5°**（#13）：滑条 0° 下限不变；手办类雕刻折痕仍建议 2–3°（提示文案保留）
+- **导出语义**（#12，行为变更）：`face_colors` 只承载用户涂装——融合/生长不再把自动分配的分区色灌进 3MF 挤出槽；分区身份色保留在分区元数据（分区视图仍按标签着色）。导出的 3MF 从此「所见即所涂」
+
+### Fixed
+
+- **Linux AppImage `Permission denied`**：tauri-bundler 打包链把 `AppRun.wrapped` 硬编码为 `0770`，其他用户无执行位（firejail 等受限沙箱无法启动）。release 构建现在于打包后重刷目录与入口权限为 `0755`；v0.1.0 资产已替换为修复版
+- **GUI 审计 9 项修复**（#12，真实 computer-use 测试发现）：菜单退出无响应（缺 `core:window:allow-close` 能力）、gizmo 点击面落到对跖点（`lookAt` 相机约定反了）、状态栏鼠标提示与当前工具不符、导出对话框 16 槽把导出按钮挤出视野（头部/进度/底部固定，仅设置列表滚动）、100+ 分区把颜色面板推下屏（列表 180px 封顶）、空状态占位与地面网格重叠等
+- **macOS 打包缺 `.icns` 导致 bundle 失败**（`No matching IconType`）——补全 tauri 图标生成物
+- **导入空状态守卫**（#10）：未加载模型时 File→Export 禁用，ExportDialog 增加空态兜底
+
+### Known Issues
+
+- SeedPanel 3 个选择器用例失败（见 Unreleased 的 Known Issues；vitest 57/60，CI `continue-on-error` 容忍）
+- 超大模型（数百万面）融合投票阶段可能超时（`MAX_AUTO_REGIONS` 未接入 fuse 投票路径）
+- macOS 包未签名/公证：首启被 Gatekeeper 拦截时 `xattr -cr /Applications/ColorYourModel.app`
+- 自动更新一键安装目前仅 Windows；macOS/Linux 为发布页跳转
+
+
 ## [Unreleased]
 
 ### Known Issues — 开源前已知问题记录（2026-09-29）
 
 以下问题已确认并记录在案，**不在 v0.1.0 发布前修复**（决策 D3=B：记录而非修复）：
 
-- **SeedPanel 测试 3/10 失败（前置存在，非本次回归）**：`src/ui/components/__tests__/SeedPanel.test.tsx` 中 3 个用例失败（`npx vitest run` 实测 7 passed | 3 failed）。根因是选择器过时，非产品代码 bug——测试文件在 209–210 行自我记载 `/生长/` 正则会误点手动生长 Tab：
+- **SeedPanel 测试 3/60 失败（前置存在，非本次回归）**：`src/components/SeedPanel.test.tsx` 中 3 个用例失败（`npx vitest run` 实测 57 passed | 3 failed）。根因是选择器过时，非产品代码 bug——测试文件自我记载 `/生长/` 正则会误点手动生长 Tab：
   - `只有 suggestedSeeds（无 accepted seedPoints）也能生长` — Unable to find button `/推荐种子/`
   - `手动种子与建议种子共同参与生长（并集）` — AssertionError: expected false to be true
   - `什么种子都没有 → 不调 seed_grow，给出提示` — Found multiple elements with `/生长/`

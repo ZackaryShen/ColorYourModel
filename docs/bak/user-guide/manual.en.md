@@ -1,8 +1,8 @@
-# CYM User Manual (v0.1.0)
+# CYM User Manual (v0.1.1)
 
 > **English** | [简体中文](manual.md)
 >
-> The complete operator's manual: what every button does, every keyboard shortcut, every kind of interaction — plus which capabilities are experimental or have known limitations right now. Written for first-time users; when this page and the code disagree, the source code wins. This page matches **v0.1.0 (Windows x64)**; the app UI is Chinese-first, and the status-bar 中/EN button switches it to English.
+> The complete operator's manual: what every button does, every keyboard shortcut, every kind of interaction — plus which capabilities are experimental or have known limitations right now. Written for first-time users; when this page and the code disagree, the source code wins. This page matches **v0.1.1**; the UI language follows the system locale (Chinese on zh systems, English elsewhere) and can be switched any time.
 >
 > For real-run demos see the [Examples Gallery](../cases/examples.md); for build & development setup see [Getting Started](getting-started.md).
 
@@ -28,7 +28,7 @@ flowchart LR
     E --> F["Slicer<br/>multi-material print"]
 ```
 
-> Download: [GitHub Releases](https://github.com/ZackaryShen/ColorYourModel/releases). v0.1.0 ships Windows installers and Linux packages (no macOS yet).
+> Download: [GitHub Releases](https://github.com/ZackaryShen/ColorYourModel/releases). v0.1.1 ships Windows installers, Linux packages and a macOS universal dmg (unsigned).
 
 ## Interface overview
 
@@ -37,6 +37,14 @@ The window has five parts: the **left toolbar** (import/export, 10 tools, undo/r
 ![CYM interface after importing a white model](../../../samples/manual/01-interface.png)
 
 *The interface after import: left toolbar, viewport (a 500K-face cartoon white model), the three right-hand panels (Regions / Brush Settings / Color), and the status bar.*
+
+## 0. Top menu bar (new in v0.1.1)
+
+A classic three-menu bar now sits at the top of the window:
+
+- **File**: Import STL, Export painted model, Quit — with unexported paint or segmentation changes, quitting (including the window close button) pops an in-app confirmation: **Stay / Quit anyway**; with no changes it exits silently.
+- **View**: Reset view, UI language, light/dark theme, debug-log toggle.
+- **Help**: User guide (follows the UI language), Examples gallery, Documentation home, GitHub Discussions, **Check for updates…**, About (version + "check for updates on startup" toggle).
 
 ## 1. Importing a model
 
@@ -118,6 +126,16 @@ Tips:
 
 *Segment view: the 500K-face cartoon model fused at fold threshold 5° into 13 regions — adjacent regions in different colours, boundaries outlined.*
 
+### Viewport gizmo (new in v0.1.1)
+
+An Orca-style navigation gizmo lives in the **bottom-right** of the viewport:
+
+- **Direction cube**: the six faces carry direction words (Top / Bottom / Front / Back / Left / Right). **Click a face** and the camera animates to that orthographic view; the status bar reports it.
+- **Axis triad**: three coloured rods welded to one cube corner map 1:1 to the model X/Y/Z axes.
+- **Drag to orbit**: press inside the dial and drag to orbit the camera (same as left-drag rotate).
+
+The gizmo area is isolated from paint / lasso / wheel input — a slip on it never paints the model.
+
 ## 4. Smart segmentation
 
 Segmentation starts from the **🌱 seed tool**: click 🌱 in the toolbar and a draggable **Seed panel** pops over the model (drag the title bar to move, double-click it or press 📍 to reset, close with × or `Esc` — note closing also clears any placed seeds).
@@ -139,7 +157,7 @@ flowchart TD
 
 ### Auto (fuse) — the recommended first stop
 
-One click produces the partition: **Fold threshold** (0–35°, default 2°) + **🧩 Fuse & generate**. It votes every edge across three channels — planar regions, multi-view evidence, and the dihedral backbone — and only cuts when the cut votes win, which suppresses over-splitting and keeps regions chunky. A staged progress bar runs while it works (detecting planar regions → rendering multi-view evidence → fusing by edge vote).
+One click produces the partition: **Fold threshold** (0–35°, default 5° since v0.1.1) + **🧩 Fuse & generate**. It votes every edge across three channels — planar regions, multi-view evidence, and the dihedral backbone — and only cuts when the cut votes win, which suppresses over-splitting and keeps regions chunky. A staged progress bar runs while it works (detecting planar regions → rendering multi-view evidence → fusing by edge vote).
 
 **Choosing the fold threshold** (the one parameter that matters):
 
@@ -149,6 +167,8 @@ One click produces the partition: **Fold threshold** (0–35°, default 2°) + *
 | Hard surface (signs / kiosks / architecture) | **5–15°** | Creases are already hard boundaries; a higher threshold keeps flat walls whole |
 
 Lower = finer, higher = coarser. Too fragmented? Raise it and fuse again. Not splitting? Lower it. A 1.5M-face model takes about a minute at 0° — that is normal. Detected **eye regions are protected** and survive the fuse.
+
+> **Changed in v0.1.1**: the fold-threshold default rose from 2° to 5° (sculpted figures still want a manual 2–3°). After a fuse, if you are in paint view a non-blocking card appears at the top of the viewport — **Switch to segment view / Stay in this view** — the choice stays yours.
 
 ### Manual (grow) — fine control
 
@@ -195,9 +215,17 @@ The exported 3MF is verified end-to-end: imported into Snapmaker Orca (U1), mach
 
 **OBJ**: writes `.obj` + `.mtl` with per-face colours (quantized to at most 256) and needs no machine/process picks. For Blender / MeshLab / web viewers; for printing, use 3MF.
 
+## Auto-update (new in v0.1.1)
+
+- **Startup check** (Windows): 4 seconds after launch the app silently checks GitHub Releases once per session; offline, rate-limited or timed-out checks never surface. A newer release pops a dialog: **Update now / Later / Skip this version / Never remind**.
+- **Manual check**: Help → Check for updates… — every outcome gets explicit feedback (up to date / error with retry).
+- **The update itself** (Windows): streamed to a temp folder with progress (cancellable, 30 s stall detection), then the official installer runs passively (progress bar + automatic relaunch, current-user rights, no UAC).
+- **Toggle**: About → "check for updates on startup" reverses "Never remind" at any time.
+- **macOS / Linux**: the dialog links to the GitHub releases page for a manual download.
+
 ## 6. Experimental features and current limitations
 
-These work today, but know their edges — not bugs, just the honest water level of v0.1.0.
+These work today, but know their edges — not bugs, just the honest water level of v0.1.1.
 
 ### Experimental
 
@@ -209,7 +237,7 @@ These work today, but know their edges — not bugs, just the honest water level
 | 👁 MultiView detection | A second-opinion channel (12-view projection consensus) | Pair with planar seeds; weak alone |
 | 🐞 Debug log (`Ctrl+Shift+L`) | Diagnostics: shows the frontend log ring | Attach a screenshot when filing bugs |
 
-### Known limitations (v0.1.0)
+### Known limitations (v0.1.1)
 
 - **Repeated passes within one stroke darken the colour**: the same face gets mixed multiple times inside a stroke. Slow down, or use fill/smart brush to avoid it.
 - **"Step" falloff paints about half the shown radius**, with no separate UI indication.
