@@ -149,32 +149,6 @@ export function MenuBar() {
         { kind: "item", label: t("menu.discussions"), onClick: () => openExternal(DISCUSSIONS_URL) },
         { kind: "sep" },
         { kind: "item", label: t("menu.about"), onClick: () => setAboutOpen(true) },
-        // Dev-only: inject a fake "update available" into the updater's store
-        // so the whole popup → download → ready flow can be exercised without
-        // waiting for a real release. Compiled out of release builds.
-        ...(import.meta.env.DEV
-          ? [
-              {
-                kind: "item" as const,
-                label: t("menu.devSimulateUpdate"),
-                onClick: () =>
-                  useUpdateStore.setState({
-                    phase: "available",
-                    info: {
-                      current: __APP_VERSION__,
-                      latest: "9.9.9",
-                      notes:
-                        "## v9.9.9（模拟数据）\n- 用于验证更新弹窗的排版与流程\n- Mixed 中英文 sample line\n- 点击「立即更新」会真实下载 v0.1.0 安装包演示进度",
-                      releaseUrl: "https://github.com/ZackaryShen/ColorYourModel/releases",
-                      canAutoInstall: true,
-                      downloadUrl:
-                        "https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.0/ColorYourModel_0.1.0_x64-setup.exe",
-                      assetSize: 3590475,
-                    },
-                  }),
-              },
-            ]
-          : []),
       ],
     },
   ];
