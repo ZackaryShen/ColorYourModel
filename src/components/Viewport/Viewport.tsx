@@ -2716,6 +2716,89 @@ function SegmentToggle() {
   );
 }
 
+// ─── Segment View Hint ─────────────────────────────────────────────
+/// One-shot info card (top-centre, non-blocking): raised by the auto-fuse
+/// when a partition lands while the user is in paint view. Two explicit
+/// choices — jump to the segment view or stay — because silently flipping
+/// the render mode under a mid-paint user would be worse than the trip.
+/// Hidden once the suggestion is honored (segmentView flips on) or dismissed.
+function SegmentViewHint() {
+  const t = useT();
+  const isLoaded = useAppStore((s) => s.isLoaded);
+  const segmentView = useAppStore((s) => s.segmentView);
+  const hint = useAppStore((s) => s.segmentViewHint);
+
+  if (!isLoaded || !hint || segmentView) return null;
+
+  return (
+    <div style={segHintStyles.wrap}>
+      <div style={segHintStyles.card} role="status">
+        <span>{t("view.segmentHint")}</span>
+        <button
+          className="cym-btn"
+          style={segHintStyles.primary}
+          onClick={() => useAppStore.getState().setSegmentView(true)}
+        >
+          {t("view.segmentHintSwitch")}
+        </button>
+        <button
+          className="cym-btn"
+          style={segHintStyles.secondary}
+          onClick={() => useAppStore.getState().dismissSegmentViewHint()}
+        >
+          {t("view.segmentHintStay")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const segHintStyles: Record<string, React.CSSProperties> = {
+  wrap: {
+    position: "absolute",
+    top: 12,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 20,
+    // The strip itself must never eat viewport clicks — only the card does.
+    pointerEvents: "none",
+  },
+  card: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "8px 12px",
+    background: "var(--toast-bg, rgba(34,40,48,0.95))",
+    border: "1px solid var(--accent, #4a9eff)",
+    borderRadius: 8,
+    color: "var(--text-1, #eee)",
+    fontSize: 12.5,
+    pointerEvents: "auto",
+    boxShadow: "0 6px 24px var(--shadow, rgba(0,0,0,0.3))",
+  },
+  primary: {
+    padding: "4px 10px",
+    border: "1px solid var(--accent-border, #2b6cb0)",
+    background: "var(--accent, #3a5a7a)",
+    color: "#fff",
+    borderRadius: 6,
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 600,
+    whiteSpace: "nowrap",
+  },
+  secondary: {
+    padding: "4px 10px",
+    border: "1px solid var(--border, #555)",
+    background: "transparent",
+    color: "var(--text-2, #aaa)",
+    borderRadius: 6,
+    cursor: "pointer",
+    fontSize: 12,
+    whiteSpace: "nowrap",
+  },
+};
+
 const segToggleStyles: Record<string, React.CSSProperties> = {
   container: {
     position: "absolute",
@@ -2869,6 +2952,7 @@ export function Viewport() {
       {isLoaded && activeTool === "seed" && <SeedPanel />}
       <ProgressBar />
       <SegmentToggle />
+      <SegmentViewHint />
       <ControlsHelp />
       <DebugHud />
       <Toast />

@@ -196,6 +196,13 @@ const dict: Record<string, Record<Lang, string>> = {
   "view.segmentView": { zh: "🗺️ 分区视图", en: "🗺️ Segment View" },
   "view.switchToPaint": { zh: "切换到涂色视图", en: "Switch to paint view" },
   "view.showSegments": { zh: "显示分区着色", en: "Show segment regions" },
+  // Post-fuse segment-view suggestion card (Viewport top-centre)
+  "view.segmentHint": {
+    zh: "分区完成：切换到分区视图查看效果更直观",
+    en: "Partition ready — the segment view shows it best",
+  },
+  "view.segmentHintSwitch": { zh: "切换到分区视图", en: "Switch to segment view" },
+  "view.segmentHintStay": { zh: "留在当前视图", en: "Stay here" },
 
   // Viewport — misc
   "view.loading": { zh: "加载中…", en: "Loading…" },
@@ -313,7 +320,6 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.discussions": { zh: "GitHub 讨论区", en: "GitHub Discussions" },
   "menu.about": { zh: "关于 ColorYourModel", en: "About ColorYourModel" },
   "menu.checkUpdates": { zh: "检查更新…", en: "Check for updates…" },
-  "menu.devSimulateUpdate": { zh: "（Dev）模拟更新弹窗", en: "(Dev) Simulate update popup" },
 
   // About dialog
   "about.desc": {
