@@ -313,6 +313,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.discussions": { zh: "GitHub 讨论区", en: "GitHub Discussions" },
   "menu.about": { zh: "关于 ColorYourModel", en: "About ColorYourModel" },
   "menu.checkUpdates": { zh: "检查更新…", en: "Check for updates…" },
+  "menu.devSimulateUpdate": { zh: "（Dev）模拟更新弹窗", en: "(Dev) Simulate update popup" },
 
   // About dialog
   "about.desc": {
