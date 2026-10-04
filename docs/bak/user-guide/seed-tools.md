@@ -41,7 +41,7 @@ Each seed grows into a region bounded by the **barrier angle** — adjacent face
 
 ### The fold-angle threshold
 
-The **Dihedral °** slider (0–35°, default **2°**) controls where the partition
+The **Dihedral °** slider (0–35°, default **5°** since v0.1.1) controls where the partition
 is allowed to cut. Lower = finer, higher = coarser:
 
 | Model class | Suggested value | Why |
