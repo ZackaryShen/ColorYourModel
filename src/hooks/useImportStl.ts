@@ -6,18 +6,19 @@ import { DROPPABLE_EXTENSIONS } from "../utils/stlDrop";
 import { log } from "../utils/logger";
 
 /**
- * Shared STL import flow (file picker → import progress → loadModel → status
- * messages). Extracted from the Toolbar button (iteration 14) when the File
- * menu needed the same behaviour; the Toolbar keeps its own progress-event
- * listeners, this hook only owns the click-to-loaded path.
+ * Shared STL/`.cym` import flow (file picker → import progress → loadModel or
+ * loadProject → status messages). Extracted from the Toolbar button (iteration
+ * 14) when the File menu needed the same behaviour; the Toolbar keeps its own
+ * progress-event listeners, this hook only owns the click-to-loaded path.
  *
- * `importFromPath` is the pipeline's single entry: the file dialog and the
- * drag-drop import (issue #21) both land here, so progress reporting and
- * error handling can never drift between the two entry points.
+ * `importFromPath` is the pipeline's single entry: the file dialog, the
+ * drag-drop import (issue #21) and the File menu all land here, so progress
+ * reporting, the `.cym` project dispatch and error handling can never drift
+ * between entry points.
  */
 export function useImportStl() {
   const t = useT();
-  const { loadModel } = useTauriCommand();
+  const { loadModel, loadProject } = useTauriCommand();
   const setLoading = useAppStore((s) => s.setLoading);
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
@@ -29,7 +30,15 @@ export function useImportStl() {
     setImportProgress(0, t("toolbar.startImport"));
 
     try {
-      await loadModel(selected);
+      // 0.2.0-P1: the entry point is format-aware — .stl imports fresh, .cym
+      // opens a full project (labels + paint + region names restored). The
+      // dialog filter and the drop gate (planFileDrop) share one extension
+      // list, and this dispatch is what makes `.cym` actually load a project.
+      if (selected.toLowerCase().endsWith(".cym")) {
+        await loadProject(selected);
+      } else {
+        await loadModel(selected);
+      }
     } catch (e) {
       log.error("importStl", "Import failed", { error: String(e) });
       // P0 2026-10-12: a status-bar line alone let a broken/unsupported file
