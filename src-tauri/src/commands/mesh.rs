@@ -138,3 +138,70 @@ pub fn save_project(path: String, state: State<AppState>) -> Result<(), String> 
     log::info!("[cmd:save_project] saved");
     Ok(())
 }
+
+/// 0.2.0-P2 (3a): bake a whole-model transform into the vertices. The gizmo
+/// preview lives on the frontend; on drag-end it sends the composed matrix
+/// (in STL-local space, see the frontend conjugation note), the vertices are
+/// transformed for real, and the derived state is rebuilt. Undoable via a
+/// Transform history entry (inverse matrix; the swap convention stores it
+/// inverted, redo re-applies the forward matrix).
+///
+/// Restore-on-error: the mesh is taken out of the lock during the rebuild
+/// (seconds on large models) and put back even on failure — the
+/// resegment_region take path historically leaked None here.
+#[tauri::command]
+pub fn bake_transform(
+    matrix: [[f32; 4]; 4],
+    state: State<AppState>,
+) -> Result<crate::commands::history::HistoryResult, String> {
+    log::info!("[cmd:bake_transform]");
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
+
+    let mut bake = || -> Result<(), String> {
+        // Singularity check via nalgebra (transpose shares the determinant, so
+        // the convention below is unaffected).
+        let nm = nalgebra::Matrix4::from(matrix);
+        if nm.try_inverse().is_none() {
+            return Err("transform: matrix is singular".to_string());
+        }
+        // Same column-array formula as History::apply_swap — one convention,
+        // two call sites.
+        for v in mesh.vertices.iter_mut() {
+            let p = [
+                matrix[0][0] * v[0] + matrix[1][0] * v[1] + matrix[2][0] * v[2] + matrix[3][0],
+                matrix[0][1] * v[0] + matrix[1][1] * v[1] + matrix[2][1] * v[2] + matrix[3][1],
+                matrix[0][2] * v[0] + matrix[1][2] * v[1] + matrix[2][2] * v[2] + matrix[3][2],
+            ];
+            *v = p;
+        }
+        mesh.compute_normals();
+        mesh.compute_bbox();
+        mesh.build_kdtree();
+        mesh.build_vertex_kdtree();
+        mesh.build_adjacency();
+        Ok(())
+    };
+    if let Err(e) = bake() {
+        *mesh_guard = Some(mesh); // restore — never leak None (P0 lesson)
+        return Err(e);
+    }
+    mesh.history.record_transform(matrix);
+
+    let dto = mesh.to_dto();
+    let result = crate::commands::history::HistoryResult {
+        applied: true,
+        full: true,
+        faces: Vec::new(),
+        colors: Vec::new(),
+        segments: None,
+        segment_labels: None,
+        face_colors: None,
+        vertices: Some(dto.vertices.clone()),
+        bbox: Some(dto.bbox.clone()),
+        can_undo: mesh.history.can_undo(),
+        can_redo: mesh.history.can_redo(),
+    };
+    *mesh_guard = Some(mesh);
+    Ok(result)
+}

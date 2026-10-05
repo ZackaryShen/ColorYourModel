@@ -62,6 +62,11 @@ pub enum OpKind {
     /// `face_colors`, so re-colouring the split-off faces would discard real
     /// output. Each resulting connected piece becomes its own region.
     Split,
+    /// Whole-model vertex transform (0.2.0-P2 3a). **Vertices only** — colours
+    /// and labels are index-based and survive the transform untouched. The
+    /// entry stores the matrix taking the live vertices to the other stack's
+    /// state (inverse of what was applied), generalized from the colour swap.
+    Transform,
 }
 
 impl OpKind {
@@ -71,7 +76,7 @@ impl OpKind {
     /// the segment view memoises on the whole mesh-data object, so patching
     /// labels in place would restore the data without ever repainting.
     pub fn touches_labels(self) -> bool {
-        !matches!(self, OpKind::Paint)
+        !matches!(self, OpKind::Paint | OpKind::Transform)
     }
 }
 
@@ -86,6 +91,12 @@ pub struct HistoryEntry {
     /// `(face, label that was there before this operation)`. Empty for
     /// [`OpKind::Paint`].
     pub labels: Vec<(u32, u32)>,
+    /// For [`OpKind::Transform`]: the matrix taking the LIVE vertices to the
+    /// other stack's state (the inverse of what was just applied). `None` for
+    /// every other kind. Generalizes the colour swap: applying it to the live
+    /// vertices and swapping it with its own inverse makes the entry its own
+    /// inverse, exactly like the colour buffers.
+    pub transform: Option<[[f32; 4]; 4]>,
 }
 
 impl HistoryEntry {
@@ -97,17 +108,39 @@ impl HistoryEntry {
     fn bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             + self.colors.capacity() * std::mem::size_of::<(u32, [u8; 4])>()
-            + self.labels.capacity() * std::mem::size_of::<(u32, u32)>()
+            + self.labels.capacity() * std::mem::size_of::<u32>()
+            * 2
+            + if self.transform.is_some() { 64 } else { 0 }
     }
 
     /// Swap every stored value with the live one, turning this entry into its
     /// own inverse.
-    fn apply_swap(&mut self, colors: &mut [[u8; 4]], labels: &mut [u32]) {
+    fn apply_swap(
+        &mut self,
+        colors: &mut [[u8; 4]],
+        labels: &mut [u32],
+        vertices: &mut Vec<[f32; 3]>,
+    ) {
         for (face, stored) in self.colors.iter_mut() {
             std::mem::swap(&mut colors[*face as usize], stored);
         }
         for (face, stored) in self.labels.iter_mut() {
             std::mem::swap(&mut labels[*face as usize], stored);
+        }
+        if let Some(m) = self.transform {
+            // Apply the stored matrix (live → other stack's state), then swap
+            // the stored matrix with its inverse so the entry stays its own
+            // inverse — the vertex analogue of the colour buffer swap.
+            for v in vertices.iter_mut() {
+                let p = [
+                    m[0][0] * v[0] + m[1][0] * v[1] + m[2][0] * v[2] + m[3][0],
+                    m[0][1] * v[0] + m[1][1] * v[1] + m[2][1] * v[2] + m[3][1],
+                    m[0][2] * v[0] + m[1][2] * v[1] + m[2][2] * v[2] + m[3][2],
+                ];
+                *v = p;
+            }
+            self.transform =
+                Some(nalgebra::Matrix4::from(m).try_inverse().map(|inv| inv.into()).unwrap_or(m));
         }
     }
 }
@@ -130,6 +163,10 @@ pub struct HistoryOutcome {
     /// The colour each of those faces now has, index-aligned with `faces`.
     pub colors: Vec<[u8; 4]>,
     pub labels_changed: bool,
+    /// For [`OpKind::Transform`]: the matrix the CALLER must apply to the mesh
+    /// vertices right now (and then rebuild the derived state — normals,
+    /// bbox, indices). `None` for every other kind.
+    pub transform: Option<[[f32; 4]; 4]>,
 }
 
 /// Undo and redo stacks for one loaded mesh.
@@ -272,6 +309,7 @@ impl History {
                 stroke_id,
                 colors: Vec::new(),
                 labels: Vec::new(),
+                transform: None,
             });
         }
 
@@ -307,15 +345,37 @@ impl History {
         self.evict();
     }
 
+    /// Record a whole-model vertex transform (0.2.0-P2 3a). `matrix` is the
+    /// transform that was JUST APPLIED to the live vertices; the entry stores
+    /// its inverse (live → undo-state), keeping the swap convention. Any new
+    /// operation invalidates the redo branch, exactly like `record`.
+    pub fn record_transform(&mut self, matrix: [[f32; 4]; 4]) {
+        self.drop_redo();
+        self.open_stroke = None;
+        self.open_faces.clear();
+        let inverse = nalgebra::Matrix4::from(matrix)
+            .try_inverse()
+            .unwrap_or_else(nalgebra::Matrix4::identity)
+            .into();
+        self.push_entry(HistoryEntry {
+            kind: OpKind::Transform,
+            stroke_id: None,
+            colors: Vec::new(),
+            labels: Vec::new(),
+            transform: Some(inverse),
+        });
+    }
+
     /// Revert the most recent operation. Returns `None` when there is nothing
     /// to undo.
     pub fn undo(
         &mut self,
         colors: &mut [[u8; 4]],
         labels: &mut [u32],
+        vertices: &mut Vec<[f32; 3]>,
     ) -> Option<HistoryOutcome> {
         let mut entry = self.undo.pop_back()?;
-        let outcome = Self::apply(&mut entry, colors, labels);
+        let outcome = Self::apply(&mut entry, colors, labels, vertices);
         self.redo.push(entry);
         // An undo ends whatever stroke was still accepting appends; the next
         // paint call must not merge into an entry that has already moved.
@@ -330,9 +390,10 @@ impl History {
         &mut self,
         colors: &mut [[u8; 4]],
         labels: &mut [u32],
+        vertices: &mut Vec<[f32; 3]>,
     ) -> Option<HistoryOutcome> {
         let mut entry = self.redo.pop()?;
-        let outcome = Self::apply(&mut entry, colors, labels);
+        let outcome = Self::apply(&mut entry, colors, labels, vertices);
         self.undo.push_back(entry);
         self.open_stroke = None;
         self.open_faces.clear();
@@ -343,8 +404,9 @@ impl History {
         entry: &mut HistoryEntry,
         colors: &mut [[u8; 4]],
         labels: &mut [u32],
+        vertices: &mut Vec<[f32; 3]>,
     ) -> HistoryOutcome {
-        entry.apply_swap(colors, labels);
+        entry.apply_swap(colors, labels, vertices);
         HistoryOutcome {
             kind: entry.kind,
             faces: entry.colors.iter().map(|&(f, _)| f).collect(),
@@ -354,6 +416,7 @@ impl History {
                 .map(|&(f, _)| colors[f as usize])
                 .collect(),
             labels_changed: !entry.labels.is_empty(),
+            transform: entry.transform,
         }
     }
 
@@ -386,13 +449,10 @@ impl History {
 mod tests {
     use super::*;
 
-    fn buffers(n: usize) -> (Vec<[u8; 4]>, Vec<u32>) {
-        (vec![[0, 0, 0, 255]; n], vec![0u32; n])
-    }
-
     /// Paint one face, undo, redo. The entry is used in both directions.
     #[test]
     fn undo_then_redo_round_trips() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
         let (mut colors, mut labels) = buffers(4);
         let mut h = History::new();
 
@@ -400,11 +460,11 @@ mod tests {
         colors[1] = [9, 9, 9, 255];
 
         assert!(h.can_undo() && !h.can_redo());
-        h.undo(&mut colors, &mut labels).unwrap();
+        h.undo(&mut colors, &mut labels, &mut vertices).unwrap();
         assert_eq!(colors[1], [0, 0, 0, 255]);
         assert!(!h.can_undo() && h.can_redo());
 
-        h.redo(&mut colors, &mut labels).unwrap();
+        h.redo(&mut colors, &mut labels, &mut vertices).unwrap();
         assert_eq!(colors[1], [9, 9, 9, 255]);
         assert!(h.can_undo() && !h.can_redo());
     }
@@ -414,26 +474,34 @@ mod tests {
     /// the user abandoned.
     #[test]
     fn new_operation_discards_the_redo_branch() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
         let (mut colors, mut labels) = buffers(4);
         let mut h = History::new();
 
         h.record(OpKind::Paint, None, &[(1, colors[1])], &[]);
         colors[1] = [9, 9, 9, 255];
-        h.undo(&mut colors, &mut labels).unwrap();
+        h.undo(&mut colors, &mut labels, &mut vertices).unwrap();
         assert!(h.can_redo());
 
         h.record(OpKind::Paint, None, &[(1, colors[1])], &[]);
         colors[1] = [5, 5, 5, 255];
 
         assert!(!h.can_redo(), "redo branch must not survive a new operation");
-        assert!(h.redo(&mut colors, &mut labels).is_none());
+        assert!(h.redo(&mut colors, &mut labels, &mut vertices).is_none());
         assert_eq!(colors[1], [5, 5, 5, 255], "redo must not overwrite new paint");
     }
 
     /// A drag paints the same face repeatedly. Undo must return it to the
     /// colour it had before the drag, not to some intermediate blend.
+
+    fn buffers(n: usize) -> (Vec<[u8; 4]>, Vec<u32>) {
+        (vec![[0, 0, 0, 255]; n], vec![0u32; n])
+    }
+
+
     #[test]
     fn a_stroke_keeps_only_the_colour_from_before_the_drag() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
         let (mut colors, mut labels) = buffers(4);
         colors[2] = [1, 1, 1, 255];
         let mut h = History::new();
@@ -444,9 +512,11 @@ mod tests {
         }
 
         assert_eq!(h.undo_depth(), 1, "one drag is one undo level");
-        h.undo(&mut colors, &mut labels).unwrap();
+        h.undo(&mut colors, &mut labels, &mut vertices).unwrap();
         assert_eq!(colors[2], [1, 1, 1, 255]);
     }
+
+
 
     #[test]
     fn a_different_stroke_id_starts_a_new_entry() {
@@ -464,6 +534,8 @@ mod tests {
     /// Two tools sharing a stroke id by accident must not share an entry: the
     /// label half of a segment-paint entry would be silently dropped into a
     /// paint entry that does not carry labels.
+
+
     #[test]
     fn a_different_op_kind_never_coalesces() {
         let (mut colors, mut labels) = buffers(4);
@@ -484,8 +556,11 @@ mod tests {
     }
 
     /// Labels and colours travel together, so undoing a region restores both.
+
+
     #[test]
     fn label_bearing_entries_restore_labels_too() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
         let (mut colors, mut labels) = buffers(4);
         let mut h = History::new();
 
@@ -497,11 +572,13 @@ mod tests {
             labels[f] = 100_000;
         }
 
-        let out = h.undo(&mut colors, &mut labels).unwrap();
+        let out = h.undo(&mut colors, &mut labels, &mut vertices).unwrap();
         assert!(out.labels_changed);
         assert_eq!(labels, vec![0, 0, 0, 0]);
         assert_eq!(colors[0], [0, 0, 0, 255]);
     }
+
+
 
     #[test]
     fn depth_ceiling_drops_the_oldest_entry() {
@@ -516,6 +593,8 @@ mod tests {
     }
 
     /// A single operation bigger than the entire budget still buys one undo.
+
+
     #[test]
     fn byte_ceiling_never_empties_the_stack() {
         let (mut colors, _labels) = buffers(8);
@@ -531,8 +610,11 @@ mod tests {
 
     /// Byte accounting has to survive entries moving between the stacks and
     /// being discarded, or the budget drifts until it stops binding.
+
+
     #[test]
     fn byte_accounting_returns_to_zero() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
         let (mut colors, mut labels) = buffers(8);
         let mut h = History::new();
 
@@ -541,12 +623,14 @@ mod tests {
         let after_record = h.bytes();
         assert!(after_record > 0);
 
-        h.undo(&mut colors, &mut labels).unwrap();
+        h.undo(&mut colors, &mut labels, &mut vertices).unwrap();
         assert_eq!(h.bytes(), after_record, "moving to redo must not change the total");
 
         h.clear();
         assert_eq!(h.bytes(), 0);
     }
+
+
 
     #[test]
     fn recording_nothing_creates_no_entry() {
@@ -560,8 +644,11 @@ mod tests {
     /// out on the empty colour vector, so the entire operation stayed out of
     /// the timeline: Ctrl+Z skipped straight past the merge to the brush stroke
     /// before it, and the regions could not be separated again.
+
+
     #[test]
     fn a_label_only_operation_is_undoable() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
         let (mut colors, mut labels) = buffers(4);
         labels[2] = 100_001;
         labels[3] = 100_001;
@@ -573,13 +660,43 @@ mod tests {
         labels[3] = 100_000;
 
         assert!(h.can_undo(), "the merge must be on the timeline");
-        let out = h.undo(&mut colors, &mut labels).unwrap();
+        let out = h.undo(&mut colors, &mut labels, &mut vertices).unwrap();
         assert!(out.labels_changed, "must force the full-payload path");
         assert!(out.faces.is_empty(), "no colour patch to send");
         assert_eq!(labels, vec![0, 0, 100_001, 100_001]);
 
-        h.redo(&mut colors, &mut labels).unwrap();
+        h.redo(&mut colors, &mut labels, &mut vertices).unwrap();
         assert_eq!(labels, vec![0, 0, 100_000, 100_000]);
         assert_eq!(colors, vec![[0, 0, 0, 255]; 4], "a merge never repaints");
     }
+    /// 0.2.0-P2 3a: transform entries ride the same swap convention — undo
+    /// applies the stored inverse, redo re-applies the forward matrix, and the
+    /// entry stays its own inverse across cycles.
+    #[test]
+    fn transform_undo_reverts_and_redo_reapplies_vertices() {
+        let mut h = History::new();
+        let translate: [[f32; 4]; 4] = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [5.0, 0.0, 0.0, 1.0], // +5 x, column 3 = translation
+        ];
+        // Mirror the real flow: the vertices were BAKED (+5) before recording —
+        // live [6,2,3]; the entry carries live→undo-state (x−5).
+        let mut vertices: Vec<[f32; 3]> = vec![[6.0, 2.0, 3.0]];
+        let mut colors: Vec<[u8; 4]> = Vec::new();
+        let mut labels: Vec<u32> = Vec::new();
+        h.record_transform(translate);
+
+        let out = h.undo(&mut colors, &mut labels, &mut vertices).unwrap();
+        assert_eq!(out.kind, OpKind::Transform);
+        assert_eq!(vertices[0], [1.0, 2.0, 3.0]);
+
+        h.redo(&mut colors, &mut labels, &mut vertices).unwrap();
+        assert_eq!(vertices[0], [6.0, 2.0, 3.0]);
+
+        h.undo(&mut colors, &mut labels, &mut vertices).unwrap();
+        assert_eq!(vertices[0], [1.0, 2.0, 3.0]);
+    }
+
 }

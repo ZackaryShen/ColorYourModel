@@ -37,6 +37,15 @@ export function Toolbar() {
   const activeTool = useAppStore((s) => s.activeTool);
   const setActiveTool = useAppStore((s) => s.setActiveTool);
   const isLoaded = useAppStore((s) => s.isLoaded);
+  // 0.2.0-P2 3a: whole-model transform gizmo modes. Entering a mode switches
+  // the active tool to View — the gizmo owns the pointer while active, and a
+  // highlighted paint button next to a gizmo would read as two active modes.
+  const transformMode = useAppStore((s) => s.transformMode);
+  const setTransformMode = useAppStore((s) => s.setTransformMode);
+  const enterTransform = (m: "translate" | "rotate" | "scale") => {
+    setTransformMode(transformMode === m ? "none" : m);
+    setActiveTool(PaintTool.View);
+  };
   const isLoading = useAppStore((s) => s.isLoading);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setLoading = useAppStore((s) => s.setLoading);
@@ -172,6 +181,32 @@ export function Toolbar() {
           </div>
         </Fragment>
       ))}
+
+      <div style={styles.divider} />
+
+      <div style={styles.section}>
+        {(
+          [
+            { m: "translate" as const, icon: "✥", i18nKey: "toolbar.transformMove" },
+            { m: "rotate" as const, icon: "⟳", i18nKey: "toolbar.transformRotate" },
+            { m: "scale" as const, icon: "⤢", i18nKey: "toolbar.transformScale" },
+          ]
+        ).map((tm) => (
+          <button
+            key={tm.m}
+            onClick={() => enterTransform(tm.m)}
+            disabled={!isLoaded}
+            className="cym-btn"
+            style={{
+              ...styles.toolButton,
+              ...(transformMode === tm.m ? styles.toolActive : {}),
+            }}
+            title={t(tm.i18nKey)}
+          >
+            {tm.icon}
+          </button>
+        ))}
+      </div>
 
       <div style={styles.divider} />
 

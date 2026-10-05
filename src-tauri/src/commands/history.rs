@@ -57,6 +57,16 @@ pub struct HistoryResult {
     /// Full form: every per-face colour, flat RGBA.
     pub face_colors: Option<Vec<u8>>,
 
+    /// 0.2.0-P2 transform form: the post-apply vertices, flat xyz per vertex.
+    /// `Some` ⟺ the applied entry was a whole-model transform; the frontend
+    /// must rebuild its geometry from these (the incremental colour patch
+    /// cannot express vertex movement).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vertices: Option<Vec<f32>>,
+    /// Transform form: the recomputed bounding box, paired with `vertices`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bbox: Option<crate::mesh::model::BoundingBox>,
+
     pub can_undo: bool,
     pub can_redo: bool,
 }
@@ -73,6 +83,8 @@ impl HistoryResult {
             segments: None,
             segment_labels: None,
             face_colors: None,
+            vertices: None,
+            bbox: None,
             can_undo,
             can_redo,
         }
@@ -102,19 +114,33 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
         history,
         face_colors,
         segment_labels,
+        vertices,
         ..
     } = mesh;
 
     let outcome = match dir {
-        Direction::Undo => history.undo(face_colors, segment_labels),
-        Direction::Redo => history.redo(face_colors, segment_labels),
+        Direction::Undo => history.undo(face_colors, segment_labels, vertices),
+        Direction::Redo => history.redo(face_colors, segment_labels, vertices),
     };
 
     let Some(outcome) = outcome else {
         return Ok(HistoryResult::empty(mesh.history.can_undo(), mesh.history.can_redo()));
     };
 
-    let full = outcome.labels_changed || outcome.faces.len() > MAX_INCREMENTAL_FACES;
+    // 0.2.0-P2: a transform entry moves VERTICES — after applying it, the
+    // derived geometry state must be rebuilt and the new vertices shipped to
+    // the frontend (the incremental colour patch cannot express this).
+    if outcome.transform.is_some() {
+        mesh.compute_normals();
+        mesh.compute_bbox();
+        mesh.build_kdtree();
+        mesh.build_vertex_kdtree();
+        mesh.build_adjacency();
+    }
+
+    let full = outcome.transform.is_some()
+        || outcome.labels_changed
+        || outcome.faces.len() > MAX_INCREMENTAL_FACES;
 
     if outcome.labels_changed {
         // Segment metadata is derived from labels, so it has to be recomputed
@@ -137,8 +163,8 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
     Ok(HistoryResult {
         applied: true,
         full,
-        faces: if full { Vec::new() } else { outcome.faces },
-        colors: if full {
+        faces: if full || outcome.transform.is_some() { Vec::new() } else { outcome.faces },
+        colors: if full || outcome.transform.is_some() {
             Vec::new()
         } else {
             flatten(&outcome.colors)
@@ -146,6 +172,13 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
         segments: full.then(|| mesh.sorted_segments()),
         segment_labels: full.then(|| mesh.segment_labels.clone()),
         face_colors: full.then(|| flatten(&mesh.face_colors)),
+        vertices: outcome.transform.is_some().then(|| {
+            mesh.vertices
+                .iter()
+                .flat_map(|v| v.iter().copied())
+                .collect()
+        }),
+        bbox: outcome.transform.is_some().then(|| mesh.bbox.clone()),
         can_undo: mesh.history.can_undo(),
         can_redo: mesh.history.can_redo(),
     })

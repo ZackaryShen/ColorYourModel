@@ -865,9 +865,10 @@ mod tests {
             history,
             face_colors,
             segment_labels,
+            vertices,
             ..
         } = &mut *m;
-        let applied = history.undo(face_colors, segment_labels).is_some();
+        let applied = history.undo(face_colors, segment_labels, vertices).is_some();
         if applied {
             m.rebuild_segments();
         }
@@ -895,9 +896,10 @@ mod tests {
             history,
             face_colors,
             segment_labels,
+            vertices,
             ..
         } = &mut m;
-        let out = history.undo(face_colors, segment_labels).unwrap();
+        let out = history.undo(face_colors, segment_labels, vertices).unwrap();
         assert!(out.labels_changed);
         assert_eq!(out.faces.len(), region.len());
 
@@ -962,9 +964,10 @@ mod tests {
             history,
             face_colors,
             segment_labels,
+            vertices,
             ..
         } = &mut m;
-        history.redo(face_colors, segment_labels).unwrap();
+        history.redo(face_colors, segment_labels, vertices).unwrap();
         m.rebuild_segments();
 
         assert_eq!(m.face_colors, after_colors, "colours restored by redo");

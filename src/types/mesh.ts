@@ -132,6 +132,9 @@ export interface HistoryResult {
   segments: Segment[] | null;
   segmentLabels: number[] | null;
   faceColors: number[] | null;
+  /** 0.2.0-P2 transform form: post-apply vertices (flat xyz) + bbox. */
+  vertices?: number[] | null;
+  bbox?: BoundingBox | null;
   canUndo: boolean;
   canRedo: boolean;
 }

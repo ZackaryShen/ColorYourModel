@@ -308,7 +308,7 @@ mod tests {
         let mut colors: Vec<[u8; 4]> = vec![[0; 4]; m.segment_labels.len()];
         let mut labels = m.segment_labels.clone();
         m.history
-            .undo(&mut colors, &mut labels)
+            .undo(&mut colors, &mut labels, &mut m.vertices)
             .expect("undo should return an outcome");
         m.segment_labels = labels;
         m.rebuild_segments();
