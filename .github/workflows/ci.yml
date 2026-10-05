@@ -30,6 +30,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Verify version single-source (tauri.conf.json)
+        run: node tools/bump-version.mjs --check
       - name: Type check (gate)
         run: npx tsc --noEmit
       - name: Unit tests (gate)

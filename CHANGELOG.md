@@ -40,6 +40,15 @@
 
 ## [Unreleased]
 
+### Fixed — 0.2.0 P0 质量地基（2026-10-05）
+
+- **SeedPanel 3 个选择器用例修复（vitest 60/60，此前 57/60）**：Iteration B 模式切换器落地后 `segmentMode` 默认 `auto`，`推荐种子/生长` 按钮不再渲染，而 onGrow 回归用例未钉模式；且 `/生长/` 正则同时命中「🌱 手动（生长）」模式 Tab（getMultipleElementsFoundError）。测试侧修复：resetStore 显式钉 `segmentMode:"manual"`（与折角滑杆用例钉 `auto` 同一先例）+ 生长按钮按精确可访问名匹配；产品代码零改动
+- **CI：vitest 升为硬门禁 + 新增 Windows matrix**：撤销 `continue-on-error`；frontend（tsc+vitest）与 rust（cargo test）两个 job 均跑 ubuntu+windows——自动更新模块只在 Windows 上运行，此前 Windows 零 CI 覆盖；apt 系统依赖经 `runner.os` 条件仅 Linux 安装
+
+### Added — 0.2.0 P0 工程化（2026-10-05）
+
+- **版本 bump 脚本**（`tools/bump-version.mjs`）：`tauri.conf.json` 为唯一版本源，一键同步 package.json / Cargo.toml / Cargo.lock；`--check` 校验四文件一致（已接入 CI 门禁）。顺带修正 `globals.d.ts` 中版本来源注释的文档漂移（原写 package.json）
+
 ### Known Issues — 开源前已知问题记录（2026-09-29）
 
 以下问题已确认并记录在案，**不在 v0.1.0 发布前修复**（决策 D3=B：记录而非修复）：
