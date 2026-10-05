@@ -330,6 +330,10 @@ const dict: Record<string, Record<Lang, string>> = {
   "about.tech": { zh: "技术栈", en: "Built with" },
   "about.license": { zh: "开源协议", en: "License" },
   "about.repo": { zh: "源码仓库", en: "Repository" },
+  "about.showExperimental": {
+    zh: "显示实验性分区算法（sdfGraphCut / 凹度）",
+    en: "Show experimental segmentation algorithms (sdfGraphCut / concavity)",
+  },
   "about.close": { zh: "关闭", en: "Close" },
   "update.autoCheckToggle": { zh: "启动时检查更新", en: "Check for updates on startup" },
 

@@ -47,6 +47,8 @@
 
 ### Added — 0.2.0 P0 工程化（2026-10-05）
 
+- **实验性算法开关**：About 对话框新增「显示实验性分区算法」偏好（默认关，持久化）——sdfGraphCut / 凹度（iter-45 实验）从再切下拉中隐藏，开关打开后恢复；实验清单收敛为机器可读单一源 `EXPERIMENTAL_ALGORITHM_KINDS`（与 Rust 侧 mod.rs 注释互为镜像），后端命令与 wire 格式零改动
+
 - **版本 bump 脚本**（`tools/bump-version.mjs`）：`tauri.conf.json` 为唯一版本源，一键同步 package.json / Cargo.toml / Cargo.lock；`--check` 校验四文件一致（已接入 CI 门禁）。顺带修正 `globals.d.ts` 中版本来源注释的文档漂移（原写 package.json）
 - **融合分阶段计时埋点**：`fuse_segmentation` 现按阶段（planar/multiview/dihedral/vote）记录 wall-time，随 `fuse-debug` 事件输出 `durationsMs` 并写入日志——「超大模型 vote 阶段 >30min」从此每次运行可量化，不再靠秒表目测。纯观测，不参与控制流
 

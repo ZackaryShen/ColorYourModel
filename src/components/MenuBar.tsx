@@ -212,6 +212,8 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
   const autoCheckEnabled = useUpdateStore((s) => s.autoCheckEnabled);
   const setAutoCheckEnabled = useUpdateStore((s) => s.setAutoCheckEnabled);
+  const showExperimental = useAppStore((s) => s.showExperimental);
+  const setShowExperimental = useAppStore((s) => s.setShowExperimental);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -251,6 +253,14 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
             onChange={(e) => setAutoCheckEnabled(e.target.checked)}
           />
           <span>{t("update.autoCheckToggle")}</span>
+        </label>
+        <label style={styles.toggleRow}>
+          <input
+            type="checkbox"
+            checked={showExperimental}
+            onChange={(e) => setShowExperimental(e.target.checked)}
+          />
+          <span>{t("about.showExperimental")}</span>
         </label>
         <div style={styles.btnRow}>
           <button className="cym-btn" style={styles.btnPrimary} onClick={onClose}>

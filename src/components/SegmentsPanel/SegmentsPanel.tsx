@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useT } from "../../i18n";
@@ -6,7 +6,7 @@ import { segmentColorHex } from "../../utils/segmentPalette";
 import {
   buildAlgorithm,
   DEFAULT_ALGORITHM_PARAMS,
-  ALGORITHM_KINDS,
+  visibleAlgorithmKinds,
   type AlgorithmKind,
   type AlgorithmParams,
 } from "../../types/segment";
@@ -46,6 +46,15 @@ export function SegmentsPanel() {
   const [resegKind, setResegKind] = useState<AlgorithmKind>("concavity");
   const [resegK, setResegK] = useState(6);
   const [resegmenting, setResegmenting] = useState(false);
+  // Experimental kinds (sdfGraphCut / concavity) are hidden behind the About
+  // dialog's "show experimental" preference. `resegKind` keeps "concavity" as
+  // its raw default so the flag-on path is unchanged; `effectiveResegKind`
+  // degrades to curvatureKMeans (the iter-45 documented default) whenever the
+  // raw kind is hidden — including "flag switched off while the form is open".
+  // Render-time derivation, no effect: no dangling first frame, no extra render.
+  const showExperimental = useAppStore((s) => s.showExperimental);
+  const visibleKinds = useMemo(() => visibleAlgorithmKinds(showExperimental), [showExperimental]);
+  const effectiveResegKind = visibleKinds.includes(resegKind) ? resegKind : "curvatureKMeans";
 
   // Which row is in edit mode, and the text being typed. Held here rather than
   // per-row so only one row can ever be open: two open editors would both
@@ -176,7 +185,7 @@ export function SegmentsPanel() {
       const params = JSON.parse(
         JSON.stringify(DEFAULT_ALGORITHM_PARAMS)
       ) as AlgorithmParams;
-      switch (resegKind) {
+      switch (effectiveResegKind) {
         case "dihedral":
           params.dihedral.angleThreshold = resegK;
           break;
@@ -204,7 +213,7 @@ export function SegmentsPanel() {
           params.fhGraph.scale = resegK / 10;
           break;
       }
-      const algorithm = buildAlgorithm(resegKind, params);
+      const algorithm = buildAlgorithm(effectiveResegKind, params);
       const result = await resegmentRegion(id, algorithm);
       if (!result) return;
       setStatusMessage(t("segments.resegmentDone", result.segments.length));
@@ -367,11 +376,11 @@ export function SegmentsPanel() {
                 <div style={styles.resegForm} onClick={(e) => e.stopPropagation()}>
                   <span style={styles.splitFormLabel}>{t("segments.resegmentAlgo")}</span>
                   <select
-                    value={resegKind}
+                    value={effectiveResegKind}
                     onChange={(e) => setResegKind(e.target.value as AlgorithmKind)}
                     style={styles.resegSelect}
                   >
-                    {ALGORITHM_KINDS.map((k) => (
+                    {visibleKinds.map((k) => (
                       <option key={k} value={k}>
                         {algoLabel(k)}
                       </option>

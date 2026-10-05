@@ -41,6 +41,10 @@ interface AppStore {
    *  view hover-outline). Null when not hovering a segment. */
   hoveredSegment: number | null;
   snapEnabled: boolean;
+  /** Show experimental segmentation algorithms (sdfGraphCut / concavity) in
+   *  the resegment dropdown. Default false — they are iter-45 experiments
+   *  (see EXPERIMENTAL_ALGORITHM_KINDS); toggled from the About dialog. */
+  showExperimental: boolean;
   segmentView: boolean;
 
   // Transient toast (e.g. "添加分区成功"). Auto-cleared by the Toast component.
@@ -134,6 +138,7 @@ interface AppStore {
   setSelectedSegment: (id: number | null) => void;
   setHoveredSegment: (id: number | null) => void;
   setSnapEnabled: (enabled: boolean) => void;
+  setShowExperimental: (show: boolean) => void;
   setSegmentView: (enabled: boolean) => void;
   /** One-shot suggestion card (Viewport top-centre): raised right after the
    *  auto-fuse lands a partition while the user is NOT in segment view.
@@ -275,6 +280,7 @@ interface PersistedPrefs {
   brushFalloff: "linear" | "smooth" | "step";
   currentColor: [number, number, number, number];
   snapEnabled: boolean;
+  showExperimental: boolean;
   lastExportSelection: PersistedExportSelection | null;
   // Intelligent-segmentation prefs (see the AppStore field comments above).
   lastAlgorithmParams: AlgorithmParams | null;
@@ -372,6 +378,7 @@ function mergePrefs(persisted: unknown, current: AppStore): AppStore {
   if (isNum(p.brushRadius)) next.brushRadius = clamp(p.brushRadius, 0.5, 200);
   if (isNum(p.brushStrength)) next.brushStrength = clamp(p.brushStrength, 0.1, 1.0);
   if (typeof p.snapEnabled === "boolean") next.snapEnabled = p.snapEnabled;
+  if (typeof p.showExperimental === "boolean") next.showExperimental = p.showExperimental;
   if (Array.isArray(p.currentColor) && p.currentColor.length === 4 && p.currentColor.every(isNum)) {
     const c = p.currentColor.map((v) => clamp(Math.round(v), 0, 255));
     next.currentColor = [c[0], c[1], c[2], c[3]];
@@ -434,6 +441,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   selectedSegment: null,
   hoveredSegment: null,
   snapEnabled: false,
+  showExperimental: false,
   segmentView: false,
   toast: null,
 
@@ -569,6 +577,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setSelectedSegment: (id) => set({ selectedSegment: id }),
   setHoveredSegment: (id) => set({ hoveredSegment: id }),
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
+  setShowExperimental: (show) => set({ showExperimental: show }),
   setSegmentView: (enabled) =>
     set((s) => ({
       segmentView: enabled,
@@ -711,6 +720,7 @@ export const useAppStore = create<AppStore>()(
       brushFalloff: s.brushFalloff,
       currentColor: s.currentColor,
       snapEnabled: s.snapEnabled,
+      showExperimental: s.showExperimental,
       lastExportSelection: s.lastExportSelection,
       lastAlgorithmParams: s.lastAlgorithmParams,
       lastSegmentKind: s.lastSegmentKind,

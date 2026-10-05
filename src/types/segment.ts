@@ -140,9 +140,9 @@ export const ALGORITHM_KINDS: AlgorithmKind[] = [
   "shapeDiameter",
   "dihedral",
   // Iter-45 experimental algorithms (validated head-to-head in the Rust harness:
-  // they collapse hundreds of fragments into 4–7 semantic parts). Exposed for
-  // the user to A/B visually; the default stays curvatureKMeans until the user
-  // picks one, which persists as lastSegmentKind.
+  // they collapse hundreds of fragments into 4–7 semantic parts). Hidden behind
+  // the "show experimental" preference by default (0.2.0-P0); the Rust side of
+  // the same fact lives in segment/mod.rs (SdfGraphCut / Concavity doc comments).
   "sdfGraphCut",
   "concavity",
   // Iter-48: V-HACD approximate convex decomposition (pure Rust, parry3d) and the
@@ -156,6 +156,29 @@ export const ALGORITHM_KINDS: AlgorithmKind[] = [
   // of the other algorithms that emerges the part count from the mesh.
   "fhGraph",
 ];
+
+/**
+ * Single machine-readable source for "which algorithm kinds are experimental".
+ * Mirrors the Experimental markers in `segment/mod.rs` (SdfGraphCut, Concavity,
+ * both iter-45). The kind stays in ALGORITHM_KINDS (wire format and the
+ * persistence gate `isAlgorithmKind` must see every kind); only the SegmentsPanel
+ * dropdown filters on this list.
+ */
+export const EXPERIMENTAL_ALGORITHM_KINDS: readonly AlgorithmKind[] = [
+  "sdfGraphCut",
+  "concavity",
+];
+
+export function isExperimentalKind(k: AlgorithmKind): boolean {
+  return (EXPERIMENTAL_ALGORITHM_KINDS as string[]).includes(k);
+}
+
+/** Kinds the resegment dropdown may offer under the given preference. */
+export function visibleAlgorithmKinds(showExperimental: boolean): AlgorithmKind[] {
+  return showExperimental
+    ? [...ALGORITHM_KINDS]
+    : ALGORITHM_KINDS.filter((k) => !isExperimentalKind(k));
+}
 
 export function isAlgorithmKind(v: unknown): v is AlgorithmKind {
   return typeof v === "string" && (ALGORITHM_KINDS as string[]).includes(v);
