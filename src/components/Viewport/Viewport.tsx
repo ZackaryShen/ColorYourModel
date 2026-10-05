@@ -1,13 +1,14 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { OrbitControls, TransformControls } from "@react-three/drei";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useAppStore } from "../../store/appStore";
 import { useMesh } from "../../hooks/useMesh";
+import { invoke } from "@tauri-apps/api/core";
 import { usePaintTool, MANUAL_SEGMENT_OFFSET } from "../../hooks/usePaintTool";
 import { hexToRgba } from "../../hooks/usePaintTool";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
-import { useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
+import { useUndoRedo, applyHistoryResult, setHistoryApplier } from "../../hooks/useHistory";
 import { PaintTool } from "../../types/mesh";
 import type { HistoryResult } from "../../types/mesh";
 import { log } from "../../utils/logger";
@@ -801,11 +802,29 @@ const crossSectionRegionsVisible = useAppStore((s) => s.crossSectionRegionsVisib
 const eyeRegions = useAppStore((s) => s.eyeRegions);
 const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const { buildGeometry, publishGeometry, updateFaceColors } = useMesh();
+
+  // 0.2.0-P2 bridge: paint results produced OUTSIDE the R3F tree (image
+  // projection dialog) are parked in the store; this effect applies them to
+  // the GPU geometry — the same incremental path the in-canvas paint uses.
+  const pendingPaintResult = useAppStore((s) => s.pendingPaintResult);
+  const setPendingPaintResult = useAppStore((s) => s.setPendingPaintResult);
+  useEffect(() => {
+    if (!pendingPaintResult) return;
+    // PaintResult colors arrive flat (rgba×F); updateFaceColors wants tuples.
+    const tuples: number[][] = [];
+    for (let i = 0; i + 3 < pendingPaintResult.colors.length; i += 4) {
+      tuples.push(pendingPaintResult.colors.slice(i, i + 4));
+    }
+    updateFaceColors(pendingPaintResult.faces, tuples);
+    setPendingPaintResult(null);
+  }, [pendingPaintResult, updateFaceColors, setPendingPaintResult]);
   const { paintFace } = usePaintTool();
   const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
   const { undo: historyUndo, redo: historyRedo } = useUndoRedo({ undo, redo, historyState });
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
+  const transformMode = useAppStore((s) => s.transformMode);
+
   const isPainting = useRef(false);
   // Segment paint state: track current label + painted faces for dedup
   const currentSegLabelRef = useRef<number | null>(null);
@@ -987,6 +1006,12 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       const st = useAppStore.getState();
       st.setHistoryFlags(result.canUndo, result.canRedo);
       if (!result.applied) return;
+      // 0.2.0-P2 3a: a transform entry moved VERTICES — rebuild the geometry
+      // from the returned vertices/bbox (the colour patch cannot express it).
+      if (result.vertices && result.bbox) {
+        st.applyGeometryUpdate(result.vertices, result.bbox, result.canUndo, result.canRedo);
+        return;
+      }
       if (result.full) {
         if (result.segmentLabels && result.segments && result.faceColors) {
           st.updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
@@ -1534,6 +1559,41 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     []
   );
 
+  // 0.2.0-P2 3a: bake the gizmo drag into the vertices. The TransformControls
+  // wrote its delta into the MESH's local matrix — the parent group's -90°X
+  // Z-up compensation is outside that matrix, so the elements are already in
+  // STL-local space and go to the backend verbatim (adversarial round: the
+  // WORLD matrix would need R·M·R⁻¹ conjugation; the local one does not).
+  // After the bake the vertices ARE the transform, so the mesh's own
+  // position/rotation/scale reset to identity — otherwise the gizmo delta
+  // applies twice (once baked, once as leftover object transform).
+  const handleTransformMouseUp = useCallback(async () => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const e = mesh.matrix.elements;
+    const matrix: [[number, number, number, number], [number, number, number, number], [number, number, number, number], [number, number, number, number]] = [
+      [e[0], e[1], e[2], e[3]],
+      [e[4], e[5], e[6], e[7]],
+      [e[8], e[9], e[10], e[11]],
+      [e[12], e[13], e[14], e[15]],
+    ];
+    const identity =
+      matrix.every((col, ci) => col.every((v, ri) => Math.abs(v - (ci === ri ? 1 : 0)) < 1e-9));
+    if (identity) return; // gizmo grabbed but not moved — skip an empty undo step
+    try {
+      const result = await invoke<HistoryResult>("bake_transform", { matrix });
+      applyHistoryResult(result);
+      mesh.position.set(0, 0, 0);
+      mesh.rotation.set(0, 0, 0);
+      mesh.scale.set(1, 1, 1);
+      mesh.updateMatrix();
+      setStatusMessage(t("transform.baked"));
+    } catch (err) {
+      log.error("Viewport", "bake_transform failed", { error: String(err) });
+      setStatusMessage(`${t("transform.bakeFailed")}: ${err}`);
+    }
+  }, [meshRef, applyHistoryResult, setStatusMessage, t]);
+
   // Alt key → temporary camera rotate even while a paint/segment/lasso tool is
   // active. While held, onPointerDown early-returns (see MeshDisplay) so the
   // LEFT=ROTATE mapping takes over. Release or window-blur resets _altHeld to
@@ -1755,6 +1815,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // space orbits the camera instead of painting (iteration 15, req #1). We
       // gate isPainting on the initial hit to avoid a camera fight if the drag
       // later crosses onto the model.
+      // 0.2.0-P2 3a: a transform gizmo owns the pointer while active — the
+      // paint stack must not fire under it (pointer-ownership rule).
+      if (useAppStore.getState().transformMode !== "none") return;
       const hit = raycastFace(e.clientX, e.clientY);
       if (!hit || hit.faceIndex == null) {
         // Empty space: do NOT paint, do NOT capture. OrbitControls rotates.
@@ -2275,6 +2338,13 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           <meshLambertMaterial vertexColors side={THREE.DoubleSide} ref={assignHighlightMaterial} />
         )}
       </mesh>
+      {transformMode !== "none" && (
+        <TransformControls
+          object={meshRef as unknown as React.MutableRefObject<THREE.Object3D>}
+          mode={transformMode}
+          onMouseUp={() => void handleTransformMouseUp()}
+        />
+      )}
       {showWireframe && (
         <lineSegments>
           <wireframeGeometry args={[geometry]} />

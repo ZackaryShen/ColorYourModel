@@ -1,6 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { MeshData, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
+import { BoundingBox, MeshData, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
 import { translate, type Lang } from "../i18nDict";
 import { log } from "../utils/logger";
@@ -48,6 +48,9 @@ interface AppStore {
   gradientColorA: string;
   gradientColorB: string;
   gradientLengthPct: number;
+  /** 0.2.0-P2 3a: active whole-model transform gizmo mode ("none" = off).
+   *  While a mode is active the paint tools are inert (pointer ownership). */
+  transformMode: "none" | "translate" | "rotate" | "scale";
   /** Show experimental segmentation algorithms (sdfGraphCut / concavity) in
    *  the resegment dropdown. Default false — they are iter-45 experiments
    *  (see EXPERIMENTAL_ALGORITHM_KINDS); toggled from the About dialog. */
@@ -124,6 +127,11 @@ interface AppStore {
   /** Clear the previous model's seed/overlay/selection state — required
    *  before/after replacing the mesh via "open project" (see impl note). */
   resetProjectTransientState: () => void;
+  /** 0.2.0-P2: paint results produced OUTSIDE the canvas tree (image
+   *  projection dialog) are parked here; MeshDisplay (inside the R3F tree,
+   *  the only place with GPU geometry access) consumes and clears them. */
+  pendingPaintResult: { faces: number[]; colors: number[] } | null;
+  setPendingPaintResult: (r: { faces: number[]; colors: number[] } | null) => void;
   /** Write back the colors a paint command just produced into the CANONICAL
    *  `meshData.faceColors`. Mutates in place and deliberately does NOT call
    *  `set()`: the `meshData` object reference must stay identical so CameraFit /
@@ -152,6 +160,16 @@ interface AppStore {
   setGradientColorA: (hex: string) => void;
   setGradientColorB: (hex: string) => void;
   setGradientLengthPct: (pct: number) => void;
+  setTransformMode: (m: "none" | "translate" | "rotate" | "scale") => void;
+  /** 0.2.0-P2 3a: replace geometry after a baked transform (undo/redo/gizmo
+   *  commit all funnel here). Keeps colors/segments (index-based, unaffected)
+   *  and the caller-supplied history flags; flags the paint dirty. */
+  applyGeometryUpdate: (
+    vertices: number[],
+    bbox: BoundingBox,
+    canUndo: boolean,
+    canRedo: boolean
+  ) => void;
   setShowExperimental: (show: boolean) => void;
   setSegmentView: (enabled: boolean) => void;
   /** One-shot suggestion card (Viewport top-centre): raised right after the
@@ -454,12 +472,14 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   segments: [],
   selectedSegment: null,
   hoveredSegment: null,
+  pendingPaintResult: null,
   snapEnabled: false,
   showExperimental: false,
   gradientMode: "path",
   gradientColorA: "#ff3b30",
   gradientColorB: "#0040ff",
   gradientLengthPct: 100,
+  transformMode: "none",
   segmentView: false,
   toast: null,
 
@@ -512,6 +532,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   // seedPoints / planarRegions carry the OLD model's coordinates and face
   // indices straight into new-model commands. segmentView is deliberately
   // preserved (view preference, not project data).
+  setPendingPaintResult: (r) => set({ pendingPaintResult: r }),
   resetProjectTransientState: () =>
     set(() => ({
       selectedSegment: null,
@@ -622,6 +643,16 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setGradientColorA: (hex) => set({ gradientColorA: hex }),
   setGradientColorB: (hex) => set({ gradientColorB: hex }),
   setGradientLengthPct: (pct) => set({ gradientLengthPct: Math.min(400, Math.max(10, pct)) }),
+  setTransformMode: (m) => set({ transformMode: m }),
+  applyGeometryUpdate: (vertices, bbox, canUndo, canRedo) =>
+    set((state) => ({
+      meshData: state.meshData
+        ? { ...state.meshData, vertices, bbox }
+        : state.meshData,
+      canUndo,
+      canRedo,
+      paintDirty: true,
+    })),
   setSegmentView: (enabled) =>
     set((s) => ({
       segmentView: enabled,

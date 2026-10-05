@@ -38,6 +38,29 @@ fn commit(
 }
 
 #[tauri::command]
+pub fn project_image_paint(
+    path: String,
+    axis: String,
+    stroke_id: Option<u64>,
+    state: State<AppState>,
+) -> Result<PaintResult, String> {
+    // 0.2.0-P2 req #9: the frontend hands over a file PATH (dialog plugin
+    // pattern — adversarial round (e): multi-MB byte arrays over invoke are
+    // the exact anti-pattern history.rs:14-26 walked back).
+    let bytes = std::fs::read(&path).map_err(|e| format!("project: read image: {e}"))?;
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("project: decode image: {e}"))?
+        .to_rgba8();
+    let axis = crate::paint::projection::parse_axis(&axis)?;
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let updates = crate::paint::projection::project_image_paint(mesh, &img, axis);
+    let _ = axis; // parsed; kept for the log below
+    log::info!("[cmd:project_image_paint] faces={}", updates.len());
+    Ok(commit(mesh, stroke_id, updates))
+}
+
+#[tauri::command]
 pub fn gradient_radial_paint(
     center_face: u32,
     radius: f32,

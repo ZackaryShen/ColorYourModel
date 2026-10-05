@@ -10,6 +10,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useT } from "../i18n";
 import { log } from "../utils/logger";
 import { ExportDialog } from "./ExportDialog/ExportDialog";
+import { ProjectionDialog } from "./ProjectionDialog/ProjectionDialog";
 
 /** GitHub Pages site (docs/ tree, deployed by deploy-docs.yml). The site root
  *  redirects to docs/README.html; the manuals and example gallery are the
@@ -37,6 +38,7 @@ export function MenuBar() {
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [projectionOpen, setProjectionOpen] = useState(false);
   const importStl = useImportStl();
   const { openProject, saveProjectAs } = useProject();
   const { exportSplitByColor } = useTauriCommand();
@@ -108,6 +110,13 @@ export function MenuBar() {
           disabled: !hasMesh,
           hint: hasMesh ? undefined : t("export.needModel"),
           onClick: () => setExportDialogOpen(true),
+        },
+        {
+          kind: "item",
+          label: t("menu.projectImage"),
+          disabled: !hasMesh,
+          hint: hasMesh ? undefined : t("export.needModel"),
+          onClick: () => setProjectionOpen(true),
         },
         {
           kind: "item",
@@ -229,6 +238,7 @@ export function MenuBar() {
       ))}
 
       {exportDialogOpen && <ExportDialog onClose={() => setExportDialogOpen(false)} />}
+      {projectionOpen && <ProjectionDialog onClose={() => setProjectionOpen(false)} />}
       {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
     </div>
   );
