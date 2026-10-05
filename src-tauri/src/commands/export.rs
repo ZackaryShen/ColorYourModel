@@ -172,3 +172,23 @@ mod tests {
         );
     }
 }
+
+/// 0.2.0-P2 spike: export one OBJ per connected same-colour shell (open
+/// surface shells, no hole closing) plus a manifest — the deliverable of the
+/// split-export feasibility question (docs/technical/split-export-spike.md).
+#[tauri::command]
+pub fn export_split_by_color_command(
+    dir_path: String,
+    state: State<AppState>,
+) -> Result<Vec<String>, String> {
+    let dir = PathBuf::from(&dir_path);
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    // Synchronous on purpose: the split is a BFS + small OBJ writes
+    // (millisecond-scale per part) — no progress events, no take-the-mesh.
+    let parts = crate::export::split::export_split_by_color(mesh, &dir, &|_, _| {})?;
+    Ok(parts
+        .into_iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect())
+}
