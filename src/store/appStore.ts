@@ -41,6 +41,13 @@ interface AppStore {
    *  view hover-outline). Null when not hovering a segment. */
   hoveredSegment: number | null;
   snapEnabled: boolean;
+  /** Gradient brush options (0.2.0-P2). Session-local by design — v1 keeps
+   *  them out of the persisted whitelist to avoid the mergePrefs five-point
+   *  ceremony for a preference that is still being shaped. */
+  gradientMode: "path" | "radial";
+  gradientColorA: string;
+  gradientColorB: string;
+  gradientLengthPct: number;
   /** Show experimental segmentation algorithms (sdfGraphCut / concavity) in
    *  the resegment dropdown. Default false — they are iter-45 experiments
    *  (see EXPERIMENTAL_ALGORITHM_KINDS); toggled from the About dialog. */
@@ -141,6 +148,10 @@ interface AppStore {
   setSelectedSegment: (id: number | null) => void;
   setHoveredSegment: (id: number | null) => void;
   setSnapEnabled: (enabled: boolean) => void;
+  setGradientMode: (m: "path" | "radial") => void;
+  setGradientColorA: (hex: string) => void;
+  setGradientColorB: (hex: string) => void;
+  setGradientLengthPct: (pct: number) => void;
   setShowExperimental: (show: boolean) => void;
   setSegmentView: (enabled: boolean) => void;
   /** One-shot suggestion card (Viewport top-centre): raised right after the
@@ -445,6 +456,10 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   hoveredSegment: null,
   snapEnabled: false,
   showExperimental: false,
+  gradientMode: "path",
+  gradientColorA: "#ff3b30",
+  gradientColorB: "#0040ff",
+  gradientLengthPct: 100,
   segmentView: false,
   toast: null,
 
@@ -603,6 +618,10 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setHoveredSegment: (id) => set({ hoveredSegment: id }),
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   setShowExperimental: (show) => set({ showExperimental: show }),
+  setGradientMode: (m) => set({ gradientMode: m }),
+  setGradientColorA: (hex) => set({ gradientColorA: hex }),
+  setGradientColorB: (hex) => set({ gradientColorB: hex }),
+  setGradientLengthPct: (pct) => set({ gradientLengthPct: Math.min(400, Math.max(10, pct)) }),
   setSegmentView: (enabled) =>
     set((s) => ({
       segmentView: enabled,

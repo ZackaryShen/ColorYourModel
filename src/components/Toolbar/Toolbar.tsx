@@ -13,6 +13,7 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.View, icon: "🖐️", i18nKey: "tool.view" },
   { tool: PaintTool.Fill, icon: "🪣", i18nKey: "tool.fill" },
   { tool: PaintTool.Brush, icon: "🖌️", i18nKey: "tool.brush" },
+  { tool: PaintTool.Gradient, icon: "🌈", i18nKey: "tool.gradient" },
   { tool: PaintTool.Spray, icon: "💨", i18nKey: "tool.spray" },
   { tool: PaintTool.SmartBrush, icon: "🎯", i18nKey: "tool.smart" },
   { tool: PaintTool.Eyedropper, icon: "💧", i18nKey: "tool.eyedropper" },
@@ -27,7 +28,7 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
 // Group headers are chevron-only (the 56px bar has no room for text labels —
 // adversarial review M4); the group identity travels in the tooltip.
 const TOOL_GROUPS: { id: "paint" | "segment"; labelKey: string; tools: typeof TOOL_KEYS }[] = [
-  { id: "paint", labelKey: "toolbar.groupPaint", tools: TOOL_KEYS.slice(1, 7) },
+  { id: "paint", labelKey: "toolbar.groupPaint", tools: TOOL_KEYS.slice(1, 8) },
   { id: "segment", labelKey: "toolbar.groupSegment", tools: TOOL_KEYS.slice(7, 10) },
 ];
 

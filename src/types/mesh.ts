@@ -29,6 +29,7 @@ export enum PaintTool {
   View = "view",
   Fill = "fill",
   Brush = "brush",
+  Gradient = "gradient",
   Spray = "spray",
   SmartBrush = "smart",
   Eyedropper = "picker",

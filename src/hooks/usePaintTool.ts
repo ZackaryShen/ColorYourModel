@@ -84,7 +84,16 @@ export function usePaintTool() {
 
   const paintFace = async (
     faceId: number,
-    opts?: { wholeRegion?: boolean; hoveredSegment?: number | null; strokeId?: number | null }
+    opts?: {
+      wholeRegion?: boolean;
+      hoveredSegment?: number | null;
+      strokeId?: number | null;
+      /** 0.2.0-P2 gradient (path mode): the exact color this sample was
+       *  computed to carry, overriding the uniform currentColor. */
+      colorOverride?: [number, number, number, number];
+      /** 0.2.0-P2 gradient (radial mode): paint a graded disc around faceId. */
+      gradientRadial?: boolean;
+    }
   ): Promise<PaintOutcome | null> => {
     log.debug("usePaintTool", `paintFace(${faceId})`, { tool: activeTool, color: currentColor });
     try {
@@ -153,10 +162,38 @@ export function usePaintTool() {
             radius: brushRadius,
             strength: brushStrength,
             falloffMode: brushFalloff,
-            color: currentColor,
+            color: opts?.colorOverride ?? currentColor,
             strokeId: opts?.strokeId ?? null,
           });
           break;
+
+        case PaintTool.Gradient: {
+          // 0.2.0-P2 req #7. Path mode reuses brush_paint: the VIEWPORT
+          // computes each sample's color along the stroke (arc-length t) and
+          // ships it as colorOverride — one undo per stroke via strokeId.
+          // Radial mode defers to the backend selector, which grades the disc
+          // per-face (t = distance/radius; see paint/gradient.rs).
+          if (opts?.gradientRadial) {
+            const g = useAppStore.getState();
+            result = await invoke<PaintResult>("gradient_radial_paint", {
+              centerFace: faceId,
+              radius: brushRadius,
+              colorInner: hexToRgba(g.gradientColorA),
+              colorOuter: hexToRgba(g.gradientColorB),
+              strokeId: opts?.strokeId ?? null,
+            });
+            break;
+          }
+          result = await invoke<PaintResult>("brush_paint", {
+            centerFace: faceId,
+            radius: brushRadius,
+            strength: brushStrength,
+            falloffMode: brushFalloff,
+            color: opts?.colorOverride ?? currentColor,
+            strokeId: opts?.strokeId ?? null,
+          });
+          break;
+        }
 
         case PaintTool.Spray:
           result = await invoke<PaintResult>("spray_paint", {
@@ -214,4 +251,14 @@ export function usePaintTool() {
   };
 
   return { paintFace, fillSegment };
+}
+
+
+/** "#rrggbb" → RGBA tuple (alpha 255). Local to the gradient tool; the color
+ *  panel palette works in tuples, the <input type=color> options work in hex. */
+export function hexToRgba(hex: string): [number, number, number, number] {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return [138, 138, 138, 255];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 255];
 }

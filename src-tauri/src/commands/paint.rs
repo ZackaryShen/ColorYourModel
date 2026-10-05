@@ -38,6 +38,30 @@ fn commit(
 }
 
 #[tauri::command]
+pub fn gradient_radial_paint(
+    center_face: u32,
+    radius: f32,
+    color_inner: [u8; 4],
+    color_outer: [u8; 4],
+    stroke_id: Option<u64>,
+    state: State<AppState>,
+) -> Result<PaintResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard
+        .as_mut()
+        .ok_or("No mesh loaded")?;
+    let updates =
+        crate::paint::gradient::gradient_radial_hit(mesh, center_face, radius, color_inner, color_outer);
+    log::info!(
+        "[cmd:gradient_radial_paint] center={} radius={} faces={}",
+        center_face,
+        radius,
+        updates.len()
+    );
+    Ok(commit(mesh, stroke_id, updates))
+}
+
+#[tauri::command]
 pub fn brush_paint(
     center_face: u32,
     radius: f32,

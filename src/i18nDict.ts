@@ -35,6 +35,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "tool.view": { zh: "🖐️ 查看/导航 — 左键旋转、右键平移、中键缩放；选工具后按住 Alt 也可旋转", en: "🖐️ View / Navigate — left rotate, right pan, middle zoom; hold Alt to rotate while a tool is active" },
   "tool.fill": { zh: "🪣 填充 — 点击任意面，一键填满整个分区", en: "🪣 Fill — click any face to fill entire connected region" },
   "tool.brush": { zh: "🖌️ 画笔 — 平滑连续涂色，边缘渐变过渡", en: "🖌️ Brush — smooth continuous paint with edge falloff" },
+  "tool.gradient": { zh: "🌈 渐变画笔 — 沿笔划从颜色 A 渐变到颜色 B", en: "🌈 Gradient brush — fades from color A to color B along the stroke" },
   "tool.spray": { zh: "💨 喷罐 — 随机散点喷涂，模拟真实喷漆颗粒感", en: "💨 Spray — random scatter dots, simulates real spray-can texture" },
   "tool.smart": { zh: "🎯 智能笔 — 自动识别分区边界，不会涂出区域", en: "🎯 Smart — segment-aware, stays within region boundary" },
   "tool.eyedropper": { zh: "💧 吸管 — 从模型表面拾取颜色", en: "💧 Eyedropper — pick color from model surface" },
@@ -48,6 +49,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolName.view": { zh: "视图", en: "View" },
   "toolName.fill": { zh: "填充", en: "Fill" },
   "toolName.brush": { zh: "画笔", en: "Brush" },
+  "toolName.gradient": { zh: "渐变画笔", en: "Gradient brush" },
   "toolName.spray": { zh: "喷罐", en: "Spray" },
   "toolName.smart": { zh: "智能笔", en: "Smart" },
   "toolName.picker": { zh: "吸管", en: "Eyedropper" },
@@ -155,6 +157,12 @@ const dict: Record<string, Record<Lang, string>> = {
 
   // BrushSettings
   "brush.title": { zh: "画笔设置", en: "Brush Settings" },
+  "gradient.mode": { zh: "渐变模式", en: "Gradient mode" },
+  "gradient.path": { zh: "路径", en: "Path" },
+  "gradient.radial": { zh: "径向", en: "Radial" },
+  "gradient.colorA": { zh: "起点色", en: "Start color" },
+  "gradient.colorB": { zh: "终点色", en: "End color" },
+  "gradient.length": { zh: "渐变长度（视口对角 %）", en: "Fade length (% of viewport diagonal)" },
   "brush.radius": { zh: "半径", en: "Radius" },
   "brush.strength": { zh: "强度", en: "Strength" },
   "brush.falloff": { zh: "衰减", en: "Falloff" },
