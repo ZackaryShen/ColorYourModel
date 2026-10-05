@@ -1,10 +1,10 @@
-# Frontend + Rust unit tests on every push to main and all PRs.
-# Docs freshness is covered separately by docs-check.yml.
+# Frontend + Rust unit tests on every push to main and all PRs, on both
+# Linux and Windows. Docs freshness is covered separately by docs-check.yml.
 #
-# Known state (see CHANGELOG.md "Known Issues"): 3 pre-existing SeedPanel
-# selector failures make vitest 57/60. Until they are fixed, the vitest step
-# is informational (continue-on-error) while `tsc --noEmit` stays a hard
-# gate — CI must be green on day one without hiding the failures.
+# Since 0.2.0-P0 every step below is a hard gate: the 3 pre-existing SeedPanel
+# selector failures were fixed and vitest is 60/60. Windows coverage matters
+# because the auto-update module only runs there (see CHANGELOG "Known Issues"
+# for the remaining platform gaps).
 
 name: CI
 
@@ -18,7 +18,11 @@ permissions:
 
 jobs:
   frontend:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,12 +32,15 @@ jobs:
       - run: npm ci
       - name: Type check (gate)
         run: npx tsc --noEmit
-      - name: Unit tests (3 known SeedPanel failures tolerated)
+      - name: Unit tests (gate)
         run: npx vitest run
-        continue-on-error: true
 
   rust:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,6 +52,7 @@ jobs:
         with:
           workspaces: src-tauri
       - name: Install Tauri system dependencies (ubuntu 24.04)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
