@@ -82,3 +82,59 @@ pub fn get_face_color(face_id: u32, state: State<AppState>) -> Result<[u8; 4], S
         Err("Face ID out of range".to_string())
     }
 }
+
+/// Open a .cym project: load the model, replace the app state, and return the
+/// same DTO shape as `load_model` so the frontend can reuse its setMeshData
+/// path. Undo history is deliberately reset (the format does not persist it).
+#[tauri::command]
+pub fn load_project(path: String, state: State<AppState>) -> Result<MeshDataDto, String> {
+    log::info!("[cmd:load_project] path={}", path);
+    let file_path = PathBuf::from(&path);
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    if ext != "cym" {
+        return Err(format!("Unsupported project format: {} (expected .cym)", ext));
+    }
+
+    let model = crate::mesh::project::load_cym(&file_path)?;
+    let dto = model.to_dto();
+    log::info!(
+        "[cmd:load_project] DTO ready: {} verts, {} faces, {} segments",
+        dto.vertices.len() / 3,
+        dto.faces.len() / 3,
+        dto.segments.len()
+    );
+
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    *mesh_guard = Some(model);
+    Ok(dto)
+}
+
+/// Save the current model as a .cym project. v1 semantics: every save picks
+/// a path (no Ctrl+S / last-path memory — documented in the 0.2.0 plan).
+/// Zip writing is millisecond-scale, so there is no progress event here.
+#[tauri::command]
+pub fn save_project(path: String, state: State<AppState>) -> Result<(), String> {
+    log::info!("[cmd:save_project] path={}", path);
+    let file_path = PathBuf::from(&path);
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    if ext != "cym" {
+        return Err(format!(
+            "Unsupported project format: {} (expected .cym)",
+            ext
+        ));
+    }
+
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    crate::mesh::project::save_cym(mesh, &file_path)?;
+    log::info!("[cmd:save_project] saved");
+    Ok(())
+}
