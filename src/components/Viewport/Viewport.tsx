@@ -5,8 +5,10 @@ import * as THREE from "three";
 import { useAppStore } from "../../store/appStore";
 import { useMesh } from "../../hooks/useMesh";
 import { usePaintTool, MANUAL_SEGMENT_OFFSET } from "../../hooks/usePaintTool";
+import { hexToRgba } from "../../hooks/usePaintTool";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
+import { PaintTool } from "../../types/mesh";
 import type { HistoryResult } from "../../types/mesh";
 import { log } from "../../utils/logger";
 import { hintKeyForTool } from "../../utils/controlsHint";
@@ -1607,7 +1609,14 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const handleFacePicked = useCallback(
     async (
       faceId: number,
-      opts?: { wholeRegion?: boolean; hoveredSegment?: number | null; renderedHover?: number | null; strokeId?: number | null }
+      opts?: {
+        wholeRegion?: boolean;
+        hoveredSegment?: number | null;
+        renderedHover?: number | null;
+        strokeId?: number | null;
+        colorOverride?: [number, number, number, number];
+        gradientRadial?: boolean;
+      }
     ) => {
       if (isSegmentTool) {
         // Segment paint brush: skip already-painted faces in this drag
@@ -1706,7 +1715,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // Serial paint queue — see paintQueue.ts for why the drain is serialized
   // (iteration 15) and latest-wins (iteration 16), and paintQueue.test.ts for
   // the strokeId-forwarding contract whose loss was issue #20 (one drag undone
-  // one sample at a time).
+  // one sample at a time). The 0.2.0-P2 gradient fields ride the same job so a
+  // graded sample can never be dropped by the latest-wins throttle.
   const paintQueue = useMemo(
     () =>
       createSerialPaintQueue<PaintJob>((job) =>
@@ -1715,6 +1725,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           hoveredSegment: job.hoveredSegment,
           renderedHover: job.renderedHover,
           strokeId: job.strokeId,
+          colorOverride: job.colorOverride,
+          gradientRadial: job.gradientRadial,
         })
       ),
     []
@@ -1725,11 +1737,24 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // the stroke, so a lost pointerup can never merge two drags.
   const strokeCounterRef = useRef(0);
   const activeStrokeIdRef = useRef<number | null>(null);
+  // 0.2.0-P2 gradient (path mode): screen-space arc-length tracking for the
+  // per-sample color t. Arc length (not start-distance — adversarial round (a))
+  // over a user-set viewport-relative fade length; purely screen-space, so no
+  // px↔mm conversion and no zoom dependence in the UX.
+  const gradientStrokeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const gradientPrevRef = useRef<{ x: number; y: number } | null>(null);
+  const gradientAccumRef = useRef(0);
   // iter30-era stale-hover cache retired (2026-08-27): Fill routing now reads
   // `segmentLabels[clickedFace]` directly (see usePaintTool), so a cached
   // "last valid hover" no longer has any legitimate consumer. Keeping it around
   // invited exactly the wrong-target fills it was once built to serve.
-  const enqueuePaint = useCallback((faceId: number, wholeRegion = false) => {
+  const enqueuePaint = useCallback(
+    (
+      faceId: number,
+      wholeRegion = false,
+      colorOverride?: [number, number, number, number],
+      gradientRadial = false
+    ) => {
     // Snapshot hoveredSegment AT ENQUEUE TIME (click/pointerdown), not at async
     // execution time. onPointerUp fires synchronously and clears it before the
     // async IIFE runs — causing a race condition where handleFacePicked always
@@ -1749,6 +1774,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // backend undo entry (see strokeCounterRef above). Forwarding this field
       // is load-bearing: dropping it was issue #20.
       strokeId: activeStrokeIdRef.current,
+      colorOverride,
+      gradientRadial,
     };
     // iter30 PROBE: at click time, capture exactly what we snapshot.
     // snap = store hoveredSegment (diagnostic only; the fill target itself is
@@ -2097,7 +2124,47 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       try { canvas.setPointerCapture(e.pointerId); } catch { /* not critical */ }
       // Shift + fill click → explicit whole-connected-region flood (the escape
       // hatch that keeps the pre-iteration-18 behaviour reachable, M3).
-      enqueuePaint(hit.faceIndex, activeTool === "fill" && e.shiftKey);
+      if (activeTool === PaintTool.Gradient) {
+        const g = useAppStore.getState();
+        if (g.gradientMode === "radial") {
+          // Radial mode is a one-shot graded disc per click — no drag trail.
+          enqueuePaint(hit.faceIndex, false, undefined, true);
+          return;
+        }
+        gradientStrokeStartRef.current = { x: e.clientX, y: e.clientY };
+        gradientPrevRef.current = { x: e.clientX, y: e.clientY };
+        gradientAccumRef.current = 0;
+      }
+      enqueuePaint(
+        hit.faceIndex,
+        activeTool === "fill" && e.shiftKey,
+        activeTool === PaintTool.Gradient ? gradientSampleColor(e.clientX, e.clientY) : undefined
+      );
+    };
+
+    // 0.2.2-P2 gradient: screen-space arc length since stroke start, normalized
+    // by the user's fade length (percentage of the viewport diagonal). Purely
+    // screen-space by design — no px↔mm conversion, no ortho-zoom dependence
+    // (adversarial round: pixel thresholds are zoom-DEPENDENT; a percentage of
+    // the visible diagonal is what the user visually drags across).
+    const gradientSampleColor = (clientX: number, clientY: number): [number, number, number, number] => {
+      const g = useAppStore.getState();
+      const prev = gradientPrevRef.current;
+      if (prev) {
+        gradientAccumRef.current += Math.hypot(clientX - prev.x, clientY - prev.y);
+      }
+      gradientPrevRef.current = { x: clientX, y: clientY };
+      const start = gradientStrokeStartRef.current ?? { x: clientX, y: clientY };
+      const fadePx = Math.hypot(window.innerWidth, window.innerHeight) * (g.gradientLengthPct / 100);
+      const t = Math.min(1, gradientAccumRef.current / Math.max(1, fadePx));
+      const a = hexToRgba(g.gradientColorA);
+      const b = hexToRgba(g.gradientColorB);
+      return [
+        Math.round(a[0] + (b[0] - a[0]) * t),
+        Math.round(a[1] + (b[1] - a[1]) * t),
+        Math.round(a[2] + (b[2] - a[2]) * t),
+        255,
+      ];
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -2120,7 +2187,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         const hit = raycastFace(e.clientX, e.clientY);
         updateBrushCursor(hit && hit.faceIndex != null ? hit : null);
         if (hit && hit.faceIndex != null) {
-          enqueuePaint(hit.faceIndex);
+          enqueuePaint(
+            hit.faceIndex,
+            false,
+            activeTool === PaintTool.Gradient ? gradientSampleColor(e.clientX, e.clientY) : undefined
+          );
         }
         return;
       }

@@ -13,6 +13,7 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.View, icon: "🖐️", i18nKey: "tool.view" },
   { tool: PaintTool.Fill, icon: "🪣", i18nKey: "tool.fill" },
   { tool: PaintTool.Brush, icon: "🖌️", i18nKey: "tool.brush" },
+  { tool: PaintTool.Gradient, icon: "🌈", i18nKey: "tool.gradient" },
   { tool: PaintTool.Spray, icon: "💨", i18nKey: "tool.spray" },
   { tool: PaintTool.SmartBrush, icon: "🎯", i18nKey: "tool.smart" },
   { tool: PaintTool.Eyedropper, icon: "💧", i18nKey: "tool.eyedropper" },
@@ -26,9 +27,28 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
 // View stays always-visible above the groups; undo/redo stays at the bottom.
 // Group headers are chevron-only (the 56px bar has no room for text labels —
 // adversarial review M4); the group identity travels in the tooltip.
+// Membership is listed by TOOL ID, not by index: inserting the gradient tool
+// into TOOL_KEYS (0.2.0-P2 req #7) shifted every later index, and the old
+// slice(7, 10) then put Eraser in BOTH groups while dropping Seed from the
+// bar entirely — the seed tool became unreachable. Filtering preserves
+// TOOL_KEYS order without making the groups index-sensitive.
+const PAINT_TOOLS: PaintTool[] = [
+  PaintTool.Fill,
+  PaintTool.Brush,
+  PaintTool.Gradient,
+  PaintTool.Spray,
+  PaintTool.SmartBrush,
+  PaintTool.Eyedropper,
+  PaintTool.Eraser,
+];
+const SEGMENT_TOOLS: PaintTool[] = [PaintTool.Segment, PaintTool.Lasso, PaintTool.Seed];
+
+const groupTools = (tools: PaintTool[]) =>
+  TOOL_KEYS.filter((tk) => tools.includes(tk.tool));
+
 const TOOL_GROUPS: { id: "paint" | "segment"; labelKey: string; tools: typeof TOOL_KEYS }[] = [
-  { id: "paint", labelKey: "toolbar.groupPaint", tools: TOOL_KEYS.slice(1, 7) },
-  { id: "segment", labelKey: "toolbar.groupSegment", tools: TOOL_KEYS.slice(7, 10) },
+  { id: "paint", labelKey: "toolbar.groupPaint", tools: groupTools(PAINT_TOOLS) },
+  { id: "segment", labelKey: "toolbar.groupSegment", tools: groupTools(SEGMENT_TOOLS) },
 ];
 
 export function Toolbar() {

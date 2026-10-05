@@ -1,8 +1,18 @@
 import { useAppStore } from "../../store/appStore";
 import { useT } from "../../i18n";
+import { PaintTool } from "../../types/mesh";
 
 export function BrushSettings() {
   const t = useT();
+  const activeTool = useAppStore((s) => s.activeTool);
+  const gradientMode = useAppStore((s) => s.gradientMode);
+  const setGradientMode = useAppStore((s) => s.setGradientMode);
+  const gradientColorA = useAppStore((s) => s.gradientColorA);
+  const setGradientColorA = useAppStore((s) => s.setGradientColorA);
+  const gradientColorB = useAppStore((s) => s.gradientColorB);
+  const setGradientColorB = useAppStore((s) => s.setGradientColorB);
+  const gradientLengthPct = useAppStore((s) => s.gradientLengthPct);
+  const setGradientLengthPct = useAppStore((s) => s.setGradientLengthPct);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
   const brushFalloff = useAppStore((s) => s.brushFalloff);
@@ -58,6 +68,73 @@ export function BrushSettings() {
           <option value="step">{t("brush.step")}</option>
         </select>
       </div>
+
+      {activeTool === PaintTool.Gradient && (
+        <>
+          <div style={styles.row}>
+            <label style={styles.label}>{t("gradient.mode")}</label>
+            <div style={styles.toggleGroup}>
+              <button
+                className="cym-toggle"
+                style={{
+                  ...styles.toggleBtn,
+                  ...(gradientMode === "path" ? styles.toggleActive : {}),
+                }}
+                onClick={() => setGradientMode("path")}
+              >
+                {t("gradient.path")}
+              </button>
+              <button
+                className="cym-toggle"
+                style={{
+                  ...styles.toggleBtn,
+                  ...(gradientMode === "radial" ? styles.toggleActive : {}),
+                }}
+                onClick={() => setGradientMode("radial")}
+              >
+                {t("gradient.radial")}
+              </button>
+            </div>
+          </div>
+
+          <div style={styles.row}>
+            <label style={styles.label}>{t("gradient.colorA")}</label>
+            <input
+              type="color"
+              value={gradientColorA}
+              onChange={(e) => setGradientColorA(e.target.value)}
+              style={styles.colorInput}
+            />
+          </div>
+
+          <div style={styles.row}>
+            <label style={styles.label}>{t("gradient.colorB")}</label>
+            <input
+              type="color"
+              value={gradientColorB}
+              onChange={(e) => setGradientColorB(e.target.value)}
+              style={styles.colorInput}
+            />
+          </div>
+
+          {gradientMode === "path" && (
+            <div style={styles.row}>
+              <label style={styles.label}>
+                {t("gradient.length")}: {gradientLengthPct}%
+              </label>
+              <input
+                type="range"
+                min="10"
+                max="400"
+                step="10"
+                value={gradientLengthPct}
+                onChange={(e) => setGradientLengthPct(parseInt(e.target.value, 10))}
+                style={styles.slider}
+              />
+            </div>
+          )}
+        </>
+      )}
 
       <div style={styles.row}>
         <label style={styles.label}>{t("shading.mode")}</label>
@@ -122,6 +199,15 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--bg-elevated, #3a3a3a)",
     color: "var(--text-1, #dddddd)",
     fontSize: 12,
+  },
+  colorInput: {
+    width: "100%",
+    height: 28,
+    padding: 0,
+    border: "1px solid var(--border, #555555)",
+    borderRadius: 4,
+    background: "var(--bg-elevated, #3a3a3a)",
+    cursor: "pointer",
   },
   toggleGroup: {
     display: "flex",

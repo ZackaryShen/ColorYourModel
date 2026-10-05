@@ -28,6 +28,10 @@ export interface PaintJob {
   renderedHover?: number | null;
   /** Stroke id minted at pointerdown; the backend's undo-coalescing key. */
   strokeId?: number | null;
+  /** 0.2.0-P2 gradient (path mode): precomputed per-sample RGBA. */
+  colorOverride?: [number, number, number, number];
+  /** 0.2.0-P2 gradient (radial mode): one-shot graded disc. */
+  gradientRadial?: boolean;
 }
 
 export interface SerialPaintQueue<Job> {
