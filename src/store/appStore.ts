@@ -114,6 +114,9 @@ interface AppStore {
   // Actions
   setMeshData: (data: MeshData) => void;
   updateSegmentLabels: (labels: number[], segments: Segment[], faceColors?: number[]) => void;
+  /** Clear the previous model's seed/overlay/selection state — required
+   *  before/after replacing the mesh via "open project" (see impl note). */
+  resetProjectTransientState: () => void;
   /** Write back the colors a paint command just produced into the CANONICAL
    *  `meshData.faceColors`. Mutates in place and deliberately does NOT call
    *  `set()`: the `meshData` object reference must stay identical so CameraFit /
@@ -485,6 +488,28 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       paintDirty: false,
       segments: projectSegments(data.segments),
       statusMessage: translate("status.loaded", get().language, data.faceCount.toLocaleString()),
+    })),
+
+  // 0.2.0-P1 (open project): setMeshData alone leaves the previous model's
+  // seed/overlay/selection state behind. Harmless right after an STL import
+  // (fresh model has only label 0) but wrong when opening a .cym project —
+  // stale selectedSegment can collide with a real region id, and stale
+  // seedPoints / planarRegions carry the OLD model's coordinates and face
+  // indices straight into new-model commands. segmentView is deliberately
+  // preserved (view preference, not project data).
+  resetProjectTransientState: () =>
+    set(() => ({
+      selectedSegment: null,
+      hoveredSegment: null,
+      seedPoints: [],
+      seedEraseMode: false,
+      seedPickMode: false,
+      suggestedSeeds: [],
+      planarRegions: [],
+      multiviewRegions: [],
+      crossSectionRegions: [],
+      eyeRegions: [],
+      statusMessage: "",
     })),
 
   updateSegmentLabels: (labels, segments, faceColors) =>

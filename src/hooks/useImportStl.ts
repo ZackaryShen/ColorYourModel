@@ -12,7 +12,7 @@ import { log } from "../utils/logger";
  */
 export function useImportStl() {
   const t = useT();
-  const { loadModel } = useTauriCommand();
+  const { loadModel, loadProject } = useTauriCommand();
   const setLoading = useAppStore((s) => s.setLoading);
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
@@ -21,7 +21,9 @@ export function useImportStl() {
     log.info("importStl", "Import action triggered");
     const selected = await open({
       multiple: false,
-      filters: [{ name: "3D Models", extensions: ["stl"] }],
+      // 0.2.0-P1: the entry point is format-aware — .stl imports fresh, .cym
+      // opens a full project (labels + paint + region names restored).
+      filters: [{ name: "3D Models / CYM Project", extensions: ["stl", "cym"] }],
     });
     if (!selected) {
       log.debug("importStl", "File dialog cancelled");
@@ -33,7 +35,11 @@ export function useImportStl() {
     setImportProgress(0, t("toolbar.startImport"));
 
     try {
-      await loadModel(selected);
+      if (selected.toLowerCase().endsWith(".cym")) {
+        await loadProject(selected);
+      } else {
+        await loadModel(selected);
+      }
     } catch (e) {
       log.error("importStl", "Import failed", { error: String(e) });
       setStatusMessage(`${t("toolbar.importFailed")}: ${e}`);

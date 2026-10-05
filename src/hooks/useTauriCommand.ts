@@ -23,6 +23,7 @@ export function useTauriCommand() {
   const setSegmentMetadata = useAppStore((s) => s.setSegmentMetadata);
   const markHistoryDirty = useAppStore((s) => s.markHistoryDirty);
   const markPaintExported = useAppStore((s) => s.markPaintExported);
+  const resetProjectTransientState = useAppStore((s) => s.resetProjectTransientState);
   const setToast = useAppStore((s) => s.setToast);
 
   const loadModel = async (path: string) => {
@@ -232,6 +233,33 @@ export function useTauriCommand() {
    * the `auto_segment_smart` command alive; the command itself remains registered
    * in lib.rs as a stable legacy entry point but is no longer wired to the UI.
    */
+
+  // 0.2.0-P1: open a .cym project. Clears the previous model's transient
+  // state BEFORE setMeshData so stale seeds/overlays/selection can never leak
+  // into the new model (setMeshData alone does not clear them).
+  const loadProject = async (path: string) => {
+    log.info("useTauriCommand", `loadProject("${path}")`);
+    const t0 = performance.now();
+    const data = await invoke<MeshData>("load_project", { path });
+    const dt = (performance.now() - t0).toFixed(1);
+    log.info("useTauriCommand", `loadProject returned in ${dt}ms`, {
+      faces: data.faces.length / 3,
+      segments: data.segments.length,
+    });
+    resetProjectTransientState();
+    setMeshData(data);
+    return data;
+  };
+
+  // 0.2.0-P1: save the current model as .cym. The project file carries the
+  // paint, so saving marks the paint clean for exit-confirm / update-warn —
+  // same semantics as exporting a 3MF (documented limitation: undoing after
+  // save still counts as clean, matching the existing 3MF behaviour).
+  const saveProject = async (path: string) => {
+    log.info("useTauriCommand", `saveProject("${path}")`);
+    await invoke("save_project", { path });
+    markPaintExported();
+  };
 
   const export3mf = async (path: string, selection?: ExportSelection) => {
     log.info("useTauriCommand", `export3mf("${path}")`, { selection });
@@ -717,6 +745,8 @@ export function useTauriCommand() {
 
   return {
     loadModel,
+    loadProject,
+    saveProject,
     export3mf,
     exportObj,
     paintSegmentFace,

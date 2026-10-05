@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { PaintTool } from "../../types/mesh";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
@@ -20,6 +20,15 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.Segment, icon: "✂️", i18nKey: "tool.segment" },
   { tool: PaintTool.Lasso, icon: "📍", i18nKey: "tool.lasso" },
   { tool: PaintTool.Seed, icon: "🌱", i18nKey: "tool.seed" },
+];
+
+// 0.2.0-P1 (req #6): paint and segment tools are grouped and collapsible.
+// View stays always-visible above the groups; undo/redo stays at the bottom.
+// Group headers are chevron-only (the 56px bar has no room for text labels —
+// adversarial review M4); the group identity travels in the tooltip.
+const TOOL_GROUPS: { id: "paint" | "segment"; labelKey: string; tools: typeof TOOL_KEYS }[] = [
+  { id: "paint", labelKey: "toolbar.groupPaint", tools: TOOL_KEYS.slice(1, 7) },
+  { id: "segment", labelKey: "toolbar.groupSegment", tools: TOOL_KEYS.slice(7, 10) },
 ];
 
 export function Toolbar() {
@@ -73,6 +82,56 @@ export function Toolbar() {
     setExportDialogOpen(true);
   };
 
+  // Collapse state is intentionally session-local (not persisted): the bar is
+  // small and default-expanded is the right first-run experience.
+  const [collapsed, setCollapsed] = useState<{ paint: boolean; segment: boolean }>({
+    paint: false,
+    segment: false,
+  });
+  const toggleGroup = (id: "paint" | "segment") => {
+    setCollapsed((prev) => {
+      if (prev[id]) return { ...prev, [id]: false };
+      // Collapsing a group that owns the active tool would hide the active
+      // tool's button while activeTool stays on it — the user would lose all
+      // visible indication of the current mode. Refuse instead (review M4).
+      const group = TOOL_GROUPS.find((g) => g.id === id)!;
+      if (group.tools.some((tk) => tk.tool === activeTool)) return prev;
+      return { ...prev, [id]: true };
+    });
+  };
+
+  const renderToolButton = (item: { tool: PaintTool; icon: string; i18nKey: string }) => {
+    // Build dynamic tooltip with current parameters for brush-type tools
+    let tip = t(item.i18nKey);
+    if (
+      item.tool === PaintTool.Brush ||
+      item.tool === PaintTool.Spray ||
+      item.tool === PaintTool.SmartBrush
+    ) {
+      tip += ` [${t("brush.radius")}: ${brushRadius}mm, ${t("brush.strength")}: ${(brushStrength * 100).toFixed(0)}%]`;
+    }
+    return (
+      <button
+        key={item.tool}
+        onClick={(e) => {
+          e.currentTarget.blur(); // drop focus so the just-clicked button
+          // doesn't keep a focus-ring + hover filter together with the
+          // newly-active tool's border (looked like "two tools active").
+          log.info("Toolbar", "tool click", { tool: item.tool, from: activeTool });
+          setActiveTool(item.tool);
+        }}
+        className="cym-btn"
+        style={{
+          ...styles.toolButton,
+          ...(activeTool === item.tool ? styles.toolActive : {}),
+        }}
+        title={tip}
+      >
+        {item.icon}
+      </button>
+    );
+  };
+
   return (
     <div style={styles.container}>
       {exportDialogOpen && <ExportDialog onClose={() => setExportDialogOpen(false)} />}
@@ -93,39 +152,25 @@ export function Toolbar() {
 
       <div style={styles.divider} />
 
-      <div style={styles.section}>
-        {TOOL_KEYS.map((item) => {
-          // Build dynamic tooltip with current parameters for brush-type tools
-          let tip = t(item.i18nKey);
-          if (
-            item.tool === PaintTool.Brush ||
-            item.tool === PaintTool.Spray ||
-            item.tool === PaintTool.SmartBrush
-          ) {
-            tip += ` [${t("brush.radius")}: ${brushRadius}mm, ${t("brush.strength")}: ${(brushStrength * 100).toFixed(0)}%]`;
-          }
-          return (
+      <div style={styles.section}>{renderToolButton(TOOL_KEYS[0])}</div>
+
+      {TOOL_GROUPS.map((group, gi) => (
+        <Fragment key={group.id}>
+          {gi > 0 && <div style={styles.divider} />}
+          <div style={styles.section}>
             <button
-              key={item.tool}
-              onClick={(e) => {
-                e.currentTarget.blur(); // drop focus so the just-clicked button
-                // doesn't keep a focus-ring + hover filter together with the
-                // newly-active tool's border (looked like "two tools active").
-                log.info("Toolbar", "tool click", { tool: item.tool, from: activeTool });
-                setActiveTool(item.tool);
-              }}
               className="cym-btn"
-              style={{
-                ...styles.toolButton,
-                ...(activeTool === item.tool ? styles.toolActive : {}),
-              }}
-              title={tip}
+              style={styles.groupChevron}
+              onClick={() => toggleGroup(group.id)}
+              title={`${t("toolbar.groupCollapse")} — ${t(group.labelKey)}`}
+              aria-label={`${t(group.labelKey)} — ${t("toolbar.groupCollapse")}`}
             >
-              {item.icon}
+              {collapsed[group.id] ? "▸" : "▾"}
             </button>
-          );
-        })}
-      </div>
+            {!collapsed[group.id] && group.tools.map(renderToolButton)}
+          </div>
+        </Fragment>
+      ))}
 
       <div style={styles.divider} />
 
@@ -213,5 +258,18 @@ const styles: Record<string, React.CSSProperties> = {
     height: 1,
     background: "var(--border, #555555)",
     margin: "4px 0",
+  },
+  groupChevron: {
+    width: 40,
+    height: 14,
+    border: "none",
+    background: "transparent",
+    color: "var(--text-2, #aaaaaa)",
+    cursor: "pointer",
+    fontSize: 10,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
   },
 };

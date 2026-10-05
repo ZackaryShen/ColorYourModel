@@ -21,7 +21,14 @@ const dict: Record<string, Record<Lang, string>> = {
   "lasso.cancelled": { zh: "已取消当前套索", en: "Lasso cancelled" },
   "lasso.undoPoint": { zh: "已撤销一个选点", en: "Removed last point" },
   "toolbar.importComplete": { zh: "导入完成", en: "Import complete" },
+  "status.projectSaved": { zh: "工程已保存", en: "Project saved" },
   "toolbar.importFailed": { zh: "导入失败", en: "Import failed" },
+  "toolbar.openProjectFailed": { zh: "打开工程失败", en: "Open project failed" },
+  "toolbar.saveProjectFailed": { zh: "保存工程失败", en: "Save project failed" },
+  "toolbar.saveProject": { zh: "保存工程（.cym）", en: "Save project (.cym)" },
+  "toolbar.groupPaint": { zh: "涂色工具", en: "Paint tools" },
+  "toolbar.groupSegment": { zh: "分区工具", en: "Segment tools" },
+  "toolbar.groupCollapse": { zh: "折叠/展开分组", en: "Collapse/expand group" },
   "toolbar.startImport": { zh: "开始导入…", en: "Starting import…" },
 
   // Toolbar — tool tooltips (differentiated descriptions)
@@ -303,6 +310,8 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.view": { zh: "视图", en: "View" },
   "menu.help": { zh: "帮助", en: "Help" },
   "menu.import": { zh: "导入 STL…", en: "Import STL…" },
+  "menu.openProject": { zh: "打开工程…", en: "Open project…" },
+  "menu.saveProject": { zh: "保存工程", en: "Save project" },
   "menu.export": { zh: "导出涂装模型…", en: "Export painted model…" },
   "menu.quit": { zh: "退出", en: "Quit" },
   "menu.resetView": { zh: "重置视角", en: "Reset view" },
@@ -430,6 +439,8 @@ const dict: Record<string, Record<Lang, string>> = {
   // Backend error messages (fuse.rs / seeded.rs / resegment.rs emit stable
   // English error strings; these keys localise them for the status bar).
   "err.meshNoFaces": { zh: "mesh 没有面", en: "mesh has no faces" },
+  "err.projectVersion": { zh: "工程格式版本不受支持，请更新 ColorYourModel", en: "Project format version not supported — please update ColorYourModel" },
+  "err.projectCorrupt": { zh: "工程文件损坏或不是有效的 .cym 文件", en: "Project file is corrupted or not a valid .cym file" },
   "err.noRegions": { zh: "所有算法均未检测到区域", en: "all detectors returned no regions" },
   "err.needSeed": { zh: "至少需要一个种子点", en: "at least one seed required" },
   "err.seedNoSnap": { zh: "种子点无法吸附到面", en: "seed did not snap to a face" },
@@ -518,6 +529,12 @@ const backendErrors: Array<[needle: string, key: string]> = [
   ["seed did not snap to a face", "err.seedNoSnap"],
   ["has no incident face", "err.noIncidentFace"],
   ["no further subdivision", "err.resegmentNoSplit"],
+  ["unsupported format version", "err.projectVersion"],
+  ["project: model.bin size mismatch", "err.projectCorrupt"],
+  ["project: model.bin bad magic", "err.projectCorrupt"],
+  ["project: face index out of range", "err.projectCorrupt"],
+  ["project: missing entry", "err.projectCorrupt"],
+  ["project: parse project.json", "err.projectCorrupt"],
 ];
 
 /** Localise a backend error string if it matches a known message. */
