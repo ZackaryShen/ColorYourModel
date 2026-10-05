@@ -9,6 +9,7 @@
 ### Added
 
 - **版本 bump 脚本**（`tools/bump-version.mjs`）：`tauri.conf.json` 为唯一版本源（vite 从它注入 `__APP_VERSION__`，自更新器也按它比较），一键同步 package.json / Cargo.toml / Cargo.lock；`--check` 校验四文件一致，已接入 CI 门禁。顺带修正 `globals.d.ts` 中版本来源注释的文档漂移（原写 package.json）
+- **融合分阶段计时埋点**：`fuse_segmentation` 按阶段（planar / multiview / dihedral / vote）记录 wall-time，随 `fuse-debug` 事件输出 `durationsMs` 并写入日志——「超大模型 vote 阶段 >30min」从此每次运行可量化，不再靠秒表目测。纯观测，不参与控制流
 
 ### Changed
 

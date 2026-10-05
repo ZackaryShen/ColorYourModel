@@ -826,6 +826,14 @@ pub async fn fuse_segmentation(
     let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
     drop(mesh_guard);
 
+    // Per-stage wall-time instrumentation (0.2.0-P0): the Known Issues list
+    // documents multi-million-face models stalling >30min in the edge vote;
+    // these timings make that measurable per run via `fuse-debug` + the log
+    // instead of a stopwatch next to the screen. Purely observational — no
+    // control flow reads them.
+    let t_start = std::time::Instant::now();
+    let mut t_stage = std::time::Instant::now();
+
     // Progress plan (fractions are the fuse pipeline's measured stage weights
     // on a 1.5M-face sculpt: multiview ≈ 40%, dihedral backbone ≈ 40%, the
     // rest is fast). The frontend resolver (segmentStages.ts) maps every
@@ -848,6 +856,8 @@ pub async fn fuse_segmentation(
             min_region_faces: detect_min,
         },
     );
+    let planar_ms = t_stage.elapsed().as_millis() as u64;
+    t_stage = std::time::Instant::now();
     // Layer 3: machine-vision evidence channel — the long pole. Each rendered
     // view reports 0.08 → 0.50. The callback must be 'static (ProgressFn), so
     // it owns an AppHandle clone like every other command's progress wiring.
@@ -863,6 +873,8 @@ pub async fn fuse_segmentation(
         },
         &move |f, _| emit_fuse_progress(&mv_app, 0.08 + 0.42 * f, "fuse:multiview"),
     );
+    let multiview_ms = t_stage.elapsed().as_millis() as u64;
+    t_stage = std::time::Instant::now();
 
     // Layer 0: geometry backbone — dihedral crease vote. On smooth / single-
     // colour / organic meshes planar+multiview return little or nothing, so
@@ -898,6 +910,8 @@ pub async fn fuse_segmentation(
         mesh.segment_names.clear();
         sets
     };
+    let dihedral_ms = t_stage.elapsed().as_millis() as u64;
+    t_stage = std::time::Instant::now();
 
     let planar_sets: Vec<Vec<u32>> = planar_regions
         .iter()
@@ -927,15 +941,22 @@ pub async fn fuse_segmentation(
         min_region_faces as usize,
     )
     .map_err(|e| e.to_string())?;
+    let vote_ms = t_stage.elapsed().as_millis() as u64;
+    let total_ms = t_start.elapsed().as_millis() as u64;
 
     let _ = app.emit(
         "segment-progress",
         serde_json::json!({ "progress": 1.0, "stage": "done" }),
     );
     log::info!(
-        "[cmd:fuse_segmentation] done: {} regions ({} faces moved)",
+        "[cmd:fuse_segmentation] done: {} regions ({} faces moved); timings ms planar={} multiview={} dihedral={} vote={} total={}",
         result.region_count,
-        result.moved_faces
+        result.moved_faces,
+        planar_ms,
+        multiview_ms,
+        dihedral_ms,
+        vote_ms,
+        total_ms
     );
     // Surface a structured breakdown to the UI so the user can read *why* the
     // button produced e.g. 535 regions on a smooth model and tweak the knobs.
@@ -968,6 +989,13 @@ pub async fn fuse_segmentation(
             "regionsBeforeMerge": result.regions_before_merge,
             "regionsAfterMerge": result.regions_after_merge,
             "mergePasses": result.merge_passes,
+            "durationsMs": {
+                "planar": planar_ms,
+                "multiview": multiview_ms,
+                "dihedral": dihedral_ms,
+                "vote": vote_ms,
+                "total": total_ms,
+            },
             "minFaces": result.min_faces,
             "tinyRegionsBeforeMerge": result.tiny_regions_before_merge,
         }),
