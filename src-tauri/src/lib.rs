@@ -24,6 +24,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::mesh::load_model,
             commands::mesh::get_face_color,
+        commands::mesh::load_project,
+        commands::mesh::save_project,
             commands::segment::auto_segment,
             commands::segment::auto_segment_smart,
             commands::segment::auto_segment_v2,
