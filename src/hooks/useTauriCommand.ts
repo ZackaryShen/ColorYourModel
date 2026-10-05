@@ -743,10 +743,23 @@ export function useTauriCommand() {
     }
   };
 
+  // 0.2.0-P2 spike: one OBJ per connected same-colour shell (open shells,
+  // no hole closing) + manifest — the deliverable of the split-export
+  // feasibility question; slicer behaviour is verified by hand.
+  const exportSplitByColor = async (dirPath: string) => {
+    setStatusMessage(t("status.exportingSplit"));
+    const parts = await invoke<string[]>("export_split_by_color_command", {
+      dirPath,
+    });
+    setStatusMessage(t("status.splitExported", parts.length));
+    return parts;
+  };
+
   return {
     loadModel,
     loadProject,
     saveProject,
+    exportSplitByColor,
     export3mf,
     exportObj,
     paintSegmentFace,

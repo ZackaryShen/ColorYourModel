@@ -5,6 +5,8 @@ import { useAppStore } from "../store/appStore";
 import { useUpdateStore } from "../store/updateStore";
 import { useImportStl } from "../hooks/useImportStl";
 import { useProject } from "../hooks/useProject";
+import { useTauriCommand } from "../hooks/useTauriCommand";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useT } from "../i18n";
 import { log } from "../utils/logger";
 import { ExportDialog } from "./ExportDialog/ExportDialog";
@@ -37,6 +39,7 @@ export function MenuBar() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const importStl = useImportStl();
   const { openProject, saveProjectAs } = useProject();
+  const { exportSplitByColor } = useTauriCommand();
 
   const language = useAppStore((s) => s.language);
   const setLanguage = useAppStore((s) => s.setLanguage);
@@ -105,6 +108,23 @@ export function MenuBar() {
           disabled: !hasMesh,
           hint: hasMesh ? undefined : t("export.needModel"),
           onClick: () => setExportDialogOpen(true),
+        },
+        {
+          kind: "item",
+          label: t("menu.exportSplit"),
+          disabled: !hasMesh,
+          hint: hasMesh ? undefined : t("export.needModel"),
+          onClick: () => {
+            void (async () => {
+              const dir = await openDialog({ directory: true });
+              if (!dir) return;
+              try {
+                await exportSplitByColor(dir);
+              } catch (e) {
+                useAppStore.getState().setStatusMessage(`${t("toolbar.exportSplitFailed")}: ${e}`);
+              }
+            })();
+          },
         },
         { kind: "sep" },
         // close() re-enters the onCloseRequested handler, so unexported work

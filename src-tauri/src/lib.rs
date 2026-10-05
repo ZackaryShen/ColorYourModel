@@ -61,6 +61,7 @@ pub fn run() {
             commands::history::redo,
             commands::history::history_state,
             commands::export::export_3mf_command,
+            commands::export::export_split_by_color_command,
             commands::export::export_obj_command,
             commands::export::list_export_presets,
             commands::export::export_palette_preview,
