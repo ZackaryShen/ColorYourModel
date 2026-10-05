@@ -45,6 +45,11 @@ const resetStore = () => {
     // Pin UI language: the app default now follows the OS locale, but these
     // tests assert Chinese strings regardless of the environment locale.
     language: "zh",
+    // The onGrow regressions exercise the manual-grow flow; since Iteration B
+    // the store defaults to segmentMode:"auto" (one-click fuse), which does
+    // not render the 推荐/生长 buttons at all. Pin manual mode explicitly —
+    // same precedent as the fold-slider test pinning "auto" below.
+    segmentMode: "manual",
   } as Partial<ReturnType<typeof useAppStore.getState>>);
 };
 
@@ -54,7 +59,9 @@ beforeEach(() => {
 });
 
 const suggestBtn = () => screen.getByRole("button", { name: /推荐种子/ });
-const growBtn = () => screen.getByRole("button", { name: /生长/ });
+// Exact name: the segment-mode tab「🌱 手动（生长）」also contains 生长, so a
+// bare /生长/ regex hit both buttons and threw getMultipleElementsFoundError.
+const growBtn = () => screen.getByRole("button", { name: "🌱 生长" });
 
 describe("SeedPanel.onGrow — iter60/61/63 回归（建议种子 → 生成 一步到位）", () => {
   it("只有 suggestedSeeds（无 accepted seedPoints）也能生长", async () => {
