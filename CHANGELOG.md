@@ -4,6 +4,38 @@
 
 ---
 
+## [Unreleased] — 0.2.0-P2
+
+尚未发布的 0.2.0 工作（工程格式 · 画笔与变换 · 模型变换）。
+
+### Fixed — 0.2.0 P0 质量地基（2026-10-05）
+
+- **SeedPanel 3 个选择器用例修复（vitest 60/60，此前 57/60）**：Iteration B 模式切换器落地后 `segmentMode` 默认 `auto`，`推荐种子/生长` 按钮不再渲染，而 onGrow 回归用例未钉模式；且 `/生长/` 正则同时命中「🌱 手动（生长）」模式 Tab（getMultipleElementsFoundError）。测试侧修复：resetStore 显式钉 `segmentMode:"manual"`（与折角滑杆用例钉 `auto` 同一先例）+ 生长按钮按精确可访问名匹配；产品代码零改动
+- **CI：vitest 升为硬门禁 + 新增 Windows matrix**：撤销 `continue-on-error`；frontend（tsc+vitest）与 rust（cargo test）两个 job 均跑 ubuntu+windows——自动更新模块只在 Windows 上运行，此前 Windows 零 CI 覆盖；apt 系统依赖经 `runner.os` 条件仅 Linux 安装
+
+### Added — 0.2.0 P2 画笔与变换（2026-10-06）
+
+- **渐变画笔**（需求 7）：路径渐变（沿笔划从起点色渐变到终点色，屏幕空间弧长参数化，无缩放依赖）与径向渐变（圆盘内按距中心比例插值，独立后端选择器）；渐变走现役涂色通道，整笔一个撤销步
+- **图片投影上色**（需求 9）：选择图片与六个 STL 局部轴方向之一，正交投影烘焙为逐面涂装（可撤销）；背面剔除做深度消解，凹腔双壁同色为已文档化限制；图片经文件路径传后端解码（新增 image crate）
+- **模型变换**（需求 3a）：工具栏移动/旋转/缩放 gizmo，拖拽结束即烘焙进顶点（变换后导出/保存/涂色半径语义天然一致）；撤销/重做通过变换历史条目（逆矩阵交换约定）完整支持
+- **按颜色分件导出（spike）**（需求 5）：文件菜单「按颜色分件导出…」——按量化色槽 + 连通片拆分为独立 OBJ + manifest；分件为开放面壳，切片器接受性待真机验证（结论见 docs/technical/split-export-spike.md）
+
+### Added — 0.2.0 P1 工程格式（2026-10-06）
+
+- **.cym 工程文件（保存/打开）**：ZIP 容器（project.json + model.bin，format_version 1）完整保存几何、逐面分区标签、逐面涂装颜色、区域命名与手工标签高水位；打开时重建全部派生索引，撤销栈按设计清零。三条钉死的契约：标签值域（<100000 自动分区 / ≥100000 手工区）、调色板长度固定 30、format_version 主版本门禁（不识别即拒绝，未知字段容忍）。安全设计：所有分节长度先对 ZIP 条目解压后大小预检、面索引逐一范围校验——损坏文件只报错，绝不越界。文件菜单新增「打开工程…/保存工程」，📂 导入入口按扩展名自动分派（.stl 导入 / .cym 打开）；v1 保存语义为每次另存（无 Ctrl+S 记忆路径）
+- **画笔工具栏折叠分组**：涂色工具（填充/笔刷/喷涂/智能笔刷/吸色/橡皮）与分区工具（切分/套索/种子）归为两组可折叠分组（chevron 折叠，含当前激活工具的组拒绝折叠以免当前模式失去可见性）
+- **.cym round-trip 测试 6 项**：几何/涂装/标签/命名/高水位逐字段断言、损坏计数（防 OOM）、面索引越界、未知主版本拒绝、未知字段容忍、保存→打开→导出 3MF 全链
+
+### Added — 0.2.0 P0 工程化（2026-10-05）
+
+- **套索旋转后无法闭合修复**：旋转视角后点击绿色起点标记时，射线可能命中另一面片、三层吸附回远处的顶点，`closeThreshold`（0.004×对角线）永不触发，环路合不上。现以「意图信号」修复：点击落在起点标记的投影半径内（半径按相机缩放实时投影计算，无像素魔数）时，直接追加起点精确坐标（后端 `region_from_loop` 跳过 a==b 自环边），3D 闸门与 iteration 42-44 的全部防误闭合守卫原样保留；hover 预览严格镜像同一判定。纯前端，后端零改动
+- **实验性算法开关**：About 对话框新增「显示实验性分区算法」偏好（默认关，持久化）——sdfGraphCut / 凹度（iter-45 实验）从再切下拉中隐藏，开关打开后恢复；实验清单收敛为机器可读单一源 `EXPERIMENTAL_ALGORITHM_KINDS`（与 Rust 侧 mod.rs 注释互为镜像），后端命令与 wire 格式零改动
+
+- **版本 bump 脚本**（`tools/bump-version.mjs`）：`tauri.conf.json` 为唯一版本源，一键同步 package.json / Cargo.toml / Cargo.lock；`--check` 校验四文件一致（已接入 CI 门禁）。顺带修正 `globals.d.ts` 中版本来源注释的文档漂移（原写 package.json）
+- **融合分阶段计时埋点**：`fuse_segmentation` 现按阶段（planar/multiview/dihedral/vote）记录 wall-time，随 `fuse-debug` 事件输出 `durationsMs` 并写入日志——「超大模型 vote 阶段 >30min」从此每次运行可量化，不再靠秒表目测。纯观测，不参与控制流
+
+---
+
 ## [0.1.2] — 2026-11-14
 
 ### Added
@@ -99,25 +131,6 @@
 ---
 
 ## 历史记录（2026-08 ~ 2026-09，v0.1.1 之前的开发记录）
-
-### Fixed — 0.2.0 P0 质量地基（2026-10-05）
-
-- **SeedPanel 3 个选择器用例修复（vitest 60/60，此前 57/60）**：Iteration B 模式切换器落地后 `segmentMode` 默认 `auto`，`推荐种子/生长` 按钮不再渲染，而 onGrow 回归用例未钉模式；且 `/生长/` 正则同时命中「🌱 手动（生长）」模式 Tab（getMultipleElementsFoundError）。测试侧修复：resetStore 显式钉 `segmentMode:"manual"`（与折角滑杆用例钉 `auto` 同一先例）+ 生长按钮按精确可访问名匹配；产品代码零改动
-- **CI：vitest 升为硬门禁 + 新增 Windows matrix**：撤销 `continue-on-error`；frontend（tsc+vitest）与 rust（cargo test）两个 job 均跑 ubuntu+windows——自动更新模块只在 Windows 上运行，此前 Windows 零 CI 覆盖；apt 系统依赖经 `runner.os` 条件仅 Linux 安装
-
-### Added — 0.2.0 P1 工程格式（2026-10-06）
-
-- **.cym 工程文件（保存/打开）**：ZIP 容器（project.json + model.bin，format_version 1）完整保存几何、逐面分区标签、逐面涂装颜色、区域命名与手工标签高水位；打开时重建全部派生索引，撤销栈按设计清零。三条钉死的契约：标签值域（<100000 自动分区 / ≥100000 手工区）、调色板长度固定 30、format_version 主版本门禁（不识别即拒绝，未知字段容忍）。安全设计：所有分节长度先对 ZIP 条目解压后大小预检、面索引逐一范围校验——损坏文件只报错，绝不越界。文件菜单新增「打开工程…/保存工程」，📂 导入入口按扩展名自动分派（.stl 导入 / .cym 打开）；v1 保存语义为每次另存（无 Ctrl+S 记忆路径）
-- **画笔工具栏折叠分组**：涂色工具（填充/笔刷/喷涂/智能笔刷/吸色/橡皮）与分区工具（切分/套索/种子）归为两组可折叠分组（chevron 折叠，含当前激活工具的组拒绝折叠以免当前模式失去可见性）
-- **.cym round-trip 测试 6 项**：几何/涂装/标签/命名/高水位逐字段断言、损坏计数（防 OOM）、面索引越界、未知主版本拒绝、未知字段容忍、保存→打开→导出 3MF 全链
-
-### Added — 0.2.0 P0 工程化（2026-10-05）
-
-- **套索旋转后无法闭合修复**：旋转视角后点击绿色起点标记时，射线可能命中另一面片、三层吸附回远处的顶点，`closeThreshold`（0.004×对角线）永不触发，环路合不上。现以「意图信号」修复：点击落在起点标记的投影半径内（半径按相机缩放实时投影计算，无像素魔数）时，直接追加起点精确坐标（后端 `region_from_loop` 跳过 a==b 自环边），3D 闸门与 iteration 42-44 的全部防误闭合守卫原样保留；hover 预览严格镜像同一判定。纯前端，后端零改动
-- **实验性算法开关**：About 对话框新增「显示实验性分区算法」偏好（默认关，持久化）——sdfGraphCut / 凹度（iter-45 实验）从再切下拉中隐藏，开关打开后恢复；实验清单收敛为机器可读单一源 `EXPERIMENTAL_ALGORITHM_KINDS`（与 Rust 侧 mod.rs 注释互为镜像），后端命令与 wire 格式零改动
-
-- **版本 bump 脚本**（`tools/bump-version.mjs`）：`tauri.conf.json` 为唯一版本源，一键同步 package.json / Cargo.toml / Cargo.lock；`--check` 校验四文件一致（已接入 CI 门禁）。顺带修正 `globals.d.ts` 中版本来源注释的文档漂移（原写 package.json）
-- **融合分阶段计时埋点**：`fuse_segmentation` 现按阶段（planar/multiview/dihedral/vote）记录 wall-time，随 `fuse-debug` 事件输出 `durationsMs` 并写入日志——「超大模型 vote 阶段 >30min」从此每次运行可量化，不再靠秒表目测。纯观测，不参与控制流
 
 ### Known Issues — 开源前已知问题记录（2026-09-29）
 
