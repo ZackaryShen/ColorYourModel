@@ -1,6 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { MeshData, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
+import { BoundingBox, MeshData, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
 import { translate, type Lang } from "../i18nDict";
 import { log } from "../utils/logger";
@@ -60,6 +60,9 @@ interface AppStore {
   gradientColorA: string;
   gradientColorB: string;
   gradientLengthPct: number;
+  /** 0.2.0-P2 3a: active whole-model transform gizmo mode ("none" = off).
+   *  While a mode is active the paint tools are inert (pointer ownership). */
+  transformMode: "none" | "translate" | "rotate" | "scale";
   /** Show experimental segmentation algorithms (sdfGraphCut / concavity) in
    *  the resegment dropdown. Default false — they are iter-45 experiments
    *  (see EXPERIMENTAL_ALGORITHM_KINDS); toggled from the About dialog. */
@@ -113,10 +116,11 @@ interface AppStore {
    *  (blended variants included). Null = no preview. Transient. */
   paintSourceHoverFaces: number[] | null;
   setPaintSourceHoverFaces: (faces: number[] | null) => void;
-  /** Paint results produced OUTSIDE the R3F tree (e.g. the colour
-   *  find-&-replace section) park here; the Viewport applies them to the GPU
-   *  geometry through the same incremental path in-canvas painting uses, then
-   *  clears the slot. Transient: NOT persisted. */
+  /** Paint results produced OUTSIDE the R3F tree (the colour find-&-replace
+   *  section, the image-projection dialog) park here; the Viewport applies them
+   *  to the GPU geometry through the same incremental path in-canvas painting
+   *  uses, then clears the slot. `colors` is one rgba tuple per face — the same
+   *  wire shape every paint command returns. Transient: NOT persisted. */
   pendingPaintResult: { faces: number[]; colors: number[][] } | null;
   setPendingPaintResult: (r: { faces: number[]; colors: number[][] } | null) => void;
   /** Bumped whenever the timeline may have changed (any recorded op, an
@@ -219,6 +223,16 @@ interface AppStore {
   setGradientColorA: (hex: string) => void;
   setGradientColorB: (hex: string) => void;
   setGradientLengthPct: (pct: number) => void;
+  setTransformMode: (m: "none" | "translate" | "rotate" | "scale") => void;
+  /** 0.2.0-P2 3a: replace geometry after a baked transform (undo/redo/gizmo
+   *  commit all funnel here). Keeps colors/segments (index-based, unaffected)
+   *  and the caller-supplied history flags; flags the paint dirty. */
+  applyGeometryUpdate: (
+    vertices: number[],
+    bbox: BoundingBox,
+    canUndo: boolean,
+    canRedo: boolean
+  ) => void;
   setShowExperimental: (show: boolean) => void;
   setSegmentView: (enabled: boolean) => void;
   /** One-shot suggestion card (Viewport top-centre): raised right after the
@@ -537,6 +551,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   gradientColorA: "#ff3b30",
   gradientColorB: "#0040ff",
   gradientLengthPct: 100,
+  transformMode: "none",
   segmentView: false,
   toast: null,
 
@@ -730,6 +745,16 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setGradientColorA: (hex) => set({ gradientColorA: hex }),
   setGradientColorB: (hex) => set({ gradientColorB: hex }),
   setGradientLengthPct: (pct) => set({ gradientLengthPct: Math.min(400, Math.max(10, pct)) }),
+  setTransformMode: (m) => set({ transformMode: m }),
+  applyGeometryUpdate: (vertices, bbox, canUndo, canRedo) =>
+    set((state) => ({
+      meshData: state.meshData
+        ? { ...state.meshData, vertices, bbox }
+        : state.meshData,
+      canUndo,
+      canRedo,
+      paintDirty: true,
+    })),
   setSegmentView: (enabled) =>
     set((s) => ({
       segmentView: enabled,
