@@ -16,6 +16,7 @@ import { resolveSegmentStage } from "../../segmentStages";
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
 import { ViewGizmo } from "./ViewGizmo";
 import { isPointerInGizmo } from "./viewGizmoModel";
+import { isClosureIntent, localToScreenPx, projectedRadiusPx } from "./lassoClosure";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
 // Patched ONCE at module load. `acceleratedRaycast` falls back to the native
@@ -881,6 +882,30 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     return Math.max(0.03, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0008);
   }, [meshData?.bbox]);
 
+  // 0.2.0-P0 lasso closure-INTENT: does this screen position aim at the start
+  // dot? Under a rotated camera the raycast can hit a different face than at
+  // loop start, and the three-tier snap then returns a vertex far from the
+  // start — the user clicks the visible green dot but the appended point is
+  // 3D-far, so the closeThreshold gate never fires ("can't close after
+  // rotating"). The threshold answer (iteration 42–44) stays the sole safety
+  // gate; screen space only corrects WHICH point gets appended: within the
+  // start marker's projected footprint the click appends the exact start point
+  // (region_from_loop skips the a==b self-edge). Projected radius scales with
+  // zoom by construction — no pixel constant, no ortho-zoom trap.
+  const closureIntent = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      const start = lassoStartPointRef.current;
+      const mesh = meshRef.current;
+      if (!start || lassoPointsRef.current.length < 2 || !mesh) return false;
+      const startPx = localToScreenPx(start, camera, gl.domElement, mesh);
+      if (!startPx) return false;
+      const dotPx = projectedRadiusPx(start, dotSize, camera, gl.domElement, mesh);
+      if (dotPx === null) return false;
+      return isClosureIntent({ x: clientX, y: clientY }, startPx, dotPx);
+    },
+    [camera, gl, dotSize]
+  );
+
   // Marker size for ALL seed markers (manual + suggested), iteration 63.
   // One unified size for both glyphs so they read as the same "sapling" family.
   // Deliberately smaller than the old ghost size (diag*0.006 → *0.0012): the
@@ -1241,15 +1266,35 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
 
   // Handle a lasso click: snap to vertex, append, or close the loop.
   const handleLassoClick = useCallback(
-    async (hit: LocalHit) => {
+    async (hit: LocalHit, clickPx?: { x: number; y: number }) => {
       const local = hit.point;
+      const prev = lassoPointsRef.current;
+      const startPoint = lassoStartPointRef.current;
+      // Closure-intent correction (0.2.0-P0): when the click aims at the start
+      // marker's projected footprint, append the EXACT start point + the
+      // start's face index instead of whatever the rotated-view raycast snapped
+      // to. Appending (never discarding) keeps the `pts.length < 3` triangle
+      // guard intact and mirrors the append-first contract below; the backend
+      // then closes last→first and skips the a==b self-edge.
+      if (
+        clickPx &&
+        prev.length >= 2 &&
+        startPoint &&
+        lassoFaceIndicesRef.current.length === prev.length &&
+        closureIntent(clickPx.x, clickPx.y)
+      ) {
+        lassoFaceIndicesRef.current.push(lassoFaceIndicesRef.current[0]);
+        const closing = [...prev, startPoint.clone()];
+        lassoPointsRef.current = closing;
+        setLassoPoints(closing);
+        await finalizeLasso();
+        return;
+      }
       // Pass the hit face so the backend snaps to the SAME-SIDE vertex (front
       // shell), fixing "can't select / curve not preserved" on thin meshes.
       const res = await manualRegionAddPoint([local.x, local.y, local.z], hit.faceIndex);
       if (!res) return;
       const snapped = new THREE.Vector3(res.snapped[0], res.snapped[1], res.snapped[2]);
-      const prev = lassoPointsRef.current;
-      const startPoint = lassoStartPointRef.current;
       // Append the clicked point FIRST (including the closing one) so
       // `finalizeLasso` always receives a complete point list — a triangle
       // (3 clicks) otherwise arrives as 2 points and is rejected by the
@@ -1289,7 +1334,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           (next.length >= 2 ? t("lasso.closeOrEnter") : "")
       );
     },
-    [manualRegionAddPoint, finalizeLasso, setStatusMessage, closeThreshold, meshData, vertexData]
+    [manualRegionAddPoint, finalizeLasso, setStatusMessage, closeThreshold, meshData, vertexData, closureIntent]
   );
 
   const handleFacePicked = useCallback(
@@ -1560,7 +1605,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         // Off-model click: let OrbitControls rotate (iteration 22 fix:
         // lasso previously blocked all LEFT=ROTATE even over empty space).
         if (!local) return;
-        handleLassoClick(local);
+        handleLassoClick(local, { x: e.clientX, y: e.clientY });
         return;
       }
       if (isSeedTool) {
@@ -1806,7 +1851,14 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           // return-to-start because the closing vertex is topologically N-ring
           // from the start yet spatially close).
           const spatialPoint = snap?.point ?? hit.point;
-          setLassoClosing(spatialPoint.distanceTo(start) < closeThreshold);
+          // Mirror the click's closure-intent (0.2.0-P0): hovering within the
+          // projected start marker means a click there WOULD close, so the
+          // preview must say so — "Mirror the click closure EXACTLY"
+          // (iteration 42/44 rule). The 3D gate below is unchanged.
+          setLassoClosing(
+            spatialPoint.distanceTo(start) < closeThreshold ||
+              closureIntent(e.clientX, e.clientY)
+          );
         } else {
           setLassoClosing(false);
         }
@@ -1989,7 +2041,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed, closureIntent]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {

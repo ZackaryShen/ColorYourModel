@@ -47,6 +47,7 @@
 
 ### Added — 0.2.0 P0 工程化（2026-10-05）
 
+- **套索旋转后无法闭合修复**：旋转视角后点击绿色起点标记时，射线可能命中另一面片、三层吸附回远处的顶点，`closeThreshold`（0.004×对角线）永不触发，环路合不上。现以「意图信号」修复：点击落在起点标记的投影半径内（半径按相机缩放实时投影计算，无像素魔数）时，直接追加起点精确坐标（后端 `region_from_loop` 跳过 a==b 自环边），3D 闸门与 iteration 42-44 的全部防误闭合守卫原样保留；hover 预览严格镜像同一判定。纯前端，后端零改动
 - **实验性算法开关**：About 对话框新增「显示实验性分区算法」偏好（默认关，持久化）——sdfGraphCut / 凹度（iter-45 实验）从再切下拉中隐藏，开关打开后恢复；实验清单收敛为机器可读单一源 `EXPERIMENTAL_ALGORITHM_KINDS`（与 Rust 侧 mod.rs 注释互为镜像），后端命令与 wire 格式零改动
 
 - **版本 bump 脚本**（`tools/bump-version.mjs`）：`tauri.conf.json` 为唯一版本源，一键同步 package.json / Cargo.toml / Cargo.lock；`--check` 校验四文件一致（已接入 CI 门禁）。顺带修正 `globals.d.ts` 中版本来源注释的文档漂移（原写 package.json）
