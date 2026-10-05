@@ -59,7 +59,8 @@ pub fn project_image_paint(
     let updates = crate::paint::projection::project_image_paint(mesh, &img, axis);
     let _ = axis; // parsed; kept for the log below
     log::info!("[cmd:project_image_paint] faces={}", updates.len());
-    Ok(commit(mesh, stroke_id, updates))
+    // No single source colour: the bake samples the image per face.
+    Ok(commit(mesh, stroke_id, updates, None))
 }
 
 #[tauri::command]
@@ -83,7 +84,8 @@ pub fn gradient_radial_paint(
         radius,
         updates.len()
     );
-    Ok(commit(mesh, stroke_id, updates))
+    // Two-colour gradient: no single source colour to record.
+    Ok(commit(mesh, stroke_id, updates, None))
 }
 
 #[tauri::command]
@@ -837,8 +839,14 @@ mod fill_segments_tests {
         // N regions, ONE undo step.
         assert_eq!(m.history.undo_depth(), 1);
         {
-            let crate::mesh::model::MeshModel { history, face_colors, segment_labels, .. } = &mut m;
-            history.jump_to(0, face_colors, segment_labels);
+            let crate::mesh::model::MeshModel {
+                history,
+                face_colors,
+                segment_labels,
+                vertices,
+                ..
+            } = &mut m;
+            history.jump_to(0, face_colors, segment_labels, vertices);
         }
         assert!(m.face_colors.iter().all(|&c| c == crate::mesh::model::DEFAULT_FACE_COLOR));
     }
@@ -916,8 +924,14 @@ mod replace_colour_tests {
         // One Ctrl+Z (jump back to pristine) restores every face exactly —
         // the split field borrow mirrors how commands/history.rs drives it.
         {
-            let crate::mesh::model::MeshModel { history, face_colors, segment_labels, .. } = &mut m;
-            history.jump_to(0, face_colors, segment_labels);
+            let crate::mesh::model::MeshModel {
+                history,
+                face_colors,
+                segment_labels,
+                vertices,
+                ..
+            } = &mut m;
+            history.jump_to(0, face_colors, segment_labels, vertices);
         }
         assert_eq!(m.face_colors[0], RED, "undo restores the original colour");
         assert_eq!(m.face_colors[2], RED);

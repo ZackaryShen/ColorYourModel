@@ -57,6 +57,16 @@ pub struct HistoryResult {
     /// Full form: every per-face colour, flat RGBA.
     pub face_colors: Option<Vec<u8>>,
 
+    /// 0.2.0-P2 transform form: the post-apply vertices, flat xyz per vertex.
+    /// `Some` ⟺ the applied entry was a whole-model transform; the frontend
+    /// must rebuild its geometry from these (the incremental colour patch
+    /// cannot express vertex movement).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vertices: Option<Vec<f32>>,
+    /// Transform form: the recomputed bounding box, paired with `vertices`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bbox: Option<crate::mesh::model::BoundingBox>,
+
     pub can_undo: bool,
     pub can_redo: bool,
 }
@@ -73,6 +83,8 @@ impl HistoryResult {
             segments: None,
             segment_labels: None,
             face_colors: None,
+            vertices: None,
+            bbox: None,
             can_undo,
             can_redo,
         }
@@ -102,12 +114,13 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
         history,
         face_colors,
         segment_labels,
+        vertices,
         ..
     } = mesh;
 
     let outcome = match dir {
-        Direction::Undo => history.undo(face_colors, segment_labels),
-        Direction::Redo => history.redo(face_colors, segment_labels),
+        Direction::Undo => history.undo(face_colors, segment_labels, vertices),
+        Direction::Redo => history.redo(face_colors, segment_labels, vertices),
     };
 
     let Some(outcome) = outcome else {
@@ -124,6 +137,10 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
         outcome.faces,
         outcome.colors,
         outcome.labels_changed,
+        // 0.2.0-P2: a transform entry moves VERTICES. The derived geometry
+        // (normals, bbox, indices, adjacency) has to be rebuilt and the new
+        // vertices shipped — the incremental colour patch cannot express it.
+        outcome.transform.is_some(),
     ))
 }
 
@@ -138,8 +155,20 @@ fn history_result(
     faces: Vec<u32>,
     colors: Vec<[u8; 4]>,
     labels_changed: bool,
+    moved_vertices: bool,
 ) -> HistoryResult {
-    let full = labels_changed || faces.len() > MAX_INCREMENTAL_FACES;
+    // 0.2.0-P2: a transform entry moved the live vertices, so every derived
+    // structure is stale. Rebuild it BEFORE anything reads it (the full forms
+    // below serialise segments/bbox straight from the mesh).
+    if moved_vertices {
+        mesh.compute_normals();
+        mesh.compute_bbox();
+        mesh.build_kdtree();
+        mesh.build_vertex_kdtree();
+        mesh.build_adjacency();
+    }
+
+    let full = moved_vertices || labels_changed || faces.len() > MAX_INCREMENTAL_FACES;
 
     if labels_changed {
         // Segment metadata is derived from labels, so it has to be recomputed
@@ -168,6 +197,13 @@ fn history_result(
         segments: full.then(|| mesh.sorted_segments()),
         segment_labels: full.then(|| mesh.segment_labels.clone()),
         face_colors: full.then(|| flatten(&mesh.face_colors)),
+        vertices: moved_vertices.then(|| {
+            mesh.vertices
+                .iter()
+                .flat_map(|v| v.iter().copied())
+                .collect()
+        }),
+        bbox: moved_vertices.then(|| mesh.bbox.clone()),
         can_undo: mesh.history.can_undo(),
         can_redo: mesh.history.can_redo(),
     }
@@ -270,10 +306,11 @@ pub fn history_jump(target: usize, state: State<AppState>) -> Result<HistoryResu
         history,
         face_colors,
         segment_labels,
+        vertices,
         ..
     } = mesh;
 
-    let Some(out) = history.jump_to(target, face_colors, segment_labels) else {
+    let Some(out) = history.jump_to(target, face_colors, segment_labels, vertices) else {
         return Ok(HistoryResult::empty(mesh.history.can_undo(), mesh.history.can_redo()));
     };
 
@@ -284,5 +321,6 @@ pub fn history_jump(target: usize, state: State<AppState>) -> Result<HistoryResu
         out.faces,
         out.colors,
         out.labels_changed,
+        out.moved_vertices,
     ))
 }

@@ -1155,9 +1155,10 @@ mod tests {
             history,
             face_colors,
             segment_labels,
+            vertices,
             ..
         } = &mut m;
-        let out = history.undo(face_colors, segment_labels).expect("undo");
+        let out = history.undo(face_colors, segment_labels, vertices).expect("undo");
 
         assert!(out.labels_changed);
         assert_eq!(m.segment_labels, vec![0, 1, 1, 2]);
@@ -1178,9 +1179,10 @@ mod tests {
             history,
             face_colors,
             segment_labels,
+            vertices,
             ..
         } = &mut m;
-        history.undo(face_colors, segment_labels).expect("undo");
+        history.undo(face_colors, segment_labels, vertices).expect("undo");
         m.rebuild_segments();
 
         assert_eq!(m.segments[&1].name, "Spout");
