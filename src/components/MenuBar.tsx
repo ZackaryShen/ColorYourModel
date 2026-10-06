@@ -38,7 +38,8 @@ export function MenuBar() {
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [projectionOpen, setProjectionOpen] = useState(false);
+  const projectionOpen = useAppStore((s) => s.projectionDialogOpen);
+  const setProjectionOpen = useAppStore((s) => s.setProjectionDialogOpen);
   const importStl = useImportStl();
   const { openProject, saveProjectAs } = useProject();
   const { exportSplitByColor } = useTauriCommand();

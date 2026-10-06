@@ -48,6 +48,8 @@ interface AppStore {
   gradientColorA: string;
   gradientColorB: string;
   gradientLengthPct: number;
+  /** 0.2.0-P2: image-projection dialog visibility (menu + toolbar entries). */
+  projectionDialogOpen: boolean;
   /** 0.2.0-P2 3a: active whole-model transform gizmo mode ("none" = off).
    *  While a mode is active the paint tools are inert (pointer ownership). */
   transformMode: "none" | "translate" | "rotate" | "scale";
@@ -130,8 +132,8 @@ interface AppStore {
   /** 0.2.0-P2: paint results produced OUTSIDE the canvas tree (image
    *  projection dialog) are parked here; MeshDisplay (inside the R3F tree,
    *  the only place with GPU geometry access) consumes and clears them. */
-  pendingPaintResult: { faces: number[]; colors: number[] } | null;
-  setPendingPaintResult: (r: { faces: number[]; colors: number[] } | null) => void;
+  pendingPaintResult: { faces: number[]; colors: number[][] } | null;
+  setPendingPaintResult: (r: { faces: number[]; colors: number[][] } | null) => void;
   /** Write back the colors a paint command just produced into the CANONICAL
    *  `meshData.faceColors`. Mutates in place and deliberately does NOT call
    *  `set()`: the `meshData` object reference must stay identical so CameraFit /
@@ -161,6 +163,7 @@ interface AppStore {
   setGradientColorB: (hex: string) => void;
   setGradientLengthPct: (pct: number) => void;
   setTransformMode: (m: "none" | "translate" | "rotate" | "scale") => void;
+  setProjectionDialogOpen: (open: boolean) => void;
   /** 0.2.0-P2 3a: replace geometry after a baked transform (undo/redo/gizmo
    *  commit all funnel here). Keeps colors/segments (index-based, unaffected)
    *  and the caller-supplied history flags; flags the paint dirty. */
@@ -480,6 +483,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   gradientColorB: "#0040ff",
   gradientLengthPct: 100,
   transformMode: "none",
+  projectionDialogOpen: false,
   segmentView: false,
   toast: null,
 
@@ -644,6 +648,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setGradientColorB: (hex) => set({ gradientColorB: hex }),
   setGradientLengthPct: (pct) => set({ gradientLengthPct: Math.min(400, Math.max(10, pct)) }),
   setTransformMode: (m) => set({ transformMode: m }),
+  setProjectionDialogOpen: (open) => set({ projectionDialogOpen: open }),
   applyGeometryUpdate: (vertices, bbox, canUndo, canRedo) =>
     set((state) => ({
       meshData: state.meshData

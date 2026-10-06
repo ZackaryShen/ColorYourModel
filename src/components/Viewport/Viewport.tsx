@@ -810,12 +810,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const setPendingPaintResult = useAppStore((s) => s.setPendingPaintResult);
   useEffect(() => {
     if (!pendingPaintResult) return;
-    // PaintResult colors arrive flat (rgba×F); updateFaceColors wants tuples.
-    const tuples: number[][] = [];
-    for (let i = 0; i + 3 < pendingPaintResult.colors.length; i += 4) {
-      tuples.push(pendingPaintResult.colors.slice(i, i + 4));
-    }
-    updateFaceColors(pendingPaintResult.faces, tuples);
+    // PaintResult.updated_colors arrives as rgba tuples ([r,g,b,a] per face) —
+    // pass straight through; the flat-slice assumption here crashed
+    // updateFaceColors on undefined entries (caught live in P2 acceptance).
+    updateFaceColors(pendingPaintResult.faces, pendingPaintResult.colors);
     setPendingPaintResult(null);
   }, [pendingPaintResult, updateFaceColors, setPendingPaintResult]);
   const { paintFace } = usePaintTool();

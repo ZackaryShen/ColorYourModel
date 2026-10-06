@@ -41,10 +41,10 @@ export function ProjectionDialog({ onClose }: { onClose: () => void }) {
     if (!imagePath || busy) return;
     setBusy(true);
     try {
-      const result = await invoke<{ updatedFaces: number[]; updatedColors: number[] }>(
-        "project_image_paint",
-        { path: imagePath, axis, strokeId: null },
-      );
+      const result = await invoke<{
+        updatedFaces: number[];
+        updatedColors: number[][];
+      }>("project_image_paint", { path: imagePath, axis, strokeId: null });
       setPendingPaintResult({
         faces: result.updatedFaces,
         colors: result.updatedColors,

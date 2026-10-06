@@ -57,6 +57,7 @@ export function Toolbar() {
   const setLoadingKind = useAppStore((s) => s.setLoadingKind);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
+  const setProjectionDialogOpen = useAppStore((s) => s.setProjectionDialogOpen);
   const { loadModel, undo, redo, historyState } = useTauriCommand();
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
   const handleImport = useImportStl();
@@ -157,6 +158,16 @@ export function Toolbar() {
           title={t("toolbar.export")}
         >
           💾
+        </button>
+        <button
+          onClick={() => setProjectionDialogOpen(true)}
+          disabled={!isLoaded}
+          className="cym-btn"
+          style={styles.button}
+          title={t("projection.title")}
+          aria-label={t("projection.title")}
+        >
+          🖼️
         </button>
       </div>
 
