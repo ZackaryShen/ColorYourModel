@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>画笔进阶：渐变、图片投影与模型变换（0.2.0） · ColorYourModel Docs</title>
+<meta property="og:title" content="画笔进阶：渐变、图片投影与模型变换（0.2.0） · ColorYourModel Docs">
+<meta property="og:description" content="Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.">
+<meta property="og:image" content="https://raw.githubusercontent.com/ZackaryShen/ColorYourModel/main/assets/icon.png">
+<link rel="icon" href="../icon.png">
+<script>
+// Theme bootstrap — runs before first paint so there is no flash.
+try {
+  var t = localStorage.getItem("cym-docs-theme");
+  if (t !== "dark" && t !== "light") {
+    t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.documentElement.dataset.theme = t;
+} catch (e) {}
+</script>
+<style>
+/* ColorYourModel docs site — light, modern, file://-safe (all inline). */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --code-bg: #0f172a;
+  --code-ink: #e2e8f0;
+  --radius: 12px;
+  --sidebar-w: 272px;
+  color-scheme: light;
+}
+/* Dark theme — toggled by the topbar 🌙/☀️ button, persisted in localStorage
+   under "cym-docs-theme"; falls back to prefers-color-scheme on first visit. */
+:root[data-theme="dark"] {
+  --bg: #0b1220;
+  --panel: #111a2c;
+  --ink: #e2e8f0;
+  --ink-soft: #b6c2d4;
+  --ink-faint: #7c8aa0;
+  --line: #24304a;
+  --accent: #93a5ff;
+  --accent-soft: #1b2440;
+  --accent-line: #33406b;
+  --code-bg: #0a101d;
+  --code-ink: #dbe4f3;
+  color-scheme: dark;
+}
+:root[data-theme="dark"] #topbar { background: rgba(13, 20, 36, .92); box-shadow: none; }
+:root[data-theme="dark"] article code { color: #a5b4fc; }
+:root[data-theme="dark"] article th { background: #16213a; }
+:root[data-theme="dark"] article tbody tr:nth-child(even) { background: #131c31; }
+:root[data-theme="dark"] pre.mermaid { background: #0f1830; }
+:root[data-theme="dark"] #sidebar { box-shadow: 4px 0 18px rgba(0, 0, 0, .35); }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.75 -apple-system, "Segoe UI", "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand { font-size: 16px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+#topbar .brand-icon { height: 22px; width: 22px; vertical-align: -5px; margin-right: 7px; }
+#topbar .brand span { color: var(--ink-faint); font-weight: 400; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.gh-link {
+  font-size: 13px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 999px;
+  background: var(--accent-soft); white-space: nowrap;
+}
+.gh-link:hover { filter: brightness(.96); }
+#menu-btn { display: none; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 8px; padding: 4px 10px; font-size: 16px; cursor: pointer; }
+#theme-btn {
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 999px; padding: 4px 11px; font-size: 14px; cursor: pointer;
+  line-height: 1.4; white-space: nowrap;
+}
+#theme-btn:hover { filter: brightness(.96); }
+
+/* ── Layout ──────────────────────────────────────────── */
+#layout { display: flex; align-items: flex-start; }
+#sidebar {
+  position: sticky; top: 53px;
+  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  max-height: calc(100vh - 53px); overflow-y: auto;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+}
+#doc-filter {
+  width: 100%; padding: 8px 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.nav-group { margin-bottom: 18px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px 10px;
+}
+#sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+#sidebar-nav a {
+  display: block; padding: 5px 10px; border-radius: 8px;
+  color: var(--ink-soft); text-decoration: none; font-size: 13.5px; line-height: 1.45;
+}
+#sidebar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+#sidebar-nav a[aria-current="page"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.sidebar-foot { margin-top: 26px; padding-left: 10px; font-size: 11.5px; color: var(--ink-faint); }
+.sidebar-foot code { background: none; padding: 0; color: var(--ink-faint); }
+
+/* ── Content ─────────────────────────────────────────── */
+#content {
+  flex: 1; min-width: 0;
+  padding: 34px 40px 90px;
+  display: flex; justify-content: center; gap: 34px;
+}
+article {
+  width: 100%; max-width: 830px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 36px 44px 44px;
+}
+article h1 { font-size: 30px; line-height: 1.3; margin: 0 0 18px; letter-spacing: -.01em; }
+article h2 {
+  font-size: 21px; margin: 38px 0 12px; padding-top: 18px;
+  border-top: 1px solid var(--line); letter-spacing: -.01em;
+}
+article h3 { font-size: 17px; margin: 26px 0 10px; }
+article p, article li { color: var(--ink-soft); }
+article a { color: var(--accent); text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article strong { color: var(--ink); }
+article hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+article code {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: .86em; background: var(--accent-soft); color: #3730a3;
+  padding: 2px 6px; border-radius: 6px;
+}
+article pre {
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 16px 18px; border-radius: 10px; overflow-x: auto;
+  font-size: 13px; line-height: 1.6;
+}
+article pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+article table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+article th, article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+article th { background: #f1f5f9; color: var(--ink); font-weight: 600; white-space: nowrap; }
+article tbody tr:nth-child(even) { background: #fbfcfe; }
+
+article blockquote {
+  margin: 16px 0; padding: 10px 18px;
+  border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  background: var(--accent-soft); color: var(--ink-soft);
+}
+article blockquote p { margin: 4px 0; }
+article img { max-width: 100%; border-radius: 8px; }
+article input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+/* Mermaid: unrendered source looks like a code box; rendered SVG is centered.
+   Code-ish styling (mono font, preserved whitespace) applies only while the
+   diagram has NOT rendered — otherwise it leaks into the SVG's foreignObject
+   and clips/warps node labels. */
+pre.mermaid {
+  background: #fdfdfe; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin: 18px 0; overflow-x: auto;
+  text-align: center;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid:not(:has(svg)) {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap;
+  color: var(--ink-soft);
+}
+pre.mermaid.mermaid-offline::after {
+  content: "⚠ diagrams need network access (mermaid CDN)";
+  display: block; margin-top: 8px; font: 12px/1.4 sans-serif; color: #b45309;
+}
+
+/* ── TOC card ────────────────────────────────────────── */
+.toc {
+  display: none;
+  position: sticky; top: 87px;
+  width: 210px; flex: 0 0 210px; align-self: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px;
+}
+.toc summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 3px 0; line-height: 1.45; }
+.toc .toc-h3 { padding-left: 12px; }
+.toc a { color: var(--ink-soft); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+
+@media (min-width: 1420px) { .toc { display: block; } }
+
+/* ── Narrow screens ──────────────────────────────────── */
+@media (max-width: 900px) {
+  #menu-btn { display: block; }
+  #sidebar {
+    display: none; position: fixed; z-index: 30; top: 53px; bottom: 0;
+    background: var(--panel); box-shadow: 4px 0 18px rgba(15, 23, 42, .08);
+  }
+  #sidebar.open { display: block; }
+  #content { padding: 22px 16px 70px; }
+  article { padding: 24px 20px 30px; }
+}
+
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menu-btn" aria-label="Toggle navigation">☰</button>
+  <a class="brand" href="../README.html"><img class="brand-icon" src="../icon.png" alt="ColorYourModel logo"><strong>ColorYourModel</strong> <span>Docs</span></a>
+  <div class="topbar-right">
+    
+    <button id="theme-btn" aria-label="Toggle dark / light theme" title="Toggle theme">🌙</button>
+    <a class="gh-link" href="https://github.com/ZackaryShen/ColorYourModel" title="GitHub repository">GitHub ↗</a>
+  </div>
+</header>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="doc-filter" type="search" placeholder="Filter documents…" autocomplete="off">
+    <nav id="sidebar-nav"><div class="nav-group"><div class="nav-group-title">Overview</div><ul><li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.md">Home (EN) ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/README.zh-CN.md">首页（中文） ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CHANGELOG.md">Changelog ↗</a></li>
+<li><a href="https://github.com/ZackaryShen/ColorYourModel/blob/main/CONTRIBUTING.md">Contributing ↗</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">User Guide</div><ul><li><a href="manual.html">CYM 使用手册（v0.1.1）</a></li>
+<li><a href="manual.en.html">CYM User Manual (v0.1.1)</a></li>
+<li><a href="getting-started.html">Getting Started</a></li>
+<li><a href="auto-segmentation.html">Auto Segmentation</a></li>
+<li><a href="seed-tools.html">Seed Tools</a></li>
+<li><a href="painting-tools.html">Painting Tools</a></li>
+<li><a href="exporting.html">Exporting</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Algorithms</div><ul><li><a href="../algorithms/README.html">Algorithms</a></li>
+<li><a href="../algorithms/segmentation.html">Mesh Segmentation</a></li>
+<li><a href="../algorithms/seed-grow-fuse.html">Seed-Based Segmentation: Grow &amp; Fuse</a></li>
+<li><a href="../algorithms/eye-detection.html">Eye-Region Semantic Detection</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Technical</div><ul><li><a href="../technical/README.html">Technical Mechanisms</a></li>
+<li><a href="../technical/bvh-face-picking.html">BVH Face Picking</a></li>
+<li><a href="../technical/shader-segment-highlight.html">Shader Segment Highlight</a></li>
+<li><a href="../technical/fill-routing.html">Fill Routing: Label Authority</a></li>
+<li><a href="../technical/undo-redo-history.html">Unified Undo / Redo Timeline</a></li>
+<li><a href="../technical/export-pipeline.html">Export Pipeline (3MF / OBJ / Presets)</a></li>
+<li><a href="../technical/crash-diagnostics.html">Crash Diagnostics</a></li>
+<li><a href="../technical/bench-fuse-recommend.html">Fuse / Recommend Stage Benchmark</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Developer</div><ul><li><a href="../developer/ipc-reference.html">IPC Reference</a></li>
+<li><a href="../developer/development.html">Development Guide</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Cases</div><ul><li><a href="../cases/README.html">Cases</a></li>
+<li><a href="../cases/01-3mf-end-to-end.html">Case: 3MF End-to-End Verification</a></li>
+<li><a href="../cases/TEMPLATE.html">Case template</a></li></ul></div>
+<div class="nav-group"><div class="nav-group-title">Working docs · 中文</div><ul><li><a href="../01-PRD-ColorYourModel.html">ColorYourModel 产品需求文档（PRD）</a></li>
+<li><a href="../02-%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E%E4%B9%A6.html">ColorYourModel 技术架构说明书</a></li>
+<li><a href="../03-%E8%BF%AD%E4%BB%A3%E5%A4%8D%E7%9B%98%E4%B8%8E%E5%B7%A5%E7%A8%8B%E7%BB%8F%E9%AA%8C%E6%B2%89%E6%B7%80.html">ColorYourModel 迭代复盘与工程经验沉淀</a></li>
+<li><a href="../04-%E7%BC%BA%E9%99%B7%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98%E6%B8%85%E5%8D%95.html">ColorYourModel 缺陷与遗留问题清单</a></li>
+<li><a href="../05-v0.1-%E8%B7%AF%E7%BA%BF%E5%9B%BE-backlog-2026-08-06.html">ColorYourModel — 通往「可用 v0.1」路线图 · Backlog…</a></li>
+<li><a href="../06-v0.1-%E5%BC%80%E5%8F%91%E8%B7%AF%E7%BA%BF%E5%9B%BE.html">ColorYourModel — 通往「可用 v0.1」开发路线图（正式版 · R…</a></li>
+<li><a href="../07-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA%E8%AE%BE%E8%AE%A1.html">智能分区（Intelligent Segmentation）设计 · 初版方案（待…</a></li>
+<li><a href="../08-%E6%99%BA%E8%83%BD%E5%88%86%E5%8C%BA-%E7%AE%97%E6%B3%95%E5%8F%82%E8%80%83%E4%B8%8E%E8%AE%BA%E6%96%87.html">智能分区 — 算法参考与论文</a></li>
+<li><a href="../09-%E8%BF%9E%E7%BB%AD%E5%B9%B3%E9%9D%A2%E4%B8%8E%E8%BE%B9%E7%95%8C-%E7%AE%97%E6%B3%95%E8%9E%8D%E5%90%88%E7%A0%94%E7%A9%B6.html">连续平面检测与算法融合 — 研究储备与实现技术方案</a></li></ul></div></nav>
+    <div class="sidebar-foot">Generated from markdown ·<br><code>npm run docs:build</code></div>
+  </aside>
+  <main id="content">
+    <article>
+<h1 id="画笔进阶渐变图片投影与模型变换020">画笔进阶：渐变、图片投影与模型变换（0.2.0）</h1>
+<blockquote>
+<p>0.2.0 新增的四个画笔/模型能力速览：渐变画笔、图片投影上色、模型变换、按颜色分件导出。
+基础涂色见 <a href="painting-tools.html">Painting Tools</a>，分区见 <a href="seed-tools.html">Seed Tools</a>，导出见 <a href="exporting.html">Exporting</a>。</p>
+</blockquote>
+<h2 id="渐变画笔-">渐变画笔 🌈</h2>
+<p>工具栏选择 <strong>渐变画笔</strong>，在 <strong>画笔设置</strong> 面板底部会出现渐变专属选项：</p>
+<ul>
+<li><strong>渐变模式</strong>：路径（沿笔划方向渐变）/ 径向（圆盘内从中心向外渐变）</li>
+<li><strong>起点色 / 终点色</strong>：两个色块分别对应笔划起点与终点的颜色</li>
+<li><strong>渐变长度</strong>：路径模式下，颜色跑完整个渐变所需的拖拽距离（视口对角的百分比）</li>
+</ul>
+<p>在模型上按住左键拖拽即可：颜色沿笔划从起点色平滑过渡到终点色。</p>
+<p><img src="../../samples/manual/06-gradient-stroke.png" alt="渐变画笔：沿拖拽方向的色带"></p>
+<p>要点：</p>
+<ul>
+<li>渐变写的是<strong>真实涂装颜色</strong>（与普通画笔同一数据通道），可撤销、可导出</li>
+<li>拖得越长过渡越慢；<strong>渐变长度</strong> 滑杆控制&quot;跑完全程&quot;所需的距离</li>
+<li>径向模式按<strong>单击位置</strong>为中心向外渐变（点击一次即完成）</li>
+</ul>
+<h2 id="图片投影上色-️">图片投影上色 🖼️</h2>
+<p>工具栏 <strong>🖼 图片投影上色</strong>（或 文件 → 图片投影上色…）：</p>
+<ol>
+<li><strong>选择图片</strong>：选一张 PNG/JPG</li>
+<li><strong>选方向</strong>：六个按钮对应 STL 模型局部轴（顶/底/前/后/左/右）</li>
+<li><strong>开始投影</strong>：图片按模型包围盒铺满，沿该方向&quot;拍&quot;到模型表面，烘焙为逐面涂装</li>
+</ol>
+<p><img src="../../samples/manual/08-projection-dialog.png" alt="图片投影对话框"></p>
+<p><img src="../../samples/manual/10-projected-top.png" alt="投影结果：顶面出现图片颜色"></p>
+<p>说明：</p>
+<ul>
+<li>投影会把图片&quot;拉伸&quot;到模型的包围盒上——想控制构图，先用裁剪过的方图</li>
+<li>背面（背对投影方向的面）不会被涂到；凹模型深处的面可能与正面采到同一像素</li>
+<li>结果是普通涂装：可继续用其他画笔修改、可撤销、可导出</li>
+</ul>
+<h2 id="模型变换---">模型变换 ✥ ⟳ ⤢</h2>
+<p>工具栏底部三个变换按钮：<strong>移动 ✥ / 旋转 ⟳ / 缩放 ⤢</strong>。</p>
+<ul>
+<li>点击任一按钮，模型中心出现变换 gizmo（箭头=轴，中心方块=平面移动）</li>
+<li>拖动箭头沿轴移动，拖动中心方块在屏幕平面内自由移动</li>
+<li><strong>再次点击同一按钮或切换工具即退出变换</strong>（gizmo 消失，变换已固化）</li>
+<li>Ctrl+Z 可撤销整次拖拽；变换后的模型即为导出/保存的真实几何</li>
+</ul>
+<p><img src="../../samples/manual/07-transform-gizmo.png" alt="变换 gizmo 激活"></p>
+<p><img src="../../samples/manual/08-transform-moved.png" alt="拖动 gizmo 后模型位移"></p>
+<h2 id="按颜色分件导出实验">按颜色分件导出（实验）</h2>
+<p>文件 → <strong>按颜色分件导出…</strong>：把涂装按颜色拆成多个独立 OBJ（每种颜色的连通片一个文件）+ <code>manifest.txt</code> 清单，供不支持涂色槽的切片软件（Cura/PrusaSlicer）按件打印。</p>
+<blockquote>
+<p>⚠ 实验功能：拆出的是<strong>开放曲面壳</strong>（无封面），部分切片器可能拒绝非水密网格；颜色经 16 槽量化，渐变等连续色会被归并。结论与限制详见 <a href="../technical/split-export-spike.html">Split Export Spike</a>。</p>
+</blockquote>
+<h2 id="工具栏分组">工具栏分组</h2>
+<p>涂色工具与分区工具各自成组，点组分隔处的 <strong>▾/▸</strong> 可折叠/展开——折叠含当前激活工具的分组会被拒绝（避免当前工具&quot;消失&quot;）。</p>
+
+    </article>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#渐变画笔-">渐变画笔 🌈</a></li><li class="toc-h2"><a href="#图片投影上色-️">图片投影上色 🖼️</a></li><li class="toc-h2"><a href="#模型变换---">模型变换 ✥ ⟳ ⤢</a></li><li class="toc-h2"><a href="#按颜色分件导出实验">按颜色分件导出（实验）</a></li><li class="toc-h2"><a href="#工具栏分组">工具栏分组</a></li></ul></details>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  var dark = document.documentElement.dataset.theme === "dark";
+  var themeBtn = document.getElementById("theme-btn");
+  if (themeBtn) {
+    themeBtn.textContent = dark ? "\u2600\uFE0F" : "\uD83C\uDF19";
+    themeBtn.addEventListener("click", function () {
+      var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      try { localStorage.setItem("cym-docs-theme", next); } catch (e) {}
+      // Reload so the mermaid diagrams re-render under the new theme.
+      location.reload();
+    });
+  }
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "base", securityLevel: "loose",
+      themeVariables: dark
+        ? { primaryColor: "#1b2440", primaryTextColor: "#e2e8f0", primaryBorderColor: "#33406b",
+            lineColor: "#7c8aa0", fontSize: "14px",
+            fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" }
+        : { primaryColor: "#eef2ff", primaryTextColor: "#1e293b", primaryBorderColor: "#c7d2fe",
+            lineColor: "#64748b", fontSize: "14px",
+            fontFamily: "-apple-system, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" },
+      flowchart: { curve: "basis", padding: 12, htmlLabels: true } });
+  } else {
+    document.querySelectorAll("pre.mermaid").forEach(function (el) { el.classList.add("mermaid-offline"); });
+  }
+  var filter = document.getElementById("doc-filter");
+  if (filter) filter.addEventListener("input", function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll("#sidebar-nav li").forEach(function (li) {
+      li.style.display = li.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  var btn = document.getElementById("menu-btn");
+  if (btn) btn.addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("open");
+  });
+});
+</script>
+</body>
+</html>
