@@ -7,6 +7,7 @@ import { useMesh } from "../../hooks/useMesh";
 import { invoke } from "@tauri-apps/api/core";
 import { usePaintTool, MANUAL_SEGMENT_OFFSET } from "../../hooks/usePaintTool";
 import { hexToRgba } from "../../hooks/usePaintTool";
+import { accumulateArc, pathGradientColor } from "../../utils/gradientPath";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo, applyHistoryResult, setHistoryApplier } from "../../hooks/useHistory";
 import { PaintTool } from "../../types/mesh";
@@ -1857,22 +1858,21 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // the visible diagonal is what the user visually drags across).
     const gradientSampleColor = (clientX: number, clientY: number): [number, number, number, number] => {
       const g = useAppStore.getState();
-      const prev = gradientPrevRef.current;
-      if (prev) {
-        gradientAccumRef.current += Math.hypot(clientX - prev.x, clientY - prev.y);
-      }
-      gradientPrevRef.current = { x: clientX, y: clientY };
-      const start = gradientStrokeStartRef.current ?? { x: clientX, y: clientY };
+      const st = accumulateArc(
+        { accumPx: gradientAccumRef.current, prev: gradientPrevRef.current },
+        clientX,
+        clientY
+      );
+      gradientAccumRef.current = st.accumPx;
+      gradientPrevRef.current = st.prev;
       const fadePx = Math.hypot(window.innerWidth, window.innerHeight) * (g.gradientLengthPct / 100);
-      const t = Math.min(1, gradientAccumRef.current / Math.max(1, fadePx));
-      const a = hexToRgba(g.gradientColorA);
-      const b = hexToRgba(g.gradientColorB);
-      return [
-        Math.round(a[0] + (b[0] - a[0]) * t),
-        Math.round(a[1] + (b[1] - a[1]) * t),
-        Math.round(a[2] + (b[2] - a[2]) * t),
-        255,
-      ];
+      const [r, gc, b] = pathGradientColor(
+        st.accumPx,
+        fadePx,
+        hexToRgba(g.gradientColorA).slice(0, 3) as [number, number, number],
+        hexToRgba(g.gradientColorB).slice(0, 3) as [number, number, number]
+      );
+      return [r, gc, b, 255];
     };
 
     const onPointerMove = (e: PointerEvent) => {
