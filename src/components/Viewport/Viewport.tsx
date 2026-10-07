@@ -2322,6 +2322,14 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   if (!geometry) return null;
 
   return (
+    <>
+      {transformMode !== "none" && (
+        <TransformControls
+          object={meshRef as unknown as React.MutableRefObject<THREE.Object3D>}
+          mode={transformMode}
+          onMouseUp={() => void handleTransformMouseUp()}
+        />
+      )}
     <group rotation={[-Math.PI / 2, 0, 0]}>
       <mesh ref={meshRef} geometry={geometry} castShadow receiveShadow>
         {/* Shading mode toggle (iteration 19). "flat" = meshBasicMaterial:
@@ -2415,6 +2423,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       <BoundaryLines regions={eyeRegions.filter((r) => r.semantic === "eyelid")} color="#6366f1" visible={eyeRegionsVisible} />
       <BoundaryLines regions={eyeRegions.filter((r) => r.semantic === "socket")} color="#14b8a6" visible={eyeRegionsVisible} />
     </group>
+    </>
   );
 }
 

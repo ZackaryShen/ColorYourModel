@@ -43,8 +43,11 @@ export function Toolbar() {
   const transformMode = useAppStore((s) => s.transformMode);
   const setTransformMode = useAppStore((s) => s.setTransformMode);
   const enterTransform = (m: "translate" | "rotate" | "scale") => {
-    setTransformMode(transformMode === m ? "none" : m);
+    const next = transformMode === m ? "none" : m;
+    setTransformMode(next);
     setActiveTool(PaintTool.View);
+    // 进入/退出变换时给状态栏提示——解决"不知道 gizmo 是干嘛的"（P2 验收反馈）
+    setStatusMessage(next === "none" ? "" : t("transform.hint"));
   };
   const isLoading = useAppStore((s) => s.isLoading);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
@@ -129,6 +132,10 @@ export function Toolbar() {
           // doesn't keep a focus-ring + hover filter together with the
           // newly-active tool's border (looked like "two tools active").
           log.info("Toolbar", "tool click", { tool: item.tool, from: activeTool });
+          // 0.2.0-P2 fix: switching to any paint/segment tool exits transform
+          // mode — the gizmo must never linger while a paint tool is active
+          // (the Viewport pointer gate would silently block all painting).
+          setTransformMode("none");
           setActiveTool(item.tool);
         }}
         className="cym-btn"
