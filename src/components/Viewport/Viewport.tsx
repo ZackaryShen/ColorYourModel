@@ -823,7 +823,6 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
   const transformMode = useAppStore((s) => s.transformMode);
-  const gradientKneePct = useAppStore((s) => s.gradientKneePct);
 
   const isPainting = useRef(false);
   // Segment paint state: track current label + painted faces for dedup
@@ -1872,7 +1871,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // 0.2.0-P2 gradient v3: finalize the stroke — re-map every buffered sample
     // by TOTAL arc (t = arc/total) and apply the knee-piecewise gradient in ONE
     // backend call under the SAME stroke_id (coalesced undo entry).
-    const finalizeGradientStroke = useCallback(async () => {
+    // Plain function, NOT useCallback: this lives inside the pointer-handlers
+    // useEffect, and calling a hook there is React error #321. It reads live
+    // settings via useAppStore.getState(), so memoization was never needed.
+    const finalizeGradientStroke = async () => {
       const samples = gradientSamplesRef.current;
       const strokeId = activeStrokeIdRef.current;
       if (samples.length === 0 || !strokeId) {
@@ -1904,7 +1906,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         gradientSamplesRef.current = [];
         gradientStrokeStartRef.current = null;
       }
-    }, [updateFaceColors, gradientKneePct]);
+    };
 
     const gradientSampleColor = (clientX: number, clientY: number): [number, number, number, number] => {
       const g = useAppStore.getState();
