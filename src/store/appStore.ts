@@ -48,6 +48,7 @@ interface AppStore {
   gradientColorA: string;
   gradientColorB: string;
   gradientLengthPct: number;
+  gradientKneePct: number;
   /** 0.2.0-P2: image-projection dialog visibility (menu + toolbar entries). */
   projectionDialogOpen: boolean;
   /** 0.2.0-P2 3a: active whole-model transform gizmo mode ("none" = off).
@@ -162,6 +163,7 @@ interface AppStore {
   setGradientColorA: (hex: string) => void;
   setGradientColorB: (hex: string) => void;
   setGradientLengthPct: (pct: number) => void;
+  setGradientKneePct: (pct: number) => void;
   setTransformMode: (m: "none" | "translate" | "rotate" | "scale") => void;
   setProjectionDialogOpen: (open: boolean) => void;
   /** 0.2.0-P2 3a: replace geometry after a baked transform (undo/redo/gizmo
@@ -482,6 +484,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   gradientColorA: "#ff3b30",
   gradientColorB: "#0040ff",
   gradientLengthPct: 100,
+  gradientKneePct: 40,
   transformMode: "none",
   projectionDialogOpen: false,
   segmentView: false,
@@ -647,6 +650,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setGradientColorA: (hex) => set({ gradientColorA: hex }),
   setGradientColorB: (hex) => set({ gradientColorB: hex }),
   setGradientLengthPct: (pct) => set({ gradientLengthPct: Math.min(400, Math.max(10, pct)) }),
+  setGradientKneePct: (pct) => set({ gradientKneePct: Math.min(90, Math.max(10, pct)) }),
   setTransformMode: (m) => set({ transformMode: m }),
   setProjectionDialogOpen: (open) => set({ projectionDialogOpen: open }),
   applyGeometryUpdate: (vertices, bbox, canUndo, canRedo) =>

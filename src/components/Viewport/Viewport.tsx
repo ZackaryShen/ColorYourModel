@@ -11,7 +11,7 @@ import { accumulateArc, pathGradientColor } from "../../utils/gradientPath";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo, applyHistoryResult, setHistoryApplier } from "../../hooks/useHistory";
 import { PaintTool } from "../../types/mesh";
-import type { HistoryResult } from "../../types/mesh";
+import type { HistoryResult, PaintResult, BoundingBox } from "../../types/mesh";
 import { log } from "../../utils/logger";
 import { hintKeyForTool } from "../../utils/controlsHint";
 import { useT } from "../../i18n";
@@ -823,6 +823,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
   const transformMode = useAppStore((s) => s.transformMode);
+  const gradientKneePct = useAppStore((s) => s.gradientKneePct);
 
   const isPainting = useRef(false);
   // Segment paint state: track current label + painted faces for dedup
@@ -1479,6 +1480,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     colorOverride?: [number, number, number, number];
     /** 0.2.0-P2 gradient (radial mode): one-shot graded disc. */
     gradientRadial?: boolean;
+    /** 0.2.0-P2 gradient v3: finalize sentinel — flush the sample buffer as
+     *  one batched knee-gradient command (fixes the ordering defect). */
+    finalizeGradient?: { face: number; t: number }[];
   } | null>(null);
   const paintDrainingRef = useRef(false);
   // Backend coalesces consecutive paint calls that share a `stroke_id` into ONE
@@ -1494,6 +1498,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const gradientStrokeStartRef = useRef<{ x: number; y: number } | null>(null);
   const gradientPrevRef = useRef<{ x: number; y: number } | null>(null);
   const gradientAccumRef = useRef(0);
+  // 0.2.0-P2 gradient v3: per-stroke sample buffer {face, arcPx}. On stroke
+  // end the buffered samples are re-mapped by TOTAL arc (fixes the v2
+  // provisional/final shape mismatch) and sent as ONE batched command.
+  const gradientSamplesRef = useRef<{ face: number; arcPx: number }[]>([]);
   // iter30-era stale-hover cache retired (2026-08-27): Fill routing now reads
   // `segmentLabels[clickedFace]` directly (see usePaintTool), so a cached
   // "last valid hover" no longer has any legitimate consumer. Keeping it around
@@ -1861,6 +1869,43 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // screen-space by design — no px↔mm conversion, no ortho-zoom dependence
     // (adversarial round: pixel thresholds are zoom-DEPENDENT; a percentage of
     // the visible diagonal is what the user visually drags across).
+    // 0.2.0-P2 gradient v3: finalize the stroke — re-map every buffered sample
+    // by TOTAL arc (t = arc/total) and apply the knee-piecewise gradient in ONE
+    // backend call under the SAME stroke_id (coalesced undo entry).
+    const finalizeGradientStroke = useCallback(async () => {
+      const samples = gradientSamplesRef.current;
+      const strokeId = activeStrokeIdRef.current;
+      if (samples.length === 0 || !strokeId) {
+        gradientSamplesRef.current = [];
+        return;
+      }
+      const total = samples[samples.length - 1].arcPx;
+      if (total <= 0) {
+        gradientSamplesRef.current = [];
+        return;
+      }
+      const g = useAppStore.getState();
+      const samps = samples.map((smp) => ({
+        face: smp.face,
+        t: Math.min(1, smp.arcPx / total),
+      }));
+      try {
+        const result = await invoke<PaintResult>("gradient_path_paint", {
+          strokeId,
+          knee: g.gradientKneePct / 100,
+          colorA: hexToRgba(g.gradientColorA),
+          colorB: hexToRgba(g.gradientColorB),
+          samples: samps,
+        });
+        updateFaceColors(result.updatedFaces, result.updatedColors);
+      } catch (err) {
+        log.error("Viewport", "gradient finalize failed", { error: String(err) });
+      } finally {
+        gradientSamplesRef.current = [];
+        gradientStrokeStartRef.current = null;
+      }
+    }, [updateFaceColors, gradientKneePct]);
+
     const gradientSampleColor = (clientX: number, clientY: number): [number, number, number, number] => {
       const g = useAppStore.getState();
       const st = accumulateArc(
@@ -1891,6 +1936,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         const hit = raycastFace(e.clientX, e.clientY);
         updateBrushCursor(hit && hit.faceIndex != null ? hit : null);
         if (hit && hit.faceIndex != null) {
+          if (activeTool === PaintTool.Gradient) {
+            gradientSamplesRef.current.push({ face: hit.faceIndex, arcPx: gradientAccumRef.current });
+          }
           enqueuePaint(
             hit.faceIndex,
             false,
@@ -2112,6 +2160,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       try { canvas.releasePointerCapture(e.pointerId); } catch { /* not critical */ }
       if (isPainting.current) {
         isPainting.current = false;
+        // 0.2.0-P2 gradient v3: stroke end → finalize (batched knee-gradient
+        // recolor under the same stroke_id → one coalesced undo entry).
+        if (activeTool === PaintTool.Gradient && gradientSamplesRef.current.length > 0) {
+          void finalizeGradientStroke();
+        }
         // Finalize segment after drag ends
         if (activeTool === "segment" && currentSegLabelRef.current !== null) {
           finalizeSegment(currentSegLabelRef.current);
@@ -2136,6 +2189,12 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         setLassoClosing(false);
         setLassoSnap(null);
         lassoSnapRef.current = null;
+      }
+      // 0.2.0-P2 gradient v3: pointer left the canvas mid-stroke → finalize
+      // (the stroke ends at the last buffered sample; per major-3 all three
+      // stroke-end exits share one path).
+      if (activeTool === PaintTool.Gradient && gradientSamplesRef.current.length > 0) {
+        void finalizeGradientStroke();
       }
       hoverInfoRef.current = null;
       setHoveredSegment(null);
@@ -2349,13 +2408,6 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           <meshLambertMaterial vertexColors side={THREE.DoubleSide} ref={assignHighlightMaterial} />
         )}
       </mesh>
-      {transformMode !== "none" && (
-        <TransformControls
-          object={meshRef as unknown as React.MutableRefObject<THREE.Object3D>}
-          mode={transformMode}
-          onMouseUp={() => void handleTransformMouseUp()}
-        />
-      )}
       {showWireframe && (
         <lineSegments>
           <wireframeGeometry args={[geometry]} />

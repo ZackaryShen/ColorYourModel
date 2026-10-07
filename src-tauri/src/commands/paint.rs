@@ -60,6 +60,90 @@ pub fn project_image_paint(
     Ok(commit(mesh, stroke_id, updates))
 }
 
+/// One sample along a gradient path: face index + normalized path position.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GradientPathSample {
+    pub face: u32,
+    pub t: f32,
+}
+
+/// 0.2.0-P2 gradient v3: apply the knee-piecewise gradient to an explicit
+/// sample list in ONE backend call.
+///
+/// Why a batch command instead of per-sample brush_paint recolor: (1) the
+/// frontend cannot compute absolute colors for falloff-halo faces (it lacks
+/// the pre-stroke colors — they live in the history entry); (2) one command =
+/// one coalesced undo entry with the SAME stroke_id as the provisional
+/// paints, so Ctrl+Z still reverts to the true pre-stroke colors.
+///
+/// The frontend sends (face, t) pairs — t is the sample's normalized position
+/// along the drawn path (arc length / total). Colors are computed here with
+/// the same piecewise knee function as the provisional preview.
+/// 拐点分段渐变的纯函数（0.2.0-P2 渐变 v3 语义）：
+/// t ≤ knee：lerp(colorA, mix50, t/knee)；t > knee：lerp(mix50, colorB, (t−knee)/(1−knee))。
+/// mix50 = 50/50 混色（拐点处两段严格连续）。t 与 knee 均在此钳制。
+pub(crate) fn gradient_path_color(
+    t: f32,
+    knee: f32,
+    color_a: [u8; 4],
+    color_b: [u8; 4],
+) -> [u8; 4] {
+    let knee = knee.clamp(0.05, 0.95);
+    let t = t.clamp(0.0, 1.0);
+    let mix50 = [
+        ((color_a[0] as f32) * 0.5 + (color_b[0] as f32) * 0.5) as u8,
+        ((color_a[1] as f32) * 0.5 + (color_b[1] as f32) * 0.5) as u8,
+        ((color_a[2] as f32) * 0.5 + (color_b[2] as f32) * 0.5) as u8,
+        255,
+    ];
+    let lerp_channel = |a: u8, b: u8, k: f32| -> u8 {
+        (a as f32 + (b as f32 - a as f32) * k).round().clamp(0.0, 255.0) as u8
+    };
+    if t <= knee {
+        let k = if knee > 0.0 { t / knee } else { 1.0 };
+        [
+            lerp_channel(color_a[0], mix50[0], k),
+            lerp_channel(color_a[1], mix50[1], k),
+            lerp_channel(color_a[2], mix50[2], k),
+            255,
+        ]
+    } else {
+        let k = if t < 1.0 { (t - knee) / (1.0 - knee) } else { 1.0 };
+        [
+            lerp_channel(mix50[0], color_b[0], k),
+            lerp_channel(mix50[1], color_b[1], k),
+            lerp_channel(mix50[2], color_b[2], k),
+            255,
+        ]
+    }
+}
+
+#[tauri::command]
+pub fn gradient_path_paint(
+    stroke_id: Option<u64>,
+    knee: f32,
+    color_a: [u8; 4],
+    color_b: [u8; 4],
+    samples: Vec<GradientPathSample>,
+    state: State<AppState>,
+) -> Result<PaintResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+
+    let mut updates: Vec<(u32, [u8; 4])> = Vec::with_capacity(samples.len());
+    for s in &samples {
+        updates.push((s.face, gradient_path_color(s.t, knee, color_a, color_b)));
+    }
+    log::info!(
+        "[cmd:gradient_path_paint] knee={} samples={} updates={}",
+        knee,
+        samples.len(),
+        updates.len()
+    );
+    Ok(commit(mesh, stroke_id, updates))
+}
+
 #[tauri::command]
 pub fn gradient_radial_paint(
     center_face: u32,

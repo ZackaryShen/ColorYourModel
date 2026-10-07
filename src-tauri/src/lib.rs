@@ -49,6 +49,7 @@ pub fn run() {
             commands::segment::reset_segmentation,
             commands::paint::brush_paint,
             commands::paint::gradient_radial_paint,
+            commands::paint::gradient_path_paint,
             commands::paint::project_image_paint,
             commands::paint::fill_paint,
             commands::paint::fill_segment_paint,
