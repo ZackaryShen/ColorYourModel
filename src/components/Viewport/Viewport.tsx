@@ -1843,6 +1843,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         gradientStrokeStartRef.current = { x: e.clientX, y: e.clientY };
         gradientPrevRef.current = { x: e.clientX, y: e.clientY };
         gradientAccumRef.current = 0;
+        // P2 验收诊断桩：确认 gradient pointerdown 到达与采样颜色
+        const c = gradientSampleColor(e.clientX, e.clientY);
+        log.info("Viewport", "[GRAD-DIAG] down", {
+          face: hit.faceIndex, color: c, clientX: e.clientX, clientY: e.clientY,
+        });
       }
       enqueuePaint(
         hit.faceIndex,
