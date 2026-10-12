@@ -233,9 +233,9 @@ fn sdf_face_sample(mesh: &MeshModel, oriented: &[[f32; 3]], fi: usize) -> f32 {
     let (t1, t2) = basis(&inward);
 
     // Candidate faces for the inward cone — computed ONCE per face, bounded.
-    let candidates = mesh
-        .face_kdtree
-        .nearest_n::<kiddo::SquaredEuclidean>(&center, SDF_CANDIDATE_K);
+    // Routed through MeshModel so a degraded (linear-fallback) index on a
+    // degenerate mesh serves the same candidate set without panicking.
+    let candidates = mesh.nearest_face_centers(&center, SDF_CANDIDATE_K);
 
     let mut hits: Vec<f32> = Vec::with_capacity(SDF_RAYS);
     for r in 0..SDF_RAYS {
@@ -254,7 +254,7 @@ fn sdf_face_sample(mesh: &MeshModel, oriented: &[[f32; 3]], fi: usize) -> f32 {
 
         let mut best_t = f32::INFINITY;
         for cand in candidates.iter() {
-            let cf = cand.item as usize;
+            let cf = *cand as usize;
             if cf == fi {
                 continue;
             }

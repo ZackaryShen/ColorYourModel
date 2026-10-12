@@ -102,6 +102,54 @@ pub fn load_stl(path: &Path, on_progress: &ProgressFn) -> Result<MeshModel, Stri
 }
 
 #[cfg(test)]
+mod probe_multi_model {
+    use super::*;
+
+    /// Crash probe for the P0 import bug (2026-10-12): a single-plate
+    /// multi-model binary STL (dzqb9_U1.stl, 554k facets, 223 zero-area
+    /// facets, disjoint components, offset coordinates) reportedly crashes the
+    /// app on import. Runs the full load_stl pipeline headlessly to locate the
+    /// failing stage. Ignored: needs the local file, override with
+    /// CYM_PROBE_STL. Run:
+    /// `cargo test --lib probe_multi_model -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn probe_load_multi_model_stl() {
+        let _ = env_logger::try_init();
+        let path = std::env::var("CYM_PROBE_STL")
+            .unwrap_or_else(|_| r"C:\selfDIr\3D_3mf\stls\dzqb9_U1.stl".to_string());
+
+        let t = std::time::Instant::now();
+        let model = load_stl(std::path::Path::new(&path), &|_, _| {}).expect("load_stl failed");
+        eprintln!("[probe] load_stl ok in {:?}", t.elapsed());
+
+        let degenerate = model
+            .faces
+            .iter()
+            .filter(|f| f[0] == f[1] || f[1] == f[2] || f[0] == f[2])
+            .count();
+        eprintln!(
+            "[probe] verts={} faces={} degenerate_index_faces={} bbox=[{:.2},{:.2},{:.2}]->[{:.2},{:.2},{:.2}]",
+            model.vertices.len(),
+            model.faces.len(),
+            degenerate,
+            model.bbox.min[0], model.bbox.min[1], model.bbox.min[2],
+            model.bbox.max[0], model.bbox.max[1], model.bbox.max[2],
+        );
+
+        let dto = model.to_dto();
+        eprintln!(
+            "[probe] dto: {} verts, {} faces, {} colors",
+            dto.vertices.len() / 3,
+            dto.faces.len() / 3,
+            dto.face_colors.len() / 4
+        );
+        let json = serde_json::to_vec(&dto).expect("serialize");
+        eprintln!("[probe] serde_json size={} MB", json.len() / 1024 / 1024);
+    }
+}
+
+#[cfg(test)]
 mod bench {
     use super::*;
     use std::sync::Mutex;

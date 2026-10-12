@@ -132,4 +132,138 @@ mod repro_tests {
             "kdtree query should return faces near the origin"
         );
     }
+
+    /// Flat YZ wall of 32x32 quads (2048 faces) whose vertices all sit at
+    /// X=1232.0 — every face center shares that exact f32 X. Coordinates past
+    /// ~1024 have ulp > the OLD fixed ±1e-4 kd_point jitter, so the offset was
+    /// rounded away and kiddo re-panicked: the P0 dzqb9_U1.stl multi-model
+    /// plate import crash (2026-10-12). The scale-aware jitter must separate
+    /// the wall, keep the tree healthy (not degraded), and answer radius
+    /// queries exactly like brute force.
+    #[test]
+    fn kdtree_large_offset_coplanar_wall_no_panic() {
+        let mut m = MeshModel::new();
+        let n = 33usize; // 32x32 quads -> 2048 triangles
+        let step = 0.5f32;
+        for i in 0..n {
+            for j in 0..n {
+                m.vertices.push([1232.0, i as f32 * step, j as f32 * step]);
+            }
+        }
+        let v = |i: usize, j: usize| (i * n + j) as u32;
+        for i in 0..n - 1 {
+            for j in 0..n - 1 {
+                let (a, b) = (v(i, j), v(i, j + 1));
+                let (c, d) = (v(i + 1, j), v(i + 1, j + 1));
+                m.faces.push([a, c, b]);
+                m.faces.push([b, c, d]);
+            }
+        }
+        m.compute_bbox();
+        m.build_kdtree();
+        m.build_vertex_kdtree();
+        assert!(!m.face_kdtree_degraded, "healthy tree expected: the scale-aware jitter must separate the coplanar wall");
+
+        // Caller contract: query candidates + true-distance filter == brute
+        // force. The margin-widened query must never MISS an in-radius face.
+        let probe = [1232.1, 6.13, 7.77];
+        let radius = 2.4f32;
+        let centers = m.face_centers();
+        let true_dist = |i: usize| -> f32 {
+            let c = centers[i];
+            let dx = c[0] - probe[0];
+            let dy = c[1] - probe[1];
+            let dz = c[2] - probe[2];
+            (dx * dx + dy * dy + dz * dz).sqrt()
+        };
+        let mut expected: Vec<u32> = (0..centers.len())
+            .filter(|&i| true_dist(i) < radius)
+            .map(|i| i as u32)
+            .collect();
+        expected.sort_unstable();
+        let mut got: Vec<u32> = m
+            .faces_within_radius(&probe, radius)
+            .into_iter()
+            .filter(|&f| true_dist(f as usize) < radius)
+            .collect();
+        got.sort_unstable();
+        assert_eq!(got, expected, "radius query must match brute force");
+    }
+
+    /// A mesh too degenerate even for the scale-aware jitter (here: the flags
+    /// are set directly to simulate the worst case) must still answer queries
+    /// EXACTLY via the linear-scan fallback — degrade, never crash or corrupt.
+    #[test]
+    fn kdtree_degraded_fallback_queries_exact() {
+        let mut m = MeshModel::new();
+        let n = 9usize;
+        for i in 0..n {
+            for j in 0..n {
+                m.vertices.push([1200.0, i as f32, j as f32]);
+            }
+        }
+        let v = |i: usize, j: usize| (i * n + j) as u32;
+        for i in 0..n - 1 {
+            for j in 0..n - 1 {
+                let (a, b) = (v(i, j), v(i, j + 1));
+                let (c, d) = (v(i + 1, j), v(i + 1, j + 1));
+                m.faces.push([a, c, b]);
+                m.faces.push([b, c, d]);
+            }
+        }
+        m.compute_bbox();
+        m.build_kdtree();
+        m.build_vertex_kdtree();
+        m.face_kdtree_degraded = true;
+        m.vertex_kdtree_degraded = true;
+
+        // Radius parity with brute force.
+        let probe = [1200.4, 3.2, 5.7];
+        let radius = 2.1f32;
+        let mut expected: Vec<u32> = m
+            .face_centers()
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                let dx = c[0] - probe[0];
+                let dy = c[1] - probe[1];
+                let dz = c[2] - probe[2];
+                (dx * dx + dy * dy + dz * dz).sqrt() < radius
+            })
+            .map(|(i, _)| i as u32)
+            .collect();
+        expected.sort_unstable();
+        let mut got = m.faces_within_radius(&probe, radius);
+        got.sort_unstable();
+        assert_eq!(got, expected, "degraded radius query must be exact");
+
+        // Nearest vertex: exact index and TRUE (unjittered) SQUARED distance
+        // — the SquaredEuclidean contract predates this fix, keep it.
+        let (vi, vd) = m.nearest_vertex(&[1200.0, 4.9, 5.1]).expect("vertex");
+        let q = m.vertices[vi as usize];
+        let true_d2 = (q[1] - 4.9).powi(2) + (q[2] - 5.1).powi(2);
+        assert_eq!(vi, v(5, 5), "nearest vertex index");
+        assert!((vd - true_d2).abs() < 1e-6, "distance must be unjittered");
+
+        // nearest_face_centers: exactly the K truly-nearest faces as a SET
+        // (ordering is unspecified by contract — the only consumer scans all).
+        let k = 4;
+        let mut got_k = m.nearest_face_centers(&probe, k);
+        got_k.sort_unstable();
+        let mut scored: Vec<(f32, u32)> = m
+            .face_centers()
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let dx = c[0] - probe[0];
+                let dy = c[1] - probe[1];
+                let dz = c[2] - probe[2];
+                (dx * dx + dy * dy + dz * dz, i as u32)
+            })
+            .collect();
+        scored.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        let mut expected_k: Vec<u32> = scored[..k].iter().map(|(_, i)| *i).collect();
+        expected_k.sort_unstable();
+        assert_eq!(got_k, expected_k, "degraded top-K must be the true top-K set");
+    }
 }

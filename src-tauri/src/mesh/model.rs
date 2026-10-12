@@ -132,6 +132,13 @@ pub struct MeshModel {
     // Spatial acceleration
     pub face_kdtree: kiddo::KdTree<f32, 3>,
     pub vertex_kdtree: kiddo::KdTree<f32, 3>,
+    /// True when kiddo panicked while building the tree (mesh too degenerate
+    /// even for the kd_point perturbation — e.g. thousands of bit-identical
+    /// stacked faces). The queries below then fall back to exact linear scans:
+    /// slower, but a pathological mesh must degrade, never crash the app
+    /// (P0 2026-10-12 import crash acceptance: "无论如何，预期：不崩溃").
+    pub face_kdtree_degraded: bool,
+    pub vertex_kdtree_degraded: bool,
     pub face_adjacency: UnGraph<u32, ()>,
 
     // Metadata
@@ -167,6 +174,8 @@ impl MeshModel {
             history: History::new(),
             face_kdtree: kiddo::KdTree::new(),
             vertex_kdtree: kiddo::KdTree::new(),
+            face_kdtree_degraded: false,
+            vertex_kdtree_degraded: false,
             face_adjacency: UnGraph::default(),
             bbox: BoundingBox {
                 min: [0.0, 0.0, 0.0],
@@ -229,42 +238,97 @@ impl MeshModel {
 
     /// kiddo's KdTree panics ("Too many items with the same position on one
     /// axis") whenever >BUCKET_SIZE points share an IDENTICAL coordinate on the
-    /// split axis. That is exactly the case for meshes with many near-coplanar
-    /// face centers / vertices — e.g. a UV sphere, where every triangle in a
-    /// latitude ring shares the same Z. load_stl built such a tree on Sphere.stl
-    /// and the app hard-crashed ("闪退") on import.
+    /// split axis (chosen round-robin by depth, NOT by spread). That is exactly
+    /// the case for meshes with many near-coplanar face centers / vertices —
+    /// e.g. a UV sphere, where every triangle in a latitude ring shares the
+    /// same Z. load_stl built such a tree on Sphere.stl and the app hard-crashed
+    /// ("闪退") on import.
     ///
     /// We break exact ties by perturbing each inserted point with a tiny,
-    /// deterministic, index-derived offset. Magnitude (~1e-4) is ~1e-6 relative
-    /// to model-scale coordinates (≈1e2) and ~1e3× below any paint/spray radius,
-    /// so the brush radius queries are unaffected; it only makes points distinct
-    /// enough for kiddo to always find a split. Robust at ANY mesh resolution
+    /// deterministic, index-derived offset. The offset MUST stay above a few
+    /// ulp of the coordinate or f32 rounding swallows it back to the original
+    /// value: the fixed ±1e-4 window of the Sphere.stl fix is below 1 ulp for
+    /// coordinates beyond ~1024 (ulp(1232) ≈ 1.2e-4), so the multi-model plate
+    /// dzqb9_U1.stl (models placed at X≈1000+, thousands of flat-wall face
+    /// centers sharing one exact X) re-hit the same panic (P0 2026-10-12). The
+    /// spread therefore scales with |p| (2^-16 relative ≈ 0.002% ≈ 65k ulp at
+    /// any magnitude) with an absolute floor of 1e-3 that covers coordinates
+    /// at/near zero, where the relative term vanishes.
+    ///
+    /// This is candidate generation only — every radius query re-filters by
+    /// true distance, and `faces_within_radius` widens its radius by the exact
+    /// jitter bound, so results stay exact. Robust at ANY mesh resolution
     /// (unlike bumping BUCKET_SIZE, which a denser sphere would still exceed).
     pub(crate) fn kd_point(mut p: [f32; 3], salt: u64) -> [f32; 3] {
         let h = salt.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        let fx = (((h & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5) * 2.0e-4;
-        let fy = ((((h >> 16) & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5) * 2.0e-4;
-        let fz = ((((h >> 32) & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5) * 2.0e-4;
-        p[0] += fx;
-        p[1] += fy;
-        p[2] += fz;
+        let fracs = [
+            ((h & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5,
+            (((h >> 16) & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5,
+            (((h >> 32) & 0xFFFF) as f32) / 0xFFFF as f32 - 0.5,
+        ];
+        for (i, frac) in fracs.iter().enumerate() {
+            let spread = p[i].abs() * 1.525_878_9e-5 + 1.0e-3; // |p|·2^-16 + 1e-3
+            p[i] += frac * 2.0 * spread;
+        }
         p
     }
 
     /// Build KD-Tree from face centers
+    ///
+    /// kiddo's construction can still panic on data too degenerate for
+    /// `kd_point` to separate (e.g. tens of thousands of bit-identical stacked
+    /// faces). That must surface as a degraded index + linear-scan queries, not
+    /// as a crashing import — build under `catch_unwind` and mark the model.
     pub fn build_kdtree(&mut self) {
-        self.face_kdtree = kiddo::KdTree::new();
         let centers = self.face_centers();
-        for (i, center) in centers.iter().enumerate() {
-            self.face_kdtree.add(&Self::kd_point(*center, i as u64), i as u64);
+        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut tree = kiddo::KdTree::new();
+            for (i, center) in centers.iter().enumerate() {
+                tree.add(&Self::kd_point(*center, i as u64), i as u64);
+            }
+            tree
+        }));
+        match built {
+            Ok(tree) => {
+                self.face_kdtree = tree;
+                self.face_kdtree_degraded = false;
+            }
+            Err(_) => {
+                log::warn!(
+                    "[model] face KD-tree build panicked (degenerate mesh, {} faces); \
+                     falling back to exact linear scans",
+                    centers.len()
+                );
+                self.face_kdtree = kiddo::KdTree::new();
+                self.face_kdtree_degraded = true;
+            }
         }
     }
 
     /// Build KD-Tree from raw vertices (for nearest-vertex snapping in manual seg)
+    /// Same panic guard as `build_kdtree` — see there.
     pub fn build_vertex_kdtree(&mut self) {
-        self.vertex_kdtree = kiddo::KdTree::new();
-        for (i, v) in self.vertices.iter().enumerate() {
-            self.vertex_kdtree.add(&Self::kd_point(*v, i as u64), i as u64);
+        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut tree = kiddo::KdTree::new();
+            for (i, v) in self.vertices.iter().enumerate() {
+                tree.add(&Self::kd_point(*v, i as u64), i as u64);
+            }
+            tree
+        }));
+        match built {
+            Ok(tree) => {
+                self.vertex_kdtree = tree;
+                self.vertex_kdtree_degraded = false;
+            }
+            Err(_) => {
+                log::warn!(
+                    "[model] vertex KD-tree build panicked (degenerate mesh, {} verts); \
+                     falling back to exact linear scans",
+                    self.vertices.len()
+                );
+                self.vertex_kdtree = kiddo::KdTree::new();
+                self.vertex_kdtree_degraded = true;
+            }
         }
     }
 
@@ -274,9 +338,30 @@ impl MeshModel {
         if self.vertices.is_empty() {
             return None;
         }
+        if self.vertex_kdtree_degraded {
+            // Exact linear fallback (degenerate mesh whose tree build panicked).
+            let mut best: Option<(u32, f32)> = None;
+            for (i, v) in self.vertices.iter().enumerate() {
+                let d = Self::squared_dist(point, v);
+                if best.map_or(true, |(_, bd)| d < bd) {
+                    best = Some((i as u32, d));
+                }
+            }
+            return best;
+        }
         // kiddo 4 `nearest_one` returns NearestNeighbour directly (not Option).
+        // The distance is measured against the JITTERED stored point, so
+        // recompute it against the true vertex — callers threshold on it.
         let nn = self.vertex_kdtree.nearest_one::<kiddo::SquaredEuclidean>(point);
-        Some((nn.item as u32, nn.distance))
+        let vi = nn.item as usize;
+        Some((vi as u32, Self::squared_dist(point, &self.vertices[vi])))
+    }
+
+    fn squared_dist(a: &[f32; 3], b: &[f32; 3]) -> f32 {
+        let dx = a[0] - b[0];
+        let dy = a[1] - b[1];
+        let dz = a[2] - b[2];
+        dx * dx + dy * dy + dz * dz
     }
 
     /// First face that contains the given vertex (for vertex→face mapping in
@@ -672,11 +757,64 @@ impl MeshModel {
     }
 
     /// Query faces within a radius from a point using KD-Tree
+    ///
+    /// The stored centers carry the `kd_point` jitter, so the query radius is
+    /// widened by the jitter's worst-case distance inflation (both endpoints
+    /// perturbed) — every caller re-filters by true distance, and the widened
+    /// candidate set guarantees no genuinely-in-radius face can be missed.
+    /// On a degraded index (tree build panicked) this is an exact linear scan.
     pub fn faces_within_radius(&self, point: &[f32; 3], radius: f32) -> Vec<u32> {
+        if self.face_kdtree_degraded {
+            let r2 = radius * radius;
+            let centers = self.face_centers();
+            let mut out = Vec::new();
+            for (i, c) in centers.iter().enumerate() {
+                if Self::squared_dist(point, c) < r2 {
+                    out.push(i as u32);
+                }
+            }
+            return out;
+        }
+        let bbox_mag = self
+            .bbox
+            .min
+            .iter()
+            .chain(self.bbox.max.iter())
+            .fold(0.0f32, |m, v| m.max(v.abs()));
+        // Same constants as kd_point: |p|·2^-16 + 1e-3 per axis, both endpoints.
+        let jitter_bound = bbox_mag * 1.525_878_9e-5 + 1.0e-3;
+        let widened = radius + 2.0 * jitter_bound + 1.0e-6;
         let results = self
             .face_kdtree
-            .within_unsorted::<kiddo::SquaredEuclidean>(point, radius * radius);
+            .within_unsorted::<kiddo::SquaredEuclidean>(point, widened * widened);
         results.iter().map(|item| item.item as u32).collect()
+    }
+
+    /// Face indices of the K nearest face centers to `point` (candidate set
+    /// for the SDF cone casting). Exact linear top-K on a degraded index. The
+    /// only consumer scans the whole set per ray, so ordering is unspecified.
+    pub fn nearest_face_centers(&self, point: &[f32; 3], k: usize) -> Vec<u32> {
+        let centers = self.face_centers();
+        if centers.is_empty() || k == 0 {
+            return Vec::new();
+        }
+        if self.face_kdtree_degraded {
+            let mut scored: Vec<(f32, u32)> = centers
+                .iter()
+                .enumerate()
+                .map(|(i, c)| (Self::squared_dist(point, c), i as u32))
+                .collect();
+            if k < scored.len() {
+                scored.select_nth_unstable_by(k - 1, |a, b| a.0.partial_cmp(&b.0).unwrap());
+                scored.truncate(k);
+            }
+            return scored.into_iter().map(|(_, i)| i).collect();
+        }
+        self.face_kdtree
+            .nearest_n::<kiddo::SquaredEuclidean>(point, k)
+            .iter()
+            .map(|item| item.item as u32)
+            .collect()
     }
 }
 
