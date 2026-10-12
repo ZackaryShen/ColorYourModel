@@ -9,6 +9,7 @@ import { StatusBar } from "./components/StatusBar/StatusBar";
 import { MenuBar } from "./components/MenuBar";
 import { DebugLogViewer } from "./components/DebugLogViewer";
 import { ExitConfirmDialog } from "./components/ExitConfirmDialog";
+import { ImportErrorDialog } from "./components/ImportErrorDialog";
 import { UpdateDialog } from "./components/UpdateDialog/UpdateDialog";
 import { useAutoUpdateCheck } from "./hooks/useAutoUpdateCheck";
 import { useAppStore } from "./store/appStore";
@@ -94,6 +95,10 @@ function App() {
       {/* Issue #7: in-app exit confirmation (dark-themed, replaces the
           white native MessageBox). */}
       {confirmExit && <ExitConfirmDialog onCancel={() => setConfirmExit(false)} />}
+
+      {/* P0 2026-10-12: import failures (broken/unsupported STL or .cym)
+          surface as a modal instead of only a status-bar line. */}
+      <ImportErrorDialog />
 
       {/* Update module: renders nothing while phase === "idle"; owns its own
           phases (available / downloading / ready / installing / error). */}

@@ -71,6 +71,11 @@ interface AppStore {
   isLoading: boolean;
   importProgress: number;
   importStage: string;
+  /** Raw backend error string behind the import-failure modal (P0 2026-10-12:
+   *  a broken/unsupported STL must surface as a dialog, not just a status-bar
+   *  line). null = no dialog. Transient: NOT persisted. */
+  importError: string | null;
+  setImportError: (message: string | null) => void;
 
   // In-app debug HUD (visible paint/pick diagnostics — replaces the F12 console
   // which is unavailable in Tauri release builds, iteration 14).
@@ -456,6 +461,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   isLoading: false,
   importProgress: 0,
   importStage: "",
+  importError: null,
 
   lastPaintDebug: null,
   hoverProbe: null,
@@ -679,6 +685,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   },
   setLoading: (loading) => set({ isLoading: loading }),
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),
+  setImportError: (message) => set({ importError: message }),
   setLanguage: (lang) => set({ language: lang }),
   markPaintExported: () => set({ paintDirty: false }),
   setLastPaintDebug: (s) => set({ lastPaintDebug: s }),

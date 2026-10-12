@@ -283,6 +283,12 @@ const dict: Record<string, Record<Lang, string>> = {
     en: "This model has painting or segmentation changes that have not been exported yet. Quit anyway?",
   },
 
+  // Import failure modal (P0 2026-10-12: broken/unsupported files must surface
+  // as a dialog, not only a status-bar line). The raw backend error string is
+  // shown in the dialog body under the title.
+  "dialog.importFailedTitle": { zh: "导入失败", en: "Import failed" },
+  "dialog.ok": { zh: "确定", en: "OK" },
+
   // View gizmo (Orca-style view cube, bottom-right of the viewport)
   "gizmo.top": { zh: "顶部视图（XY 平面）", en: "Top view (XY plane)" },
   "gizmo.bottom": { zh: "底部视图（XY 平面）", en: "Bottom view (XY plane)" },

@@ -16,6 +16,7 @@ export function useImportStl() {
   const setLoading = useAppStore((s) => s.setLoading);
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
+  const setImportError = useAppStore((s) => s.setImportError);
 
   const importStl = async () => {
     log.info("importStl", "Import action triggered");
@@ -36,6 +37,9 @@ export function useImportStl() {
       await loadModel(selected);
     } catch (e) {
       log.error("importStl", "Import failed", { error: String(e) });
+      // P0 2026-10-12: a status-bar line alone let a broken/unsupported file
+      // pass almost unnoticed — surface a modal as well (raw backend string).
+      setImportError(String(e));
       setStatusMessage(`${t("toolbar.importFailed")}: ${e}`);
       setLoading(false);
       return;
