@@ -236,3 +236,5 @@ The project is developed with an adversarial development loop (`PLAN → REFUTE 
 This project is licensed under the [GNU AGPL-3.0](LICENSE).
 
 Copyleft keeps derivatives — including network-service deployments — open under the same terms, while every person and company remains free to use, study, modify and redistribute the software. Note: the bundled slicer presets are extracted from the OrcaSlicer (AGPL-3.0) vendor tree and are treated as AGPL-derived data. For alternative licensing, contact the maintainer.
+
+<!-- verified: #17 -->
