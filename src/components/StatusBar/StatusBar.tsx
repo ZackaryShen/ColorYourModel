@@ -54,7 +54,10 @@ export function StatusBar() {
         onClick={() => setLanguage(language === "zh" ? "en" : "zh")}
         className="cym-btn"
         style={styles.langBtn}
-        title={language === "zh" ? "Switch to English" : "切换到中文"}
+        // Issue #17: the title previously duplicated the label; as an
+        // aria-label it also makes the switch discoverable to screen readers.
+        aria-label={t("lang.ariaLabel")}
+        title={t("lang.ariaLabel")}
       >
         {t("lang.switch")}
       </button>
@@ -113,5 +116,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 600,
     whiteSpace: "nowrap" as const,
+    // Issue #17: give the language control slightly stronger affordance than
+    // the neighbouring 🐞/theme toggles so it never reads as decoration.
+    borderColor: "var(--accent, #4a9eff)",
   },
 };

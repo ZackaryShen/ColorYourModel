@@ -270,7 +270,12 @@ const dict: Record<string, Record<Lang, string>> = {
   "debugHud.expand": { zh: "展开诊断信息", en: "Expand diagnostics" },
 
   // Language
-  "lang.switch": { zh: "EN", en: "中" },
+  // Issue #17: the old single-character label ("EN" / "中") read as an
+  // abbreviation, not a button — users reported not finding the switch at
+  // all. A spelled-out, globe-prefixed label makes the control self-evident
+  // in both locales (the label always names the language being switched TO).
+  "lang.switch": { zh: "🌐 English", en: "🌐 中文" },
+  "lang.ariaLabel": { zh: "切换到 English", en: "Switch to Chinese" },
 
   // Theme (iteration 20)
   "theme.toggle": { zh: "切换深浅色", en: "Toggle theme" },
