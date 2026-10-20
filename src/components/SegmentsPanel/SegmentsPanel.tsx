@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
+import { useSegmentMerge } from "../../hooks/useSegmentMerge";
 import { useT } from "../../i18n";
 import { segmentColorHex } from "../../utils/segmentPalette";
 import {
@@ -17,19 +18,15 @@ export function SegmentsPanel() {
   const selectedSegment = useAppStore((s) => s.selectedSegment);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const { renameSegment, mergeSegments, splitSegment, resegmentRegion, resetSegmentation } = useTauriCommand();
+  // Merge multi-select lives in the store (issue #16) so the viewport's
+  // Ctrl+click and these rows drive ONE picked list; this hook owns the
+  // merge-segments call and the collapse-to-anchor aftercare.
+  const { picked, merging, mergePicked } = useSegmentMerge();
+  const setMergePicked = useAppStore((s) => s.setMergePicked);
+  const clearMergePicked = useAppStore((s) => s.clearMergePicked);
+  const toggleMergePicked = useAppStore((s) => s.toggleMergePicked);
+  const { renameSegment, splitSegment, resegmentRegion, resetSegmentation } = useTauriCommand();
   const isLoaded = useAppStore((s) => s.isLoaded);
-
-  // Ordered multi-selection for merging. `picked[0]` is the anchor and becomes
-  // the surviving region — the target is never inferred from size or label,
-  // because every such rule is wrong for some selection and silently produces
-  // a merge into a region the user did not point at.
-  //
-  // Kept local rather than in the store: `selectedSegment` drives the viewport
-  // highlight/dim path, and widening it to a set would put a second meaning on
-  // a value the render loop reads every frame.
-  const [picked, setPicked] = useState<number[]>([]);
-  const [merging, setMerging] = useState(false);
 
   // Which row has its split form open, and the crease threshold for it. Kept
   // local like the edit/merge state: a split acts on one region the user points
@@ -90,12 +87,11 @@ export function SegmentsPanel() {
   // Same hazard for the merge selection: a merge, an undo or a re-run can
   // dissolve a picked region, and sending its label to the backend afterwards
   // fails the existence check — or worse, hits a label that has been reissued.
+  // (The viewport's MergeBar prunes by the same rule.)
   useEffect(() => {
-    setPicked((prev) => {
-      const live = prev.filter((id) => segments.some((s) => s.id === id));
-      return live.length === prev.length ? prev : live;
-    });
-  }, [segments]);
+    const live = picked.filter((id) => segments.some((s) => s.id === id));
+    if (live.length !== picked.length) setMergePicked(live);
+  }, [segments, picked, setMergePicked]);
 
   // The open split form must also close if its region vanishes underneath it.
   useEffect(() => {
@@ -114,30 +110,22 @@ export function SegmentsPanel() {
 
   const target = picked.length >= 2 ? segments.find((s) => s.id === picked[0]) : undefined;
 
+  // Ctrl+click toggles the row inside the shared ordered merge set (anchor
+  // semantics handled by the store action); a plain click re-anchors the
+  // selection to that one row, or deselects when it is already the only pick.
   const toggle = (id: number, additive: boolean) => {
     if (!additive) {
       const single = picked.length === 1 && picked[0] === id;
-      setPicked(single ? [] : [id]);
-      setSelectedSegment(single ? null : id);
+      if (single) {
+        clearMergePicked();
+        setSelectedSegment(null);
+      } else {
+        setMergePicked([id]);
+        setSelectedSegment(id);
+      }
       return;
     }
-    // Computed from the render's own `picked` rather than inside a functional
-    // updater: React may invoke an updater twice, and `setSelectedSegment` is a
-    // side effect that must not ride along.
-    const next = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id];
-    setPicked(next);
-    setSelectedSegment(next[0] ?? null);
-  };
-
-  const runMerge = async () => {
-    if (!target || merging) return;
-    setMerging(true);
-    const moved = await mergeSegments(target.id, picked.slice(1));
-    setMerging(false);
-    if (moved === null) return;
-    setStatusMessage(t("segments.merged", picked.length, moved));
-    setPicked([target.id]);
-    setSelectedSegment(target.id);
+    toggleMergePicked(id);
   };
 
   const runSplit = async (id: number) => {
@@ -404,7 +392,7 @@ export function SegmentsPanel() {
       </div>
       {target && (
         <button
-          onClick={() => void runMerge()}
+          onClick={() => void mergePicked()}
           disabled={merging}
           style={styles.mergeButton}
         >

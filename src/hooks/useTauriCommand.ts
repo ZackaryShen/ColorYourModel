@@ -20,6 +20,7 @@ export function useTauriCommand() {
   // visible stage bar instead of a frozen click.
   const setLoading = useAppStore((s) => s.setLoading);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
+  const clearMergePicked = useAppStore((s) => s.clearMergePicked);
   const setSegmentMetadata = useAppStore((s) => s.setSegmentMetadata);
   const markHistoryDirty = useAppStore((s) => s.markHistoryDirty);
   const markPaintExported = useAppStore((s) => s.markPaintExported);
@@ -65,6 +66,10 @@ export function useTauriCommand() {
       // faceColors length matches meshData.faceColors, so the store guard passes
       // and the canvas repaints to neutral grey.
       updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
+      // Every region just dissolved, so a pending merge selection is stale by
+      // construction (issue #16); the panel's prune effect would also catch
+      // this, but clearing here keeps the rule next to the other resets.
+      clearMergePicked();
       setStatusMessage(t("cmd.reset.done"));
     } catch (e) {
       log.error("useTauriCommand", "resetSegmentation failed", { error: String(e) });

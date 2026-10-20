@@ -171,6 +171,11 @@ const dict: Record<string, Record<Lang, string>> = {
   "segments.renameHint": { zh: "双击重命名，Ctrl+点击多选", en: "Double-click to rename, Ctrl-click to multi-select" },
   "segments.mergeInto": { zh: "合并 {0} 个分区到「{1}」", en: "Merge {0} regions into \"{1}\"" },
   "segments.merged": { zh: "已合并 {0} 个分区（{1} 个面）", en: "Merged {0} regions ({1} faces)" },
+  // Issue #16 on-mesh merge picking. One string doubles as the first-pick
+  // feedback and the "no live partition here" nudge, so the user is guided
+  // toward segmenting instead of toggling a meaningless label.
+  "merge.hint": { zh: "Ctrl+点击已分区模型可多选区域，再次点击取消，Esc 清空", en: "Ctrl+click the partitioned model to multi-select regions; click again to deselect, Esc to clear" },
+  "merge.clearTitle": { zh: "清空多选", en: "Clear selection" },
   "segments.split": { zh: "拆分", en: "Split" },
   "segments.splitHint": { zh: "沿内部棱角把一个分区拆成多个", en: "Split a region into pieces along its internal creases" },
   "segments.splitThreshold": { zh: "棱角阈值 (°)", en: "Crease threshold (°)" },

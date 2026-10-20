@@ -16,6 +16,7 @@ import { resolveSegmentStage } from "../../segmentStages";
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
 import { ViewGizmo } from "./ViewGizmo";
 import { isPointerInGizmo } from "./viewGizmoModel";
+import { MergeBar } from "./MergeBar";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
 // Patched ONCE at module load. `acceleratedRaycast` falls back to the native
@@ -506,60 +507,85 @@ function buildVertexData(meshData: MeshDataLike): {
 }
 
 // ─── Segment Outline (boundary edges for selected segment) ────────
-function SegmentOutline({ meshData, selectedSegment, edgeMap, facesBySeg }: {
+// `labels` is ordered: `labels[0]` is the anchor and keeps the established
+// outline colour; any further labels (the rest of the merge multi-select,
+// issue #16) share a secondary colour so anchor vs sources read at a glance.
+// Single-label callers (selection highlight, hover) pass a one-element array.
+function SegmentOutline({ meshData, labels, edgeMap, facesBySeg }: {
   meshData: { faces: number[]; segmentLabels: number[]; vertices: number[] };
-  selectedSegment: number;
+  labels: number[];
   edgeMap: { map: Map<number, number[]>; vmax: number };
   facesBySeg: Map<number, number[]>;
 }) {
   const overlay = useOverlayColors();
-  const geometry = useMemo(() => {
+  const geometries = useMemo(() => {
     const faces = meshData.faces;
-    const labels = meshData.segmentLabels;
+    const faceLabels = meshData.segmentLabels;
     const verts = meshData.vertices;
     const { map: edgeToFaces, vmax } = edgeMap;
 
-    // Only iterate the faces belonging to the selected segment (cheap even when
+    // Only iterate the faces belonging to the listed segments (cheap even when
     // switching selection on a huge mesh). Boundary = an edge whose co-face has
     // a different label, or an edge belonging to a single face (mesh border).
-    const selectedFaces = facesBySeg.get(selectedSegment);
-    if (!selectedFaces || selectedFaces.length === 0) return null;
+    // Two vertex runs instead of N geometries: anchor vs secondary is purely a
+    // material colour split.
+    let anchorVerts: number[] | null = null;
+    let secondaryVerts: number[] | null = null;
+    for (let i = 0; i < labels.length; i++) {
+      const selectedFaces = facesBySeg.get(labels[i]);
+      if (!selectedFaces || selectedFaces.length === 0) continue;
 
-    const boundaryVerts: number[] = [];
-    for (const f of selectedFaces) {
-      const v0 = faces[f * 3], v1 = faces[f * 3 + 1], v2 = faces[f * 3 + 2];
-      const edges = [
-        [Math.min(v0, v1), Math.max(v0, v1)],
-        [Math.min(v1, v2), Math.max(v1, v2)],
-        [Math.min(v2, v0), Math.max(v2, v0)],
-      ];
-      for (const [a, b] of edges) {
-        const cofaces = edgeToFaces.get(a * vmax + b);
-        if (!cofaces) continue;
-        const onBoundary =
-          cofaces.some((f2) => labels[f2] !== selectedSegment) || cofaces.length === 1;
-        if (onBoundary) {
-          boundaryVerts.push(
-            verts[a * 3], verts[a * 3 + 1], verts[a * 3 + 2],
-            verts[b * 3], verts[b * 3 + 1], verts[b * 3 + 2]
-          );
+      const boundaryVerts: number[] = [];
+      for (const f of selectedFaces) {
+        const v0 = faces[f * 3], v1 = faces[f * 3 + 1], v2 = faces[f * 3 + 2];
+        const edges = [
+          [Math.min(v0, v1), Math.max(v0, v1)],
+          [Math.min(v1, v2), Math.max(v1, v2)],
+          [Math.min(v2, v0), Math.max(v2, v0)],
+        ];
+        for (const [a, b] of edges) {
+          const cofaces = edgeToFaces.get(a * vmax + b);
+          if (!cofaces) continue;
+          const onBoundary =
+            cofaces.some((f2) => faceLabels[f2] !== labels[i]) || cofaces.length === 1;
+          if (onBoundary) {
+            boundaryVerts.push(
+              verts[a * 3], verts[a * 3 + 1], verts[a * 3 + 2],
+              verts[b * 3], verts[b * 3 + 1], verts[b * 3 + 2]
+            );
+          }
         }
       }
+      if (boundaryVerts.length === 0) continue;
+      if (i === 0) anchorVerts = boundaryVerts;
+      else if (secondaryVerts) secondaryVerts.push(...boundaryVerts);
+      else secondaryVerts = boundaryVerts;
     }
 
-    if (boundaryVerts.length === 0) return null;
+    const toGeometry = (v: number[] | null) => {
+      if (!v) return null;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(v, 3));
+      return geo;
+    };
+    return { anchor: toGeometry(anchorVerts), secondary: toGeometry(secondaryVerts) };
+  }, [meshData.faces, meshData.segmentLabels, meshData.vertices, labels, edgeMap, facesBySeg]);
 
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(boundaryVerts, 3));
-    return geo;
-  }, [meshData.faces, meshData.segmentLabels, meshData.vertices, selectedSegment, edgeMap, facesBySeg]);
-
-  if (!geometry) return null;
+  if (!geometries.anchor && !geometries.secondary) return null;
 
   return (
-    <lineSegments geometry={geometry}>
-      <lineBasicMaterial color={overlay.outline} linewidth={2} depthTest={false} />
-    </lineSegments>
+    <>
+      {geometries.anchor && (
+        <lineSegments geometry={geometries.anchor}>
+          <lineBasicMaterial color={overlay.outline} linewidth={2} depthTest={false} />
+        </lineSegments>
+      )}
+      {geometries.secondary && (
+        <lineSegments geometry={geometries.secondary}>
+          <lineBasicMaterial color={overlay.cursor} linewidth={2} depthTest={false} />
+        </lineSegments>
+      )}
+    </>
   );
 }
 
@@ -756,6 +782,10 @@ function MeshDisplay() {
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
   const hoveredSegment = useAppStore((s) => s.hoveredSegment);
   const setHoveredSegment = useAppStore((s) => s.setHoveredSegment);
+  // Merge multi-select (issue #16): read for outline rendering, toggle handler
+  // for the Ctrl+click pick branch.
+  const mergePicked = useAppStore((s) => s.mergePicked);
+  const toggleMergePicked = useAppStore((s) => s.toggleMergePicked);
   const activeTool = useAppStore((s) => s.activeTool);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const shadingMode = useAppStore((s) => s.shadingMode);
@@ -1528,6 +1558,27 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       if (isPointerInGizmo(e.clientX, e.clientY, canvas)) return;
       // View mode or Alt held → let OrbitControls handle it (rotate); never paint.
       if (isViewTool || _altHeld) return;
+      // Issue #16: Ctrl/Cmd+click toggles the clicked face's region in/out of
+      // the merge multi-select. Sits BEFORE every tool branch so it wins
+      // regardless of the active tool — Ctrl has no other pointerdown role
+      // (brush resize is Ctrl+wheel), and off-model / unsegmented clicks fall
+      // through untouched so Ctrl+drag keeps orbiting.
+      if (e.ctrlKey || e.metaKey) {
+        if (!meshData?.segmentLabels) return;
+        const hit = getLocalHit(e.clientX, e.clientY);
+        if (!hit || hit.faceIndex < 0) return;
+        const lbl = meshData.segmentLabels[hit.faceIndex];
+        // Live-partition membership only (same rule as the seed pick branch):
+        // a stale or unsegmented label must never enter the merge set — hint
+        // toward segmenting instead.
+        if (lbl === undefined || !segmentIds.has(lbl)) {
+          setStatusMessage(t("merge.hint"));
+          return;
+        }
+        toggleMergePicked(lbl);
+        setStatusMessage(t("merge.hint"));
+        return;
+      }
       // Iteration 78: Pick-for-Eye sub-mode intercepts clicks BEFORE the
       // seed-tool branch so a pick-mode click cannot accidentally also place
       // a seed (or erase one). Auto-exits on first committed hit — repeat
@@ -1989,7 +2040,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, toggleMergePicked, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {
@@ -2129,6 +2180,20 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     return () => window.removeEventListener("keydown", onKey);
   }, [historyUndo, historyRedo, setStatusMessage, t]);
 
+  // Issue #16: Esc clears the merge multi-select (same exit as the merge bar's
+  // × button). Reads the store via getState so no deps churn; no-op while the
+  // selection is empty, so the seed/lasso Esc handlers keep their semantics.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const { mergePicked: picked, clearMergePicked } = useAppStore.getState();
+      if (picked.length === 0) return;
+      clearMergePicked();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (!geometry) return null;
 
   return (
@@ -2164,7 +2229,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           draws the crisp boundary. */}
       {!segmentView && renderedHighlightLabel !== null && meshData && edgeMap && facesBySeg && (
         <>
-          <SegmentOutline meshData={meshData} selectedSegment={renderedHighlightLabel} edgeMap={edgeMap} facesBySeg={facesBySeg} />
+          <SegmentOutline meshData={meshData} labels={[renderedHighlightLabel]} edgeMap={edgeMap} facesBySeg={facesBySeg} />
         </>
       )}
       {/* Segment view: always highlight the selected segment (fill + outline);
@@ -2174,13 +2239,20 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         <>
           {renderedHighlightLabel !== null && (
             <>
-              <SegmentOutline meshData={meshData} selectedSegment={renderedHighlightLabel} edgeMap={edgeMap} facesBySeg={facesBySeg} />
+              <SegmentOutline meshData={meshData} labels={[renderedHighlightLabel]} edgeMap={edgeMap} facesBySeg={facesBySeg} />
             </>
           )}
           {hoveredSegment !== null && hoveredSegment !== selectedSegment && (
-            <SegmentOutline meshData={meshData} selectedSegment={hoveredSegment} edgeMap={edgeMap} facesBySeg={facesBySeg} />
+            <SegmentOutline meshData={meshData} labels={[hoveredSegment]} edgeMap={edgeMap} facesBySeg={facesBySeg} />
           )}
         </>
+      )}
+      {/* Merge multi-select outlines (issue #16): mergePicked[0] keeps the
+          anchor colour, the rest get the secondary colour. Gated only by the
+          selection itself so it stays visible in BOTH paint and segment view,
+          regardless of the active tool. */}
+      {mergePicked.length > 0 && meshData && edgeMap && facesBySeg && (
+        <SegmentOutline meshData={meshData} labels={mergePicked} edgeMap={edgeMap} facesBySeg={facesBySeg} />
       )}
       {/* Lasso overlay (manual region selection) */}
       {(lassoPoints.length > 0 || lassoPreview || lassoSnap) && (
@@ -2953,6 +3025,7 @@ export function Viewport() {
       <ProgressBar />
       <SegmentToggle />
       <SegmentViewHint />
+      <MergeBar />
       <ControlsHelp />
       <DebugHud />
       <Toast />

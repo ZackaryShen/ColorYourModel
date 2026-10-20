@@ -40,6 +40,13 @@ interface AppStore {
   /** Segment currently under the cursor (paint view near-highlight / segment
    *  view hover-outline). Null when not hovering a segment. */
   hoveredSegment: number | null;
+  /** Ordered merge multi-selection (issue #16), shared by SegmentsPanel rows
+   *  and Viewport Ctrl+click. `mergePicked[0]` is the anchor: the region the
+   *  others merge INTO, and the one `selectedSegment` tracks so the existing
+   *  viewport highlight keeps meaning "the surviving region". Ordered, not a
+   *  Set, because anchor identity is user intent — never inferable from label
+   *  or size. Transient: NOT persisted (see partialize whitelist). */
+  mergePicked: number[];
   snapEnabled: boolean;
   segmentView: boolean;
 
@@ -138,6 +145,14 @@ interface AppStore {
   setSegmentMetadata: (segments: Segment[]) => void;
   setSelectedSegment: (id: number | null) => void;
   setHoveredSegment: (id: number | null) => void;
+  /** Append/remove one label in the merge multi-select, preserving order and
+   *  following `selectedSegment` to the (possibly new) anchor. */
+  toggleMergePicked: (label: number) => void;
+  /** Empty the merge multi-select. Deliberately does NOT touch
+   *  `selectedSegment`: clearing a pending merge is not a deselect. */
+  clearMergePicked: () => void;
+  /** Bulk-replace the merge multi-select (prune effect / collapse-to-anchor). */
+  setMergePicked: (list: number[]) => void;
   setSnapEnabled: (enabled: boolean) => void;
   setSegmentView: (enabled: boolean) => void;
   /** One-shot suggestion card (Viewport top-centre): raised right after the
@@ -438,6 +453,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   segments: [],
   selectedSegment: null,
   hoveredSegment: null,
+  mergePicked: [],
   snapEnabled: false,
   segmentView: false,
   toast: null,
@@ -481,6 +497,10 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       canUndo: false,
       canRedo: false,
       paintDirty: false,
+      // Fresh model → a pending merge multi-select is stale by construction
+      // (its labels belonged to the previous mesh). 0.1.1 clears load-time
+      // transient state here rather than via a dedicated reset action.
+      mergePicked: [],
       segments: projectSegments(data.segments),
       statusMessage: translate("status.loaded", get().language, data.faceCount.toLocaleString()),
     })),
@@ -574,6 +594,20 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setSegments: (segments) => set({ segments }),
   setSelectedSegment: (id) => set({ selectedSegment: id }),
   setHoveredSegment: (id) => set({ hoveredSegment: id }),
+  // `selectedSegment` follows the anchor so the viewport highlight and the
+  // merge bar's "merge into X" always name the same region. An emptied list
+  // (last label removed) leaves `selectedSegment` alone, matching the
+  // clear-not-deselect rule documented on `clearMergePicked`.
+  toggleMergePicked: (label) => {
+    const prev = get().mergePicked;
+    const next = prev.includes(label)
+      ? prev.filter((x) => x !== label)
+      : [...prev, label];
+    if (next.length > 0) set({ mergePicked: next, selectedSegment: next[0] });
+    else set({ mergePicked: next });
+  },
+  clearMergePicked: () => set({ mergePicked: [] }),
+  setMergePicked: (list) => set({ mergePicked: list }),
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   setSegmentView: (enabled) =>
     set((s) => ({
