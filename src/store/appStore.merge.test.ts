@@ -73,12 +73,20 @@ describe("clearMergePicked", () => {
 });
 
 describe("new-model path clears mergePicked", () => {
-  it("resetProjectTransientState (loadProject runs it before setMeshData) empties the merge selection", () => {
+  it("setMeshData (import a fresh model) empties the merge selection", () => {
     useAppStore.setState({
       mergePicked: [4, 9],
       selectedSegment: 4,
     } as Partial<ReturnType<typeof useAppStore.getState>>);
-    s().resetProjectTransientState();
+    s().setMeshData({
+      vertices: [0, 0, 0],
+      faces: [0, 0, 0],
+      faceColors: [1, 1, 1, 1],
+      segmentLabels: [0],
+      bbox: { min: [0, 0, 0], max: [1, 1, 1] },
+      faceCount: 1,
+      segments: [],
+    });
     expect(s().mergePicked).toEqual([]);
   });
 });
