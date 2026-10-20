@@ -1556,13 +1556,15 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // View-gizmo corner owns its pointers — never paint/lasso/seed from
       // there (ViewGizmo also disables OrbitControls inside the rect).
       if (isPointerInGizmo(e.clientX, e.clientY, canvas)) return;
-      // View mode or Alt held → let OrbitControls handle it (rotate); never paint.
-      if (isViewTool || _altHeld) return;
+      // Alt → temporary camera rotate always wins, even over merge picking.
+      if (_altHeld) return;
       // Issue #16: Ctrl/Cmd+click toggles the clicked face's region in/out of
-      // the merge multi-select. Sits BEFORE every tool branch so it wins
-      // regardless of the active tool — Ctrl has no other pointerdown role
-      // (brush resize is Ctrl+wheel), and off-model / unsegmented clicks fall
-      // through untouched so Ctrl+drag keeps orbiting.
+      // the merge multi-select. Sits BEFORE the view-tool return and every
+      // tool branch: View is the DEFAULT tool, so a first-run user ctrl+clicks
+      // without ever switching tools — a pick living below that return would
+      // be dead on arrival. Off-model / unsegmented clicks fall through
+      // untouched so Ctrl+drag keeps orbiting; Ctrl has no other pointerdown
+      // role (brush resize is Ctrl+wheel).
       if (e.ctrlKey || e.metaKey) {
         if (!meshData?.segmentLabels) return;
         const hit = getLocalHit(e.clientX, e.clientY);
@@ -1579,6 +1581,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         setStatusMessage(t("merge.hint"));
         return;
       }
+      // View mode → let OrbitControls handle it (rotate); never paint.
+      if (isViewTool) return;
       // Iteration 78: Pick-for-Eye sub-mode intercepts clicks BEFORE the
       // seed-tool branch so a pick-mode click cannot accidentally also place
       // a seed (or erase one). Auto-exits on first committed hit — repeat

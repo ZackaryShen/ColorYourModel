@@ -19,7 +19,7 @@ Issue #16：自动播种猜错边界时，用户只能重新播种。诉求 = �
 
 ## 交互设计
 
-1. **拾取**：`Viewport` `onPointerDown`（`Viewport.tsx:1668`）在 gizmo/view/Alt 守卫之后、各工具分支之前插入：`e.ctrlKey || e.metaKey` 且 `meshData.segmentLabels` 存在且命中模型 → 取 `segmentLabels[hit.faceIndex]`，调 `toggleMergePicked(lbl)`；未命中 → 忽略（保持现状，让轨道旋转）。不占用：Ctrl 目前仅用于 Ctrl+滚轮调笔刷（`Viewport.tsx:2222`），无 pointerdown 冲突。View 工具与 Alt 旋转不受影响（提前 return）。
+1. **拾取**：`Viewport` `onPointerDown`（`Viewport.tsx:1668`）在 gizmo 与 Alt 守卫之后、**`isViewTool` 早退之前**、各工具分支之前插入：`e.ctrlKey || e.metaKey` 且 `meshData.segmentLabels` 存在且命中模型 → 取 `segmentLabels[hit.faceIndex]`，调 `toggleMergePicked(lbl)`；未命中 → 忽略（保持现状，让轨道旋转）。（修正记录：最初写在 view 守卫之后，但 View 是默认工具，首跑用户不切工具就 Ctrl+点击，拾取会完全失效——桌面实测发现后上移。）不占用：Ctrl 目前仅用于 Ctrl+滚轮调笔刷（`Viewport.tsx:2222`），无 pointerdown 冲突。Alt 旋转优先级高于拾取；View 工具下 Ctrl+点击拾取、普通拖拽仍是旋转。
 2. **反馈**：
    - 状态栏提示首次拾取成功：新 i18n key `merge.hint`（zh：Ctrl+点击已分区模型可多选区域合并；Esc 清空 / EN 同义）。
    - `SegmentOutline`（`Viewport.tsx:514`）由单 `selectedSegment` 扩展为 `labels: number[]`：锚点（=selectedSegment，即 picked[0]）沿用现有样式，非锚点 picked 用辅助色描边。props 改名 `labels`，memo deps 同步。
