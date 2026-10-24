@@ -2,6 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useT } from "../i18n";
 import { useAppStore } from "../store/appStore";
 import { useTauriCommand } from "./useTauriCommand";
+import { DROPPABLE_EXTENSIONS } from "../utils/stlDrop";
 import { log } from "../utils/logger";
 
 /**
@@ -9,6 +10,10 @@ import { log } from "../utils/logger";
  * messages). Extracted from the Toolbar button (iteration 14) when the File
  * menu needed the same behaviour; the Toolbar keeps its own progress-event
  * listeners, this hook only owns the click-to-loaded path.
+ *
+ * `importFromPath` is the pipeline's single entry: the file dialog and the
+ * drag-drop import (issue #21) both land here, so progress reporting and
+ * error handling can never drift between the two entry points.
  */
 export function useImportStl() {
   const t = useT();
@@ -17,20 +22,8 @@ export function useImportStl() {
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
 
-  const importStl = async () => {
-    log.info("importStl", "Import action triggered");
-    const selected = await open({
-      multiple: false,
-      // 0.2.0-P1: the entry point is format-aware — .stl imports fresh, .cym
-      // opens a full project (labels + paint + region names restored).
-      filters: [{ name: "3D Models / CYM Project", extensions: ["stl", "cym"] }],
-    });
-    if (!selected) {
-      log.debug("importStl", "File dialog cancelled");
-      return;
-    }
-
-    log.info("importStl", `File selected: ${selected}`);
+  const importFromPath = async (selected: string) => {
+    log.info("importStl", `Importing: ${selected}`);
     setLoading(true);
     setImportProgress(0, t("toolbar.startImport"));
 
@@ -56,5 +49,25 @@ export function useImportStl() {
     setLoading(false);
   };
 
-  return importStl;
+  const importStl = async () => {
+    log.info("importStl", "Import action triggered");
+    const selected = await open({
+      multiple: false,
+      // 0.2.0-P1: the entry point is format-aware — .stl imports fresh, .cym
+      // opens a full project (labels + paint + region names restored). The
+      // filter and the drop gate (planFileDrop) share one extension list so
+      // the two entry points can never drift apart.
+      filters: [
+        { name: "3D Models / CYM Project", extensions: [...DROPPABLE_EXTENSIONS] },
+      ],
+    });
+    if (!selected) {
+      log.debug("importStl", "File dialog cancelled");
+      return;
+    }
+
+    await importFromPath(selected);
+  };
+
+  return { importStl, importFromPath };
 }

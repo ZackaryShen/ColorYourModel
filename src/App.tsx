@@ -9,8 +9,12 @@ import { StatusBar } from "./components/StatusBar/StatusBar";
 import { MenuBar } from "./components/MenuBar";
 import { DebugLogViewer } from "./components/DebugLogViewer";
 import { ExitConfirmDialog } from "./components/ExitConfirmDialog";
+import { DropOverlay } from "./components/DropOverlay";
+import { DropReplaceDialog } from "./components/DropReplaceDialog";
 import { UpdateDialog } from "./components/UpdateDialog/UpdateDialog";
 import { useAutoUpdateCheck } from "./hooks/useAutoUpdateCheck";
+import { useDropImport } from "./hooks/useDropImport";
+import { useImportStl } from "./hooks/useImportStl";
 import { useAppStore } from "./store/appStore";
 import { useT } from "./i18n";
 
@@ -22,6 +26,13 @@ function App() {
   const hasMesh = useAppStore((s) => s.meshData !== null);
   const [confirmExit, setConfirmExit] = useState(false);
   const t = useT();
+
+  // Issue #21: drag an STL/.cym onto ANY part of the window to import it.
+  // The drop shares the 📂 pipeline (importFromPath); a drop that would
+  // replace a loaded model first asks, like the exit confirm does.
+  const { importFromPath } = useImportStl();
+  const { dragOver, pendingReplacePath, confirmReplace, cancelReplace } =
+    useDropImport(importFromPath);
 
   // Silent startup update check (dev builds and opted-out users never fire).
   useAutoUpdateCheck();
@@ -94,6 +105,13 @@ function App() {
       {/* Issue #7: in-app exit confirmation (dark-themed, replaces the
           white native MessageBox). */}
       {confirmExit && <ExitConfirmDialog onCancel={() => setConfirmExit(false)} />}
+
+      {/* Issue #21: whole-window drop highlight while files hover, and the
+          replace confirmation for a drop onto a loaded model. */}
+      {dragOver && <DropOverlay />}
+      {pendingReplacePath && (
+        <DropReplaceDialog onCancel={cancelReplace} onConfirm={confirmReplace} />
+      )}
 
       {/* Update module: renders nothing while phase === "idle"; owns its own
           phases (available / downloading / ready / installing / error). */}

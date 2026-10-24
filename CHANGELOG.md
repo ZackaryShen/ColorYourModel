@@ -40,6 +40,10 @@
 
 ## [Unreleased]
 
+### Added — 拖拽 STL 导入（#21，2026-10-24）
+
+- **拖 STL 到窗口任意位置即可导入**（#21）：从资源管理器拖 `.stl`/`.cym` 到窗口任意区域（视口或侧栏）即走 📂 按钮的同一条导入管线（进度条、面数状态、错误处理零分叉）。实现走 Tauri 2 `getCurrentWebview().onDragDropEvent()`（默认 `dragDropEnabled: true` 下 Windows WebView2 拦截 OS 拖放，HTML5 drop 事件不触发——这正是此前拖放被静默吞掉的原因）。拖入悬停时全窗口虚线高亮 +「松开以导入 STL」提示；多文件、不支持的扩展名、导入进行中的拖放都会在状态栏给出明确提示而非沉默；已加载模型时先弹窗确认再替换（与退出确认同一风险语义，防误丢未导出涂装）。路由决策抽为纯函数 `src/utils/stlDrop.ts`（7 个 TDD 回归测试钉死），前端零 Rust 改动、零 conf/capability 变更
+
 ### Fixed — 画笔整笔撤销（#20，2026-10-24）
 
 - **一笔涂装一次 Ctrl+Z 完整还原**（#20）：v0.1.1 的串行涂装队列在 drain 循环转发任务时漏掉 `strokeId`，后端每个 pointermove 采样都收到 `stroke_id: None`，永不合并成单条历史记录——用户要按多次 Ctrl+Z 才能把一笔「剥」回去。转发修复已随渐变画笔提交进入 main；本次把队列抽取为独立模块 `src/components/Viewport/paintQueue.ts` 并新增 4 个回归测试（`paintQueue.test.ts`）钉死契约：strokeId 逐字透传（#20 的失效点）、latest-wins 节流、新笔画 id 隔离、单任务失败不毁队列。Brush/Spray/Smart/Eraser/分区画笔同样受益
