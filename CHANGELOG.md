@@ -40,6 +40,10 @@
 
 ## [Unreleased]
 
+### Fixed — 画笔整笔撤销（#20，2026-10-24）
+
+- **一笔涂装一次 Ctrl+Z 完整还原**（#20）：v0.1.1 的串行涂装队列在 drain 循环转发任务时漏掉 `strokeId`，后端每个 pointermove 采样都收到 `stroke_id: None`，永不合并成单条历史记录——用户要按多次 Ctrl+Z 才能把一笔「剥」回去。转发修复已随渐变画笔提交进入 main；本次把队列抽取为独立模块 `src/components/Viewport/paintQueue.ts` 并新增 4 个回归测试（`paintQueue.test.ts`）钉死契约：strokeId 逐字透传（#20 的失效点）、latest-wins 节流、新笔画 id 隔离、单任务失败不毁队列。Brush/Spray/Smart/Eraser/分区画笔同样受益
+
 ### Fixed — 0.2.0 P0 质量地基（2026-10-05）
 
 - **SeedPanel 3 个选择器用例修复（vitest 60/60，此前 57/60）**：Iteration B 模式切换器落地后 `segmentMode` 默认 `auto`，`推荐种子/生长` 按钮不再渲染，而 onGrow 回归用例未钉模式；且 `/生长/` 正则同时命中「🌱 手动（生长）」模式 Tab（getMultipleElementsFoundError）。测试侧修复：resetStore 显式钉 `segmentMode:"manual"`（与折角滑杆用例钉 `auto` 同一先例）+ 生长按钮按精确可访问名匹配；产品代码零改动

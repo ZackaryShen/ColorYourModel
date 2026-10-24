@@ -21,6 +21,7 @@ import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-
 import { ViewGizmo } from "./ViewGizmo";
 import { isPointerInGizmo } from "./viewGizmoModel";
 import { isClosureIntent, localToScreenPx, projectedRadiusPx } from "./lassoClosure";
+import { createSerialPaintQueue, type PaintJob } from "./paintQueue";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
 // Patched ONCE at module load. `acceleratedRaycast` falls back to the native
@@ -1453,37 +1454,24 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const handleFacePickedRef = useRef(handleFacePicked);
   handleFacePickedRef.current = handleFacePicked;
 
-  // Serial paint queue (iteration 15, req #2). A drag fires many pointermove
-  // events, each issuing an async Tauri `paintFace`. Fire-and-forget invokes
-  // returned OUT OF ORDER and `updateFaceColors` wrote them synchronously, so
-  // overlapping brush strokes overwrote each other in the wrong order — the
-  // real cause of "color not following the cursor" (REFUTE P6). Serializing
-  // guarantees faces are colored strictly in the order the cursor visited them.
-  // Latest-wins consumer throttle (iteration 16, REFUTE blocker-3). In WebView2
-  // `pointermove` is already rAF-aligned, so an extra rAF-coalesce is a no-op that
-  // only trades lag for gaps — instead we keep ONLY the most recent face while a
-  // Tauri paint IPC is in flight. The queue never grows unbounded, so the visual
-  // paint lags by at most one round-trip. Intermediate faces between two samples
-  // are covered by the brush's radius flood-fill (no need for path interpolation
-  // in this iteration; see loop-journal backlog for a batch-stroke IPC).
-  // The queued item carries the modifier state captured at event time, so a
-  // Shift+click whole-region fill is not lost while an earlier paint is in
-  // flight (iteration 18, M3).
-  const dragPendingFaceRef = useRef<{
-    faceId: number;
-    wholeRegion: boolean;
-    hoveredSegment?: number | null;
-    renderedHover?: number | null;
-    strokeId?: number | null;
-    /** 0.2.0-P2 gradient (path mode): precomputed sample color. */
-    colorOverride?: [number, number, number, number];
-    /** 0.2.0-P2 gradient (radial mode): one-shot graded disc. */
-    gradientRadial?: boolean;
-    /** 0.2.0-P2 gradient v3: finalize sentinel — flush the sample buffer as
-     *  one batched knee-gradient command (fixes the ordering defect). */
-    finalizeGradient?: { face: number; t: number }[];
-  } | null>(null);
-  const paintDrainingRef = useRef(false);
+  // Serial paint queue — see paintQueue.ts for why the drain is serialized
+  // (iteration 15) and latest-wins (iteration 16), and paintQueue.test.ts for
+  // the strokeId-forwarding contract whose loss was issue #20 (one drag undone
+  // one sample at a time).
+  const paintQueue = useMemo(
+    () =>
+      createSerialPaintQueue<PaintJob>((job) =>
+        handleFacePickedRef.current(job.faceId, {
+          wholeRegion: job.wholeRegion,
+          hoveredSegment: job.hoveredSegment,
+          renderedHover: job.renderedHover,
+          strokeId: job.strokeId,
+          colorOverride: job.colorOverride,
+          gradientRadial: job.gradientRadial,
+        })
+      ),
+    []
+  );
   // Backend coalesces consecutive paint calls that share a `stroke_id` into ONE
   // undo entry. We mint a fresh id per drag (pointerdown) and reuse it for the
   // whole drag, so a single brush stroke = one undo step. The id alone delimits
@@ -1518,7 +1506,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // reads null (iter29 v1-v3 all failed due to this race). The snapshot is a
     // HUD diagnostic only now; it never steers the fill target.
     const snap = useAppStore.getState().hoveredSegment;
-    dragPendingFaceRef.current = {
+    const job: PaintJob = {
       faceId,
       wholeRegion,
       hoveredSegment: snap ?? null,
@@ -1528,7 +1516,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // into one field would hide the very signal the HUD exists to expose.
       renderedHover: renderedHighlightLabelRef.current,
       // The stroke id minted at pointerdown; groups this whole drag into one
-      // backend undo entry (see strokeCounterRef above).
+      // backend undo entry (see strokeCounterRef above). Forwarding this field
+      // is load-bearing: dropping it was issue #20.
       strokeId: activeStrokeIdRef.current,
       colorOverride,
       gradientRadial,
@@ -1538,31 +1527,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // now derived from segmentLabels[faceId] inside paintFace).
     setHoverProbe(
       `[CLICK] face=${faceId} snap(store)=${snap ?? "null"} ` +
-      `→ final=${dragPendingFaceRef.current.hoveredSegment ?? "null"}`
+      `→ final=${job.hoveredSegment ?? "null"}`
     );
-    if (paintDrainingRef.current) return; // busy → drop intermediate (covered by radius)
-    paintDrainingRef.current = true;
-    (async () => {
-      const fn = handleFacePickedRef.current;
-      while (dragPendingFaceRef.current != null) {
-        const job = dragPendingFaceRef.current;
-        dragPendingFaceRef.current = null;
-        try {
-          await fn(job.faceId, {
-            wholeRegion: job.wholeRegion,
-            hoveredSegment: job.hoveredSegment,
-            renderedHover: job.renderedHover,
-            strokeId: job.strokeId,
-            colorOverride: job.colorOverride,
-            gradientRadial: job.gradientRadial,
-          });
-        }
-        catch { /* ignore single-face failures */ }
-      }
-      paintDrainingRef.current = false;
-    })();
+    paintQueue.enqueue(job);
     },
-    []
+    [paintQueue]
   );
 
   // 0.2.0-P2 3a: bake the gizmo drag into the vertices. The TransformControls
