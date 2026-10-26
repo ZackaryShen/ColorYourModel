@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useT, translateError } from "../i18n";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
+import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, HistoryEntriesResult, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
@@ -89,6 +89,9 @@ export function useTauriCommand() {
     try {
       const segments = await invoke<Segment[]>("rename_segment", { segmentId, name });
       setSegmentMetadata(segments);
+      // rename_segment clears the backend timeline (labels renumber), so the
+      // panel and undo flags must drop too — not just on import.
+      useAppStore.getState().resetHistory();
       return true;
     } catch (e) {
       log.error("useTauriCommand", "renameSegment failed", { segmentId, error: String(e) });
@@ -339,6 +342,27 @@ export function useTauriCommand() {
       return await invoke<HistoryState>("history_state");
     } catch (e) {
       log.error("useTauriCommand", "history_state failed", { error: String(e) });
+      return null;
+    }
+  };
+
+  /** History panel listing (issue #22): read-only, cheap incremental diffs. */
+  const historyEntries = async (): Promise<HistoryEntriesResult | null> => {
+    try {
+      return await invoke<HistoryEntriesResult>("history_entries");
+    } catch (e) {
+      log.error("useTauriCommand", "history_entries failed", { error: String(e) });
+      return null;
+    }
+  };
+
+  /** Jump to state `target` in ONE call; the result rides the same
+   *  applyHistoryResult bridge as undo/redo. */
+  const historyJump = async (target: number): Promise<HistoryResult | null> => {
+    try {
+      return await invoke<HistoryResult>("history_jump", { target });
+    } catch (e) {
+      log.error("useTauriCommand", "history_jump failed", { error: String(e) });
       return null;
     }
   };
@@ -782,5 +806,7 @@ export function useTauriCommand() {
     undo,
     redo,
     historyState,
+    historyEntries,
+    historyJump,
   };
 }

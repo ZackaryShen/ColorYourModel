@@ -344,6 +344,7 @@ pre.mermaid.mermaid-offline::after {
 <li>Click the <strong>📂</strong> button (top-left) and pick an <strong>STL file</strong> (binary or ASCII).</li>
 <li>A large model (1.5M faces) loads in ~3–4 seconds behind a progress bar; the status bar shows the total face count when done.</li>
 </ol>
+<p>You can also <strong>drag a file from File Explorer and drop it anywhere on the window</strong> (viewport or side panels alike): while you drag, the whole window lights up with a dashed border and a &quot;Drop STL to import&quot; hint, and releasing runs the exact same import pipeline as 📂 (same progress bar, same status messages). One file at a time; unsupported formats are reported in the status bar; when a model is already loaded, a confirmation dialog asks before replacing it, so a stray drop can never discard unexported paint. <code>.cym</code> project files can be dropped to open, too.</p>
 <p>Import is the whole load — <strong>the model comes in with no regions</strong> (one big region). That is deliberate: the model is browsable immediately, and segmentation is something you start explicitly in section 4. You can already paint right away — Fill&#39;s normal click works radius-bounded without regions.</p>
 <p><strong>About formats</strong>:</p>
 <ul>
@@ -427,6 +428,7 @@ pre.mermaid.mermaid-offline::after {
 <p><strong>Color panel</strong> (right): current-colour swatch + HEX + the system colour picker (any colour), plus the <strong>AMS palette</strong> of 15 common colours. Palette slots map to filament slots at export time (section 5).</p>
 <h3 id="undo--redo">Undo / redo</h3>
 <p>Painting, erasing, manual regions and lasso all share one undo timeline (managed by the backend): <strong>Ctrl+Z</strong> undo, <strong>Ctrl+Y</strong> or <strong>Ctrl+Shift+Z</strong> redo, or the ↶ / ↷ toolbar buttons. One whole drag stroke is one entry — never dozens. Note that <strong>🗑 Reset partition and Reset are NOT undoable</strong>.</p>
+<p><strong>History panel</strong> (View → History panel): lists every operation Photoshop-style — &quot;Original state&quot; on top, then each operation in order (icon + name + touched-face count). The current state is highlighted; clicking a row ABOVE it jumps straight back, clicking a greyed row BELOW re-applies up to there — <strong>one click lands on that exact state</strong>, no Ctrl+Z mashing. The header shows the retained depth and memory (e.g. &quot;Step 12 / 50 · 3.4 MB&quot;): the backend keeps at most 50 steps / 256 MB and silently evicts the oldest, so the panel tells you how much room is left. Loading a new model resets the panel together with the timeline.</p>
 <h3 id="shortcut-table-every-shortcut-in-this-release">Shortcut table (every shortcut in this release)</h3>
 <table>
 <thead>

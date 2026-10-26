@@ -148,6 +148,32 @@ export interface HistoryState {
   bytes: number;
 }
 
+// History panel (issue #22) — mirrors the backend DTOs in commands/history.rs.
+export type HistoryOpKind =
+  | "paint"
+  | "segmentPaint"
+  | "region"
+  | "merge"
+  | "split"
+  | "transform";
+
+export interface HistoryEntryInfo {
+  /** Stable wire key from OpKind::key() (backend commands/history.rs). */
+  kind: HistoryOpKind;
+  strokeId: number | null;
+  faceCount: number;
+  bytes: number;
+}
+
+export interface HistoryEntriesResult {
+  /** Jump index of the live state (applied entry count; 0 = pristine). */
+  current: number;
+  maxDepth: number;
+  bytes: number;
+  /** Applied entries, oldest first; depth k = the state after entries[k-1]. */
+  entries: HistoryEntryInfo[];
+}
+
 export interface ColorEntry {
   name: string;
   color: [number, number, number];

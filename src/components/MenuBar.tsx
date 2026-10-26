@@ -49,6 +49,8 @@ export function MenuBar() {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const debugLogOpen = useAppStore((s) => s.debugLogOpen);
+  const historyPanelOpen = useAppStore((s) => s.historyPanelOpen);
+  const setHistoryPanelOpen = useAppStore((s) => s.setHistoryPanelOpen);
   const setDebugLogOpen = useAppStore((s) => s.setDebugLogOpen);
   // Mirrors the Toolbar export button's disabled={!isLoaded} guard: without a
   // mesh there are no presets/palette to pick in the ExportDialog.
@@ -168,6 +170,7 @@ export function MenuBar() {
         { kind: "item", label: t("menu.language"), onClick: () => setLanguage(language === "zh" ? "en" : "zh") },
         { kind: "item", label: theme === "dark" ? t("menu.themeToLight") : t("menu.themeToDark"), onClick: () => setTheme(theme === "dark" ? "light" : "dark") },
         { kind: "sep" },
+        { kind: "item", label: t("menu.historyPanel"), onClick: () => setHistoryPanelOpen(!historyPanelOpen) },
         { kind: "item", label: t("menu.debugLog"), onClick: () => setDebugLogOpen(!debugLogOpen) },
       ],
     },

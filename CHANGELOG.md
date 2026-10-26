@@ -40,6 +40,10 @@
 
 ## [Unreleased]
 
+### Added — Photoshop 式历史记录面板（#22，2026-10-26）
+
+- **历史记录面板：看见每一步、一步跳到位**（#22）：视图 → 历史记录 开关，停靠为独立列。面板逐行列出已应用的操作（初始状态行置顶 + 图标/名称/触及面数），当前状态高亮标记，标记下方 redo 分支变灰仍可点击；**点击任意行一次 IPC 调用直接跳到该状态**（后端 `history_jump` 一次应用 k 步，补丁为跳过步骤触及面的并集+终态颜色，labels/transform 走与撤销重做相同的全量/增量语义），不再需要反复按 Ctrl+Z。标题栏显示保留步数与内存（`第 x / 50 步 · y MB`），`DEFAULT_MAX_DEPTH`/`DEFAULT_BYTE_BUDGET` 的静默淘汰上限从此可见。实现：`History::entries()` 只读快照 + `jump_to()`（合并入 `mesh/history.rs` 测试，18 项全绿）；前端行模型抽纯函数 `src/utils/historyPanel.ts`（6 测试）；刷新信号复用 `markHistoryDirty`/`setHistoryFlags` 两个既有汇聚点加 `historyVersion` 计数；导入新模型面板随时间线重置
+
 ### Added — 拖拽 STL 导入（#21，2026-10-24）
 
 - **拖 STL 到窗口任意位置即可导入**（#21）：从资源管理器拖 `.stl`/`.cym` 到窗口任意区域（视口或侧栏）即走 📂 按钮的同一条导入管线（进度条、面数状态、错误处理零分叉）。实现走 Tauri 2 `getCurrentWebview().onDragDropEvent()`（默认 `dragDropEnabled: true` 下 Windows WebView2 拦截 OS 拖放，HTML5 drop 事件不触发——这正是此前拖放被静默吞掉的原因）。拖入悬停时全窗口虚线高亮 +「松开以导入 STL」提示；多文件、不支持的扩展名、导入进行中的拖放都会在状态栏给出明确提示而非沉默；已加载模型时先弹窗确认再替换（与退出确认同一风险语义，防误丢未导出涂装）。路由决策抽为纯函数 `src/utils/stlDrop.ts`（7 个 TDD 回归测试钉死），前端零 Rust 改动、零 conf/capability 变更

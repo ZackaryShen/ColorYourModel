@@ -63,6 +63,8 @@ export function Toolbar() {
   const setProjectionDialogOpen = useAppStore((s) => s.setProjectionDialogOpen);
   const { loadModel, undo, redo, historyState } = useTauriCommand();
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
+  const historyPanelOpen = useAppStore((s) => s.historyPanelOpen);
+  const setHistoryPanelOpen = useAppStore((s) => s.setHistoryPanelOpen);
   const { importStl: handleImport } = useImportStl();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   // Register progress listeners at mount time (avoids race condition + leak)
@@ -246,6 +248,19 @@ export function Toolbar() {
           title={t("toolbar.redo")}
         >
           ↷
+        </button>
+        {/* Issue #22: the history panel is the visual front-end of the same
+            timeline these two buttons drive, so its toggle lives next door. */}
+        <button
+          onClick={() => setHistoryPanelOpen(!historyPanelOpen)}
+          className="cym-btn"
+          style={{
+            ...styles.toolButton,
+            ...(historyPanelOpen ? styles.toolActive : {}),
+          }}
+          title={t("toolbar.historyPanel")}
+        >
+          🕘
         </button>
       </div>
     </div>
