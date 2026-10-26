@@ -50,6 +50,16 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolbar.groupCollapse": { zh: "折叠/展开分组", en: "Collapse/expand group" },
   "toolbar.startImport": { zh: "开始导入…", en: "Starting import…" },
 
+  // Drag & drop import (issue #21)
+  "drop.hint": { zh: "松开以导入 STL", en: "Drop STL to import" },
+  "drop.rejectMulti": { zh: "一次只能导入一个模型", en: "Only one model can be imported at a time" },
+  "drop.rejectExtension": { zh: "只支持 STL 模型或 .cym 工程文件", en: "Only STL models or .cym project files are supported" },
+  "drop.importInProgress": { zh: "正在导入，请稍候…", en: "An import is already in progress…" },
+  "drop.replaceTitle": { zh: "替换当前模型？", en: "Replace current model?" },
+  "drop.replaceBody": { zh: "窗口中已有模型。导入新文件将丢弃当前模型及其未导出的涂装。", en: "A model is already loaded. Importing will discard it together with any unexported paint." },
+  "drop.replaceConfirm": { zh: "导入并替换", en: "Import and replace" },
+  "drop.replaceCancel": { zh: "取消", en: "Cancel" },
+
   // Toolbar — tool tooltips (differentiated descriptions)
   "tool.view": { zh: "🖐️ 查看/导航 — 左键旋转、右键平移、中键缩放；选工具后按住 Alt 也可旋转", en: "🖐️ View / Navigate — left rotate, right pan, middle zoom; hold Alt to rotate while a tool is active" },
   "tool.fill": { zh: "🪣 填充 — 点击任意面，一键填满整个分区", en: "🪣 Fill — click any face to fill entire connected region" },

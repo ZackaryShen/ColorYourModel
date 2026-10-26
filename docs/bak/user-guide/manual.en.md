@@ -51,6 +51,8 @@ A classic three-menu bar now sits at the top of the window:
 1. Click the **📂** button (top-left) and pick an **STL file** (binary or ASCII).
 2. A large model (1.5M faces) loads in ~3–4 seconds behind a progress bar; the status bar shows the total face count when done.
 
+You can also **drag a file from File Explorer and drop it anywhere on the window** (viewport or side panels alike): while you drag, the whole window lights up with a dashed border and a "Drop STL to import" hint, and releasing runs the exact same import pipeline as 📂 (same progress bar, same status messages). One file at a time; unsupported formats are reported in the status bar; when a model is already loaded, a confirmation dialog asks before replacing it, so a stray drop can never discard unexported paint. `.cym` project files can be dropped to open, too.
+
 Import is the whole load — **the model comes in with no regions** (one big region). That is deliberate: the model is browsable immediately, and segmentation is something you start explicitly in section 4. You can already paint right away — Fill's normal click works radius-bounded without regions.
 
 **About formats**:
