@@ -40,7 +40,7 @@ export function Toolbar() {
   const brushStrength = useAppStore((s) => s.brushStrength);
   const { loadModel, undo, redo, historyState } = useTauriCommand();
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
-  const handleImport = useImportStl();
+  const { importStl: handleImport } = useImportStl();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {

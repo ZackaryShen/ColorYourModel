@@ -11,8 +11,12 @@ import { DebugLogViewer } from "./components/DebugLogViewer";
 import { ExitConfirmDialog } from "./components/ExitConfirmDialog";
 import { ImportErrorDialog } from "./components/ImportErrorDialog";
 import { PreferencesDialog } from "./components/PreferencesDialog/PreferencesDialog";
+import { DropOverlay } from "./components/DropOverlay";
+import { DropReplaceDialog } from "./components/DropReplaceDialog";
 import { UpdateDialog } from "./components/UpdateDialog/UpdateDialog";
 import { useAutoUpdateCheck } from "./hooks/useAutoUpdateCheck";
+import { useDropImport } from "./hooks/useDropImport";
+import { useImportStl } from "./hooks/useImportStl";
 import { useAppStore } from "./store/appStore";
 import { useT } from "./i18n";
 
@@ -22,6 +26,12 @@ function App() {
   // GUI audit 2026-10-02 (B14): the brush controls do nothing without a mesh;
   // showing them on the empty state invited dead-slider fiddling.
   const hasMesh = useAppStore((s) => s.meshData !== null);
+  // Issue #21: drag an STL/.cym onto ANY part of the window to import it.
+  // The drop shares the 📂 pipeline (importFromPath); a drop that would
+  // replace a loaded model first asks, like the exit confirm does.
+  const { importFromPath } = useImportStl();
+  const { dragOver, pendingReplacePath, confirmReplace, cancelReplace } =
+    useDropImport(importFromPath);
   const [confirmExit, setConfirmExit] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const t = useT();
@@ -105,6 +115,13 @@ function App() {
       {/* P0 2026-10-12: import failures (broken/unsupported STL or .cym)
           surface as a modal instead of only a status-bar line. */}
       <ImportErrorDialog />
+
+      {/* Issue #21: whole-window drop highlight while files hover, and the
+          replace confirmation for a drop onto a loaded model. */}
+      {dragOver && <DropOverlay />}
+      {pendingReplacePath && (
+        <DropReplaceDialog onCancel={cancelReplace} onConfirm={confirmReplace} />
+      )}
 
       {/* Update module: renders nothing while phase === "idle"; owns its own
           phases (available / downloading / ready / installing / error). */}

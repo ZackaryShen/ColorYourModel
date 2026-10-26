@@ -38,7 +38,7 @@ export function MenuBar({
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const importStl = useImportStl();
+  const { importStl } = useImportStl();
 
   const language = useAppStore((s) => s.language);
   const setLanguage = useAppStore((s) => s.setLanguage);
