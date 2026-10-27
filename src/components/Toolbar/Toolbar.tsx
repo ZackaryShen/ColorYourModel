@@ -9,7 +9,11 @@ import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 import { ExportDialog } from "../ExportDialog/ExportDialog";
 
-const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
+/** Every tool in bar order. Exported for the group-membership regression
+ *  test — the collapsible groups below once dropped the Seed tool onto the
+ *  floor via an off-by-one slice (the button vanished, so the seed panel's
+ *  auto/manual tabs were unreachable). */
+export const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.View, icon: "🖐️", i18nKey: "tool.view" },
   { tool: PaintTool.Fill, icon: "🪣", i18nKey: "tool.fill" },
   { tool: PaintTool.Brush, icon: "🖌️", i18nKey: "tool.brush" },
@@ -27,9 +31,13 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
 // View stays always-visible above the groups; undo/redo stays at the bottom.
 // Group headers are chevron-only (the 56px bar has no room for text labels —
 // adversarial review M4); the group identity travels in the tooltip.
-const TOOL_GROUPS: { id: "paint" | "segment"; labelKey: string; tools: typeof TOOL_KEYS }[] = [
+/** Slice bounds follow the array, not the CHANGELOG wording: paint owns
+ *  indices 1..=7 (Fill..Eraser), segment owns 8..=10 (Segment/Lasso/Seed).
+ *  The old `slice(7, 10)` double-booked the Eraser AND dropped Seed (index
+ *  10, the tail) from every group — the button silently vanished. */
+export const TOOL_GROUPS: { id: "paint" | "segment"; labelKey: string; tools: typeof TOOL_KEYS }[] = [
   { id: "paint", labelKey: "toolbar.groupPaint", tools: TOOL_KEYS.slice(1, 8) },
-  { id: "segment", labelKey: "toolbar.groupSegment", tools: TOOL_KEYS.slice(7, 10) },
+  { id: "segment", labelKey: "toolbar.groupSegment", tools: TOOL_KEYS.slice(8) },
 ];
 
 export function Toolbar() {
