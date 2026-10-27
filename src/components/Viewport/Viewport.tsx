@@ -22,7 +22,7 @@ import { ViewGizmo } from "./ViewGizmo";
 import { isPointerInGizmo } from "./viewGizmoModel";
 import { isClosureIntent, localToScreenPx, projectedRadiusPx } from "./lassoClosure";
 import { createSerialPaintQueue, type PaintJob } from "./paintQueue";
-import { mergeGestureClick, mergeGestureCancel, type MergeGestureState } from "../../utils/mergeGesture";
+import { mergeGestureClick } from "../../utils/mergeGesture";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
 // Patched ONCE at module load. `acceleratedRaycast` falls back to the native
@@ -761,6 +761,10 @@ function MeshDisplay() {
   const segmentView = useAppStore((s) => s.segmentView);
   const selectedSegment = useAppStore((s) => s.selectedSegment);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
+  // Issue #16 merge-gesture session (fill tool) — reactive so the highlight,
+  // the session card and the click handler all read one source of truth.
+  const mergeSession = useAppStore((s) => s.mergeSession);
+  const setMergeSession = useAppStore((s) => s.setMergeSession);
   const hoveredSegment = useAppStore((s) => s.hoveredSegment);
   const setHoveredSegment = useAppStore((s) => s.setHoveredSegment);
   const activeTool = useAppStore((s) => s.activeTool);
@@ -1133,6 +1137,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // Every consumer — the shader uniform and the HUD alike — reads this one
   // value, keeping that class of divergence unrepresentable.
   const renderedHighlightLabel = useMemo<number | null>(() => {
+    // An active merge session highlights its anchor in BOTH views (field
+    // feedback: in paint view the user had no idea what the gesture held).
+    if (mergeSession) return mergeSession.target;
     if (segmentView) return selectedSegment;
     // Only partition-targeting tools show the hover highlight (option B). For
     // brush/view/etc. we never highlight — this is the single source of truth
@@ -1142,7 +1149,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     if (!isHighlightTool) return null;
     if (hoveredSegment === null) return null;
     return hoveredSegment;
-  }, [segmentView, selectedSegment, hoveredSegment, isHighlightTool]);
+  }, [mergeSession, segmentView, selectedSegment, hoveredSegment, isHighlightTool]);
 
   // Published after commit, never during render (P1-8). `enqueuePaint` reads it
   // synchronously from a pointer handler, so a layout effect is early enough.
@@ -1479,10 +1486,6 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // the stroke, so a lost pointerup can never merge two drags.
   const strokeCounterRef = useRef(0);
   const activeStrokeIdRef = useRef<number | null>(null);
-  // Issue #16: Ctrl+click merge gesture — the anchor region absorbing others.
-  // Logic lives in the pure mergeGesture state machine; this ref only holds
-  // the anchor across clicks.
-  const mergeGestureRef = useRef<MergeGestureState>({ anchor: null });
   // 0.2.0-P2 gradient (path mode): screen-space arc-length tracking for the
   // per-sample color t. Arc length (not start-distance — adversarial round (a))
   // over a user-set viewport-relative fade length; purely screen-space, so no
@@ -1601,22 +1604,28 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     };
   }, []);
 
-  // Issue #16: Esc drops the pending merge anchor. Skipped while a lasso loop
-  // is open — Esc already means "remove lasso point" there and the two
-  // gestures never share a click.
+  // Issue #16: Esc ends the merge session. Skipped while a lasso loop is
+  // open — Esc already means "remove lasso point" there and the two gestures
+  // never share a click.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (lassoPointsRef.current.length > 0) return;
-      if (mergeGestureRef.current.anchor !== null) {
-        mergeGestureRef.current = mergeGestureCancel(mergeGestureRef.current).state;
+      if (useAppStore.getState().mergeSession) {
+        setMergeSession(null);
         setSelectedSegment(null);
         setStatusMessage(t("merge.cleared"));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setSelectedSegment, setStatusMessage, t]);
+  }, [setMergeSession, setSelectedSegment, setStatusMessage, t]);
+
+  // Feedback #4: the merge gesture lives inside the fill tool — switching
+  // tools always ends the session.
+  useEffect(() => {
+    if (useAppStore.getState().mergeSession) setMergeSession(null);
+  }, [activeTool, setMergeSession]);
 
   // A (re)loaded model renumbers regions — a stale anchor could point at a
   // label that now means something else, so the gesture resets with it.
@@ -1627,8 +1636,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // new vertices array and resets the gesture.
   const modelVertices = useAppStore((s) => s.meshData?.vertices);
   useEffect(() => {
-    mergeGestureRef.current = { anchor: null };
-  }, [modelVertices]);
+    setMergeSession(null);
+  }, [modelVertices, setMergeSession]);
 
   // Guarantee camera rotation is enabled whenever the active tool changes. This
   // is now handled by the ControlsBridge mouseButtons remap (iteration 14):
@@ -1701,24 +1710,26 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         setStatusMessage(t("seed.picked", lbl));
         return;
       }
-      // Issue #16: with Ctrl held, a click means "merge regions", never
-      // "paint/seed/lasso" — first Ctrl+click picks the anchor region,
-      // further ones absorb other regions into it (Segments panel drives the
-      // same merge_segments pipeline). Works in both views and every tool
-      // EXCEPT the two deliberate exceptions above: the armed Pick-for-Eye
-      // one-shot (seedPickMode) and the View navigation tool.
-      if (e.ctrlKey) {
+      // Issue #16 (revised after field feedback): with the FILL tool active,
+      // Ctrl+click means "merge regions" — the first Ctrl+click picks the
+      // anchor region, further ones absorb other regions into it (Segments
+      // panel drives the same merge_segments pipeline). Gated to fill after
+      // field feedback: the anchor must be visible (session card + both-view
+      // highlight) and must never silently survive unrelated actions — any
+      // plain click, tool switch, Esc or model reload ends the session.
+      if (e.ctrlKey && activeTool === "fill") {
         const hit = raycastFace(e.clientX, e.clientY);
         if (!hit || hit.faceIndex == null || !meshData?.segmentLabels) return;
         const label = meshData.segmentLabels[hit.faceIndex];
         if (label === undefined || !segmentIds.has(label)) return;
-        const { state, effect } = mergeGestureClick(
-          mergeGestureRef.current,
+        const session = useAppStore.getState().mergeSession;
+        const { effect } = mergeGestureClick(
+          { anchor: session?.target ?? null },
           label,
           Array.from(segmentIds)
         );
-        mergeGestureRef.current = state;
         if (effect.type === "anchor") {
+          setMergeSession({ target: effect.label, absorbed: [] });
           setSelectedSegment(effect.label);
           setStatusMessage(t("merge.anchor", effect.label));
         } else if (effect.type === "merge") {
@@ -1727,19 +1738,30 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
             if (moved === null) {
               // The region dissolved under the click (undo, re-run) — the
               // chain is invalid, start over.
-              mergeGestureRef.current = { anchor: null };
+              setMergeSession(null);
               return;
             }
+            const prev = useAppStore.getState().mergeSession;
+            setMergeSession({
+              target: effect.target,
+              absorbed: [...(prev?.absorbed ?? []), effect.source],
+            });
             setSelectedSegment(effect.target);
             setStatusMessage(t("merge.merged", effect.source, effect.target, moved));
           })();
         } else if (effect.type === "clear") {
+          setMergeSession(null);
           setSelectedSegment(null);
           setStatusMessage(t("merge.cleared"));
         } else {
           setStatusMessage(t("merge.needTwo"));
         }
         return;
+      }
+      // Any plain (non-Ctrl) click ends the merge session: a fill right after
+      // a merge must never sweep an earlier chain the user can no longer see.
+      if (useAppStore.getState().mergeSession) {
+        setMergeSession(null);
       }
       if (isLassoTool) {
         setHoveredSegment(null);
@@ -3030,6 +3052,29 @@ function SegmentToggle() {
 /// choices — jump to the segment view or stay — because silently flipping
 /// the render mode under a mid-paint user would be worse than the trip.
 /// Hidden once the suggestion is honored (segmentView flips on) or dismissed.
+// Issue #16 (field feedback #2): the merge session must be VISIBLE somewhere
+// durable — the card lists the anchor and everything absorbed so far, so the
+// user always knows what the next Ctrl+click and the next fill will hit.
+// Reuses the segment-view hint card's styling; pointerEvents none throughout.
+function MergeSessionCard() {
+  const t = useT();
+  const mergeSession = useAppStore((s) => s.mergeSession);
+  if (!mergeSession) return null;
+  return (
+    <div style={segHintStyles.wrap}>
+      <div style={segHintStyles.card} role="status">
+        <span>
+          {t("merge.cardTarget", mergeSession.target)}
+          {mergeSession.absorbed.length > 0
+            ? t("merge.cardAbsorbed", mergeSession.absorbed.join(", "))
+            : t("merge.cardNone")}
+        </span>
+        <span style={{ color: "var(--text-2, #999)" }}>{t("merge.cardHint")}</span>
+      </div>
+    </div>
+  );
+}
+
 function SegmentViewHint() {
   const t = useT();
   const isLoaded = useAppStore((s) => s.isLoaded);
@@ -3261,6 +3306,7 @@ export function Viewport() {
       <ProgressBar />
       <SegmentToggle />
       <SegmentViewHint />
+      <MergeSessionCard />
       <ControlsHelp />
       <DebugHud />
       <Toast />

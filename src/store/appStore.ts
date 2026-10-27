@@ -89,6 +89,12 @@ interface AppStore {
    *  extra column in the main layout. Transient: NOT persisted. */
   historyPanelOpen: boolean;
   setHistoryPanelOpen: (v: boolean) => void;
+  /** Issue #16 merge-gesture session (fill tool): the anchor region plus
+   *  everything it has absorbed, rendered by the viewport card and the
+   *  highlight. Cleared by any plain click, a tool switch, Esc, or a model
+   *  reload. Transient: NOT persisted. */
+  mergeSession: { target: number; absorbed: number[] } | null;
+  setMergeSession: (s: { target: number; absorbed: number[] } | null) => void;
   /** Bumped whenever the timeline may have changed (any recorded op, an
    *  undo/redo/jump, a load). The history panel refetches on each bump. */
   historyVersion: number;
@@ -514,6 +520,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   statusMessage: "status.ready",
   debugLogOpen: false,
   historyPanelOpen: false,
+  mergeSession: null,
   historyVersion: 0,
   isLoading: false,
   importProgress: 0,
@@ -692,6 +699,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setStatusMessage: (msg) => set({ statusMessage: msg }),
   setDebugLogOpen: (v) => set({ debugLogOpen: v }),
   setHistoryPanelOpen: (v) => set({ historyPanelOpen: v }),
+  setMergeSession: (v) => set({ mergeSession: v }),
 
   seedPoints: [],
   addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),
