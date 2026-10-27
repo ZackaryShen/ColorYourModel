@@ -85,11 +85,16 @@ interface AppStore {
    *  the default UI only exposes mature features. Persisted as ONE record via
    *  cym-prefs — registry, this field, initial state, partialize and merge
    *  must move together, because the custom merge silently drops unclaimed
-   *  fields (see 4e22709 for the incident that pinned this rule). Turning a
-   *  seed-detector entry off also clears its region pool so no dangling
-   *  boundary lines / hints survive the toggle (setExperimentalFeature). */
+   *  fields. */
   experimentalFeatures: Record<ExperimentalFeatureId, boolean>;
   setExperimentalFeature: (id: ExperimentalFeatureId, on: boolean) => void;
+  /** History panel (issue #22): toggled from 视图 → 历史记录; docks as an
+   *  extra column in the main layout. Transient: NOT persisted. */
+  historyPanelOpen: boolean;
+  setHistoryPanelOpen: (v: boolean) => void;
+  /** Bumped whenever the timeline may have changed (any recorded op, an
+   *  undo/redo/jump, a load). The history panel refetches on each bump. */
+  historyVersion: number;
   isLoading: boolean;
   importProgress: number;
   importStage: string;
@@ -497,6 +502,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   statusMessage: "status.ready",
   debugLogOpen: false,
   experimentalFeatures: { ...DEFAULT_EXPERIMENTAL_FEATURES },
+  historyPanelOpen: false,
+  historyVersion: 0,
   isLoading: false,
   importProgress: 0,
   importStage: "",
@@ -645,11 +652,11 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   viewResetTick: 0,
   bumpViewReset: () => set((state) => ({ viewResetTick: state.viewResetTick + 1 })),
   setToast: (msg) => set({ toast: msg }),
-  setHistoryFlags: (canUndo, canRedo) => set({ canUndo, canRedo }),
+  setHistoryFlags: (canUndo, canRedo) => set((st) => ({ canUndo, canRedo, historyVersion: st.historyVersion + 1 })),
   // Optimistic: a successful paint stroke always creates a history entry, so undo
   // becomes available; meanwhile it invalidates any redo branch on the backend.
-  markHistoryDirty: () => set({ canUndo: true, canRedo: false }),
-  resetHistory: () => set({ canUndo: false, canRedo: false }),
+  markHistoryDirty: () => set((st) => ({ canUndo: true, canRedo: false, historyVersion: st.historyVersion + 1 })),
+  resetHistory: () => set((st) => ({ canUndo: false, canRedo: false, historyVersion: st.historyVersion + 1 })),
   setStatusMessage: (msg) => set({ statusMessage: msg }),
   setDebugLogOpen: (v) => set({ debugLogOpen: v }),
   setExperimentalFeature: (id, on) => {
@@ -669,6 +676,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       if (id === "seedDetectCrossSection") s.clearCrossSectionRegions();
     }
   },
+  setHistoryPanelOpen: (v) => set({ historyPanelOpen: v }),
 
   seedPoints: [],
   addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),

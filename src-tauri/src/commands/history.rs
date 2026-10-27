@@ -114,9 +114,34 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
         return Ok(HistoryResult::empty(mesh.history.can_undo(), mesh.history.can_redo()));
     };
 
-    let full = outcome.labels_changed || outcome.faces.len() > MAX_INCREMENTAL_FACES;
+    Ok(history_result(
+        mesh,
+        match dir {
+            Direction::Undo => "undo",
+            Direction::Redo => "redo",
+        },
+        outcome.kind,
+        outcome.faces,
+        outcome.colors,
+        outcome.labels_changed,
+    ))
+}
 
-    if outcome.labels_changed {
+/// Assemble the wire result for a timeline move. Undo, redo and jump differ
+/// only in WHICH entries were applied — the payload semantics are shared:
+/// `labels_changed` recomputes segment metadata, and past
+/// [`MAX_INCREMENTAL_FACES`] the whole-buffer form wins on IPC cost.
+fn history_result(
+    mesh: &mut crate::mesh::model::MeshModel,
+    what: &str,
+    kind: crate::mesh::history::OpKind,
+    faces: Vec<u32>,
+    colors: Vec<[u8; 4]>,
+    labels_changed: bool,
+) -> HistoryResult {
+    let full = labels_changed || faces.len() > MAX_INCREMENTAL_FACES;
+
+    if labels_changed {
         // Segment metadata is derived from labels, so it has to be recomputed
         // before it is sent. A region whose faces all reverted disappears here.
         mesh.rebuild_segments();
@@ -124,31 +149,28 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
 
     log::info!(
         "[cmd:history] {} kind={:?} faces={} labels_changed={} full={}",
-        match dir {
-            Direction::Undo => "undo",
-            Direction::Redo => "redo",
-        },
-        outcome.kind,
-        outcome.faces.len(),
-        outcome.labels_changed,
+        what,
+        kind,
+        faces.len(),
+        labels_changed,
         full
     );
 
-    Ok(HistoryResult {
+    HistoryResult {
         applied: true,
         full,
-        faces: if full { Vec::new() } else { outcome.faces },
+        faces: if full { Vec::new() } else { faces },
         colors: if full {
             Vec::new()
         } else {
-            flatten(&outcome.colors)
+            flatten(&colors)
         },
         segments: full.then(|| mesh.sorted_segments()),
         segment_labels: full.then(|| mesh.segment_labels.clone()),
         face_colors: full.then(|| flatten(&mesh.face_colors)),
         can_undo: mesh.history.can_undo(),
         can_redo: mesh.history.can_redo(),
-    })
+    }
 }
 
 #[tauri::command]
@@ -183,4 +205,84 @@ pub fn history_state(state: State<AppState>) -> Result<HistoryState, String> {
         redo_depth: mesh.history.redo_depth(),
         bytes: mesh.history.bytes(),
     })
+}
+
+// ─── History panel (issue #22) ─────────────────────────────────────────────
+
+/// One row of the history panel: what the operation was and how much it
+/// touched. `kind` is the stable wire key from `OpKind::key()`; the frontend
+/// maps it to icon + localized label.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryEntryDto {
+    pub kind: String,
+    pub stroke_id: Option<u64>,
+    pub face_count: usize,
+    pub bytes: usize,
+}
+
+/// Everything the panel renders, in one read-only call. `current` is the
+/// jump index of the live state; `max_depth` and `bytes` feed the header so
+/// the eviction ceiling (`DEFAULT_MAX_DEPTH` / `DEFAULT_BYTE_BUDGET`) stops
+/// being invisible.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryEntriesResult {
+    pub current: usize,
+    pub max_depth: usize,
+    pub bytes: usize,
+    /// Applied entries, oldest first; depth k = the state after `entries[k-1]`.
+    pub entries: Vec<HistoryEntryDto>,
+}
+
+#[tauri::command]
+pub fn history_entries(state: State<AppState>) -> Result<HistoryEntriesResult, String> {
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    Ok(HistoryEntriesResult {
+        current: mesh.history.undo_depth(),
+        max_depth: mesh.history.max_depth(),
+        bytes: mesh.history.bytes(),
+        entries: mesh
+            .history
+            .entries()
+            .into_iter()
+            .map(|e| HistoryEntryDto {
+                kind: e.kind.key().to_string(),
+                stroke_id: e.stroke_id,
+                face_count: e.face_count,
+                bytes: e.bytes,
+            })
+            .collect(),
+    })
+}
+
+/// Jump to state `target` (issue #22): applies every skipped step in ONE
+/// call and returns the patch for the final state — the union of all touched
+/// faces with their final colours, full-payload whenever labels moved,
+/// exactly like a single undo/redo would produce.
+#[tauri::command]
+pub fn history_jump(target: usize, state: State<AppState>) -> Result<HistoryResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+
+    let crate::mesh::model::MeshModel {
+        history,
+        face_colors,
+        segment_labels,
+        ..
+    } = mesh;
+
+    let Some(out) = history.jump_to(target, face_colors, segment_labels) else {
+        return Ok(HistoryResult::empty(mesh.history.can_undo(), mesh.history.can_redo()));
+    };
+
+    Ok(history_result(
+        mesh,
+        "jump",
+        out.kind,
+        out.faces,
+        out.colors,
+        out.labels_changed,
+    ))
 }

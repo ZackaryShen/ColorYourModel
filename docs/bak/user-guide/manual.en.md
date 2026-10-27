@@ -86,6 +86,8 @@ The 10 tools in the left toolbar are **mutually exclusive** (the active one gets
 
 Painting, erasing, manual regions and lasso all share one undo timeline (managed by the backend): **Ctrl+Z** undo, **Ctrl+Y** or **Ctrl+Shift+Z** redo, or the ↶ / ↷ toolbar buttons. One whole drag stroke is one entry — never dozens. Note that **🗑 Reset partition and Reset are NOT undoable**.
 
+**History panel** (View → History panel): lists every operation Photoshop-style — "Original state" on top, then each operation in order (icon + name + touched-face count). The current state is highlighted; clicking a row ABOVE it jumps straight back, clicking a greyed row BELOW re-applies up to there — **one click lands on that exact state**, no Ctrl+Z mashing. The header shows the retained depth and memory (e.g. "Step 12 / 50 · 3.4 MB"): the backend keeps at most 50 steps / 256 MB and silently evicts the oldest, so the panel tells you how much room is left. Loading a new model resets the panel together with the timeline.
+
 ### Shortcut table (every shortcut in this release)
 
 | Keys | Context | Action |

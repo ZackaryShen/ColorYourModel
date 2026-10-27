@@ -11,6 +11,7 @@ import { DebugLogViewer } from "./components/DebugLogViewer";
 import { ExitConfirmDialog } from "./components/ExitConfirmDialog";
 import { ImportErrorDialog } from "./components/ImportErrorDialog";
 import { PreferencesDialog } from "./components/PreferencesDialog/PreferencesDialog";
+import { HistoryPanel } from "./components/HistoryPanel";
 import { DropOverlay } from "./components/DropOverlay";
 import { DropReplaceDialog } from "./components/DropReplaceDialog";
 import { UpdateDialog } from "./components/UpdateDialog/UpdateDialog";
@@ -26,6 +27,7 @@ function App() {
   // GUI audit 2026-10-02 (B14): the brush controls do nothing without a mesh;
   // showing them on the empty state invited dead-slider fiddling.
   const hasMesh = useAppStore((s) => s.meshData !== null);
+  const historyPanelOpen = useAppStore((s) => s.historyPanelOpen);
   // Issue #21: drag an STL/.cym onto ANY part of the window to import it.
   // The drop shares the 📂 pipeline (importFromPath); a drop that would
   // replace a loaded model first asks, like the exit confirm does.
@@ -88,6 +90,10 @@ function App() {
         <div style={styles.viewport}>
           <Viewport />
         </div>
+
+        {/* Issue #22: Photoshop-style history panel, docked as an extra
+            column; toggled from 视图 → 历史记录. */}
+        {historyPanelOpen && <HistoryPanel />}
 
         {/* Right panel */}
         <div style={styles.rightPanel}>
