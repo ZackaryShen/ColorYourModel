@@ -22,6 +22,7 @@ import { ViewGizmo } from "./ViewGizmo";
 import { isPointerInGizmo } from "./viewGizmoModel";
 import { isClosureIntent, localToScreenPx, projectedRadiusPx } from "./lassoClosure";
 import { createSerialPaintQueue, type PaintJob } from "./paintQueue";
+import { mergeGestureClick, mergeGestureCancel, type MergeGestureState } from "../../utils/mergeGesture";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
 // Patched ONCE at module load. `acceleratedRaycast` falls back to the native
@@ -819,7 +820,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     setPendingPaintResult(null);
   }, [pendingPaintResult, updateFaceColors, setPendingPaintResult]);
   const { paintFace } = usePaintTool();
-  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
+  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState, mergeSegments } = useTauriCommand();
   const { undo: historyUndo, redo: historyRedo } = useUndoRedo({ undo, redo, historyState });
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
@@ -1478,6 +1479,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // the stroke, so a lost pointerup can never merge two drags.
   const strokeCounterRef = useRef(0);
   const activeStrokeIdRef = useRef<number | null>(null);
+  // Issue #16: Ctrl+click merge gesture — the anchor region absorbing others.
+  // Logic lives in the pure mergeGesture state machine; this ref only holds
+  // the anchor across clicks.
+  const mergeGestureRef = useRef<MergeGestureState>({ anchor: null });
   // 0.2.0-P2 gradient (path mode): screen-space arc-length tracking for the
   // per-sample color t. Arc length (not start-distance — adversarial round (a))
   // over a user-set viewport-relative fade length; purely screen-space, so no
@@ -1596,6 +1601,35 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     };
   }, []);
 
+  // Issue #16: Esc drops the pending merge anchor. Skipped while a lasso loop
+  // is open — Esc already means "remove lasso point" there and the two
+  // gestures never share a click.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (lassoPointsRef.current.length > 0) return;
+      if (mergeGestureRef.current.anchor !== null) {
+        mergeGestureRef.current = mergeGestureCancel(mergeGestureRef.current).state;
+        setSelectedSegment(null);
+        setStatusMessage(t("merge.cleared"));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setSelectedSegment, setStatusMessage, t]);
+
+  // A (re)loaded model renumbers regions — a stale anchor could point at a
+  // label that now means something else, so the gesture resets with it.
+  // Keyed on the VERTICES reference, not meshData: updateSegmentLabels
+  // rebuilds the meshData object on every successful merge (spread keeps the
+  // vertices array), and resetting there would break the anchor chain the
+  // gesture exists to provide. A fresh load or a geometry re-apply ships a
+  // new vertices array and resets the gesture.
+  const modelVertices = useAppStore((s) => s.meshData?.vertices);
+  useEffect(() => {
+    mergeGestureRef.current = { anchor: null };
+  }, [modelVertices]);
+
   // Guarantee camera rotation is enabled whenever the active tool changes. This
   // is now handled by the ControlsBridge mouseButtons remap (iteration 14):
   // paint tools disable LEFT in OrbitControls and map RIGHT→rotate, so no
@@ -1665,6 +1699,46 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         setSeedPickMode(false); // one-shot — see comment above
         log.info("Viewport", "seed pick-mode: selected partition", { lbl });
         setStatusMessage(t("seed.picked", lbl));
+        return;
+      }
+      // Issue #16: with Ctrl held, a click means "merge regions", never
+      // "paint/seed/lasso" — first Ctrl+click picks the anchor region,
+      // further ones absorb other regions into it (Segments panel drives the
+      // same merge_segments pipeline). Works in both views and every tool
+      // EXCEPT the two deliberate exceptions above: the armed Pick-for-Eye
+      // one-shot (seedPickMode) and the View navigation tool.
+      if (e.ctrlKey) {
+        const hit = raycastFace(e.clientX, e.clientY);
+        if (!hit || hit.faceIndex == null || !meshData?.segmentLabels) return;
+        const label = meshData.segmentLabels[hit.faceIndex];
+        if (label === undefined || !segmentIds.has(label)) return;
+        const { state, effect } = mergeGestureClick(
+          mergeGestureRef.current,
+          label,
+          Array.from(segmentIds)
+        );
+        mergeGestureRef.current = state;
+        if (effect.type === "anchor") {
+          setSelectedSegment(effect.label);
+          setStatusMessage(t("merge.anchor", effect.label));
+        } else if (effect.type === "merge") {
+          void (async () => {
+            const moved = await mergeSegments(effect.target, [effect.source]);
+            if (moved === null) {
+              // The region dissolved under the click (undo, re-run) — the
+              // chain is invalid, start over.
+              mergeGestureRef.current = { anchor: null };
+              return;
+            }
+            setSelectedSegment(effect.target);
+            setStatusMessage(t("merge.merged", effect.source, effect.target, moved));
+          })();
+        } else if (effect.type === "clear") {
+          setSelectedSegment(null);
+          setStatusMessage(t("merge.cleared"));
+        } else {
+          setStatusMessage(t("merge.needTwo"));
+        }
         return;
       }
       if (isLassoTool) {
@@ -2214,7 +2288,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed, closureIntent]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed, closureIntent, mergeSegments]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {

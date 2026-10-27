@@ -363,6 +363,11 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.themeToLight": { zh: "切换到浅色主题", en: "Switch to light theme" },
   "menu.themeToDark": { zh: "切换到深色主题", en: "Switch to dark theme" },
   "menu.historyPanel": { zh: "历史记录", en: "History panel" },
+  // Ctrl+click region merge (issue #16)
+  "merge.anchor": { zh: "已选区域 {0} — 继续 Ctrl+点击其他区域并入，点击它本身或按 Esc 取消", en: "Region {0} picked — Ctrl+click others to absorb them; click it again or press Esc to cancel" },
+  "merge.merged": { zh: "区域 {0} 已并入区域 {1}（移动 {2} 面）", en: "Region {0} absorbed into region {1} ({2} faces moved)" },
+  "merge.cleared": { zh: "已取消合并选择", en: "Merge selection cleared" },
+  "merge.needTwo": { zh: "至少需要两个分区才能合并", en: "Need at least two regions to merge" },
   "menu.debugLog": { zh: "调试日志 (Ctrl+Shift+L)", en: "Debug log (Ctrl+Shift+L)" },
   // History panel (issue #22)
   "history.title": { zh: "历史记录", en: "History" },

@@ -192,6 +192,7 @@ Fuse/grow results are a starting point; the **Regions** panel cleans up:
 
 - **Select**: click a list entry, or click a region on the model (highlight in the viewport).
 - **Merge**: `Ctrl+click` multi-select (first pick is the survivor), then merge.
+- **Merge on the model itself** (#16): hold `Ctrl` and click a region on the model to pick it as the merge target (it highlights), then `Ctrl+click` other regions to absorb them one by one — chain clicks to join many regions into one; click the target again or press `Esc` to cancel. Works in both views and almost every tool (a `Ctrl+click` never paints; exceptions: the View navigation tool does not trigger it, and the one-shot Pick-for-Eye mode keeps priority — there a Ctrl+click still picks).
 - **Rename**: double-click an entry.
 - **Split**: re-cut an oversized region along its internal creases (default threshold 30°).
 - **Re-cut**: re-run a whole algorithm inside one region (the fix for tubular limbs convex decomposition can't cut); 8 algorithms, see section 6.
