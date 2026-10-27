@@ -63,6 +63,9 @@ pub fn run() {
             commands::history::undo,
             commands::history::redo,
             commands::history::history_state,
+            // History panel (issue #22): read-only listing + one-call jump.
+            commands::history::history_entries,
+            commands::history::history_jump,
             commands::export::export_3mf_command,
             commands::export::export_split_by_color_command,
             commands::export::export_obj_command,

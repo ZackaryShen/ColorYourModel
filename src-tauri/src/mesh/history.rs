@@ -78,6 +78,20 @@ impl OpKind {
     pub fn touches_labels(self) -> bool {
         !matches!(self, OpKind::Paint | OpKind::Transform)
     }
+
+    /// Stable wire key for the history panel's row label (issue #22). The
+    /// frontend maps this to icon + localized text; the mapping is part of
+    /// the IPC contract and must not be renamed casually.
+    pub fn key(self) -> &'static str {
+        match self {
+            OpKind::Paint => "paint",
+            OpKind::SegmentPaint => "segmentPaint",
+            OpKind::ManualRegion => "region",
+            OpKind::Merge => "merge",
+            OpKind::Split => "split",
+            OpKind::Transform => "transform",
+        }
+    }
 }
 
 /// One undoable operation, stored as the state that existed before it ran.
@@ -176,13 +190,37 @@ pub struct History {
     /// The stroke currently accepting appends, if any.
     open_stroke: Option<u64>,
     /// Faces already recorded in the open stroke. A face painted twice in one
-    /// drag must keep the colour it had before the drag started, not the one it
-    /// had midway through, so only the first sighting is recorded.
+    /// drag must keep the colour it had before the drag started, not the one
+    /// it had midway through, so only the first sighting is recorded.
     open_faces: HashSet<u32>,
     /// Live total across both stacks.
     bytes: usize,
     max_depth: usize,
     byte_budget: usize,
+}
+
+/// One row of the history panel (issue #22): a read-only projection of an
+/// applied entry — what the operation was and how much it touched. Entries
+/// are incremental diffs, so this is cheap to produce on every refresh.
+pub struct HistoryEntryInfo {
+    pub kind: OpKind,
+    pub stroke_id: Option<u64>,
+    pub face_count: usize,
+    pub bytes: usize,
+}
+
+/// What a [`History::jump_to`] actually changed, for the command layer to
+/// turn into a patch. Faces is the UNION of everything the skipped steps
+/// touched and colors holds each face's FINAL value — intermediate steps
+/// must not leak into the patch the frontend applies.
+pub struct JumpOutcome {
+    pub kind: OpKind,
+    pub faces: Vec<u32>,
+    pub colors: Vec<[u8; 4]>,
+    pub labels_changed: bool,
+    /// Whether any skipped step was a whole-model transform; the command
+    /// layer must then rebuild derived geometry state and ship the vertices.
+    pub transformed: bool,
 }
 
 impl Default for History {
@@ -224,8 +262,93 @@ impl History {
         self.redo.len()
     }
 
+    /// Panel listing (issue #22): every APPLIED entry, oldest first. Undone
+    /// entries reappear when redone. `undo_depth()` is the current state's
+    /// jump index — depth k means ops `0..k` are applied.
+    pub fn entries(&self) -> Vec<HistoryEntryInfo> {
+        self.undo
+            .iter()
+            .map(|e| HistoryEntryInfo {
+                kind: e.kind,
+                stroke_id: e.stroke_id,
+                face_count: e.colors.len(),
+                bytes: e.bytes(),
+            })
+            .collect()
+    }
+
+    /// Jump to state `depth` in ONE call (issue #22): `depth` entries of the
+    /// timeline applied, `0` = pristine. Going back pops entries onto the
+    /// redo branch (still listed, greyed, jump-forward-able); going forward
+    /// re-applies redo entries, clamped to how many actually exist. Returns
+    /// `None` when already at `depth`. Ends any open stroke, like undo/redo.
+    pub fn jump_to(
+        &mut self,
+        depth: usize,
+        colors: &mut [[u8; 4]],
+        labels: &mut [u32],
+        vertices: &mut Vec<[f32; 3]>,
+    ) -> Option<JumpOutcome> {
+        let current = self.undo.len();
+        if depth == current {
+            return None;
+        }
+
+        let mut faces: Vec<u32> = Vec::new();
+        let mut seen: HashSet<u32> = HashSet::new();
+        let mut labels_changed = false;
+        let mut transformed = false;
+        let mut last_kind: Option<OpKind> = None;
+
+        // Going back moves entries onto the redo branch; going forward moves
+        // them back onto the applied stack. Direction is the only difference
+        // between the two traversals.
+        let going_back = depth < current;
+        let steps = if going_back {
+            current - depth
+        } else {
+            (depth - current).min(self.redo.len())
+        };
+        for _ in 0..steps {
+            let mut entry = if going_back {
+                self.undo.pop_back()?
+            } else {
+                self.redo.pop()?
+            };
+            let out = Self::apply(&mut entry, colors, labels, vertices);
+            if going_back {
+                self.redo.push(entry);
+            } else {
+                self.undo.push_back(entry);
+            }
+            union_into(&out.faces, &mut faces, &mut seen);
+            labels_changed |= out.labels_changed;
+            transformed |= out.transform.is_some();
+            last_kind = Some(out.kind);
+        }
+
+        // A jump is a timeline move: whatever stroke was accepting appends is
+        // now closed, exactly as a plain undo would have closed it.
+        self.open_stroke = None;
+        self.open_faces.clear();
+
+        Some(JumpOutcome {
+            kind: last_kind?,
+            colors: faces.iter().map(|&f| colors[f as usize]).collect(),
+            faces,
+            labels_changed,
+            transformed,
+        })
+    }
+
     pub fn bytes(&self) -> usize {
         self.bytes
+    }
+
+    /// Eviction ceiling, for the history panel's "step x / y" header (issue
+    /// #22): the depth limit stops being invisible once it is on display.
+    pub fn max_depth(&self) -> usize {
+        self.max_depth
     }
 
     /// Drop everything.
@@ -441,6 +564,17 @@ impl History {
             if let Some(dropped) = self.undo.pop_front() {
                 self.bytes = self.bytes.saturating_sub(dropped.bytes());
             }
+        }
+    }
+}
+
+/// First-sighting union for [`History::jump_to`]'s patch: a face touched by
+/// several skipped steps appears once, with its final colour read after the
+/// whole jump has been applied.
+fn union_into(faces: &[u32], out: &mut Vec<u32>, seen: &mut HashSet<u32>) {
+    for f in faces {
+        if seen.insert(*f) {
+            out.push(*f);
         }
     }
 }
@@ -697,6 +831,157 @@ mod tests {
 
         h.undo(&mut colors, &mut labels, &mut vertices).unwrap();
         assert_eq!(vertices[0], [1.0, 2.0, 3.0]);
+    }
+
+    // ─── History panel (issue #22) ─────────────────────────────────────
+
+    /// The panel lists every entry oldest-first with its kind, stroke id,
+    /// touched-face count and footprint; undone entries are gone from the
+    /// list until redone, and the applied count is the jump index.
+    #[test]
+    fn entries_lists_the_timeline_oldest_first_with_metadata() {
+        let (mut colors, mut _labels) = buffers(4);
+        let mut h = History::new();
+
+        h.record(OpKind::Paint, Some(1), &[(0, colors[0])], &[]);
+        colors[0] = [1, 0, 0, 255];
+        h.record(OpKind::Paint, Some(2), &[(0, colors[0]), (1, colors[1])], &[]);
+        colors[0] = [2, 0, 0, 255];
+        colors[1] = [2, 0, 0, 255];
+
+        let entries = h.entries();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].kind, OpKind::Paint);
+        assert_eq!(entries[0].stroke_id, Some(1));
+        assert_eq!(entries[0].face_count, 1);
+        assert!(entries[0].bytes > 0);
+        assert_eq!(entries[1].face_count, 2, "second op touched two faces");
+        assert_eq!(h.undo_depth(), 2, "the jump index of the current state");
+
+        h.undo(&mut colors, &mut _labels, &mut Vec::new());
+        assert_eq!(h.entries().len(), 1, "an undone entry leaves the applied list");
+    }
+
+    /// Jumping back k states applies k entries in ONE call and returns ONE
+    /// patch covering the union of the touched faces with their final
+    /// colours — the intermediate steps' colours must not leak into it.
+    #[test]
+    fn jump_to_an_older_state_applies_every_step_and_unions_the_patch() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
+        let (mut colors, mut labels) = buffers(4);
+        let mut h = History::new();
+
+        h.record(OpKind::Paint, Some(1), &[(0, colors[0])], &[]);
+        colors[0] = [1, 0, 0, 255];
+        h.record(OpKind::Paint, Some(2), &[(1, colors[1])], &[]);
+        colors[1] = [2, 0, 0, 255];
+        h.record(OpKind::Paint, Some(3), &[(0, colors[0]), (1, colors[1])], &[]);
+        colors[0] = [3, 0, 0, 255];
+        colors[1] = [3, 0, 0, 255];
+        assert_eq!(h.undo_depth(), 3);
+
+        let out = h.jump_to(1, &mut colors, &mut labels, &mut vertices).unwrap();
+        assert_eq!(out.kind, OpKind::Paint);
+        assert_eq!(colors[0], [1, 0, 0, 255], "state after op 1");
+        assert_eq!(colors[1], [0, 0, 0, 255], "face 1 was still unpainted then");
+        let mut faces = out.faces.clone();
+        faces.sort_unstable();
+        assert_eq!(faces, vec![0, 1], "the patch covers the union, not just the last step");
+        for (i, f) in out.faces.iter().enumerate() {
+            assert_eq!(out.colors[i], colors[*f as usize], "patch carries FINAL colours");
+        }
+        assert_eq!(h.undo_depth(), 1);
+        assert_eq!(h.redo_depth(), 2, "the forward branch stays, now greyed in the panel");
+    }
+
+    /// Jumping forward re-applies redo entries in chronological order; the
+    /// destination may sit between redo states, not only at the end.
+    #[test]
+    fn jump_forward_reapplies_redo_steps_up_to_the_target() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
+        let (mut colors, mut labels) = buffers(4);
+        let mut h = History::new();
+
+        h.record(OpKind::Paint, Some(1), &[(0, colors[0])], &[]);
+        colors[0] = [1, 0, 0, 255];
+        h.record(OpKind::Paint, Some(2), &[(1, colors[1])], &[]);
+        colors[1] = [2, 0, 0, 255];
+        h.jump_to(0, &mut colors, &mut labels, &mut vertices).unwrap();
+        assert_eq!(colors, vec![[0, 0, 0, 255]; 4], "depth 0 is the pristine state");
+
+        h.jump_to(1, &mut colors, &mut labels, &mut vertices).unwrap();
+        assert_eq!(colors[0], [1, 0, 0, 255]);
+        assert_eq!(colors[1], [0, 0, 0, 255], "stopped between the two redo states");
+        assert_eq!(h.redo_depth(), 1);
+
+        h.jump_to(2, &mut colors, &mut labels, &mut vertices).unwrap();
+        assert_eq!(colors[1], [2, 0, 0, 255]);
+    }
+
+    /// Jumping to the current state is a no-op; a target past the redo end
+    /// clamps instead of silently under-shooting.
+    #[test]
+    fn jump_noops_on_the_current_state_and_clamps_past_the_end() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
+        let (mut colors, mut labels) = buffers(4);
+        let mut h = History::new();
+
+        h.record(OpKind::Paint, Some(1), &[(0, colors[0])], &[]);
+        colors[0] = [1, 0, 0, 255];
+
+        assert!(h.jump_to(1, &mut colors, &mut labels, &mut vertices).is_none());
+        assert_eq!(colors[0], [1, 0, 0, 255]);
+
+        h.undo(&mut colors, &mut labels, &mut vertices).unwrap();
+        let out = h.jump_to(9, &mut colors, &mut labels, &mut vertices).unwrap();
+        assert_eq!(h.undo_depth(), 1, "clamped to the redo branch's end");
+        assert_eq!(colors[0], [1, 0, 0, 255]);
+        let _ = out;
+    }
+
+    /// A jump ends any open stroke, exactly like undo/redo do — the next
+    /// paint must never append into an entry that jumped between stacks.
+    ///
+    /// Observable via coalescing: op 1 carries stroke 7; after jumping back
+    /// to it, a new record with the SAME id must open a fresh entry (depth
+    /// grows) instead of appending into the re-applied one.
+    #[test]
+    fn jump_closes_the_open_stroke() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
+        let (mut colors, mut labels) = buffers(4);
+        let mut h = History::new();
+
+        h.record(OpKind::Paint, Some(7), &[(0, colors[0])], &[]);
+        colors[0] = [1, 0, 0, 255];
+        h.record(OpKind::Paint, Some(8), &[(1, colors[1])], &[]);
+        colors[1] = [2, 0, 0, 255];
+
+        h.jump_to(1, &mut colors, &mut labels, &mut vertices).unwrap();
+        assert_eq!(h.undo_depth(), 1);
+
+        // Same stroke id as the re-applied entry: must NOT coalesce into it.
+        h.record(OpKind::Paint, Some(7), &[(0, colors[0])], &[]);
+        colors[0] = [3, 0, 0, 255];
+        assert_eq!(h.undo_depth(), 2, "the recycled stroke id starts a fresh entry");
+    }
+
+    /// A label-bearing step inside a jump forces the full-payload path.
+    #[test]
+    fn jump_reports_labels_changed_when_any_step_carried_labels() {
+        let mut vertices: Vec<[f32; 3]> = Vec::new();
+        let (mut colors, mut labels) = buffers(4);
+        let mut h = History::new();
+
+        h.record(OpKind::Paint, Some(1), &[(0, colors[0])], &[]);
+        colors[0] = [1, 0, 0, 255];
+        let prev: Vec<_> = [(1u32, labels[1])].into_iter().collect();
+        h.record(OpKind::SegmentPaint, Some(2), &[(1, colors[1])], &prev);
+        colors[1] = [2, 0, 0, 255];
+        labels[1] = 100_000;
+
+        let out = h.jump_to(0, &mut colors, &mut labels, &mut vertices).unwrap();
+        assert!(out.labels_changed, "one skipped step carried labels");
+        assert_eq!(labels[1], 0);
     }
 
 }

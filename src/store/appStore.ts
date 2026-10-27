@@ -85,6 +85,13 @@ interface AppStore {
    *  Transient: NOT persisted (see partialize whitelist). */
   debugLogOpen: boolean;
   setDebugLogOpen: (v: boolean) => void;
+  /** History panel (issue #22): toggled from 视图 → 历史记录; docks as an
+   *  extra column in the main layout. Transient: NOT persisted. */
+  historyPanelOpen: boolean;
+  setHistoryPanelOpen: (v: boolean) => void;
+  /** Bumped whenever the timeline may have changed (any recorded op, an
+   *  undo/redo/jump, a load). The history panel refetches on each bump. */
+  historyVersion: number;
   isLoading: boolean;
   importProgress: number;
   importStage: string;
@@ -506,6 +513,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   // runtime messages pushed by setStatusMessage still display unchanged.
   statusMessage: "status.ready",
   debugLogOpen: false,
+  historyPanelOpen: false,
+  historyVersion: 0,
   isLoading: false,
   importProgress: 0,
   importStage: "",
@@ -675,13 +684,14 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   viewResetTick: 0,
   bumpViewReset: () => set((state) => ({ viewResetTick: state.viewResetTick + 1 })),
   setToast: (msg) => set({ toast: msg }),
-  setHistoryFlags: (canUndo, canRedo) => set({ canUndo, canRedo }),
+  setHistoryFlags: (canUndo, canRedo) => set((st) => ({ canUndo, canRedo, historyVersion: st.historyVersion + 1 })),
   // Optimistic: a successful paint stroke always creates a history entry, so undo
   // becomes available; meanwhile it invalidates any redo branch on the backend.
-  markHistoryDirty: () => set({ canUndo: true, canRedo: false }),
-  resetHistory: () => set({ canUndo: false, canRedo: false }),
+  markHistoryDirty: () => set((st) => ({ canUndo: true, canRedo: false, historyVersion: st.historyVersion + 1 })),
+  resetHistory: () => set((st) => ({ canUndo: false, canRedo: false, historyVersion: st.historyVersion + 1 })),
   setStatusMessage: (msg) => set({ statusMessage: msg }),
   setDebugLogOpen: (v) => set({ debugLogOpen: v }),
+  setHistoryPanelOpen: (v) => set({ historyPanelOpen: v }),
 
   seedPoints: [],
   addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),

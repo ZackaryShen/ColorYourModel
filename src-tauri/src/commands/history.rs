@@ -130,7 +130,8 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
     // 0.2.0-P2: a transform entry moves VERTICES — after applying it, the
     // derived geometry state must be rebuilt and the new vertices shipped to
     // the frontend (the incremental colour patch cannot express this).
-    if outcome.transform.is_some() {
+    let transformed = outcome.transform.is_some();
+    if transformed {
         mesh.compute_normals();
         mesh.compute_bbox();
         mesh.build_kdtree();
@@ -138,11 +139,38 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
         mesh.build_adjacency();
     }
 
-    let full = outcome.transform.is_some()
-        || outcome.labels_changed
-        || outcome.faces.len() > MAX_INCREMENTAL_FACES;
+    Ok(history_result(
+        mesh,
+        match dir {
+            Direction::Undo => "undo",
+            Direction::Redo => "redo",
+        },
+        outcome.kind,
+        outcome.faces,
+        outcome.colors,
+        outcome.labels_changed,
+        transformed,
+    ))
+}
 
-    if outcome.labels_changed {
+/// Assemble the wire result for a timeline move. Undo, redo and jump differ
+/// only in WHICH entries were applied — the payload semantics are shared:
+/// `labels_changed` recomputes segment metadata, `transformed` ships the
+/// post-apply vertices (callers must have rebuilt the derived geometry state
+/// beforehand), and past [`MAX_INCREMENTAL_FACES`] the whole-buffer form wins
+/// on IPC cost, as do both of the first two.
+fn history_result(
+    mesh: &mut crate::mesh::model::MeshModel,
+    what: &str,
+    kind: crate::mesh::history::OpKind,
+    faces: Vec<u32>,
+    colors: Vec<[u8; 4]>,
+    labels_changed: bool,
+    transformed: bool,
+) -> HistoryResult {
+    let full = transformed || labels_changed || faces.len() > MAX_INCREMENTAL_FACES;
+
+    if labels_changed {
         // Segment metadata is derived from labels, so it has to be recomputed
         // before it is sent. A region whose faces all reverted disappears here.
         mesh.rebuild_segments();
@@ -150,38 +178,35 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
 
     log::info!(
         "[cmd:history] {} kind={:?} faces={} labels_changed={} full={}",
-        match dir {
-            Direction::Undo => "undo",
-            Direction::Redo => "redo",
-        },
-        outcome.kind,
-        outcome.faces.len(),
-        outcome.labels_changed,
+        what,
+        kind,
+        faces.len(),
+        labels_changed,
         full
     );
 
-    Ok(HistoryResult {
+    HistoryResult {
         applied: true,
         full,
-        faces: if full || outcome.transform.is_some() { Vec::new() } else { outcome.faces },
-        colors: if full || outcome.transform.is_some() {
+        faces: if full || transformed { Vec::new() } else { faces },
+        colors: if full || transformed {
             Vec::new()
         } else {
-            flatten(&outcome.colors)
+            flatten(&colors)
         },
         segments: full.then(|| mesh.sorted_segments()),
         segment_labels: full.then(|| mesh.segment_labels.clone()),
         face_colors: full.then(|| flatten(&mesh.face_colors)),
-        vertices: outcome.transform.is_some().then(|| {
+        vertices: transformed.then(|| {
             mesh.vertices
                 .iter()
                 .flat_map(|v| v.iter().copied())
                 .collect()
         }),
-        bbox: outcome.transform.is_some().then(|| mesh.bbox.clone()),
+        bbox: transformed.then(|| mesh.bbox.clone()),
         can_undo: mesh.history.can_undo(),
         can_redo: mesh.history.can_redo(),
-    })
+    }
 }
 
 #[tauri::command]
@@ -216,4 +241,96 @@ pub fn history_state(state: State<AppState>) -> Result<HistoryState, String> {
         redo_depth: mesh.history.redo_depth(),
         bytes: mesh.history.bytes(),
     })
+}
+
+// ─── History panel (issue #22) ─────────────────────────────────────────────
+
+/// One row of the history panel: what the operation was and how much it
+/// touched. `kind` is the stable wire key from `OpKind::key()`; the frontend
+/// maps it to icon + localized label.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryEntryDto {
+    pub kind: String,
+    pub stroke_id: Option<u64>,
+    pub face_count: usize,
+    pub bytes: usize,
+}
+
+/// Everything the panel renders, in one read-only call. `current` is the
+/// jump index of the live state; `max_depth` and `bytes` feed the header so
+/// the eviction ceiling (`DEFAULT_MAX_DEPTH` / `DEFAULT_BYTE_BUDGET`) stops
+/// being invisible.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryEntriesResult {
+    pub current: usize,
+    pub max_depth: usize,
+    pub bytes: usize,
+    /// Applied entries, oldest first; depth k = the state after `entries[k-1]`.
+    pub entries: Vec<HistoryEntryDto>,
+}
+
+#[tauri::command]
+pub fn history_entries(state: State<AppState>) -> Result<HistoryEntriesResult, String> {
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    Ok(HistoryEntriesResult {
+        current: mesh.history.undo_depth(),
+        max_depth: mesh.history.max_depth(),
+        bytes: mesh.history.bytes(),
+        entries: mesh
+            .history
+            .entries()
+            .into_iter()
+            .map(|e| HistoryEntryDto {
+                kind: e.kind.key().to_string(),
+                stroke_id: e.stroke_id,
+                face_count: e.face_count,
+                bytes: e.bytes,
+            })
+            .collect(),
+    })
+}
+
+/// Jump to state `target` (issue #22): applies every skipped step in ONE
+/// call and returns the patch for the final state — the union of all touched
+/// faces with their final colours, full-payload whenever labels moved or a
+/// transform ran, exactly like a single undo/redo would produce.
+#[tauri::command]
+pub fn history_jump(target: usize, state: State<AppState>) -> Result<HistoryResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+
+    let crate::mesh::model::MeshModel {
+        history,
+        face_colors,
+        segment_labels,
+        vertices,
+        ..
+    } = mesh;
+
+    let Some(out) = history.jump_to(target, face_colors, segment_labels, vertices) else {
+        return Ok(HistoryResult::empty(mesh.history.can_undo(), mesh.history.can_redo()));
+    };
+
+    // A transform step moved VERTICES: the derived geometry state must be
+    // rebuilt once here, at the jump's destination, before the payload reads it.
+    if out.transformed {
+        mesh.compute_normals();
+        mesh.compute_bbox();
+        mesh.build_kdtree();
+        mesh.build_vertex_kdtree();
+        mesh.build_adjacency();
+    }
+
+    Ok(history_result(
+        mesh,
+        "jump",
+        out.kind,
+        out.faces,
+        out.colors,
+        out.labels_changed,
+        out.transformed,
+    ))
 }
