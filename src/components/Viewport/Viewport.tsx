@@ -570,6 +570,62 @@ function SegmentOutline({ meshData, selectedSegment, edgeMap, facesBySeg }: {
   );
 }
 
+// ─── Colour-set outline (issue #23) ─────────────────────────────
+/// Boundary outline for an arbitrary FACE SET — used when hovering a
+/// used-colour swatch, where the colour may span many regions and the
+/// per-label SegmentOutline cannot express it. Mirrors SegmentOutline's
+/// boundary walk (an edge is on the boundary when any adjacent face is
+/// outside the set, or the edge borders nothing), keyed by set membership
+/// instead of a label.
+function FaceSetOutline({ meshData, faces, edgeMap }: {
+  meshData: { faces: number[]; vertices: number[] };
+  faces: number[];
+  edgeMap: { map: Map<number, number[]>; vmax: number };
+}) {
+  const overlay = useOverlayColors();
+  const geometry = useMemo(() => {
+    const faceSet = new Set(faces);
+    if (faceSet.size === 0) return null;
+    const fArr = meshData.faces;
+    const verts = meshData.vertices;
+    const { map: edgeToFaces, vmax } = edgeMap;
+
+    const boundaryVerts: number[] = [];
+    for (const f of faceSet) {
+      const v0 = fArr[f * 3], v1 = fArr[f * 3 + 1], v2 = fArr[f * 3 + 2];
+      const edges = [
+        [Math.min(v0, v1), Math.max(v0, v1)],
+        [Math.min(v1, v2), Math.max(v1, v2)],
+        [Math.min(v2, v0), Math.max(v2, v0)],
+      ];
+      for (const [a, b] of edges) {
+        const cofaces = edgeToFaces.get(a * vmax + b);
+        if (!cofaces) continue;
+        const onBoundary =
+          cofaces.some((f2) => !faceSet.has(f2)) || cofaces.length === 1;
+        if (onBoundary) {
+          boundaryVerts.push(
+            verts[a * 3], verts[a * 3 + 1], verts[a * 3 + 2],
+            verts[b * 3], verts[b * 3 + 1], verts[b * 3 + 2]
+          );
+        }
+      }
+    }
+    if (boundaryVerts.length === 0) return null;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(boundaryVerts, 3));
+    return geo;
+  }, [meshData.faces, meshData.vertices, faces, edgeMap]);
+
+  if (!geometry) return null;
+  return (
+    <lineSegments geometry={geometry}>
+      <lineBasicMaterial color={overlay.outline} linewidth={2} depthTest={false} />
+    </lineSegments>
+  );
+}
+
 // ─── Nearest local vertex (snap preview, frontend-only) ────────
 /// Snap a model-local point to the nearest mesh vertex using the loaded
 /// vertex array. Equivalent to the backend `nearest_vertex` (Euclidean kd-tree
@@ -765,6 +821,20 @@ function MeshDisplay() {
   // the session card and the click handler all read one source of truth.
   const mergeSession = useAppStore((s) => s.mergeSession);
   const setMergeSession = useAppStore((s) => s.setMergeSession);
+  // Issue #23: which colour's faces to outline (hovered used-colour swatch),
+  // computed straight from the flat RGBA buffer — O(F) per hover change,
+  // memoised so a 148k-face model costs a few ms.
+  const usedColourHover = useAppStore((s) => s.usedColourHover);
+  const usedColourFaces = useMemo(() => {
+    if (!usedColourHover || !meshData) return null;
+    const [r, g, b] = usedColourHover;
+    const fc = meshData.faceColors;
+    const out: number[] = [];
+    for (let f = 0; f * 4 + 2 < fc.length; f++) {
+      if (fc[f * 4] === r && fc[f * 4 + 1] === g && fc[f * 4 + 2] === b) out.push(f);
+    }
+    return out;
+  }, [usedColourHover, meshData]);
   const hoveredSegment = useAppStore((s) => s.hoveredSegment);
   const setHoveredSegment = useAppStore((s) => s.setHoveredSegment);
   const activeTool = useAppStore((s) => s.activeTool);
@@ -1200,12 +1270,6 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // I am about to absorb" (cyan hover) are two visually separate things.
   const mergeLabel = useRef({ value: -1 });
   const mergeColor = useRef(new THREE.Color(0xff9500));
-  // Issue #23: hovering a used-colour swatch highlights EVERY face carrying
-  // that colour — across regions, which the per-label uniform cannot express.
-  // The face colour lives in the vertex colour, so the fragment stage matches
-  // vColor against the hovered RGB (per-face flat, so interpolation is exact).
-  const usedColourTarget = useRef(new THREE.Color());
-  const usedColourActive = useRef({ value: 0 });
   const overlayColors = useOverlayColors();
 
   // Type the callback to match three's expected `onBeforeCompile` signature so
@@ -1217,8 +1281,6 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     shader.uniforms.uHighlightColor = { value: highlightColor.current };
     shader.uniforms.uMergeLabel = mergeLabel.current;
     shader.uniforms.uMergeColor = { value: mergeColor.current };
-    shader.uniforms.uUsedColourTarget = { value: usedColourTarget.current };
-    shader.uniforms.uUsedColourActive = usedColourActive.current;
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
@@ -1228,11 +1290,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nuniform float uMergeLabel;\nuniform vec3 uMergeColor;\nuniform vec3 uUsedColourTarget;\nuniform float uUsedColourActive;\nflat varying float vSegLabel;"
+        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nuniform float uMergeLabel;\nuniform vec3 uMergeColor;\nflat varying float vSegLabel;"
       )
       .replace(
         "#include <color_fragment>",
-        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }\nif (uMergeLabel >= 0.0 && abs(vSegLabel - uMergeLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uMergeColor, 0.6); }\nif (uUsedColourActive > 0.5 && distance(vColor.rgb, uUsedColourTarget) < 0.02) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.55); }"
+        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }\nif (uMergeLabel >= 0.0 && abs(vSegLabel - uMergeLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uMergeColor, 0.6); }"
       );
   }, []);
 
@@ -1255,17 +1317,6 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   useFrame(() => {
     highlightLabel.current.value = renderedHighlightLabelRef.current ?? -1;
     mergeLabel.current.value = useAppStore.getState().mergeSession?.target ?? -1;
-    const colourHover = useAppStore.getState().usedColourHover;
-    if (colourHover) {
-      usedColourTarget.current.setRGB(
-        colourHover[0] / 255,
-        colourHover[1] / 255,
-        colourHover[2] / 255
-      );
-      usedColourActive.current.value = 1;
-    } else {
-      usedColourActive.current.value = 0;
-    }
   });
 
   // Raycast to surface, convert world hit → model-local coords.
@@ -2545,6 +2596,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
             <SegmentOutline meshData={meshData} selectedSegment={hoveredSegment} edgeMap={edgeMap} facesBySeg={facesBySeg} />
           )}
         </>
+      )}
+      {/* Issue #23: outline of every face carrying the hovered used colour —
+          visible in both views, independent of the per-label outlines. */}
+      {usedColourFaces && usedColourFaces.length > 0 && meshData && edgeMap && (
+        <FaceSetOutline meshData={meshData} faces={usedColourFaces} edgeMap={edgeMap} />
       )}
       {/* Lasso overlay (manual region selection) */}
       {(lassoPoints.length > 0 || lassoPreview || lassoSnap) && (
