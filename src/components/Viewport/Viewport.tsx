@@ -821,6 +821,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // pass straight through; the flat-slice assumption here crashed
     // updateFaceColors on undefined entries (caught live in P2 acceptance).
     updateFaceColors(pendingPaintResult.faces, pendingPaintResult.colors);
+    // The projection paints through commit() on the backend timeline, so the
+    // flags-and-version funnels must hear about it too — without this, the
+    // used-colours list AND the history panel go stale until the next op
+    // (issue #23 field path).
+    useAppStore.getState().markHistoryDirty();
     setPendingPaintResult(null);
   }, [pendingPaintResult, updateFaceColors, setPendingPaintResult]);
   const { paintFace } = usePaintTool();

@@ -82,6 +82,8 @@ The 10 tools in the left toolbar are **mutually exclusive** (the active one gets
 
 **Color panel** (right): current-colour swatch + HEX + the system colour picker (any colour), plus the **AMS palette** of 15 common colours. Palette slots map to filament slots at export time (section 5).
 
+**Used colours** (colour panel, under the AMS palette): every colour actually present on the model, most-used first. Hover for `#hex · faces · regions`; **click to set it as the current colour** — brush/fill can use it immediately, so reusing a colour mixed many operations ago no longer means digging through history or retyping HEX. The list refreshes after paint/fill/undo/redo (250 ms debounce); the never-painted default grey appears as its own dashed-border swatch. Hidden until the model has at least one custom colour.
+
 ### Undo / redo
 
 Painting, erasing, manual regions and lasso all share one undo timeline (managed by the backend): **Ctrl+Z** undo, **Ctrl+Y** or **Ctrl+Shift+Z** redo, or the ↶ / ↷ toolbar buttons. One whole drag stroke is one entry — never dozens. Note that **🗑 Reset partition and Reset are NOT undoable**.

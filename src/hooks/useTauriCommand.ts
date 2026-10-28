@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useT, translateError } from "../i18n";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, HistoryEntriesResult, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
+import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, HistoryEntriesResult, UsedColorEntry, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
@@ -363,6 +363,17 @@ export function useTauriCommand() {
       return await invoke<HistoryResult>("history_jump", { target });
     } catch (e) {
       log.error("useTauriCommand", "history_jump failed", { error: String(e) });
+      return null;
+    }
+  };
+
+  /** Used-colours listing for the colour panel (issue #23): one entry per
+   *  distinct colour on the model, most faces first. */
+  const usedColors = async (): Promise<UsedColorEntry[] | null> => {
+    try {
+      return await invoke<UsedColorEntry[]>("used_colors");
+    } catch (e) {
+      log.error("useTauriCommand", "used_colors failed", { error: String(e) });
       return null;
     }
   };
@@ -808,5 +819,6 @@ export function useTauriCommand() {
     historyState,
     historyEntries,
     historyJump,
+    usedColors,
   };
 }
