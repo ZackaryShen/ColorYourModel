@@ -22,6 +22,7 @@ import { ViewGizmo } from "./ViewGizmo";
 import { isPointerInGizmo } from "./viewGizmoModel";
 import { isClosureIntent, localToScreenPx, projectedRadiusPx } from "./lassoClosure";
 import { createSerialPaintQueue, type PaintJob } from "./paintQueue";
+import { mergeGestureClick } from "../../utils/mergeGesture";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
 // Patched ONCE at module load. `acceleratedRaycast` falls back to the native
@@ -760,6 +761,10 @@ function MeshDisplay() {
   const segmentView = useAppStore((s) => s.segmentView);
   const selectedSegment = useAppStore((s) => s.selectedSegment);
   const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
+  // Issue #16 merge-gesture session (fill tool) — reactive so the highlight,
+  // the session card and the click handler all read one source of truth.
+  const mergeSession = useAppStore((s) => s.mergeSession);
+  const setMergeSession = useAppStore((s) => s.setMergeSession);
   const hoveredSegment = useAppStore((s) => s.hoveredSegment);
   const setHoveredSegment = useAppStore((s) => s.setHoveredSegment);
   const activeTool = useAppStore((s) => s.activeTool);
@@ -819,7 +824,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     setPendingPaintResult(null);
   }, [pendingPaintResult, updateFaceColors, setPendingPaintResult]);
   const { paintFace } = usePaintTool();
-  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
+  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState, mergeSegments } = useTauriCommand();
   const { undo: historyUndo, redo: historyRedo } = useUndoRedo({ undo, redo, historyState });
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
@@ -1132,6 +1137,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // Every consumer — the shader uniform and the HUD alike — reads this one
   // value, keeping that class of divergence unrepresentable.
   const renderedHighlightLabel = useMemo<number | null>(() => {
+    // During a merge session the hover preview keeps its ORIGINAL job — show
+    // the region the next Ctrl+click would absorb — in both views. The merge
+    // session group itself renders separately (uMergeLabel uniform tint), so
+    // the two highlights never fight: cyan hover = candidate, orange = merged.
+    if (mergeSession) return hoveredSegment;
     if (segmentView) return selectedSegment;
     // Only partition-targeting tools show the hover highlight (option B). For
     // brush/view/etc. we never highlight — this is the single source of truth
@@ -1141,7 +1151,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     if (!isHighlightTool) return null;
     if (hoveredSegment === null) return null;
     return hoveredSegment;
-  }, [segmentView, selectedSegment, hoveredSegment, isHighlightTool]);
+  }, [mergeSession, segmentView, selectedSegment, hoveredSegment, isHighlightTool]);
 
   // Published after commit, never during render (P1-8). `enqueuePaint` reads it
   // synchronously from a pointer handler, so a layout effect is early enough.
@@ -1179,6 +1189,12 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // highlights instantly — this is what retired the `giantSegmentIds` guard.
   const highlightLabel = useRef({ value: -1 });
   const highlightColor = useRef(new THREE.Color(0x00ffff));
+  // Issue #16 (field feedback): the merge session group — anchor + absorbed,
+  // which after each merge are literally ONE label — renders through its OWN
+  // uniform in a distinct colour, so "what I have merged" (orange) and "what
+  // I am about to absorb" (cyan hover) are two visually separate things.
+  const mergeLabel = useRef({ value: -1 });
+  const mergeColor = useRef(new THREE.Color(0xff9500));
   const overlayColors = useOverlayColors();
 
   // Type the callback to match three's expected `onBeforeCompile` signature so
@@ -1188,6 +1204,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   >((shader) => {
     shader.uniforms.uHighlightLabel = highlightLabel.current;
     shader.uniforms.uHighlightColor = { value: highlightColor.current };
+    shader.uniforms.uMergeLabel = mergeLabel.current;
+    shader.uniforms.uMergeColor = { value: mergeColor.current };
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
@@ -1197,11 +1215,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nflat varying float vSegLabel;"
+        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nuniform float uMergeLabel;\nuniform vec3 uMergeColor;\nflat varying float vSegLabel;"
       )
       .replace(
         "#include <color_fragment>",
-        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }"
+        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }\nif (uMergeLabel >= 0.0 && abs(vSegLabel - uMergeLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uMergeColor, 0.6); }"
       );
   }, []);
 
@@ -1223,6 +1241,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // sentinel a no-op even where aSegLabel is the -2 "no segment" value.
   useFrame(() => {
     highlightLabel.current.value = renderedHighlightLabelRef.current ?? -1;
+    mergeLabel.current.value = useAppStore.getState().mergeSession?.target ?? -1;
   });
 
   // Raycast to surface, convert world hit → model-local coords.
@@ -1596,6 +1615,41 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     };
   }, []);
 
+  // Issue #16: Esc ends the merge session. Skipped while a lasso loop is
+  // open — Esc already means "remove lasso point" there and the two gestures
+  // never share a click.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (lassoPointsRef.current.length > 0) return;
+      if (useAppStore.getState().mergeSession) {
+        setMergeSession(null);
+        setSelectedSegment(null);
+        setStatusMessage(t("merge.cleared"));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setMergeSession, setSelectedSegment, setStatusMessage, t]);
+
+  // Feedback #4: the merge gesture lives inside the fill tool — switching
+  // tools always ends the session.
+  useEffect(() => {
+    if (useAppStore.getState().mergeSession) setMergeSession(null);
+  }, [activeTool, setMergeSession]);
+
+  // A (re)loaded model renumbers regions — a stale anchor could point at a
+  // label that now means something else, so the gesture resets with it.
+  // Keyed on the VERTICES reference, not meshData: updateSegmentLabels
+  // rebuilds the meshData object on every successful merge (spread keeps the
+  // vertices array), and resetting there would break the anchor chain the
+  // gesture exists to provide. A fresh load or a geometry re-apply ships a
+  // new vertices array and resets the gesture.
+  const modelVertices = useAppStore((s) => s.meshData?.vertices);
+  useEffect(() => {
+    setMergeSession(null);
+  }, [modelVertices, setMergeSession]);
+
   // Guarantee camera rotation is enabled whenever the active tool changes. This
   // is now handled by the ControlsBridge mouseButtons remap (iteration 14):
   // paint tools disable LEFT in OrbitControls and map RIGHT→rotate, so no
@@ -1666,6 +1720,59 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         log.info("Viewport", "seed pick-mode: selected partition", { lbl });
         setStatusMessage(t("seed.picked", lbl));
         return;
+      }
+      // Issue #16 (revised after field feedback): with the FILL tool active,
+      // Ctrl+click means "merge regions" — the first Ctrl+click picks the
+      // anchor region, further ones absorb other regions into it (Segments
+      // panel drives the same merge_segments pipeline). Gated to fill after
+      // field feedback: the anchor must be visible (session card + both-view
+      // highlight) and must never silently survive unrelated actions — any
+      // plain click, tool switch, Esc or model reload ends the session.
+      if (e.ctrlKey && activeTool === "fill") {
+        const hit = raycastFace(e.clientX, e.clientY);
+        if (!hit || hit.faceIndex == null || !meshData?.segmentLabels) return;
+        const label = meshData.segmentLabels[hit.faceIndex];
+        if (label === undefined || !segmentIds.has(label)) return;
+        const session = useAppStore.getState().mergeSession;
+        const { effect } = mergeGestureClick(
+          { anchor: session?.target ?? null },
+          label,
+          Array.from(segmentIds)
+        );
+        if (effect.type === "anchor") {
+          setMergeSession({ target: effect.label, absorbed: [] });
+          setSelectedSegment(effect.label);
+          setStatusMessage(t("merge.anchor", effect.label));
+        } else if (effect.type === "merge") {
+          void (async () => {
+            const moved = await mergeSegments(effect.target, [effect.source]);
+            if (moved === null) {
+              // The region dissolved under the click (undo, re-run) — the
+              // chain is invalid, start over.
+              setMergeSession(null);
+              return;
+            }
+            const prev = useAppStore.getState().mergeSession;
+            setMergeSession({
+              target: effect.target,
+              absorbed: [...(prev?.absorbed ?? []), effect.source],
+            });
+            setSelectedSegment(effect.target);
+            setStatusMessage(t("merge.merged", effect.source, effect.target, moved));
+          })();
+        } else if (effect.type === "clear") {
+          setMergeSession(null);
+          setSelectedSegment(null);
+          setStatusMessage(t("merge.cleared"));
+        } else {
+          setStatusMessage(t("merge.needTwo"));
+        }
+        return;
+      }
+      // Any plain (non-Ctrl) click ends the merge session: a fill right after
+      // a merge must never sweep an earlier chain the user can no longer see.
+      if (useAppStore.getState().mergeSession) {
+        setMergeSession(null);
       }
       if (isLassoTool) {
         setHoveredSegment(null);
@@ -2214,7 +2321,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed, closureIntent]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed, closureIntent, mergeSegments]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {
@@ -2956,6 +3063,29 @@ function SegmentToggle() {
 /// choices — jump to the segment view or stay — because silently flipping
 /// the render mode under a mid-paint user would be worse than the trip.
 /// Hidden once the suggestion is honored (segmentView flips on) or dismissed.
+// Issue #16 (field feedback #2): the merge session must be VISIBLE somewhere
+// durable — the card lists the anchor and everything absorbed so far, so the
+// user always knows what the next Ctrl+click and the next fill will hit.
+// Reuses the segment-view hint card's styling; pointerEvents none throughout.
+function MergeSessionCard() {
+  const t = useT();
+  const mergeSession = useAppStore((s) => s.mergeSession);
+  if (!mergeSession) return null;
+  return (
+    <div style={segHintStyles.wrap}>
+      <div style={segHintStyles.card} role="status">
+        <span>
+          {t("merge.cardTarget", mergeSession.target)}
+          {mergeSession.absorbed.length > 0
+            ? t("merge.cardCount", mergeSession.absorbed.length)
+            : t("merge.cardNone")}
+        </span>
+        <span style={{ color: "var(--text-2, #999)" }}>{t("merge.cardHint")}</span>
+      </div>
+    </div>
+  );
+}
+
 function SegmentViewHint() {
   const t = useT();
   const isLoaded = useAppStore((s) => s.isLoaded);
@@ -3187,6 +3317,7 @@ export function Viewport() {
       <ProgressBar />
       <SegmentToggle />
       <SegmentViewHint />
+      <MergeSessionCard />
       <ControlsHelp />
       <DebugHud />
       <Toast />

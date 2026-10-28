@@ -3,7 +3,8 @@ import { PaintTool } from "../types/mesh";
 export type ControlsHintKey =
   | "controls.viewHint"
   | "controls.brushHint"
-  | "controls.editHint";
+  | "controls.editHint"
+  | "controls.fillHint";
 
 /**
  * The ONE source for the per-tool mouse-binding hint text.
@@ -16,6 +17,10 @@ export type ControlsHintKey =
  */
 export function hintKeyForTool(tool: PaintTool): ControlsHintKey {
   if (tool === PaintTool.View) return "controls.viewHint";
+  // Issue #16 (field feedback #4): fill is the merge gesture's home tool, so
+  // its hint advertises Ctrl+click — discoverable, and it warns that a plain
+  // click means fill (never an accidental merge).
+  if (tool === PaintTool.Fill) return "controls.fillHint";
   const isBrush =
     tool === PaintTool.Brush ||
     tool === PaintTool.Spray ||
