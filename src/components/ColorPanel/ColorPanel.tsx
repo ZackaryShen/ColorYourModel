@@ -11,6 +11,7 @@ export function ColorPanel() {
   const t = useT();
   const currentColor = useAppStore((s) => s.currentColor);
   const setCurrentColor = useAppStore((s) => s.setCurrentColor);
+  const setUsedColourHover = useAppStore((s) => s.setUsedColourHover);
   const { usedColors } = useTauriCommand();
 
   // Issue #23: the colours actually on the model, most faces first. The
@@ -136,6 +137,8 @@ export function ColorPanel() {
                 <button
                   key={hex}
                   title={tooltip}
+                  onMouseEnter={() => setUsedColourHover([u.color[0], u.color[1], u.color[2]])}
+                  onMouseLeave={() => setUsedColourHover(null)}
                   onClick={() => setCurrentColor([u.color[0], u.color[1], u.color[2], 255])}
                   className="cym-btn"
                   style={{

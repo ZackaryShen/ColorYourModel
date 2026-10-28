@@ -95,6 +95,11 @@ interface AppStore {
    *  reload. Transient: NOT persisted. */
   mergeSession: { target: number; absorbed: number[] } | null;
   setMergeSession: (s: { target: number; absorbed: number[] } | null) => void;
+  /** Issue #23: RGB currently hovered in the used-colours swatches — the
+   *  viewport highlights every face carrying it. Null = no preview.
+   *  Transient: NOT persisted. */
+  usedColourHover: [number, number, number] | null;
+  setUsedColourHover: (rgb: [number, number, number] | null) => void;
   /** Bumped whenever the timeline may have changed (any recorded op, an
    *  undo/redo/jump, a load). The history panel refetches on each bump. */
   historyVersion: number;
@@ -521,6 +526,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   debugLogOpen: false,
   historyPanelOpen: false,
   mergeSession: null,
+  usedColourHover: null,
   historyVersion: 0,
   isLoading: false,
   importProgress: 0,
@@ -700,6 +706,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setDebugLogOpen: (v) => set({ debugLogOpen: v }),
   setHistoryPanelOpen: (v) => set({ historyPanelOpen: v }),
   setMergeSession: (v) => set({ mergeSession: v }),
+  setUsedColourHover: (rgb) => set({ usedColourHover: rgb }),
 
   seedPoints: [],
   addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),

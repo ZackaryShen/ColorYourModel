@@ -82,7 +82,7 @@ The 10 tools in the left toolbar are **mutually exclusive** (the active one gets
 
 **Color panel** (right): current-colour swatch + HEX + the system colour picker (any colour), plus the **AMS palette** of 15 common colours. Palette slots map to filament slots at export time (section 5).
 
-**Used colours** (colour panel, under the AMS palette): every colour actually present on the model, most-used first. Hover for `#hex · faces · regions`; **click to set it as the current colour** — brush/fill can use it immediately, so reusing a colour mixed many operations ago no longer means digging through history or retyping HEX. The list refreshes after paint/fill/undo/redo (250 ms debounce); the never-painted default grey appears as its own dashed-border swatch. Hidden until the model has at least one custom colour.
+**Used colours** (colour panel, under the AMS palette): every colour actually present on the model, most-used first. Hover for `#hex · faces · regions`; **click to set it as the current colour** — brush/fill can use it immediately, so reusing a colour mixed many operations ago no longer means digging through history or retyping HEX. The list refreshes after paint/fill/undo/redo (250 ms debounce); the never-painted default grey appears as its own dashed-border swatch. Hidden until the model has at least one custom colour.Hovering a swatch also highlights every region carrying that colour on the model, so you can see where it lives before picking it.
 
 ### Undo / redo
 

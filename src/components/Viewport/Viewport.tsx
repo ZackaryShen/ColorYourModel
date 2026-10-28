@@ -1200,6 +1200,12 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // I am about to absorb" (cyan hover) are two visually separate things.
   const mergeLabel = useRef({ value: -1 });
   const mergeColor = useRef(new THREE.Color(0xff9500));
+  // Issue #23: hovering a used-colour swatch highlights EVERY face carrying
+  // that colour — across regions, which the per-label uniform cannot express.
+  // The face colour lives in the vertex colour, so the fragment stage matches
+  // vColor against the hovered RGB (per-face flat, so interpolation is exact).
+  const usedColourTarget = useRef(new THREE.Color());
+  const usedColourActive = useRef({ value: 0 });
   const overlayColors = useOverlayColors();
 
   // Type the callback to match three's expected `onBeforeCompile` signature so
@@ -1211,6 +1217,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     shader.uniforms.uHighlightColor = { value: highlightColor.current };
     shader.uniforms.uMergeLabel = mergeLabel.current;
     shader.uniforms.uMergeColor = { value: mergeColor.current };
+    shader.uniforms.uUsedColourTarget = { value: usedColourTarget.current };
+    shader.uniforms.uUsedColourActive = usedColourActive.current;
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
@@ -1220,11 +1228,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nuniform float uMergeLabel;\nuniform vec3 uMergeColor;\nflat varying float vSegLabel;"
+        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nuniform float uMergeLabel;\nuniform vec3 uMergeColor;\nuniform vec3 uUsedColourTarget;\nuniform float uUsedColourActive;\nflat varying float vSegLabel;"
       )
       .replace(
         "#include <color_fragment>",
-        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }\nif (uMergeLabel >= 0.0 && abs(vSegLabel - uMergeLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uMergeColor, 0.6); }"
+        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }\nif (uMergeLabel >= 0.0 && abs(vSegLabel - uMergeLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uMergeColor, 0.6); }\nif (uUsedColourActive > 0.5 && distance(vColor.rgb, uUsedColourTarget) < 0.02) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.55); }"
       );
   }, []);
 
@@ -1247,6 +1255,17 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   useFrame(() => {
     highlightLabel.current.value = renderedHighlightLabelRef.current ?? -1;
     mergeLabel.current.value = useAppStore.getState().mergeSession?.target ?? -1;
+    const colourHover = useAppStore.getState().usedColourHover;
+    if (colourHover) {
+      usedColourTarget.current.setRGB(
+        colourHover[0] / 255,
+        colourHover[1] / 255,
+        colourHover[2] / 255
+      );
+      usedColourActive.current.value = 1;
+    } else {
+      usedColourActive.current.value = 0;
+    }
   });
 
   // Raycast to surface, convert world hit → model-local coords.
