@@ -597,7 +597,7 @@ pre.mermaid.mermaid-offline::after {
 <ul>
 <li><strong>选中</strong>：单击列表项或直接在模型上点分区（视图高亮）。</li>
 <li><strong>合并</strong>：<code>Ctrl+点击</code> 多选（先选的作为合并目标），点合并。</li>
-<li><strong>直接在模型上合并</strong>（#16，填充工具下）：选中 🪣 填充工具后，按住 <code>Ctrl</code> 点击模型上的一个分区选它为合并目标（两个视图都会高亮，视口顶部出现会话卡片列出已并入的分区），再 <code>Ctrl+点击</code> 其他分区逐个并入；点目标本身或按 <code>Esc</code> 结束。<strong>任何普通点击（含填充）、切换工具都会自动结束本次合并</strong>——上一轮的选择不会悄悄带进下一轮。</li>
+<li><strong>直接在模型上合并</strong>（#16，填充工具下）：选中 🪣 填充工具后，按住 <code>Ctrl</code> 点击模型上的一个分区选它为合并目标，再 <code>Ctrl+点击</code> 其他分区逐个并入。会话期间：<strong>已并入组以橙色特别高亮</strong>（与青色悬停预览明确区分，悬停照常显示下一个可并入的分区），视口顶部会话卡片只显示「合并目标 + 已并入数量」，区域再多也不冗长；点目标本身或按 <code>Esc</code> 结束。<strong>任何普通点击（含填充）、切换工具都会自动结束本次合并</strong>。</li>
 <li><strong>重命名</strong>：双击列表项。</li>
 <li><strong>拆分</strong>：对过大的分区按内部棱角再切（棱角阈值默认 30°）。</li>
 <li><strong>再切</strong>：对单个分区换算法重切（管状肢体凸分解切不开时的解法），8 个算法可选，见第 6 节。</li>

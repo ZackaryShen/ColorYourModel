@@ -1137,9 +1137,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // Every consumer — the shader uniform and the HUD alike — reads this one
   // value, keeping that class of divergence unrepresentable.
   const renderedHighlightLabel = useMemo<number | null>(() => {
-    // An active merge session highlights its anchor in BOTH views (field
-    // feedback: in paint view the user had no idea what the gesture held).
-    if (mergeSession) return mergeSession.target;
+    // During a merge session the hover preview keeps its ORIGINAL job — show
+    // the region the next Ctrl+click would absorb — in both views. The merge
+    // session group itself renders separately (uMergeLabel uniform tint), so
+    // the two highlights never fight: cyan hover = candidate, orange = merged.
+    if (mergeSession) return hoveredSegment;
     if (segmentView) return selectedSegment;
     // Only partition-targeting tools show the hover highlight (option B). For
     // brush/view/etc. we never highlight — this is the single source of truth
@@ -1187,6 +1189,12 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // highlights instantly — this is what retired the `giantSegmentIds` guard.
   const highlightLabel = useRef({ value: -1 });
   const highlightColor = useRef(new THREE.Color(0x00ffff));
+  // Issue #16 (field feedback): the merge session group — anchor + absorbed,
+  // which after each merge are literally ONE label — renders through its OWN
+  // uniform in a distinct colour, so "what I have merged" (orange) and "what
+  // I am about to absorb" (cyan hover) are two visually separate things.
+  const mergeLabel = useRef({ value: -1 });
+  const mergeColor = useRef(new THREE.Color(0xff9500));
   const overlayColors = useOverlayColors();
 
   // Type the callback to match three's expected `onBeforeCompile` signature so
@@ -1196,6 +1204,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   >((shader) => {
     shader.uniforms.uHighlightLabel = highlightLabel.current;
     shader.uniforms.uHighlightColor = { value: highlightColor.current };
+    shader.uniforms.uMergeLabel = mergeLabel.current;
+    shader.uniforms.uMergeColor = { value: mergeColor.current };
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
@@ -1205,11 +1215,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nflat varying float vSegLabel;"
+        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nuniform float uMergeLabel;\nuniform vec3 uMergeColor;\nflat varying float vSegLabel;"
       )
       .replace(
         "#include <color_fragment>",
-        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }"
+        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }\nif (uMergeLabel >= 0.0 && abs(vSegLabel - uMergeLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uMergeColor, 0.6); }"
       );
   }, []);
 
@@ -1231,6 +1241,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // sentinel a no-op even where aSegLabel is the -2 "no segment" value.
   useFrame(() => {
     highlightLabel.current.value = renderedHighlightLabelRef.current ?? -1;
+    mergeLabel.current.value = useAppStore.getState().mergeSession?.target ?? -1;
   });
 
   // Raycast to surface, convert world hit → model-local coords.
@@ -3066,7 +3077,7 @@ function MergeSessionCard() {
         <span>
           {t("merge.cardTarget", mergeSession.target)}
           {mergeSession.absorbed.length > 0
-            ? t("merge.cardAbsorbed", mergeSession.absorbed.join(", "))
+            ? t("merge.cardCount", mergeSession.absorbed.length)
             : t("merge.cardNone")}
         </span>
         <span style={{ color: "var(--text-2, #999)" }}>{t("merge.cardHint")}</span>

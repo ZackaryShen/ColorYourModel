@@ -238,7 +238,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "controls.editHint": { zh: "左键 绘制/选取 · 右键 平移 · 中键 缩放 · 滚轮 缩放", en: "Left Paint/Select · Right Pan · Middle Zoom · Scroll Zoom" },
   // Ctrl+click region merge (issue #16) — session card
   "merge.cardTarget": { zh: "合并到 区域 {0}", en: "Merging into region {0}" },
-  "merge.cardAbsorbed": { zh: " · 已并入：{0}", en: " · absorbed: {0}" },
+  "merge.cardCount": { zh: " · 已并入 {0} 个分区", en: " · {0} region(s) absorbed" },
   "merge.cardNone": { zh: " · 尚无并入分区", en: " · nothing absorbed yet" },
   "merge.cardHint": { zh: "Ctrl+点击继续并入 · 点目标本身或 Esc 结束", en: "Ctrl+click to absorb more · click the target or Esc to finish" },
 
