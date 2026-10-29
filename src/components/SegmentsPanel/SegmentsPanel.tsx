@@ -4,6 +4,8 @@ import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useT } from "../../i18n";
 import { segmentColorHex } from "../../utils/segmentPalette";
 import { toggleHiddenLabels, isolateLabel, pruneHiddenLabels } from "../../utils/segmentVisibility";
+import { resetGateTransition, type ResetPhase } from "../../utils/resetGate";
+import { ResetConfirmDialog } from "../ResetConfirmDialog";
 import {
   buildAlgorithm,
   DEFAULT_ALGORITHM_PARAMS,
@@ -98,17 +100,28 @@ export function SegmentsPanel() {
   // save" work, but Enter and Escape also remove focus, so without this the
   // commit would run a second time against a row that is already closed.
   const closingRef = useRef(false);
+  // Issue #28: destructive reset is gated by the in-app confirm dialog,
+  // whose lifecycle this phase state drives (see utils/resetGate).
+  const [resetPhase, setResetPhase] = useState<ResetPhase>("idle");
 
   // B2 (iteration 57): "I don't like the auto-segment, let me start over."
-  // Destructive, so gate it behind a native confirm. There is intentionally no
-  // undo for this (the reset itself also clears the undo stack on the backend),
-  // which is why the confirm is non-negotiable.
+  // Destructive (no undo — the reset clears the backend history stack too),
+  // so the confirm is non-negotiable. Issue #28: that guard is the in-app
+  // ResetConfirmDialog driven by utils/resetGate — window.confirm resolves
+  // async in the Tauri WebView, so the old sync guard never bailed and the
+  // wipe ran unasked.
+  const openResetConfirm = () => {
+    setResetPhase((p) => resetGateTransition(p, "request"));
+  };
+
   const onResetSegmentation = async () => {
-    if (!window.confirm(t("segments.resetConfirm"))) return;
+    setResetPhase((p) => resetGateTransition(p, "confirm"));
     try {
       await resetSegmentation();
     } catch {
       // error already surfaced via status message in the hook
+    } finally {
+      setResetPhase((p) => resetGateTransition(p, "settled"));
     }
   };
 
@@ -141,14 +154,17 @@ export function SegmentsPanel() {
 
   // Issue #24 (field feedback): a Ctrl-multi-selection needs a way OUT —
   // Esc clears it (blur), like every other modal-ish selection here.
+  // Issue #28: while the reset confirm dialog is engaged, Esc belongs to
+  // the dialog — it must not also wipe the in-progress merge selection.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      if (resetPhase !== "idle") return;
       if (mergePicked.length > 0) setMergePicked([]);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mergePicked]);
+  }, [mergePicked, resetPhase]);
 
   // Issue #24: a hidden label that no longer exists (merge / reset / undo
   // rewrote the partition) must not hide a future region reusing the label.
@@ -337,7 +353,7 @@ export function SegmentsPanel() {
             {hiddenSegments.size > 0 ? t("segments.showAll") : t("segments.hideAll")}
           </button>
           <button
-            onClick={onResetSegmentation}
+            onClick={openResetConfirm}
             disabled={!isLoaded || segments.length === 0}
             title={t("segments.resetHint")}
             style={styles.resetBtn}
@@ -512,6 +528,13 @@ export function SegmentsPanel() {
         >
           {t("segments.mergeInto", mergePicked.length, target.name)}
         </button>
+      )}
+      {resetPhase !== "idle" && (
+        <ResetConfirmDialog
+          running={resetPhase === "running"}
+          onCancel={() => setResetPhase((p) => resetGateTransition(p, "cancel"))}
+          onConfirm={onResetSegmentation}
+        />
       )}
     </div>
   );

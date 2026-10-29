@@ -1,0 +1,30 @@
+fix(reset): in-app confirm dialog replaces window.confirm guards (#28)
+
+清空分区 (Seed panel) and 重置分区 (Segments panel) guarded themselves
+with `window.confirm`. In the Tauri WebView that call is intercepted by
+tauri-plugin-dialog: it resolves asynchronously and `plugin:dialog|confirm`
+is not in the capability ACL, so it rejects outright. The sync guard
+`if (!window.confirm(...)) return` saw a truthy Promise and never bailed —
+the destructive reset (clears all regions, paint and the undo history)
+ran unasked, with only a red ACL error banner as feedback.
+
+Replace the guard with an in-app ResetConfirmDialog (reuse DialogShell,
+danger-red primary, portalled to document.body so panel stacking
+contexts cannot trap the overlay), driven by a pure phase machine
+(utils/resetGate): idle -> confirming -> running -> idle. The destructive
+action is reachable only through an open dialog, fires at most once per
+confirmation, and cannot be cancelled or re-triggered mid-flight.
+Esc/cancel during confirming touches nothing; both panels' own Esc
+handlers stand down while the dialog is engaged; both settle paths
+(success and error) close the dialog.
+
+The dialog ACL is deliberately left closed: any future window.confirm
+fails loudly instead of silently passing its guard.
+
+Tests no longer mock window.confirm (jsdom's sync confirm is exactly
+why the bug shipped unnoticed) — SeedPanel and SegmentsPanel now
+exercise the real dialog flow, including double-click and backend-error
+paths; resetGate's transition table and the dialog contract are locked
+separately. vitest 140/140, tsc clean, no Rust/capability changes.
+
+Closes #28

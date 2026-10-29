@@ -4,6 +4,8 @@ import { PaintTool, SeedPoint } from "../types/mesh";
 import { useTauriCommand } from "../hooks/useTauriCommand";
 import { useT } from "../i18n";
 import { log } from "../utils/logger";
+import { resetGateTransition, type ResetPhase } from "../utils/resetGate";
+import { ResetConfirmDialog } from "./ResetConfirmDialog";
 
 const POS_KEY = "cym.seedPanelPos";
 const PANEL_WIDTH = 360;
@@ -132,9 +134,16 @@ export function SeedPanel() {
     setSeedPickMode(false); // disarm before unmount so re-entering Seed tool doesn't start in Pick
     setActiveTool(PaintTool.View);
   };
+  // Issue #28: destructive reset is gated by the in-app confirm dialog,
+  // whose lifecycle this phase state drives (see utils/resetGate).
+  const [resetPhase, setResetPhase] = useState<ResetPhase>("idle");
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // While the reset confirm (#28) is engaged, Esc belongs to the
+        // dialog — swallowing it here would unmount the panel and the
+        // dialog with it (mid-flight the user would lose the 清空中… state).
+        if (resetPhase !== "idle") return;
         log.info("SeedPanel", "Esc pressed → View");
         setSeedPickMode(false); // same disarm reason as closePanel
         setActiveTool(PaintTool.View);
@@ -142,7 +151,7 @@ export function SeedPanel() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setActiveTool]);
+  }, [setActiveTool, resetPhase]);
 
   const [barrierDeg, setBarrierDeg] = useState(45);
   const [optimizer, setOptimizer] = useState(false);
@@ -165,7 +174,6 @@ export function SeedPanel() {
   // users can still dial back to 2-3° (the slider hint teaches exactly that).
   // See segment::godzilla_soft_fold_feasibility / fuse_floor_e2e.
   const [dihedralDeg, setDihedralDeg] = useState(5);
-  const [resetting, setResetting] = useState(false);
 
   // ── Drag-to-move (iteration 78) ────────────────────────────────────────
   // Position is a React state so styles/persistence see the final value, but
@@ -691,15 +699,19 @@ export function SeedPanel() {
     }
   };
 
-  // "Clear everything" — 之前的 × 按钮只清某层,分区面着色依旧存在
-  // (meshData.segmentLabels 来自 manual label / fuse),所以用户一直没法清空。
-  // 后端 reset_segmentation 已就位(useTauriCommand.resetSegmentation):
-  // 把 segmentLabels 全置 0、segments 清空、faceColors 还原默认,history
-  // 也清空。前端顺手把算法 regions + 种子全部清掉,视口立刻恢复干净状态。
+  // "Clear everything" — 后端 reset_segmentation 清空分区/涂装/history（不可撤销），
+  // 前端顺手清掉算法 regions + 种子。Issue #28: the guard is the in-app
+  // ResetConfirmDialog driven by utils/resetGate — window.confirm resolves
+  // async in the Tauri WebView, so the old sync guard never bailed and the
+  // wipe ran unasked. The button only OPENS the dialog; onResetAll runs
+  // solely from the dialog's danger click, once, per the phase machine.
+  const openResetConfirm = () => {
+    setResetPhase((p) => resetGateTransition(p, "request"));
+  };
+
   const onResetAll = async () => {
-    if (!window.confirm(t("segments.resetConfirm"))) return;
-    setResetting(true);
-    log.info("SeedPanel", "onResetAll click");
+    setResetPhase((p) => resetGateTransition(p, "confirm"));
+    log.info("SeedPanel", "onResetAll confirmed");
     try {
       await resetSegmentation();
       // 视口残留清理:前端持有的算法层/种子瞬态数据都清掉,BoundaryLines 立刻消失
@@ -715,7 +727,7 @@ export function SeedPanel() {
     } catch {
       // status already surfaced via useTauriCommand
     } finally {
-      setResetting(false);
+      setResetPhase((p) => resetGateTransition(p, "settled"));
     }
   };
 
@@ -1231,17 +1243,26 @@ export function SeedPanel() {
 
       {/* Reset partition — wipes meshData.segmentLabels + faceColors + history
           and clears every algorithm overlay. Indispensable since the previous
-          "× buttons" only cleared their own data slice. */}
+          "× buttons" only cleared their own data slice. The click opens the
+          in-app confirm (#28); only the dialog's danger button resets. */}
       <div style={styles.row}>
         <button
-          onClick={onResetAll}
-          disabled={resetting}
+          onClick={openResetConfirm}
+          disabled={resetPhase === "running"}
           style={styles.danger}
           title={t("seed.clearAllTitle")}
         >
-          {resetting ? "…" : t("seed.clearAll")}
+          {resetPhase === "running" ? "…" : t("seed.clearAll")}
         </button>
       </div>
+
+      {resetPhase !== "idle" && (
+        <ResetConfirmDialog
+          running={resetPhase === "running"}
+          onCancel={() => setResetPhase((p) => resetGateTransition(p, "cancel"))}
+          onConfirm={onResetAll}
+        />
+      )}
 
       {segmentMode === "manual" && (
         <>

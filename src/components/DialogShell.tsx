@@ -62,6 +62,21 @@ export const dialogCancelStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
+/**
+ * Shared danger-primary style (exit quit, reset wipe #28): the destructive
+ * action reads as red everywhere in the app.
+ */
+export const dialogDangerStyle: React.CSSProperties = {
+  padding: "6px 14px",
+  border: "1px solid var(--danger-border, #b3373c)",
+  background: "var(--danger, #e5484d)",
+  color: "#fff",
+  borderRadius: 6,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 600,
+};
+
 const styles: Record<string, React.CSSProperties> = {
   overlay: {
     position: "fixed",
