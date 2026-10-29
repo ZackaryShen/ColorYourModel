@@ -54,12 +54,18 @@ const OVERLAY_COLORS = {
   dark: {
     highlight: 0xffee00,
     outline: 0xffff00,
+    // Ctrl-selection family (#16 merge group / #24 multi-select): ORANGE —
+    // same hue as the merge tint, so "selected" reads as one colour family
+    // while hover candidates stay yellow-outline/cyan-tint (owner feedback:
+    // selected and hoverable must be two distinct colours).
+    selection: 0xff9500,
     cursor: 0x00ffff,
     lassoStart: 0x00ff88,
   },
   light: {
     highlight: 0xb45309,
     outline: 0xb45309,
+    selection: 0xc2410c,
     cursor: 0x0088aa,
     lassoStart: 0x0b8043,
   },
@@ -535,11 +541,14 @@ function buildVertexData(meshData: MeshDataLike): {
 }
 
 // ─── Segment Outline (boundary edges for selected segment) ────────
-function SegmentOutline({ meshData, selectedSegment, edgeMap, facesBySeg }: {
+function SegmentOutline({ meshData, selectedSegment, edgeMap, facesBySeg, color }: {
   meshData: { faces: number[]; segmentLabels: number[]; vertices: number[] };
   selectedSegment: number;
   edgeMap: { map: Map<number, number[]>; vmax: number };
   facesBySeg: Map<number, number[]>;
+  /** Defaults to the hover/boundary yellow. Ctrl-selections pass
+   * `overlay.selection` (orange) so selected vs hoverable never collide. */
+  color?: number;
 }) {
   const overlay = useOverlayColors();
   const geometry = useMemo(() => {
@@ -587,7 +596,7 @@ function SegmentOutline({ meshData, selectedSegment, edgeMap, facesBySeg }: {
 
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial color={overlay.outline} linewidth={2} depthTest={false} />
+      <lineBasicMaterial color={color ?? overlay.outline} linewidth={2} depthTest={false} />
     </lineSegments>
   );
 }
@@ -2758,7 +2767,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       {usedColourFaces && usedColourFaces.length > 0 && meshData && edgeMap && (
         <FaceSetOutline meshData={meshData} faces={usedColourFaces} edgeMap={edgeMap} />
       )}
-      {/* Issue #24: outline of every region in the View-tool multi-selection. */}
+      {/* Issue #24: outline of every region in the View-tool multi-selection,
+          in the SELECTION colour (orange) — hover candidates render yellow
+          outline / cyan tint, so picked vs pickable never collide. */}
       {viewSelectedRegions.length > 0 && meshData && edgeMap && facesBySeg && (
         <>
           {viewSelectedRegions.map((label) => (
@@ -2768,9 +2779,22 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
               selectedSegment={label}
               edgeMap={edgeMap}
               facesBySeg={facesBySeg}
+              color={overlayColors.selection}
             />
           ))}
         </>
+      )}
+      {/* Issue #16: the merge session's group (anchor + absorbed, one label)
+          already tints ORANGE via uMergeLabel; the matching outline makes the
+          selection readable from any angle (owner feedback during #29). */}
+      {mergeSession && meshData && edgeMap && facesBySeg && (
+        <SegmentOutline
+          meshData={meshData}
+          selectedSegment={mergeSession.target}
+          edgeMap={edgeMap}
+          facesBySeg={facesBySeg}
+          color={overlayColors.selection}
+        />
       )}
       {/* Lasso overlay (manual region selection) */}
       {(lassoPoints.length > 0 || lassoPreview || lassoSnap) && (
