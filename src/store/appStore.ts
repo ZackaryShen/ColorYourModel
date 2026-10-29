@@ -92,6 +92,11 @@ interface AppStore {
    *  extra column in the main layout. Transient: NOT persisted. */
   historyPanelOpen: boolean;
   setHistoryPanelOpen: (v: boolean) => void;
+  /** Issue #23: RGB currently hovered in the used-colours swatches — the
+   *  viewport highlights every face carrying it. Null = no preview.
+   *  Transient: NOT persisted. */
+  usedColourHover: [number, number, number] | null;
+  setUsedColourHover: (rgb: [number, number, number] | null) => void;
   /** Bumped whenever the timeline may have changed (any recorded op, an
    *  undo/redo/jump, a load). The history panel refetches on each bump. */
   historyVersion: number;
@@ -503,6 +508,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   debugLogOpen: false,
   experimentalFeatures: { ...DEFAULT_EXPERIMENTAL_FEATURES },
   historyPanelOpen: false,
+  usedColourHover: null,
   historyVersion: 0,
   isLoading: false,
   importProgress: 0,
@@ -677,6 +683,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
     }
   },
   setHistoryPanelOpen: (v) => set({ historyPanelOpen: v }),
+  setUsedColourHover: (rgb) => set({ usedColourHover: rgb }),
 
   seedPoints: [],
   addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),
