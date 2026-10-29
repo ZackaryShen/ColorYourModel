@@ -100,6 +100,22 @@ interface AppStore {
    *  Transient: NOT persisted. */
   usedColourHover: [number, number, number] | null;
   setUsedColourHover: (rgb: [number, number, number] | null) => void;
+  /** Issue #24: region labels currently hidden from display. View state
+   *  ONLY — never touches labels, colours, the undo timeline, or exports.
+   *  Cleared on model load; pruned when regions disappear. */
+  hiddenSegments: Set<number>;
+  setHiddenSegments: (s: Set<number>) => void;
+  /** Issue #24 (feedback): the 分区 panel's Ctrl-multi-selection for
+   *  merging, lifted to the store so a click outside the model (viewport
+   *  empty space) can blur it. Transient: NOT persisted. */
+  mergePicked: number[];
+  setMergePicked: (v: number[]) => void;
+  /** Issue #24: regions multi-picked via View-tool Ctrl+click — the H
+   *  shortcut toggles visibility for the whole set. Outlined in the
+   *  viewport; Esc / empty-space click / model load clears it. Transient:
+   *  NOT persisted. */
+  viewSelectedRegions: number[];
+  setViewSelectedRegions: (v: number[]) => void;
   /** Bumped whenever the timeline may have changed (any recorded op, an
    *  undo/redo/jump, a load). The history panel refetches on each bump. */
   historyVersion: number;
@@ -527,6 +543,9 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   historyPanelOpen: false,
   mergeSession: null,
   usedColourHover: null,
+  hiddenSegments: new Set<number>(),
+  mergePicked: [],
+  viewSelectedRegions: [],
   historyVersion: 0,
   isLoading: false,
   importProgress: 0,
@@ -550,6 +569,11 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       canUndo: false,
       canRedo: false,
       paintDirty: false,
+      // Issue #24: visibility is per-model view state — a fresh model starts
+      // with every region visible (labels from a previous model must never
+      // hide faces of the new one).
+      hiddenSegments: new Set<number>(),
+      viewSelectedRegions: [],
       segments: projectSegments(data.segments),
       statusMessage: translate("status.loaded", get().language, data.faceCount.toLocaleString()),
     })),
@@ -707,6 +731,9 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setHistoryPanelOpen: (v) => set({ historyPanelOpen: v }),
   setMergeSession: (v) => set({ mergeSession: v }),
   setUsedColourHover: (rgb) => set({ usedColourHover: rgb }),
+  setHiddenSegments: (v) => set({ hiddenSegments: v }),
+  setMergePicked: (v) => set({ mergePicked: v }),
+  setViewSelectedRegions: (v) => set({ viewSelectedRegions: v }),
 
   seedPoints: [],
   addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),
