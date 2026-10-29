@@ -195,6 +195,7 @@ Fuse/grow results are a starting point; the **Regions** panel cleans up:
 - **Select**: click a list entry, or click a region on the model (highlight in the viewport).
 - **Merge**: `Ctrl+click` multi-select (first pick is the survivor), then merge.
 - **Rename**: double-click an entry.
+- **Visibility** (#24): in the View/nav tool, the region under the cursor glows in realtime (same as Fill); **Ctrl+click** selects it (outline marks, multi-select accumulates), and **H** toggles the selection's visibility in one go (selection retained, so H flips back); the row's 👁 toggles too (dimmed row = hidden; display-only — hidden regions still export, never enter the undo timeline). Header buttons: one-click **show-all / hide-all** plus a hidden count; **Alt+click the eye = isolate** (show only this region). Hidden regions cannot be picked, painted, or hovered — the cursor reaches through them; **a single click on empty space or Esc blurs the selection**. Split / re-cut / merge output starts visible.
 - **Split**: re-cut an oversized region along its internal creases (default threshold 30°).
 - **Re-cut**: re-run a whole algorithm inside one region (the fix for tubular limbs convex decomposition can't cut); 8 algorithms, see section 6.
 - **Reset**: wipe all regions and paint (**not undoable**; asks for confirmation).

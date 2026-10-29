@@ -4,6 +4,7 @@ import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useSegmentMerge } from "../../hooks/useSegmentMerge";
 import { useT } from "../../i18n";
 import { segmentColorHex } from "../../utils/segmentPalette";
+import { toggleHiddenLabels, isolateLabel, pruneHiddenLabels } from "../../utils/segmentVisibility";
 import {
   buildAlgorithm,
   DEFAULT_ALGORITHM_PARAMS,
@@ -27,6 +28,34 @@ export function SegmentsPanel() {
   const toggleMergePicked = useAppStore((s) => s.toggleMergePicked);
   const { renameSegment, splitSegment, resegmentRegion, resetSegmentation } = useTauriCommand();
   const isLoaded = useAppStore((s) => s.isLoaded);
+  // Issue #24: per-region visibility. View state only — hidden regions still
+  // export, never enter the undo timeline, and are skipped by picking.
+  const hiddenSegments = useAppStore((s) => s.hiddenSegments);
+  const setHiddenSegments = useAppStore((s) => s.setHiddenSegments);
+
+  // Eye toggle for one row, honouring the panel's two selection mechanisms:
+  // Alt+click isolates the row (hides everything else); otherwise a row in
+  // the merge multi-selection toggles the WHOLE selection (net toggle).
+  // Every visibility change funnels through here so the spec's rule holds in
+  // ONE place: hiding the viewport-selected region clears the selection —
+  // the panel and the viewport must never disagree about what is on screen.
+  const applyHidden = (next: Set<number>) => {
+    setHiddenSegments(next);
+    if (selectedSegment !== null && next.has(selectedSegment)) {
+      setSelectedSegment(null);
+    }
+  };
+
+  const onEyeClick = (e: React.MouseEvent, segId: number) => {
+    e.stopPropagation();
+    if (e.altKey) {
+      applyHidden(isolateLabel(segments.map((sg) => sg.id), segId));
+      setStatusMessage(t("segments.isolateDone", segId));
+      return;
+    }
+    const group = picked.includes(segId) ? picked : [segId];
+    applyHidden(toggleHiddenLabels(hiddenSegments, group));
+  };
 
   // Which row has its split form open, and the crease threshold for it. Kept
   // local like the edit/merge state: a split acts on one region the user points
@@ -92,6 +121,25 @@ export function SegmentsPanel() {
     const live = picked.filter((id) => segments.some((s) => s.id === id));
     if (live.length !== picked.length) setMergePicked(live);
   }, [segments, picked, setMergePicked]);
+
+  // Issue #24 (field feedback): a Ctrl-multi-selection needs a way OUT —
+  // Esc clears it (blur), like every other modal-ish selection here.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (picked.length > 0) setMergePicked([]);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [picked]);
+
+  // Issue #24: a hidden label that no longer exists (merge / reset / undo
+  // rewrote the partition) must not hide a future region reusing the label.
+  useEffect(() => {
+    const live = new Set(segments.map((sg) => sg.id));
+    const next = pruneHiddenLabels(hiddenSegments, live);
+    if (next.size !== hiddenSegments.size) setHiddenSegments(next);
+  }, [segments, hiddenSegments, setHiddenSegments]);
 
   // The open split form must also close if its region vanishes underneath it.
   useEffect(() => {
@@ -237,14 +285,35 @@ export function SegmentsPanel() {
     <div style={styles.container}>
       <div style={{ ...styles.header, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span>{t("segments.title")} ({segments.length})</span>
-        <button
-          onClick={onResetSegmentation}
-          disabled={!isLoaded || segments.length === 0}
-          title={t("segments.resetHint")}
-          style={styles.resetBtn}
-        >
-          {t("segments.reset")}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {hiddenSegments.size > 0 && (
+            <span style={{ color: "var(--text-3, #888888)", fontSize: 11 }}>
+              {t("segments.hiddenCount", hiddenSegments.size)}
+            </span>
+          )}
+          <button
+            onClick={() =>
+              applyHidden(
+                hiddenSegments.size > 0
+                  ? new Set<number>()
+                  : new Set(segments.map((sg) => sg.id))
+              )
+            }
+            disabled={segments.length === 0}
+            title={t("segments.toggleAll")}
+            style={styles.visBtn}
+          >
+            {hiddenSegments.size > 0 ? t("segments.showAll") : t("segments.hideAll")}
+          </button>
+          <button
+            onClick={onResetSegmentation}
+            disabled={!isLoaded || segments.length === 0}
+            title={t("segments.resetHint")}
+            style={styles.resetBtn}
+          >
+            {t("segments.reset")}
+          </button>
+        </div>
       </div>
       <div style={styles.list}>
         {segments.map((seg) => {
@@ -265,8 +334,22 @@ export function SegmentsPanel() {
                   ...styles.item,
                   ...(selectedSegment === seg.id ? styles.itemActive : {}),
                   ...(pickIndex >= 0 ? styles.itemPicked : {}),
+                  // Issue #24: a hidden row dims — the region is still in the
+                  // model and still exports, it is just not on screen.
+                  ...(hiddenSegments.has(seg.id) ? styles.itemHidden : {}),
                 }}
               >
+                <button
+                  className="cym-btn"
+                  onClick={(e) => onEyeClick(e, seg.id)}
+                  title={t("segments.eyeHint")}
+                  style={{
+                    ...styles.eyeBtn,
+                    ...(hiddenSegments.has(seg.id) ? styles.eyeHidden : {}),
+                  }}
+                >
+                  {hiddenSegments.has(seg.id) ? "🚫" : "👁"}
+                </button>
                 <div
                   style={{
                     ...styles.colorDot,
@@ -463,6 +546,33 @@ const styles: Record<string, React.CSSProperties> = {
     height: 10,
     borderRadius: "50%",
     flexShrink: 0,
+  },
+  // Issue #24: eye toggle + hidden-row dimming + header visibility buttons.
+  eyeBtn: {
+    flexShrink: 0,
+    width: 20,
+    padding: 0,
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    fontSize: 12,
+    lineHeight: 1,
+  },
+  eyeHidden: {
+    opacity: 0.5,
+  },
+  itemHidden: {
+    opacity: 0.45,
+  },
+  visBtn: {
+    padding: "2px 8px",
+    borderRadius: 4,
+    border: "1px solid var(--border, #555555)",
+    background: "transparent",
+    color: "var(--text-2, #bbbbbb)",
+    fontSize: 11,
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
   },
   itemName: {
     flex: 1,

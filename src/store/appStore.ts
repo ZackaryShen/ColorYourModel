@@ -178,6 +178,17 @@ interface AppStore {
   clearMergePicked: () => void;
   /** Bulk-replace the merge multi-select (prune effect / collapse-to-anchor). */
   setMergePicked: (list: number[]) => void;
+  /** Issue #24: region labels currently hidden from display. View state
+   *  ONLY — never touches labels, colours, the undo timeline, or exports.
+   *  Cleared on model load; pruned when regions disappear. */
+  hiddenSegments: Set<number>;
+  setHiddenSegments: (s: Set<number>) => void;
+  /** Issue #24: regions multi-picked via View-tool Ctrl+click — the H
+   *  shortcut toggles visibility for the whole set. Outlined in the
+   *  viewport; Esc / empty-space click / model load clears it. Transient:
+   *  NOT persisted. */
+  viewSelectedRegions: number[];
+  setViewSelectedRegions: (v: number[]) => void;
   setSnapEnabled: (enabled: boolean) => void;
   setSegmentView: (enabled: boolean) => void;
   /** One-shot suggestion card (Viewport top-centre): raised right after the
@@ -486,6 +497,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   selectedSegment: null,
   hoveredSegment: null,
   mergePicked: [],
+  hiddenSegments: new Set<number>(),
+  viewSelectedRegions: [],
   snapEnabled: false,
   segmentView: false,
   toast: null,
@@ -537,6 +550,10 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       // (its labels belonged to the previous mesh). 0.1.1 clears load-time
       // transient state here rather than via a dedicated reset action.
       mergePicked: [],
+      // Issue #24: visibility is per-model view state — a fresh model starts
+      // with every region visible.
+      hiddenSegments: new Set<number>(),
+      viewSelectedRegions: [],
       segments: projectSegments(data.segments),
       statusMessage: translate("status.loaded", get().language, data.faceCount.toLocaleString()),
     })),
@@ -644,6 +661,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   },
   clearMergePicked: () => set({ mergePicked: [] }),
   setMergePicked: (list) => set({ mergePicked: list }),
+  setHiddenSegments: (s) => set({ hiddenSegments: s }),
+  setViewSelectedRegions: (v) => set({ viewSelectedRegions: v }),
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   setSegmentView: (enabled) =>
     set((s) => ({

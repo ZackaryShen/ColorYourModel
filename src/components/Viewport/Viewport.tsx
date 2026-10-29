@@ -17,6 +17,7 @@ import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-
 import { ViewGizmo } from "./ViewGizmo";
 import { isPointerInGizmo } from "./viewGizmoModel";
 import { MergeBar } from "./MergeBar";
+import { filterVisibleHits, firstVisibleHit, toggleHiddenLabels } from "../../utils/segmentVisibility";
 import { createSerialPaintQueue, type PaintJob } from "./paintQueue";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
@@ -150,7 +151,7 @@ function useFacePicker(
         -((clientY - rect.top) / rect.height) * 2 + 1
       );
       raycaster.setFromCamera(mouse, camera);
-      const hits = raycaster.intersectObject(mesh, false);
+      const hits = filterVisibleHitsNow(raycaster.intersectObject(mesh, false));
       if (hits.length === 0 || hits[0].faceIndex == null) return;
       onFacePicked(hits[0].faceIndex);
     },
@@ -1192,7 +1193,40 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // model — is resolved because both now describe the same whole segment).
   // Every consumer — the shader uniform and the HUD alike — reads this one
   // value, keeping that class of divergence unrepresentable.
+  // Issue #24: hidden regions — display-only, cleared on model load.
+  const hiddenSegments = useAppStore((s) => s.hiddenSegments);
+  // View-tool multi-selection (Ctrl+click); H flips visibility for the set.
+  const viewSelectedRegions = useAppStore((s) => s.viewSelectedRegions);
+  // Issue #24: write the per-face hidden flags straight into the aHidden
+  // vertex attribute — the same pipeline the segment-label attribute uses.
+  // O(F) per toggle ≈ a few ms at 1.5M faces; imperceptible for a click.
+  const modelFaceLabels = useAppStore((s) => s.meshData?.segmentLabels);
+  useEffect(() => {
+    const geo = meshRef.current?.geometry;
+    if (!geo || !modelFaceLabels) return;
+    const faceCount = modelFaceLabels.length;
+    let attr = geo.getAttribute("aHidden") as THREE.BufferAttribute | undefined;
+    if (!attr || attr.count !== faceCount * 3) {
+      attr = new THREE.Float32BufferAttribute(new Float32Array(faceCount * 3), 1);
+      geo.setAttribute("aHidden", attr);
+    }
+    const arr = attr.array as Float32Array;
+    for (let f = 0; f < faceCount; f++) {
+      const v = hiddenSegments.has(modelFaceLabels[f]) ? 1 : 0;
+      arr[f * 3] = v;
+      arr[f * 3 + 1] = v;
+      arr[f * 3 + 2] = v;
+    }
+    attr.needsUpdate = true;
+  }, [hiddenSegments, modelFaceLabels]);
+
+
   const renderedHighlightLabel = useMemo<number | null>(() => {
+    // Issue #24 (feedback): realtime hover preview in the View/nav tool —
+    // same contract as fill ("what a click would commit glows"): here a
+    // click = Ctrl+click select.
+    if (isViewTool) return hoveredSegment;
+
     if (segmentView) return selectedSegment;
     // Only partition-targeting tools show the hover highlight (option B). For
     // brush/view/etc. we never highlight — this is the single source of truth
@@ -1202,7 +1236,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     if (!isHighlightTool) return null;
     if (hoveredSegment === null) return null;
     return hoveredSegment;
-  }, [segmentView, selectedSegment, hoveredSegment, isHighlightTool]);
+  }, [isViewTool, segmentView, selectedSegment, hoveredSegment, isHighlightTool]);
 
   // Published after commit, never during render (P1-8). `enqueuePaint` reads it
   // synchronously from a pointer handler, so a layout effect is early enough.
@@ -1252,17 +1286,17 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nattribute float aSegLabel;\nflat varying float vSegLabel;"
+        "#include <common>\nattribute float aSegLabel;\nattribute float aHidden;\nflat varying float vSegLabel;\nvarying float vHidden;"
       )
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvSegLabel = aSegLabel;");
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvSegLabel = aSegLabel;\nvHidden = aHidden;");
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nflat varying float vSegLabel;"
+        "#include <common>\nuniform float uHighlightLabel;\nuniform vec3 uHighlightColor;\nflat varying float vSegLabel;\nvarying float vHidden;"
       )
       .replace(
         "#include <color_fragment>",
-        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }"
+        "#include <color_fragment>\nif (uHighlightLabel >= 0.0 && abs(vSegLabel - uHighlightLabel) < 0.5) { diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.45); }\nif (vHidden > 0.5) {\n    discard;\n  }"
       );
   }, []);
 
@@ -1297,7 +1331,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         -((clientY - rect.top) / rect.height) * 2 + 1
       );
       raycaster.setFromCamera(mouse, camera);
-      const hits = raycaster.intersectObject(meshRef.current, false);
+      const hits = filterVisibleHitsNow(raycaster.intersectObject(meshRef.current, false));
       if (hits.length === 0) return null;
       const h = hits[0];
       // Triangle normal (model-local), used for same-side snapping so lasso
@@ -1594,6 +1628,60 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // enableRotate toggling is needed here (and toggling it would wrongly block
   // the new RIGHT-drag rotate while painting).
 
+  // Issue #24 (experience, owner request): H toggles visibility of the
+  // selected region — the fast path behind the View-tool Ctrl+click select.
+  // The selection is deliberately RETAINED when hiding (unlike the panel
+  // eye's clearing rule): the shortcut must be able to un-hide on the next
+  // press, and a hidden region renders nothing the selection could
+  // contradict.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "h" && e.key !== "H") return;
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      const { selectedSegment, hiddenSegments, setHiddenSegments, viewSelectedRegions } = useAppStore.getState();
+      // Priority: the View-tool multi-selection; fall back to a single
+      // panel-selected region. The picked group is retained either way so
+      // the same keypress flips visibility back.
+      const group = viewSelectedRegions.length > 0
+        ? viewSelectedRegions
+        : selectedSegment !== null
+          ? [selectedSegment]
+          : [];
+      if (group.length === 0) return;
+      const next = toggleHiddenLabels(hiddenSegments, group);
+      setHiddenSegments(next);
+      const hiddenCount = group.filter((l) => next.has(l)).length;
+      setStatusMessage(
+        hiddenCount === group.length
+          ? t("segments.hidGroup", group.length)
+          : t("segments.showGroup", group.length - hiddenCount)
+      );
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setStatusMessage, t]);
+
+  // Issue #16/#24: Esc clears transient selections (merge multi-select and
+  // the View-tool multi-select). Skipped while a lasso loop is open — Esc
+  // already means "remove lasso point" there.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (lassoPointsRef.current.length > 0) return;
+      const st = useAppStore.getState();
+      if (st.mergePicked.length > 0 || st.viewSelectedRegions.length > 0) {
+        st.setMergePicked([]);
+        st.setViewSelectedRegions([]);
+        setStatusMessage(t("segments.selectionCleared"));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setStatusMessage, t]);
+
+
   // Pointer events for painting + hover
   useEffect(() => {
     const canvas = gl.domElement;
@@ -1610,7 +1698,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         -((clientY - rect.top) / rect.height) * 2 + 1
       );
       raycaster.setFromCamera(mouse, camera);
-      const hits = raycaster.intersectObject(mesh, false);
+      const hits = filterVisibleHitsNow(raycaster.intersectObject(mesh, false));
       return hits.length > 0 ? hits[0] : null;
     };
 
@@ -1631,6 +1719,52 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // View-gizmo corner owns its pointers — never paint/lasso/seed from
       // there (ViewGizmo also disables OrbitControls inside the rect).
       if (isPointerInGizmo(e.clientX, e.clientY, canvas)) return;
+      // Alt → temporary camera rotate always wins, even over merge picking.
+      if (_altHeld) return;
+      // Issue #24 (experience, owner request): in the View tool, Ctrl+click
+      // toggles a region in the MULTI-selection — the H shortcut then flips
+      // visibility for the whole set. Highlight = boundary outlines. Plain
+      // click still orbits. Ctrl+click on empty space clears the selection.
+      if (isViewTool && (e.ctrlKey || e.metaKey)) {
+        const hitV = raycastFace(e.clientX, e.clientY);
+        if (!hitV || hitV.faceIndex == null || !meshData?.segmentLabels) {
+          useAppStore.getState().setViewSelectedRegions([]);
+          return;
+        }
+        const label = meshData.segmentLabels[hitV.faceIndex];
+        if (label === undefined || !segmentIds.has(label)) return;
+        const pickedNow = useAppStore.getState().viewSelectedRegions;
+        const next = pickedNow.includes(label)
+          ? pickedNow.filter((x) => x !== label)
+          : [...pickedNow, label];
+        useAppStore.getState().setViewSelectedRegions(next);
+        setStatusMessage(t("segments.viewSelected", next.length));
+        return;
+      }
+      // Issue #16: Ctrl/Cmd+click toggles the clicked face's region in/out of
+      // the merge multi-select. Sits BEFORE the view-tool return and every
+      // tool branch: View is the DEFAULT tool, so a first-run user ctrl+clicks
+      // without ever switching tools — a pick living below that return would
+      // be dead on arrival. Off-model / unsegmented clicks fall through
+      // untouched so Ctrl+drag keeps orbiting; Ctrl has no other pointerdown
+      // role (brush resize is Ctrl+wheel).
+      if (e.ctrlKey || e.metaKey) {
+        if (!meshData?.segmentLabels) return;
+        const hit = getLocalHit(e.clientX, e.clientY);
+        if (!hit || hit.faceIndex < 0) return;
+        const lbl = meshData.segmentLabels[hit.faceIndex];
+        // Live-partition membership only: a stale or unsegmented label must
+        // never enter the merge set — hint toward segmenting instead.
+        if (lbl === undefined || !segmentIds.has(lbl)) {
+          setStatusMessage(t("merge.hint"));
+          return;
+        }
+        toggleMergePicked(lbl);
+        setStatusMessage(t("merge.hint"));
+        return;
+      }
+      // View mode → let OrbitControls handle it (rotate); never paint.
+      if (isViewTool) return;
       // Alt → temporary camera rotate always wins, even over merge picking.
       if (_altHeld) return;
       // Issue #16: Ctrl/Cmd+click toggles the clicked face's region in/out of
@@ -1953,7 +2087,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           -((e.clientY - rect.top) / rect.height) * 2 + 1
         );
         raycaster.setFromCamera(mouse, camera);
-        const hits = raycaster.intersectObject(meshRef.current, false);
+        const hits = filterVisibleHitsNow(raycaster.intersectObject(meshRef.current, false));
 
         // (0) Track whether the cursor is over the model. Drives the
         // context-sensitive LEFT mapping (paint on model vs rotate on empty,
@@ -3078,6 +3212,20 @@ function IdleFrameloop() {
 }
 
 // ─── Viewport Root ────────────────────────────────────────────────
+/** Issue #24: hidden regions must not answer raycasts — clicks reach
+ * THROUGH them to the geometry behind. Applied at every raycast entry point
+ * so picking, painting, hovering, filling and the lasso all skip hidden
+ * labels uniformly. */
+function filterVisibleHitsNow(hits: THREE.Intersection[]): THREE.Intersection[] {
+  const st = useAppStore.getState();
+  return filterVisibleHits(hits, st.hiddenSegments, st.meshData?.segmentLabels);
+}
+
+function firstVisibleHitNow(hits: THREE.Intersection[]): THREE.Intersection | null {
+  return filterVisibleHitsNow(hits)[0] ?? null;
+}
+
+
 export function Viewport() {
   const t = useT();
   const isLoaded = useAppStore((s) => s.isLoaded);
