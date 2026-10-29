@@ -3,9 +3,8 @@ import { useAppStore } from "../../store/appStore";
 import { AMS_PALETTE, type UsedColorEntry } from "../../types/mesh";
 import { useT } from "../../i18n";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
-
-const toHex = (c: [number, number, number, number] | [number, number, number]) =>
-  `#${c[0].toString(16).padStart(2, "0")}${c[1].toString(16).padStart(2, "0")}${c[2].toString(16).padStart(2, "0")}`;
+import { ReplaceColourSection } from "./ReplaceColourSection";
+import { toHex } from "../../utils/colorFormat";
 
 export function ColorPanel() {
   const t = useT();
@@ -155,6 +154,13 @@ export function ColorPanel() {
             })}
           </div>
         </>
+      )}
+
+      {/* Issue #29: colour find & replace — only meaningful once a model is
+          loaded (the used list is empty before that, but replace does not
+          require any USED colour: the model may still be all-default). */}
+      {modelFaceColors && (
+        <ReplaceColourSection used={used} />
       )}
     </div>
   );
