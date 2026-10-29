@@ -205,6 +205,10 @@ const dict: Record<string, Record<Lang, string>> = {
 
   // ColorPanel
   "color.title": { zh: "颜色", en: "Color" },
+  // Used colours (issue #23)
+  "color.usedColors": { zh: "已用颜色", en: "Used colours" },
+  "color.usedTooltip": { zh: "{0} · {1} 面 · {2} 个区域", en: "{0} · {1} faces · {2} region(s)" },
+  "color.usedDefaultTooltip": { zh: "默认色 · {0} · {1} 面 · {2} 个区域", en: "Default · {0} · {1} faces · {2} region(s)" },
   "color.amsPalette": { zh: "AMS 调色板", en: "AMS Palette" },
 
   // SegmentsPanel

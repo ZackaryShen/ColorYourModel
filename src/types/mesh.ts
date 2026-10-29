@@ -148,6 +148,15 @@ export interface HistoryState {
   bytes: number;
 }
 
+// Issue #23: one row of the colour panel's "used colours" section.
+export interface UsedColorEntry {
+  color: [number, number, number, number];
+  faces: number;
+  regions: number;
+  /** True for the never-painted default grey. */
+  isDefault: boolean;
+}
+
 // History panel (issue #22) — mirrors the backend DTOs in commands/history.rs.
 export type HistoryOpKind =
   | "paint"

@@ -349,6 +349,41 @@ pub fn erase_paint(
     Ok(commit(mesh, stroke_id, updates))
 }
 
+/// One row of the colour panel's "used colours" section (issue #23).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsedColorDto {
+    pub color: [u8; 4],
+    pub faces: u32,
+    pub regions: u32,
+    /// True for the never-painted default grey — the panel marks the swatch
+    /// so "no colour yet" stays distinguishable from a painted grey.
+    pub is_default: bool,
+}
+
+/// Every distinct colour currently on the model, most faces first (issue
+/// #23). The command is a thin DTO map over `MeshModel::used_colors` — the
+/// counting logic and its tests live in the mesh layer.
+#[tauri::command]
+pub fn used_colors(state: State<AppState>) -> Result<Vec<UsedColorDto>, String> {
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    Ok(mesh
+        .used_colors()
+        .into_iter()
+        .map(|e| UsedColorDto {
+            // Colour-equality only: a user who deliberately paints the exact
+            // default grey gets the dashed "default" swatch. Distinguishing
+            // painted-grey from never-painted would need per-face provenance
+            // the colour buffer does not carry — accepted limitation.
+            is_default: e.color == DEFAULT_FACE_COLOR,
+            color: e.color,
+            faces: e.faces,
+            regions: e.regions,
+        })
+        .collect())
+}
+
 #[tauri::command]
 pub fn pick_color(face_id: u32, state: State<AppState>) -> Result<[u8; 4], String> {
     log::debug!("[cmd:pick_color] face_id={}", face_id);

@@ -1,6 +1,6 @@
 use petgraph::graph::UnGraph;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::mesh::history::{History, OpKind};
 
@@ -19,6 +19,16 @@ pub struct Segment {
     pub name: String,
     pub color: Option<[u8; 4]>,
     pub face_count: u32,
+}
+
+/// One distinct colour currently present on the model, for the colour
+/// panel's "used colours" section (issue #23). Never crosses IPC as-is:
+/// the command layer maps it to a DTO with an extra `isDefault` flag.
+#[derive(Debug, Clone, Copy)]
+pub struct UsedColorEntry {
+    pub color: [u8; 4],
+    pub faces: u32,
+    pub regions: u32,
 }
 
 /// Label offset separating manual segments from auto-segment labels.
@@ -609,6 +619,34 @@ impl MeshModel {
         segments
     }
 
+    /// One distinct colour currently on the model (issue #23): how many
+    /// faces carry it and across how many regions. The alpha byte is part of
+    /// the identity — paint always writes 255 today, so this is
+    /// future-proofing, not behaviour. Deliberately NOT the export
+    /// quantiser: two near-identical colours must stay two swatches.
+    pub fn used_colors(&self) -> Vec<UsedColorEntry> {
+        let mut tally: HashMap<[u8; 4], (u32, HashSet<u32>)> = HashMap::new();
+        for (face, color) in self.face_colors.iter().enumerate() {
+            let e = tally.entry(*color).or_insert((0, HashSet::new()));
+            e.0 += 1;
+            if let Some(label) = self.segment_labels.get(face) {
+                e.1.insert(*label);
+            }
+        }
+        let mut used: Vec<UsedColorEntry> = tally
+            .into_iter()
+            .map(|(color, (faces, regions))| UsedColorEntry {
+                color,
+                faces,
+                regions: regions.len() as u32,
+            })
+            .collect();
+        // Most faces first; ties broken by colour bytes so consecutive panel
+        // refreshes never reshuffle the swatches.
+        used.sort_by(|a, b| b.faces.cmp(&a.faces).then(a.color.cmp(&b.color)));
+        used
+    }
+
     /// Overwrite face colours, recording the previous values so the change can
     /// be undone.
     ///
@@ -926,5 +964,81 @@ mod tests {
         assert!(m.merge_segments(0, &[9]).is_err(), "unknown source");
         assert!(m.merge_segments(0, &[0]).is_err(), "merging into itself");
         assert_eq!(m.segment_labels, vec![0, 1], "a rejected merge changes nothing");
+    }
+
+    // ─── Used-colours panel (issue #23) ────────────────────────────────
+
+    /// One entry per distinct colour, faces counted per colour, regions
+    /// counted per colour across labels, most faces first. The default
+    /// colour is its own entry — "not painted yet" must stay
+    /// distinguishable from a painted white/grey.
+    #[test]
+    fn used_colors_counts_faces_and_regions_per_distinct_colour() {
+        let mut m = labelled(&[1, 1, 2, 2, 1]);
+        // The labelled fixture sets labels only; colour the 5 faces here.
+        m.face_colors = vec![DEFAULT_FACE_COLOR; 5];
+        m.face_colors[0] = [255, 0, 0, 255];
+        m.face_colors[1] = [255, 0, 0, 255];
+        m.face_colors[2] = [0, 255, 0, 255];
+        m.face_colors[4] = [255, 0, 0, 255];
+        // face 3 stays DEFAULT (grey) in label 2.
+
+        let used = m.used_colors();
+        assert_eq!(used.len(), 3, "red + green + default");
+
+        // Most faces first: red 3 faces (one region — all of label 1),
+        // then green and default at 1 face each.
+        assert_eq!(used[0].color, [255, 0, 0, 255]);
+        assert_eq!(used[0].faces, 3);
+        assert_eq!(used[0].regions, 1);
+
+        let green = used.iter().find(|e| e.color == [0, 255, 0, 255]).unwrap();
+        assert_eq!(green.faces, 1);
+        assert_eq!(green.regions, 1);
+
+        let default = used
+            .iter()
+            .find(|e| e.color == DEFAULT_FACE_COLOR)
+            .expect("the default colour is its own entry");
+        assert_eq!(default.faces, 1);
+
+        // Same colour spread over two regions counts two regions.
+        m.face_colors[3] = [255, 0, 0, 255]; // label-2 face turns red too
+        let used = m.used_colors();
+        let red = used.iter().find(|e| e.color == [255, 0, 0, 255]).unwrap();
+        assert_eq!(red.faces, 4);
+        assert_eq!(red.regions, 2, "red now spans labels 1 and 2");
+    }
+
+    /// Ordering is deterministic: faces desc, ties broken by colour bytes so
+    /// the panel does not reshuffle between refreshes.
+    #[test]
+    fn used_colors_ordering_is_deterministic_on_ties() {
+        let mut m = labelled(&[0, 0, 0, 0]);
+        m.face_colors = vec![DEFAULT_FACE_COLOR; 4];
+        m.face_colors[0] = [10, 0, 0, 255];
+        m.face_colors[1] = [20, 0, 0, 255];
+        m.face_colors[2] = [10, 0, 0, 255];
+        m.face_colors[3] = [20, 0, 0, 255];
+
+        let used = m.used_colors();
+        assert_eq!(used.len(), 2);
+        assert_eq!(used[0].faces, 2);
+        assert_eq!(used[1].faces, 2);
+        assert!(
+            used[0].color < used[1].color,
+            "tie broken by colour bytes, always the same order"
+        );
+    }
+
+    /// A fresh (never painted) model lists exactly one entry: the default.
+    #[test]
+    fn used_colors_on_a_fresh_model_is_only_the_default() {
+        let mut m = labelled(&[0, 0]);
+        m.face_colors = vec![DEFAULT_FACE_COLOR; 2];
+        let used = m.used_colors();
+        assert_eq!(used.len(), 1);
+        assert_eq!(used[0].color, DEFAULT_FACE_COLOR);
+        assert_eq!(used[0].faces, 2);
     }
 }

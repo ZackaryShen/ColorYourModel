@@ -570,6 +570,62 @@ function SegmentOutline({ meshData, selectedSegment, edgeMap, facesBySeg }: {
   );
 }
 
+// ─── Colour-set outline (issue #23) ─────────────────────────────
+/// Boundary outline for an arbitrary FACE SET — used when hovering a
+/// used-colour swatch, where the colour may span many regions and the
+/// per-label SegmentOutline cannot express it. Mirrors SegmentOutline's
+/// boundary walk (an edge is on the boundary when any adjacent face is
+/// outside the set, or the edge borders nothing), keyed by set membership
+/// instead of a label.
+function FaceSetOutline({ meshData, faces, edgeMap }: {
+  meshData: { faces: number[]; vertices: number[] };
+  faces: number[];
+  edgeMap: { map: Map<number, number[]>; vmax: number };
+}) {
+  const overlay = useOverlayColors();
+  const geometry = useMemo(() => {
+    const faceSet = new Set(faces);
+    if (faceSet.size === 0) return null;
+    const fArr = meshData.faces;
+    const verts = meshData.vertices;
+    const { map: edgeToFaces, vmax } = edgeMap;
+
+    const boundaryVerts: number[] = [];
+    for (const f of faceSet) {
+      const v0 = fArr[f * 3], v1 = fArr[f * 3 + 1], v2 = fArr[f * 3 + 2];
+      const edges = [
+        [Math.min(v0, v1), Math.max(v0, v1)],
+        [Math.min(v1, v2), Math.max(v1, v2)],
+        [Math.min(v2, v0), Math.max(v2, v0)],
+      ];
+      for (const [a, b] of edges) {
+        const cofaces = edgeToFaces.get(a * vmax + b);
+        if (!cofaces) continue;
+        const onBoundary =
+          cofaces.some((f2) => !faceSet.has(f2)) || cofaces.length === 1;
+        if (onBoundary) {
+          boundaryVerts.push(
+            verts[a * 3], verts[a * 3 + 1], verts[a * 3 + 2],
+            verts[b * 3], verts[b * 3 + 1], verts[b * 3 + 2]
+          );
+        }
+      }
+    }
+    if (boundaryVerts.length === 0) return null;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(boundaryVerts, 3));
+    return geo;
+  }, [meshData.faces, meshData.vertices, faces, edgeMap]);
+
+  if (!geometry) return null;
+  return (
+    <lineSegments geometry={geometry}>
+      <lineBasicMaterial color={overlay.outline} linewidth={2} depthTest={false} />
+    </lineSegments>
+  );
+}
+
 // ─── Nearest local vertex (snap preview, frontend-only) ────────
 /// Snap a model-local point to the nearest mesh vertex using the loaded
 /// vertex array. Equivalent to the backend `nearest_vertex` (Euclidean kd-tree
@@ -765,6 +821,20 @@ function MeshDisplay() {
   // the session card and the click handler all read one source of truth.
   const mergeSession = useAppStore((s) => s.mergeSession);
   const setMergeSession = useAppStore((s) => s.setMergeSession);
+  // Issue #23: which colour's faces to outline (hovered used-colour swatch),
+  // computed straight from the flat RGBA buffer — O(F) per hover change,
+  // memoised so a 148k-face model costs a few ms.
+  const usedColourHover = useAppStore((s) => s.usedColourHover);
+  const usedColourFaces = useMemo(() => {
+    if (!usedColourHover || !meshData) return null;
+    const [r, g, b] = usedColourHover;
+    const fc = meshData.faceColors;
+    const out: number[] = [];
+    for (let f = 0; f * 4 + 2 < fc.length; f++) {
+      if (fc[f * 4] === r && fc[f * 4 + 1] === g && fc[f * 4 + 2] === b) out.push(f);
+    }
+    return out;
+  }, [usedColourHover, meshData]);
   const hoveredSegment = useAppStore((s) => s.hoveredSegment);
   const setHoveredSegment = useAppStore((s) => s.setHoveredSegment);
   const activeTool = useAppStore((s) => s.activeTool);
@@ -821,6 +891,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // pass straight through; the flat-slice assumption here crashed
     // updateFaceColors on undefined entries (caught live in P2 acceptance).
     updateFaceColors(pendingPaintResult.faces, pendingPaintResult.colors);
+    // The projection paints through commit() on the backend timeline, so the
+    // flags-and-version funnels must hear about it too — without this, the
+    // used-colours list AND the history panel go stale until the next op
+    // (issue #23 field path).
+    useAppStore.getState().markHistoryDirty();
     setPendingPaintResult(null);
   }, [pendingPaintResult, updateFaceColors, setPendingPaintResult]);
   const { paintFace } = usePaintTool();
@@ -2521,6 +2596,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
             <SegmentOutline meshData={meshData} selectedSegment={hoveredSegment} edgeMap={edgeMap} facesBySeg={facesBySeg} />
           )}
         </>
+      )}
+      {/* Issue #23: outline of every face carrying the hovered used colour —
+          visible in both views, independent of the per-label outlines. */}
+      {usedColourFaces && usedColourFaces.length > 0 && meshData && edgeMap && (
+        <FaceSetOutline meshData={meshData} faces={usedColourFaces} edgeMap={edgeMap} />
       )}
       {/* Lasso overlay (manual region selection) */}
       {(lassoPoints.length > 0 || lassoPreview || lassoSnap) && (
