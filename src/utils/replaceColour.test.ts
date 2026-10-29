@@ -3,14 +3,15 @@ import {
   planReplaceColour,
   replaceGuard,
   DEFAULT_FACE_COLOR_RGBA,
-  type ReplaceScope,
 } from "./replaceColour";
 
 // ── Issue #29: colour find & replace ───────────────────────────────
-// The dry-run count and the guard decisions run over the frontend
-// faceColors mirror (meshData.faceColors, flat RGBA bytes per face), so
-// the preview updates instantly while the user picks — no IPC round
-// trip. The APPLY is backend-authoritative; these numbers are advisory.
+// One semantic only, per the owner: one click replaces EVERY region that
+// used the source colour. The dry-run count and the guard decisions run
+// over the frontend faceColors mirror (meshData.faceColors, flat RGBA
+// bytes per face), so the preview updates instantly while the user picks
+// — no IPC round trip. The APPLY is backend-authoritative; these numbers
+// are advisory.
 
 // 3 faces red (labels 1, 2, 2), 2 faces blue (labels 3, 3), 1 face
 // default grey (label 4). faceColors is flat [r,g,b,a] * faces.
@@ -31,51 +32,29 @@ function fixture(): { faceColors: number[]; segmentLabels: number[] } {
 }
 
 describe("planReplaceColour — dry-run count (#29)", () => {
-  it("counts faces and DISTINCT regions carrying the colour, whole model", () => {
+  it("counts faces and DISTINCT regions carrying the colour", () => {
     const { faceColors, segmentLabels } = fixture();
-    const plan = planReplaceColour(faceColors, segmentLabels, RED, { kind: "model" });
+    const plan = planReplaceColour(faceColors, segmentLabels, RED);
     expect(plan.faces).toBe(3);
     expect(plan.regions).toBe(2); // labels 1 and 2
-  });
-
-  it("scope=regions restricts the count to the given labels", () => {
-    const { faceColors, segmentLabels } = fixture();
-    const plan = planReplaceColour(faceColors, segmentLabels, RED, {
-      kind: "regions",
-      labels: [2],
-    });
-    expect(plan.faces).toBe(2); // only label 2's faces
-    expect(plan.regions).toBe(1);
-  });
-
-  it("a scope label with none of the colour contributes nothing", () => {
-    const { faceColors, segmentLabels } = fixture();
-    const plan = planReplaceColour(faceColors, segmentLabels, RED, {
-      kind: "regions",
-      labels: [2, 3],
-    });
-    expect(plan.faces).toBe(2);
-    expect(plan.regions).toBe(1);
   });
 
   it("alpha is part of the identity — a truncated tuple never matches", () => {
     const { faceColors, segmentLabels } = fixture();
     const translucent: [number, number, number, number] = [RED[0], RED[1], RED[2], 128];
-    const plan = planReplaceColour(faceColors, segmentLabels, translucent, { kind: "model" });
+    const plan = planReplaceColour(faceColors, segmentLabels, translucent);
     expect(plan.faces).toBe(0);
   });
 
   it("no face carries the colour → zeros (apply button disabled)", () => {
     const { faceColors, segmentLabels } = fixture();
-    const plan = planReplaceColour(faceColors, segmentLabels, [1, 2, 3, 255], { kind: "model" });
+    const plan = planReplaceColour(faceColors, segmentLabels, [1, 2, 3, 255]);
     expect(plan).toEqual({ faces: 0, regions: 0 });
   });
 
   it("default grey IS countable (the guard blocks the apply, not the math)", () => {
     const { faceColors, segmentLabels } = fixture();
-    const plan = planReplaceColour(faceColors, segmentLabels, DEFAULT_FACE_COLOR_RGBA, {
-      kind: "model",
-    });
+    const plan = planReplaceColour(faceColors, segmentLabels, DEFAULT_FACE_COLOR_RGBA);
     expect(plan.faces).toBe(1);
     expect(plan.regions).toBe(1);
   });
