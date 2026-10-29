@@ -116,28 +116,31 @@ describe("ReplaceColourSection", () => {
     expect(screen.getByText(/不能以未上色的默认灰作为来源/)).toBeTruthy();
   });
 
-  it("scope=selected regions is disabled while nothing is selected in the viewport", () => {
+  it("scope=selected regions is gone — one semantic only: whole-model replace", () => {
     render(<ReplaceColourSection used={USED} />);
-    const radio = screen.getByLabelText("仅选中分区") as HTMLInputElement;
-    expect(radio.disabled).toBe(true);
-    expect(radio.title).toContain("Ctrl");
+    // The scope radios were removed (owner decision on #29): the section
+    // must offer no scope UI at all.
+    expect(screen.queryByLabelText("仅选中分区")).toBeNull();
+    expect(screen.queryByText("整个模型")).toBeNull();
   });
 
   it("应用 → one replace_face_color IPC + the result rides the pending bridge + done status", async () => {
     const user = userEvent.setup();
     render(<ReplaceColourSection used={USED} />);
 
-    await user.click(screen.getByRole("button", { name: /从/ }));
-    await user.click(screen.getByTitle(/#8B4513/i));
-    await user.click(screen.getByRole("button", { name: /到/ }));
-    await user.click(screen.getByTitle(/#1E90FF/i));
+    await user.click(screen.getByRole("button", { name: "从" }));
+    await user.click(within(screen.getByText(/选择来源颜色/).parentElement as HTMLElement).getByTitle(/#8B4513/i));
+    await user.click(screen.getByRole("button", { name: "到" }));
+    await user.click(within(screen.getByText(/选择目标颜色/).parentElement as HTMLElement).getByTitle(/#1E90FF/i));
 
     await user.click(screen.getByRole("button", { name: "应用" }));
 
     await waitFor(() =>
       expect(calls.filter((c) => c.cmd === "replace_face_color")).toHaveLength(1)
     );
-    expect(calls[0].args).toMatchObject({ from: RED, to: [30, 144, 255, 255], labels: null });
+    // No scope/labels argument: whole-model replace is the only semantic.
+    expect(calls[0].args).toMatchObject({ from: RED, to: [30, 144, 255, 255] });
+    expect(Object.keys(calls[0].args as object).sort()).toEqual(["from", "to"]);
 
     // The GPU/mirror bridge receives the incremental payload; the histogram
     // refresh rides the same historyVersion bump the bridge triggers.

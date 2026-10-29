@@ -9,25 +9,25 @@ import { toHex } from "../../utils/colorFormat";
 type RGBA = [number, number, number, number];
 
 /**
- * Colour find & replace (issue #29): pick a source from the colours actually
- * on the model, a target from anywhere, preview the face/region count live
- * over the frontend faceColors mirror (utils/replaceColour), then apply —
- * one backend command, one undo entry. The swatch grids re-use the used
- * colours (#23) and the AMS palette; picking never touches the panel's own
+ * Colour find & replace (issue #29). ONE semantic, per the owner: pick a
+ * source colour, pick a target, and one click replaces EVERY region that
+ * used the source — the colour is the lookup key, not a hand-picked face
+ * set. The preview counts faces/regions live over the frontend faceColors
+ * mirror (utils/replaceColour); the apply is one backend command landing as
+ * exactly one undo entry. The swatch pickers re-use the used colours (#23)
+ * and the AMS palette; picking never touches the panel's own
  * click-to-set-current behaviour.
  */
 export function ReplaceColourSection({ used }: { used: UsedColorEntry[] }) {
   const t = useT();
   const faceColors = useAppStore((s) => s.meshData?.faceColors);
   const segmentLabels = useAppStore((s) => s.meshData?.segmentLabels);
-  const viewSelectedRegions = useAppStore((s) => s.viewSelectedRegions);
   const currentColor = useAppStore((s) => s.currentColor);
   const setPendingPaintResult = useAppStore((s) => s.setPendingPaintResult);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
 
   const [from, setFrom] = useState<RGBA | null>(null);
   const [to, setTo] = useState<RGBA | null>(null);
-  const [scope, setScope] = useState<"model" | "regions">("model");
   const [picking, setPicking] = useState<"from" | "to" | null>(null);
   const [applying, setApplying] = useState(false);
 
@@ -48,21 +48,11 @@ export function ReplaceColourSection({ used }: { used: UsedColorEntry[] }) {
     setFrom(null);
     setTo(null);
     setPicking(null);
-    setScope("model");
   }, [faceColors]);
-
-  // The EFFECTIVE scope: choosing 仅选中分区 while the viewport selection is
-  // empty must not render a checked radio over a whole-model apply (the
-  // viewport's own Esc clears viewSelectedRegions — seen live with the
-  // picker's Esc on the same keypress).
-  const regionsScopeActive = scope === "regions" && viewSelectedRegions.length > 0;
-  const scopeArg = regionsScopeActive
-    ? { kind: "regions" as const, labels: viewSelectedRegions }
-    : { kind: "model" as const };
 
   const plan =
     from && faceColors && segmentLabels
-      ? planReplaceColour(faceColors, segmentLabels, from, scopeArg)
+      ? planReplaceColour(faceColors, segmentLabels, from)
       : null;
   const guard = from && to ? replaceGuard(from, to) : null;
   const canApply = !!from && !!to && guard === null && !!plan && plan.faces > 0 && !applying;
@@ -78,11 +68,7 @@ export function ReplaceColourSection({ used }: { used: UsedColorEntry[] }) {
         updatedColors: number[][];
         faces: number;
         regions: number;
-      }>("replace_face_color", {
-        from,
-        to,
-        labels: scopeArg.kind === "regions" ? scopeArg.labels : null,
-      });
+      }>("replace_face_color", { from, to });
       // The backend mirrored the guards (defence in depth): a 0-face result
       // means mirror drift or a no-op — nothing to hand to the GPU bridge,
       // and no fake "已替换 0 面" success.
@@ -193,33 +179,6 @@ export function ReplaceColourSection({ used }: { used: UsedColorEntry[] }) {
 
       {picking && pickerGrid(picking)}
 
-      <div style={styles.scopeRow}>
-        <label style={styles.scopeLabel}>
-          <input
-            type="radio"
-            name="replace-scope"
-            checked={!regionsScopeActive}
-            onChange={() => setScope("model")}
-          />
-          {t("replace.scopeModel")}
-        </label>
-        <label
-          style={{ ...styles.scopeLabel, opacity: viewSelectedRegions.length > 0 ? 1 : 0.5 }}
-          title={viewSelectedRegions.length > 0 ? undefined : t("replace.scopeSelectedTitle")}
-        >
-          <input
-            type="radio"
-            name="replace-scope"
-            checked={regionsScopeActive}
-            disabled={viewSelectedRegions.length === 0}
-            title={viewSelectedRegions.length > 0 ? undefined : t("replace.scopeSelectedTitle")}
-            onChange={() => setScope("regions")}
-          />
-          {t("replace.scopeSelected")}
-          {regionsScopeActive ? ` (${viewSelectedRegions.length})` : ""}
-        </label>
-      </div>
-
       {guard ? (
         <div style={styles.guard}>
           {guard === "same" ? t("replace.guardSame") : t("replace.guardDefault")}
@@ -303,20 +262,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     background: "var(--bg-elevated, #3a3a3a)",
     color: "var(--text-1, #dddddd)",
-  },
-  scopeRow: {
-    display: "flex",
-    gap: 12,
-    marginTop: 8,
-    alignItems: "center",
-  },
-  scopeLabel: {
-    fontSize: 11,
-    color: "var(--text-1, #dddddd)",
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-    cursor: "pointer",
   },
   preview: {
     marginTop: 6,

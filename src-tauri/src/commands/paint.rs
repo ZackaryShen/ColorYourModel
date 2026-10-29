@@ -397,25 +397,16 @@ pub struct ReplaceColorResult {
 }
 
 /// Faces whose exact colour equals `from` (RGBA identity — the same rule as
-/// the used-colours list), optionally restricted to `labels`. One O(F) pass;
-/// regions are the DISTINCT segment labels among the matches.
-fn replace_updates(
-    mesh: &crate::mesh::model::MeshModel,
-    from: [u8; 4],
-    labels: Option<&[u32]>,
-) -> (Vec<u32>, u32) {
-    let scope = labels.map(std::collections::HashSet::<_>::from_iter);
+/// the used-colours list). One O(F) pass over the WHOLE model — the replace
+/// semantic is "every region that used the colour" (owner decision on
+/// #29, the scoped variant was removed); regions are the DISTINCT segment
+/// labels among the matches.
+fn replace_updates(mesh: &crate::mesh::model::MeshModel, from: [u8; 4]) -> (Vec<u32>, u32) {
     let mut faces = Vec::new();
     let mut regions = std::collections::HashSet::new();
     for (f, &c) in mesh.face_colors.iter().enumerate() {
         if c != from {
             continue;
-        }
-        if let Some(scope) = &scope {
-            let label = mesh.segment_labels[f];
-            if !scope.contains(&label) {
-                continue;
-            }
         }
         faces.push(f as u32);
         regions.insert(mesh.segment_labels[f]);
@@ -432,7 +423,6 @@ pub fn apply_replace_face_color(
     mesh: &mut crate::mesh::model::MeshModel,
     from: [u8; 4],
     to: [u8; 4],
-    labels: Option<&[u32]>,
 ) -> ReplaceColorResult {
     if from == to || from == DEFAULT_FACE_COLOR {
         // Same no-op/refusal contract as the command wrapper (tests exercise
@@ -444,7 +434,7 @@ pub fn apply_replace_face_color(
             regions: 0,
         };
     }
-    let (faces, region_count) = replace_updates(mesh, from, labels);
+    let (faces, region_count) = replace_updates(mesh, from);
     if faces.is_empty() {
         return ReplaceColorResult {
             updated_faces: Vec::new(),
@@ -472,7 +462,6 @@ pub fn apply_replace_face_color(
 pub fn replace_face_color(
     from: [u8; 4],
     to: [u8; 4],
-    labels: Option<Vec<u32>>,
     state: State<AppState>,
 ) -> Result<ReplaceColorResult, String> {
     if from == to {
@@ -491,7 +480,7 @@ pub fn replace_face_color(
     }
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
-    let result = apply_replace_face_color(mesh, from, to, labels.as_deref());
+    let result = apply_replace_face_color(mesh, from, to);
     log::info!(
         "[cmd:replace_face_color] faces={} regions={}",
         result.faces,
@@ -595,10 +584,11 @@ mod fill_tests {
 
 #[cfg(test)]
 mod replace_colour_tests {
-    //! Issue #29: colour find & replace. The whole-model / scoped replace
-    //! must be a single O(F) pass that lands as exactly ONE history entry
-    //! (one Ctrl+Z restores every replaced face), never touches labels, and
-    //! records nothing when nothing matches.
+    //! Issue #29: colour find & replace. ONE semantic (owner decision): a
+    //! whole-model replace — every region that used the source colour — as a
+    //! single O(F) pass landing as exactly ONE history entry (one Ctrl+Z
+    //! restores every replaced face), never touching labels, recording
+    //! nothing when nothing matches.
 
     use super::*;
     use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR};
@@ -631,7 +621,7 @@ mod replace_colour_tests {
         let mut m = replace_mesh();
         let before = m.face_colors.clone();
 
-        let result = apply_replace_face_color(&mut m, RED, GREEN, None);
+        let result = apply_replace_face_color(&mut m, RED, GREEN);
 
         assert_eq!(result.updated_faces, vec![0, 2]);
         assert_eq!(result.faces, 2);
@@ -652,24 +642,11 @@ mod replace_colour_tests {
     }
 
     #[test]
-    fn scoped_replace_touches_only_requested_labels() {
-        let mut m = replace_mesh();
-
-        let result = apply_replace_face_color(&mut m, RED, GREEN, Some(&[2]));
-
-        assert_eq!(result.updated_faces, vec![2]);
-        assert_eq!(result.faces, 1);
-        assert_eq!(result.regions, 1);
-        assert_eq!(m.face_colors[0], RED, "label 1's red face is out of scope");
-        assert_eq!(m.face_colors[2], GREEN);
-    }
-
-    #[test]
     fn no_match_records_no_history() {
         let mut m = replace_mesh();
         let absent: [u8; 4] = [1, 2, 3, 255];
 
-        let result = apply_replace_face_color(&mut m, absent, GREEN, None);
+        let result = apply_replace_face_color(&mut m, absent, GREEN);
 
         assert_eq!(result.updated_faces.len(), 0);
         assert_eq!(result.faces, 0);
@@ -683,7 +660,7 @@ mod replace_colour_tests {
         let mut m = replace_mesh();
         let labels_before = m.segment_labels.clone();
 
-        apply_replace_face_color(&mut m, RED, GREEN, None);
+        apply_replace_face_color(&mut m, RED, GREEN);
 
         assert_eq!(m.segment_labels, labels_before, "replace is a paint edit, not a segmentation edit");
     }
@@ -692,15 +669,12 @@ mod replace_colour_tests {
     fn replace_updates_counts_faces_and_regions() {
         let m = replace_mesh();
 
-        let (faces, regions) = replace_updates(&m, RED, None);
+        let (faces, regions) = replace_updates(&m, RED);
         assert_eq!((faces.len(), regions as usize), (2, 2));
-
-        let (faces, regions) = replace_updates(&m, RED, Some(&[2]));
-        assert_eq!((faces.len(), regions as usize), (1, 1));
 
         // Faces 1 and 3 were never painted, so they still carry the default
         // grey — countable (the guard refuses that replace, not the math).
-        let (faces, regions) = replace_updates(&m, DEFAULT_FACE_COLOR, None);
+        let (faces, regions) = replace_updates(&m, DEFAULT_FACE_COLOR);
         assert_eq!((faces.len(), regions as usize), (2, 2));
     }
 
@@ -709,12 +683,12 @@ mod replace_colour_tests {
         let mut m = replace_mesh();
 
         // from == to: mechanical no-op, empty result.
-        let result = apply_replace_face_color(&mut m, RED, RED, None);
+        let result = apply_replace_face_color(&mut m, RED, RED);
         assert_eq!(result.faces, 0);
 
         // Default grey as source: refused by the same contract the UI guard
         // implements — the IPC surface does not trust frontend state.
-        let result = apply_replace_face_color(&mut m, DEFAULT_FACE_COLOR, GREEN, None);
+        let result = apply_replace_face_color(&mut m, DEFAULT_FACE_COLOR, GREEN);
         assert_eq!(result.faces, 0);
         assert_eq!(m.history.undo_depth(), 0);
     }

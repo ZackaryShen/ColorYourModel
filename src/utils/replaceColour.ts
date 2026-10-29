@@ -1,20 +1,18 @@
 // ── Issue #29: colour find & replace — pure planning logic ─────────
-// The dry-run count ("将把 N 面 · M 个区域 从 #X 改为 #Y") and the guard
-// decisions run over the FRONTEND faceColors mirror (meshData.faceColors,
-// flat RGBA bytes per face), so the preview updates instantly while the
-// user picks — no IPC round trip. The apply itself is backend-authoritative
-// (`replace_face_color` walks the real face_colors in one O(F) pass and
-// records exactly one history entry); the numbers here are advisory.
+// ONE semantic, per the owner: one click replaces EVERY region that used
+// the source colour. The dry-run count ("将把 N 面 · M 个区域 从 #X 改为
+// #Y") and the guard decisions run over the FRONTEND faceColors mirror
+// (meshData.faceColors, flat RGBA bytes per face), so the preview updates
+// instantly while the user picks — no IPC round trip. The apply itself is
+// backend-authoritative (`replace_face_color` walks the real face_colors
+// in one O(F) pass and records exactly one history entry); the numbers
+// here are advisory.
 
 /** Keep in sync with `DEFAULT_FACE_COLOR` in src-tauri/src/mesh/model.rs —
  * the never-painted / eraser grey. Alpha 255: paint always writes opaque. */
 export const DEFAULT_FACE_COLOR_RGBA: [number, number, number, number] = [
   138, 138, 138, 255,
 ];
-
-/** Where a replace applies. "regions" limits the pass to the given segment
- * labels (the 分区 panel multi-select); "model" is the whole mesh. */
-export type ReplaceScope = { kind: "model" } | { kind: "regions"; labels: number[] };
 
 export interface ReplacePlan {
   faces: number;
@@ -24,16 +22,13 @@ export interface ReplacePlan {
 /**
  * Count the faces carrying `from` (exact RGBA match — alpha is part of the
  * colour identity, same rule as the used-colours list of #23) and how many
- * DISTINCT regions they span, honouring `scope`.
+ * DISTINCT regions they span.
  */
 export function planReplaceColour(
   faceColors: number[],
   segmentLabels: number[],
-  from: [number, number, number, number],
-  scope: ReplaceScope
+  from: [number, number, number, number]
 ): ReplacePlan {
-  const scopeSet =
-    scope.kind === "regions" ? new Set<number>(scope.labels) : null;
   let faces = 0;
   const regions = new Set<number>();
   for (let f = 0, o = 0; o + 3 < faceColors.length; f++, o += 4) {
@@ -44,10 +39,6 @@ export function planReplaceColour(
       faceColors[o + 3] !== from[3]
     ) {
       continue;
-    }
-    if (scopeSet) {
-      const label = segmentLabels[f];
-      if (!scopeSet.has(label)) continue;
     }
     faces++;
     regions.add(segmentLabels[f]);
