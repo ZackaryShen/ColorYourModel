@@ -340,6 +340,24 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.noModel": { zh: "尚未导入模型", en: "No model loaded" },
   "export.noModelHint": { zh: "导出需要先导入 STL 模型并完成涂装，请先从「文件 → 导入 STL…」或左侧工具栏导入。", en: "Exporting needs an imported (and painted) STL model first — use File → Import STL… or the left toolbar." },
 
+  // Colour find & replace (issue #29)
+  "replace.title": { zh: "替换颜色", en: "Replace colour" },
+  "replace.from": { zh: "从", en: "From" },
+  "replace.to": { zh: "到", en: "To" },
+  "replace.pickSource": { zh: "选择来源颜色（模型上已有的颜色）", en: "Pick the source colour (one already on the model)" },
+  "replace.pickTarget": { zh: "选择目标颜色", en: "Pick the target colour" },
+  "replace.useCurrent": { zh: "用当前颜色", en: "Use current colour" },
+  "replace.scopeModel": { zh: "整个模型", en: "Whole model" },
+  "replace.scopeSelected": { zh: "仅选中分区", en: "Selected regions" },
+  "replace.scopeSelectedTitle": { zh: "在查看/导航工具下 Ctrl+点击选中分区后可用", en: "Available after Ctrl-clicking regions in the View tool" },
+  "replace.preview": { zh: "将把 {0} 面 · {1} 个区域 从 {2} 改为 {3}", en: "Will change {0} faces · {1} region(s) from {2} to {3}" },
+  "replace.none": { zh: "模型上没有携带 {0} 的面", en: "No faces carry {0}" },
+  "replace.guardSame": { zh: "来源与目标颜色相同", en: "Source and target colours are identical" },
+  "replace.guardDefault": { zh: "不能以未上色的默认灰作为来源（会重刷所有未涂装的面）", en: "The unpainted default grey cannot be a source (it would repaint every untouched face)" },
+  "replace.apply": { zh: "应用", en: "Apply" },
+  "replace.done": { zh: "已替换 {0} 面 · {1} 个区域：{2} → {3}（Ctrl+Z 可一步撤销）", en: "Replaced {0} faces · {1} region(s): {2} → {3} (one Ctrl+Z undoes it)" },
+  "replace.failed": { zh: "替换失败：{0}", en: "Replace failed: {0}" },
+
   // Exit confirmation (issue #7)
   "exit.confirmTitle": { zh: "未保存的涂装工作", en: "Unsaved painting work" },
   "exit.stay": { zh: "留在应用", en: "Stay" },

@@ -1,0 +1,38 @@
+feat(colour): replace one colour with another across the model (#29)
+
+Colour find & replace in the colour panel, under the used-colour grid
+(#23): pick a source (used colours / current colour), a target (used
+colours + AMS palette + current colour, deduped by RGBA), scope it to
+the whole model or the viewport's Ctrl-click multi-select, check the
+live dry-run count, and apply.
+
+The dry-run ("N faces · M regions from #X to #Y") runs over the
+frontend faceColors mirror (utils/replaceColour) so it updates instantly
+while picking — no IPC. The apply is one backend command,
+replace_face_color(from, to, labels): a single O(F) pass committed
+through commit()/apply_paint with stroke_id None, landing as exactly ONE
+history entry — one Ctrl+Z restores every replaced face, Ctrl+Y
+re-applies. A zero-match replace records nothing (no empty undo step).
+Guard rails live in BOTH layers (the IPC surface does not trust frontend
+state): from == to is an empty no-op, and replacing FROM the unpainted
+default grey is refused — it would silently repaint every untouched
+face. Colours only: labels, region names and segmentation are never
+written; export is unaffected.
+
+After the apply the result rides the existing pendingPaintResult bridge
+(GPU incremental + faceColors mirror + historyVersion bump), so the
+used-colours histogram refreshes itself. The scope radio reflects the
+effective scope (the viewport's Esc clears the selection — the UI must
+not show 仅选中分区 checked over a whole-model apply), and the picks
+reset when a different model loads.
+
+TDD: 10 pure-TS tests (counting incl. alpha-as-identity, guards), 6 Rust
+core tests (one-entry guarantee via a real jump_to(0) undo, scope
+restriction, no-match records nothing, labels untouched, dry-run counts,
+core guard refusals), 5 component tests (pick flow, both guards, scope
+disable, apply IPC + bridge + status). Two-axis review passed; findings
+folded back in: dead preview IPC removed, effective-scope radio, picks
+cleared on model swap, 0-match apply skips the bridge. vitest 133/133,
+tsc clean, cargo test --lib 213/213.
+
+Closes #29

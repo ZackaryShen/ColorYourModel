@@ -59,6 +59,8 @@ pub fn run() {
             commands::paint::pick_color,
             // Colour panel "used colours" (issue #23).
             commands::paint::used_colors,
+            // Colour find & replace (issue #29).
+            commands::paint::replace_face_color,
             // Unified undo/redo — the single timeline covering paint, fill,
             // eraser and lasso. Replaced the former `manual_region_undo` and
             // `restore_face_colors` commands, both deleted in S2.
