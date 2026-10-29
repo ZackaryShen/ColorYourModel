@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { DialogShell, dialogCancelStyle } from "./DialogShell";
+import { DialogShell, dialogCancelStyle, dialogDangerStyle } from "./DialogShell";
 import { useT } from "../i18n";
 
 /**
@@ -22,7 +22,7 @@ export function ExitConfirmDialog({ onCancel }: { onCancel: () => void }) {
       </button>
       <button
         className="cym-btn"
-        style={styles.btnQuit}
+        style={dialogDangerStyle}
         onClick={() => {
           getCurrentWindow().destroy();
         }}
@@ -32,16 +32,3 @@ export function ExitConfirmDialog({ onCancel }: { onCancel: () => void }) {
     </DialogShell>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  btnQuit: {
-    padding: "6px 14px",
-    border: "1px solid var(--danger-border, #b3373c)",
-    background: "var(--danger, #e5484d)",
-    color: "#fff",
-    borderRadius: 6,
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 600,
-  },
-};

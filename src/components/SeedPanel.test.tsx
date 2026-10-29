@@ -128,8 +128,14 @@ describe("SeedPanel.onGrow — iter60/61/63 回归（建议种子 → 生成 一
   });
 });
 
-describe("SeedPanel.onResetAll — iteration 65「无法清空」修复", () => {
-  it("点「清空分区」 → 调 reset_segmentation + 清掉所有 transient 数据", async () => {
+describe("SeedPanel.onResetAll — issue #28 in-app confirm", () => {
+  // The old guard was `if (!window.confirm(...)) return;` — in the real
+  // WebView2 that resolves async via tauri-plugin-dialog (#28), so the
+  // truthy Promise bypassed the guard and the reset ran unasked. These
+  // tests deliberately do NOT mock window.confirm: the flow must go
+  // through the in-app ResetConfirmDialog (see utils/resetGate for the
+  // phase contract).
+  it("点「清空分区」 → 先弹应用内确认框，确认后才调 reset_segmentation + 清 transient", async () => {
     const user = userEvent.setup();
     // 预先塞入「旧的 × 按钮清不掉」的状态
     useAppStore.setState({
@@ -140,38 +146,90 @@ describe("SeedPanel.onResetAll — iteration 65「无法清空」修复", () => 
       crossSectionRegions: [],
       seedEraseMode: true,
     });
-    // 自动 confirm
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(<SeedPanel />);
     await user.click(screen.getByRole("button", { name: /清空分区/ }));
 
+    // #28 regression: the click itself must NOT wipe anything — the dialog
+    // gates the destructive call.
+    expect(calls.some((c) => c.cmd === "reset_segmentation")).toBe(false);
+    expect(screen.getByText("清空所有分区")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "确认清空" }));
     await waitFor(() =>
       expect(calls.some((c) => c.cmd === "reset_segmentation")).toBe(true)
     );
-    expect(confirmSpy).toHaveBeenCalled();
+    expect(calls.filter((c) => c.cmd === "reset_segmentation")).toHaveLength(1);
 
     // 前端 transient 数据全部清掉:BoundaryLines / 种子 / 擦除模式 都不会残留
-    const s = useAppStore.getState();
-    expect(s.seedPoints).toHaveLength(0);
-    expect(s.suggestedSeeds).toHaveLength(0);
-    expect(s.planarRegions).toHaveLength(0);
-    expect(s.seedEraseMode).toBe(false);
-    expect(s.statusMessage).toContain("已清空分区");
-
-    confirmSpy.mockRestore();
+    await waitFor(() => {
+      const s = useAppStore.getState();
+      expect(s.seedPoints).toHaveLength(0);
+      expect(s.suggestedSeeds).toHaveLength(0);
+      expect(s.planarRegions).toHaveLength(0);
+      expect(s.seedEraseMode).toBe(false);
+      expect(s.statusMessage).toContain("已清空分区");
+    });
+    // Dialog closed once the reset settled.
+    await waitFor(() =>
+      expect(screen.queryByText("清空所有分区")).toBeNull()
+    );
   });
 
-  it("取消 confirm → 不发任何命令", async () => {
+  it("取消确认 → 不发任何命令，对话框关闭", async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     render(<SeedPanel />);
     await user.click(screen.getByRole("button", { name: /清空分区/ }));
+    expect(screen.getByText("清空所有分区")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "取消" }));
     await new Promise((r) => setTimeout(r, 30));
 
     expect(calls.some((c) => c.cmd === "reset_segmentation")).toBe(false);
-    confirmSpy.mockRestore();
+    expect(screen.queryByText("清空所有分区")).toBeNull();
+  });
+
+  it("确认后运行中连点危险按钮 → reset_segmentation 只发一次（防双击）", async () => {
+    const user = userEvent.setup();
+    // Hold the reset in flight so the running phase is observable: the
+    // default mock resolves instantly, which would close the dialog before
+    // the assertion runs. Restore the default impl even on failure — a
+    // leaked never-resolving reset would hang every later test in this file.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const prevImpl = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation(async (cmd: string, args: unknown) => {
+      calls.push({ cmd, args });
+      if (cmd === "reset_segmentation") {
+        await gate;
+        return { segments: [], segmentLabels: [], faceColors: [] };
+      }
+      return {};
+    });
+
+    try {
+      render(<SeedPanel />);
+      await user.click(screen.getByRole("button", { name: /清空分区/ }));
+      await user.click(screen.getByRole("button", { name: "确认清空" }));
+
+      // Mid-flight the confirm button is the disabled 清空中… state; a click
+      // on a disabled button must not queue a second reset IPC.
+      const runningBtn = screen.getByRole("button", { name: "清空中…" }) as HTMLButtonElement;
+      expect(runningBtn.disabled).toBe(true);
+      await user.click(runningBtn);
+      expect(calls.filter((c) => c.cmd === "reset_segmentation")).toHaveLength(1);
+
+      release();
+      await waitFor(() =>
+        expect(screen.queryByText("清空所有分区")).toBeNull()
+      );
+    } finally {
+      release();
+      mockInvoke.mockImplementation(prevImpl);
+    }
   });
 });
 

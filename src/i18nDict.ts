@@ -340,6 +340,12 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.noModel": { zh: "尚未导入模型", en: "No model loaded" },
   "export.noModelHint": { zh: "导出需要先导入 STL 模型并完成涂装，请先从「文件 → 导入 STL…」或左侧工具栏导入。", en: "Exporting needs an imported (and painted) STL model first — use File → Import STL… or the left toolbar." },
 
+  // Reset confirm dialog (issue #28)
+  "reset.confirmTitle": { zh: "清空所有分区", en: "Clear all regions" },
+  "reset.confirm": { zh: "确认清空", en: "Confirm reset" },
+  "reset.cancel": { zh: "取消", en: "Cancel" },
+  "reset.resetting": { zh: "清空中…", en: "Resetting…" },
+
   // Exit confirmation (issue #7)
   "exit.confirmTitle": { zh: "未保存的涂装工作", en: "Unsaved painting work" },
   "exit.stay": { zh: "留在应用", en: "Stay" },
