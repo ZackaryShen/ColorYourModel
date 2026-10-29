@@ -193,6 +193,14 @@ export function useMesh() {
         labArr[f * 3 + 1] = lab;
         labArr[f * 3 + 2] = lab;
       }
+    }
+    // Issue #24: per-face hidden flag (0/1), consumed by the segment shader's
+    // discard. Values are (re)written by the Viewport visibility effect —
+    // this only guarantees the attribute exists with the right count.
+    let hiddenAttr = geometry.getAttribute("aHidden") as THREE.Float32BufferAttribute | undefined;
+    if (!hiddenAttr || hiddenAttr.count !== faceCount * 3) {
+      hiddenAttr = new THREE.Float32BufferAttribute(new Float32Array(faceCount * 3), 1);
+      geometry.setAttribute("aHidden", hiddenAttr);
       segLabelAttr.needsUpdate = true;
       geometry.userData.segLabelId = labels;
     }

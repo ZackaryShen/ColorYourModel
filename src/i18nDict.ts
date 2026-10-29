@@ -213,6 +213,17 @@ const dict: Record<string, Record<Lang, string>> = {
 
   // SegmentsPanel
   "segments.title": { zh: "分区", en: "Regions" },
+  // Region visibility (issue #24)
+  "segments.eyeHint": { zh: "显隐该分区 · Alt+点击=只显示此分区", en: "Toggle visibility · Alt+click = isolate" },
+  "segments.showAll": { zh: "全部显示", en: "Show all" },
+  "segments.hideAll": { zh: "全部隐藏", en: "Hide all" },
+  "segments.toggleAll": { zh: "一键显示/隐藏全部分区", en: "Show or hide every region" },
+  "segments.hiddenCount": { zh: "已隐藏 {0} 个", en: "{0} hidden" },
+  "segments.viewSelected": { zh: "已选 {0} 个分区 — H 显隐 · Ctrl+点击增减 · Esc 取消", en: "{0} region(s) picked — H hide/show · Ctrl+click to add/remove · Esc to clear" },
+  "segments.hidGroup": { zh: "已隐藏 {0} 个分区（H 恢复）", en: "{0} region(s) hidden (H to restore)" },
+  "segments.showGroup": { zh: "已显示 {0} 个分区", en: "{0} region(s) shown" },
+  "segments.selectionCleared": { zh: "已取消选择", en: "Selection cleared" },
+  "segments.isolateDone": { zh: "已隔离 区域 {0}（其余分区已隐藏）", en: "Isolated region {0} (others hidden)" },
   "segments.reset": { zh: "重置", en: "Reset" },
   "segments.resetHint": { zh: "清除全部分区与上色，回到刚导入的未上色状态", en: "Clear all regions and paint, back to the freshly-loaded uncoloured state" },
   "segments.resetConfirm": { zh: "确定重置分区并清除所有上色吗？此操作不可撤销。", en: "Reset all regions and clear all paint? This cannot be undone." },
@@ -236,7 +247,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "controls.rightRotate": { zh: "🔄 右键+拖: 平移", en: "🔄 Right+Drag: Pan" },
   "controls.middlePan": { zh: "✋ 中键+拖: 缩放", en: "✋ Middle+Drag: Zoom" },
   "controls.scrollZoom": { zh: "🔍 滚轮: 缩放", en: "🔍 Scroll: Zoom" },
-  "controls.viewHint": { zh: "左键 旋转 · 右键 平移 · 中键 缩放 · 滚轮 缩放", en: "Left Rotate · Right Pan · Middle Zoom · Scroll Zoom" },
+  "controls.viewHint": { zh: "左键 旋转 · 右键 平移 · Ctrl+点击 选分区 · H 显隐", en: "Left Rotate · Right Pan · Ctrl+click: pick region · H: hide/show" },
   "controls.brushHint": { zh: "模型上 左键绘制 · 空白处左键旋转 · 右键 平移 · Ctrl+滚轮 调笔刷", en: "On model: Left paints · On empty: Left rotates · Right Pan · Ctrl+Wheel brush size" },
   "controls.fillHint": { zh: "左键 填充分区 · Ctrl+点击 合并分区 · 右键 平移 · 滚轮 缩放", en: "Left: fill region · Ctrl+click: merge regions · Right: pan · Wheel: zoom" },
   "controls.editHint": { zh: "左键 绘制/选取 · 右键 平移 · 中键 缩放 · 滚轮 缩放", en: "Left Paint/Select · Right Pan · Middle Zoom · Scroll Zoom" },
