@@ -10,6 +10,7 @@ import { MenuBar } from "./components/MenuBar";
 import { DebugLogViewer } from "./components/DebugLogViewer";
 import { ExitConfirmDialog } from "./components/ExitConfirmDialog";
 import { ImportErrorDialog } from "./components/ImportErrorDialog";
+import { PreferencesDialog } from "./components/PreferencesDialog/PreferencesDialog";
 import { UpdateDialog } from "./components/UpdateDialog/UpdateDialog";
 import { useAutoUpdateCheck } from "./hooks/useAutoUpdateCheck";
 import { useAppStore } from "./store/appStore";
@@ -22,6 +23,7 @@ function App() {
   // showing them on the empty state invited dead-slider fiddling.
   const hasMesh = useAppStore((s) => s.meshData !== null);
   const [confirmExit, setConfirmExit] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
   const t = useT();
 
   // Silent startup update check (dev builds and opted-out users never fire).
@@ -86,7 +88,7 @@ function App() {
       </div>
 
       {/* Bottom status bar */}
-      <StatusBar />
+      <StatusBar onOpenPreferences={() => setPrefsOpen(true)} />
 
       {/* In-app debug log viewer (iteration 59): release builds can't open
           devtools, so logs surface here instead. */}
@@ -95,6 +97,10 @@ function App() {
       {/* Issue #7: in-app exit confirmation (dark-themed, replaces the
           white native MessageBox). */}
       {confirmExit && <ExitConfirmDialog onCancel={() => setConfirmExit(false)} />}
+
+      {/* Developer mode: experimental-feature toggles (per-feature checkboxes,
+          persisted via cym-prefs). */}
+      {prefsOpen && <PreferencesDialog onClose={() => setPrefsOpen(false)} />}
 
       {/* P0 2026-10-12: import failures (broken/unsupported STL or .cym)
           surface as a modal instead of only a status-bar line. */}

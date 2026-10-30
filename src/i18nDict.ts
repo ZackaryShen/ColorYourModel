@@ -245,6 +245,35 @@ const dict: Record<string, Record<Lang, string>> = {
 
   // Theme (iteration 20)
   "theme.toggle": { zh: "切换深浅色", en: "Toggle theme" },
+  // Preferences dialog (developer mode / experimental features)
+  "prefs.title": { zh: "偏好设置", en: "Preferences" },
+  "prefs.close": { zh: "关闭偏好设置", en: "Close preferences" },
+  "prefs.done": { zh: "完成", en: "Done" },
+  "prefs.experimentalSection": { zh: "实验性功能", en: "Experimental features" },
+  "prefs.experimentalHint": {
+    zh: "默认隐藏的实验性功能。勾选启用，改动立即生效并跨会话记住；关闭对应开关会同时清掉已生成的临时数据。",
+    en: "Experimental features, hidden by default. Tick to enable — changes apply immediately and persist across sessions; switching one off also clears its generated temp data.",
+  },
+  "exp.seedDetectPlanar": { zh: "智能分区：平面种子检测", en: "Smart partition: planar seed detection" },
+  "exp.seedDetectPlanarHint": {
+    zh: "检测连续平面区域并作为建议种子并入手动生长（Layer 1）。",
+    en: "Detect continuous planar regions and feed them in as suggested seeds for manual grow (Layer 1).",
+  },
+  "exp.seedDetectMultiview": { zh: "智能分区：多视角种子检测", en: "Smart partition: MultiView seed detection" },
+  "exp.seedDetectMultiviewHint": {
+    zh: "多视角投影共识聚类作为第二路建议种子（Layer 3）。",
+    en: "MultiView projection consensus clusters as a second seed channel (Layer 3).",
+  },
+  "exp.seedDetectCrossSection": { zh: "智能分区：截面特征检测", en: "Smart partition: cross-section feature detection" },
+  "exp.seedDetectCrossSectionHint": {
+    zh: "沿主轴切片显示特征截面轮廓，仅作视觉参考，不注入种子（Layer 2）。",
+    en: "Slice along principal axes to outline feature cross-sections; visual aid only, no seeds injected (Layer 2).",
+  },
+  "exp.seedWeightSliders": { zh: "智能分区：显著性权重滑杆", en: "Smart partition: significance weight sliders" },
+  "exp.seedWeightSlidersHint": {
+    zh: "调曲率/凹度权重影响推荐种子的分布；隐藏时按默认权重（1.0/1.0）推荐。",
+    en: "Tune curvature/concavity weights to bias suggested seeds; hidden state recommends with default weights (1.0/1.0).",
+  },
   "theme.dark": { zh: "🌙 深色", en: "🌙 Dark" },
   "theme.light": { zh: "☀️ 浅色", en: "☀️ Light" },
 

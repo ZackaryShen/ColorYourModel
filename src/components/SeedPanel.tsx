@@ -6,6 +6,12 @@ import { useT } from "../i18n";
 import { log } from "../utils/logger";
 
 const POS_KEY = "cym.seedPanelPos";
+// In-code defaults for the significance weights. When the weight-slider rows
+// are hidden (experimental seedWeightSliders off), onRecommend degrades to
+// these instead of leaking pre-hide slider values — same discipline as the
+// P0 effectiveResegKind derivation.
+const DEFAULT_CURV_WEIGHT = 1.0;
+const DEFAULT_CONC_WEIGHT = 1.0;
 const PANEL_WIDTH = 360;
 const PANEL_HEIGHT_ESTIMATE = 580; // fallback when the DOM has not measured yet
 const PANEL_MARGIN = 16;
@@ -118,6 +124,13 @@ export function SeedPanel() {
   const toggleEyeRegionsVisible = useAppStore((s) => s.toggleEyeRegionsVisible);
   const selectedSegment = useAppStore((s) => s.selectedSegment);
   const setOnlyVisible = useAppStore((s) => s.setOnlyVisible);
+  // Experimental-feature gates (Preferences dialog, default all false): the
+  // detector rows and the weight sliders below render only when opted in.
+  const experimentalFeatures = useAppStore((s) => s.experimentalFeatures);
+  const showPlanarDetect = experimentalFeatures.seedDetectPlanar;
+  const showMultiviewDetect = experimentalFeatures.seedDetectMultiview;
+  const showCrossSectionDetect = experimentalFeatures.seedDetectCrossSection;
+  const showWeightSliders = experimentalFeatures.seedWeightSliders;
   const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setActiveTool = useAppStore((s) => s.setActiveTool);
@@ -149,8 +162,8 @@ export function SeedPanel() {
   const [growing, setGrowing] = useState(false);
   const [recommending, setRecommending] = useState(false);
   const [suggestCount, setSuggestCount] = useState(12);
-  const [curvWeight, setCurvWeight] = useState(1.0);
-  const [concWeight, setConcWeight] = useState(1.0);
+  const [curvWeight, setCurvWeight] = useState(DEFAULT_CURV_WEIGHT);
+  const [concWeight, setConcWeight] = useState(DEFAULT_CONC_WEIGHT);
   const [detecting, setDetecting] = useState(false);
   const [detectingEye, setDetectingEye] = useState(false);
   const [fusing, setFusing] = useState(false);
@@ -458,14 +471,18 @@ export function SeedPanel() {
   }, []);
 
   const onRecommend = async () => {
+    // Hidden sliders must not leak pre-hide values into the backend call:
+    // recommend with the in-code defaults when the slider rows are hidden.
+    const effCurv = showWeightSliders ? curvWeight : DEFAULT_CURV_WEIGHT;
+    const effConc = showWeightSliders ? concWeight : DEFAULT_CONC_WEIGHT;
     setRecommending(true);
     log.info("SeedPanel", "onRecommend click", {
       suggestCount,
-      curvWeight,
-      concWeight,
+      curvWeight: effCurv,
+      concWeight: effConc,
     });
     try {
-      const seeds = await recommendSeeds(suggestCount, curvWeight, concWeight);
+      const seeds = await recommendSeeds(suggestCount, effCurv, effConc);
       log.info("SeedPanel", "onRecommend received", { count: seeds.length });
       setSuggestedSeeds(seeds);
     } catch {
@@ -836,9 +853,11 @@ export function SeedPanel() {
     if (seedPickMode) return t("seed.eyePickHint");
     if (seedEraseMode) return t("seed.eraseHint");
     if (eyeRegions.length > 0) return t("seed.eyeHint");
-    if (crossSectionRegions.length > 0) return t("seed.crossSectionHint");
-    if (multiviewRegions.length > 0) return t("seed.multiviewHint");
-    if (planarRegions.length > 0) return t("seed.planarHint");
+    if (showCrossSectionDetect && crossSectionRegions.length > 0)
+      return t("seed.crossSectionHint");
+    if (showMultiviewDetect && multiviewRegions.length > 0)
+      return t("seed.multiviewHint");
+    if (showPlanarDetect && planarRegions.length > 0) return t("seed.planarHint");
     if (suggestedSeeds.length > 0) return t("seed.suggestHint");
     return t("seed.hint");
   })();
@@ -951,36 +970,40 @@ export function SeedPanel() {
         <span style={styles.val}>{suggestCount}</span>
       </div>
 
-      <div style={styles.row}>
-        <span style={styles.label} title={t("seed.weightCurvHint")}>
-          {t("seed.weightCurv")}
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={0.1}
-          value={curvWeight}
-          onChange={(e) => setCurvWeight(Number(e.target.value))}
-          style={{ flex: 1 }}
-        />
-        <span style={styles.val}>{curvWeight.toFixed(1)}</span>
-      </div>
-      <div style={styles.row}>
-        <span style={styles.label} title={t("seed.weightConcHint")}>
-          {t("seed.weightConc")}
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={0.1}
-          value={concWeight}
-          onChange={(e) => setConcWeight(Number(e.target.value))}
-          style={{ flex: 1 }}
-        />
-        <span style={styles.val}>{concWeight.toFixed(1)}</span>
-      </div>
+      {showWeightSliders && (
+        <>
+          <div style={styles.row}>
+            <span style={styles.label} title={t("seed.weightCurvHint")}>
+              {t("seed.weightCurv")}
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.1}
+              value={curvWeight}
+              onChange={(e) => setCurvWeight(Number(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={styles.val}>{curvWeight.toFixed(1)}</span>
+          </div>
+          <div style={styles.row}>
+            <span style={styles.label} title={t("seed.weightConcHint")}>
+              {t("seed.weightConc")}
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.1}
+              value={concWeight}
+              onChange={(e) => setConcWeight(Number(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={styles.val}>{concWeight.toFixed(1)}</span>
+          </div>
+        </>
+      )}
 
       <div style={styles.row}>
         <button onClick={onRecommend} disabled={recommending} style={styles.grow}>
@@ -995,6 +1018,7 @@ export function SeedPanel() {
         </button>
       </div>
 
+      {showPlanarDetect && (
       <div style={styles.row}>
         <button onClick={onDetectPlanar} disabled={detecting} style={styles.grow}>
           {detecting ? "…" : t("seed.planar")}
@@ -1020,7 +1044,9 @@ export function SeedPanel() {
           ×
         </button>
       </div>
+      )}
 
+      {showMultiviewDetect && (
       <div style={styles.row}>
         <button onClick={onDetectMultiView} disabled={detecting} style={styles.grow}>
           {detecting ? "…" : t("seed.multiview")}
@@ -1046,7 +1072,9 @@ export function SeedPanel() {
           ×
         </button>
       </div>
+      )}
 
+      {showCrossSectionDetect && (
       <div style={styles.row}>
         <button onClick={onDetectCrossSection} disabled={detecting} style={styles.grow}>
           {detecting ? "…" : t("seed.crossSection")}
@@ -1072,6 +1100,7 @@ export function SeedPanel() {
           ×
         </button>
       </div>
+      )}
         </>
       )}
 
@@ -1159,30 +1188,36 @@ export function SeedPanel() {
         >
           {t("seed.showAll")}
         </button>
-        <button
-          onClick={() => setOnlyVisible("planar")}
-          disabled={planarRegions.length === 0}
-          style={{ ...styles.miniBtn, color: "#22d3ee" }}
-          title={t("seed.soloPlanar")}
-        >
-          🟦
-        </button>
-        <button
-          onClick={() => setOnlyVisible("multiview")}
-          disabled={multiviewRegions.length === 0}
-          style={{ ...styles.miniBtn, color: "#fb923c" }}
-          title={t("seed.soloMultiview")}
-        >
-          👁
-        </button>
-        <button
-          onClick={() => setOnlyVisible("crosssection")}
-          disabled={crossSectionRegions.length === 0}
-          style={{ ...styles.miniBtn, color: "#84cc16" }}
-          title={t("seed.soloCrossSection")}
-        >
-          ✂️
-        </button>
+        {showPlanarDetect && (
+          <button
+            onClick={() => setOnlyVisible("planar")}
+            disabled={planarRegions.length === 0}
+            style={{ ...styles.miniBtn, color: "#22d3ee" }}
+            title={t("seed.soloPlanar")}
+          >
+            🟦
+          </button>
+        )}
+        {showMultiviewDetect && (
+          <button
+            onClick={() => setOnlyVisible("multiview")}
+            disabled={multiviewRegions.length === 0}
+            style={{ ...styles.miniBtn, color: "#fb923c" }}
+            title={t("seed.soloMultiview")}
+          >
+            👁
+          </button>
+        )}
+        {showCrossSectionDetect && (
+          <button
+            onClick={() => setOnlyVisible("crosssection")}
+            disabled={crossSectionRegions.length === 0}
+            style={{ ...styles.miniBtn, color: "#84cc16" }}
+            title={t("seed.soloCrossSection")}
+          >
+            ✂️
+          </button>
+        )}
         <button
           onClick={() => setOnlyVisible("eye")}
           disabled={eyeRegions.length === 0}

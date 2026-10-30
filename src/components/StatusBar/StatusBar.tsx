@@ -2,7 +2,11 @@ import { useAppStore } from "../../store/appStore";
 import { useT } from "../../i18n";
 import { hintKeyForTool } from "../../utils/controlsHint";
 
-export function StatusBar() {
+export function StatusBar({
+  onOpenPreferences,
+}: {
+  onOpenPreferences?: () => void;
+}) {
   const t = useT();
   const statusMessage = useAppStore((s) => s.statusMessage);
   const meshData = useAppStore((s) => s.meshData);
@@ -42,6 +46,18 @@ export function StatusBar() {
       >
         🐞
       </button>
+      {/* Preferences (developer mode / experimental features). Optional prop:
+          tests render StatusBar standalone without App wiring. */}
+      {onOpenPreferences && (
+        <button
+          onClick={onOpenPreferences}
+          className="cym-btn"
+          style={styles.themeBtn}
+          title={t("prefs.title")}
+        >
+          ⚙
+        </button>
+      )}
       <button
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         className="cym-btn"

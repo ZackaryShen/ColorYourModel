@@ -10,6 +10,11 @@ import {
   type AlgorithmParams,
   type AlgorithmKind,
 } from "../types/segment";
+import {
+  DEFAULT_EXPERIMENTAL_FEATURES,
+  sanitizeExperimentalFeatures,
+  type ExperimentalFeatureId,
+} from "../experimentalFeatures";
 
 interface AppStore {
   // Mesh
@@ -75,6 +80,16 @@ interface AppStore {
    *  Transient: NOT persisted (see partialize whitelist). */
   debugLogOpen: boolean;
   setDebugLogOpen: (v: boolean) => void;
+  /** Experimental-feature switches (developer mode), one boolean per id of
+   *  EXPERIMENTAL_FEATURES (src/experimentalFeatures.ts). All default false:
+   *  the default UI only exposes mature features. Persisted as ONE record via
+   *  cym-prefs — registry, this field, initial state, partialize and merge
+   *  must move together, because the custom merge silently drops unclaimed
+   *  fields (see 4e22709 for the incident that pinned this rule). Turning a
+   *  seed-detector entry off also clears its region pool so no dangling
+   *  boundary lines / hints survive the toggle (setExperimentalFeature). */
+  experimentalFeatures: Record<ExperimentalFeatureId, boolean>;
+  setExperimentalFeature: (id: ExperimentalFeatureId, on: boolean) => void;
   isLoading: boolean;
   importProgress: number;
   importStage: string;
@@ -299,6 +314,7 @@ interface PersistedPrefs {
   // Intelligent-segmentation prefs (see the AppStore field comments above).
   lastAlgorithmParams: AlgorithmParams | null;
   lastSegmentKind: AlgorithmKind | null;
+  experimentalFeatures: Record<ExperimentalFeatureId, boolean>;
 }
 
 /** Initial theme when no persisted payload exists: legacy key → OS preference
@@ -434,6 +450,12 @@ function mergePrefs(persisted: unknown, current: AppStore): AppStore {
   if (isAlgorithmKind(p.lastSegmentKind)) {
     next.lastSegmentKind = p.lastSegmentKind;
   }
+  // Experimental-feature switches: whitelist + type validation (unknown ids
+  // and non-boolean values degrade to the in-code defaults — see
+  // sanitizeExperimentalFeatures). MUST stay claimed here: this custom merge
+  // silently drops unclaimed fields, so an unclaimed record would reset the
+  // user's toggles on every launch.
+  next.experimentalFeatures = sanitizeExperimentalFeatures(p.experimentalFeatures);
   return next;
 }
 
@@ -474,6 +496,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   // runtime messages pushed by setStatusMessage still display unchanged.
   statusMessage: "status.ready",
   debugLogOpen: false,
+  experimentalFeatures: { ...DEFAULT_EXPERIMENTAL_FEATURES },
   isLoading: false,
   importProgress: 0,
   importStage: "",
@@ -629,6 +652,23 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   resetHistory: () => set({ canUndo: false, canRedo: false }),
   setStatusMessage: (msg) => set({ statusMessage: msg }),
   setDebugLogOpen: (v) => set({ debugLogOpen: v }),
+  setExperimentalFeature: (id, on) => {
+    set((s) => ({
+      experimentalFeatures: { ...s.experimentalFeatures, [id]: on },
+    }));
+    // Hiding a detector must leave nothing dangling: its region pools still
+    // drive the Viewport boundary lines and the SeedPanel hints long after
+    // the detection ran. Clearing here (not in the dialog) keeps the
+    // "toggle off ⇒ no effect" guarantee in one place. suggestedSeeds are
+    // deliberately NOT force-cleared — they are user-manageable via the kept
+    // 清空推荐 button, and a checkbox must not silently wipe user data.
+    if (!on) {
+      const s = get();
+      if (id === "seedDetectPlanar") s.clearPlanarRegions();
+      if (id === "seedDetectMultiview") s.clearMultiviewRegions();
+      if (id === "seedDetectCrossSection") s.clearCrossSectionRegions();
+    }
+  },
 
   seedPoints: [],
   addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),
@@ -755,6 +795,7 @@ export const useAppStore = create<AppStore>()(
       lastExportSelection: s.lastExportSelection,
       lastAlgorithmParams: s.lastAlgorithmParams,
       lastSegmentKind: s.lastSegmentKind,
+      experimentalFeatures: s.experimentalFeatures,
     }),
     merge: mergePrefs,
   })

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SeedPanel } from "./SeedPanel";
 import { useAppStore } from "../store/appStore";
+import { DEFAULT_EXPERIMENTAL_FEATURES } from "../experimentalFeatures";
 import type { SeedPoint } from "../types/mesh";
 
 // ── Tauri `invoke` mock with call capture ──────────────────────────
@@ -228,5 +229,64 @@ describe("SeedPanel 折角滑杆 — 下限与默认值回归（godzilla fuse �
     expect(fold).toBeTruthy();
     expect(fold!.max).toBe("35");
     expect(fold!.value).toBe("5");
+  });
+});
+
+describe("SeedPanel experimental gates (Preferences)", () => {
+  const setFeatures = (on: Record<string, boolean>) =>
+    useAppStore.setState({
+      experimentalFeatures: {
+        ...DEFAULT_EXPERIMENTAL_FEATURES,
+        ...on,
+      },
+    } as Partial<ReturnType<typeof useAppStore.getState>>);
+
+  it("default (all gates off) hides detectors and weight sliders, keeps 推荐/生长", () => {
+    render(<SeedPanel />);
+    expect(screen.queryByRole("button", { name: "🟦 平面种子" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "👁 多视角" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "✂️ 截面" })).toBeNull();
+    expect(screen.queryByText("显著性·曲率")).toBeNull();
+    expect(screen.queryByText("显著性·凹度")).toBeNull();
+    expect(suggestBtn()).toBeTruthy();
+    expect(growBtn()).toBeTruthy();
+  });
+
+  it("opting in renders the detector rows and the weight sliders", () => {
+    setFeatures({
+      seedDetectPlanar: true,
+      seedDetectMultiview: true,
+      seedDetectCrossSection: true,
+      seedWeightSliders: true,
+    });
+    render(<SeedPanel />);
+    expect(screen.getByRole("button", { name: "🟦 平面种子" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "👁 多视角" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "✂️ 截面" })).toBeTruthy();
+    expect(screen.getByText("显著性·曲率")).toBeTruthy();
+    expect(screen.getByText("显著性·凹度")).toBeTruthy();
+  });
+
+  it("hidden weight sliders degrade recommend_seeds to default weights (no leak)", async () => {
+    // Drag the curvature slider to a non-default value while the feature is
+    // on, then hide the feature: the next recommend must go out with the
+    // in-code defaults, never the pre-hide 1.8.
+    setFeatures({ seedWeightSliders: true });
+    render(<SeedPanel />);
+    const ranges = screen.getAllByRole("slider") as HTMLInputElement[];
+    const weightSliders = ranges.filter(
+      (r) => r.min === "0" && r.max === "2",
+    );
+    expect(weightSliders).toHaveLength(2); // curv + conc
+    fireEvent.change(weightSliders[0]!, { target: { value: "1.8" } });
+
+    setFeatures({ seedWeightSliders: false });
+    const user = userEvent.setup();
+    await user.click(suggestBtn());
+    await waitFor(() =>
+      expect(calls.some((c) => c.cmd === "recommend_seeds")).toBe(true),
+    );
+    const rec = calls.find((c) => c.cmd === "recommend_seeds")!;
+    expect(rec.args).toEqual({ count: 12, curvature: 1, concavity: 1 });
   });
 });
