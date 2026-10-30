@@ -900,6 +900,19 @@ const crossSectionRegionsVisible = useAppStore((s) => s.crossSectionRegionsVisib
 const eyeRegions = useAppStore((s) => s.eyeRegions);
 const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const { buildGeometry, publishGeometry, updateFaceColors } = useMesh();
+  // Paint results produced OUTSIDE the R3F tree (colour find-&-replace) are
+  // parked in the store; this effect applies them to the GPU geometry — the
+  // same incremental path the in-canvas paint uses — and bumps the history
+  // funnels so the used-colours list and any history surface stay fresh.
+  const pendingPaintResult = useAppStore((s) => s.pendingPaintResult);
+  const setPendingPaintResult = useAppStore((s) => s.setPendingPaintResult);
+  useEffect(() => {
+    if (!pendingPaintResult) return;
+    updateFaceColors(pendingPaintResult.faces, pendingPaintResult.colors);
+    useAppStore.getState().markHistoryDirty();
+    setPendingPaintResult(null);
+  }, [pendingPaintResult, updateFaceColors, setPendingPaintResult]);
+
   const { paintFace } = usePaintTool();
   const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
   const { undo: historyUndo, redo: historyRedo } = useUndoRedo({ undo, redo, historyState });

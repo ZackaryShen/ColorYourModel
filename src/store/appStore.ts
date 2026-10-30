@@ -97,6 +97,12 @@ interface AppStore {
    *  Transient: NOT persisted. */
   usedColourHover: [number, number, number] | null;
   setUsedColourHover: (rgb: [number, number, number] | null) => void;
+  /** Paint results produced OUTSIDE the R3F tree (e.g. the colour
+   *  find-&-replace section) park here; the Viewport applies them to the GPU
+   *  geometry through the same incremental path in-canvas painting uses, then
+   *  clears the slot. Transient: NOT persisted. */
+  pendingPaintResult: { faces: number[]; colors: number[][] } | null;
+  setPendingPaintResult: (r: { faces: number[]; colors: number[][] } | null) => void;
   /** Bumped whenever the timeline may have changed (any recorded op, an
    *  undo/redo/jump, a load). The history panel refetches on each bump. */
   historyVersion: number;
@@ -522,6 +528,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   experimentalFeatures: { ...DEFAULT_EXPERIMENTAL_FEATURES },
   historyPanelOpen: false,
   usedColourHover: null,
+  pendingPaintResult: null,
   historyVersion: 0,
   isLoading: false,
   importProgress: 0,
@@ -703,6 +710,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   },
   setHistoryPanelOpen: (v) => set({ historyPanelOpen: v }),
   setUsedColourHover: (rgb) => set({ usedColourHover: rgb }),
+  setPendingPaintResult: (r) => set({ pendingPaintResult: r }),
 
   seedPoints: [],
   addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),
