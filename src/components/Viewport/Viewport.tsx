@@ -914,10 +914,58 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   }, [pendingPaintResult, updateFaceColors, setPendingPaintResult]);
 
   const { paintFace } = usePaintTool();
-  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
+  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState, syncHiddenLabels } = useTauriCommand();
   const { undo: historyUndo, redo: historyRedo } = useUndoRedo({ undo, redo, historyState });
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
+  // (0.2.0 transformMode selector intentionally not ported — no transform feature on 012)
+  // Issue #24: write the per-face hidden flags straight into the aHidden
+  // vertex attribute — the SAME proven pipeline the segment-label attribute
+  // uses (an earlier data-texture attempt silently failed to discard on
+  // GPU). O(F) per toggle ≈ a few ms at 1.5M faces; imperceptible for a
+  // click. meshRef.current.geometry is rebuilt by useMesh on import/view
+  // change, and this re-fires with it (meshData dep).
+  // A (re)loaded model renumbers regions — a stale pick could point at a
+  // label that now means something else, so the selection resets with the
+  // model. Keyed on the VERTICES reference, NOT segmentLabels: merges
+  // rebuild meshData with a fresh labels array (spread keeps the vertices
+  // array), and resetting there would wipe the picked set right after every
+  // merge — including the panel's deliberate survivor retention. Labels
+  // that genuinely vanish are pruned live by the panel's filter instead.
+  const viewSelectedRegions = useAppStore((s) => s.viewSelectedRegions);
+  const hiddenSegments = useAppStore((s) => s.hiddenSegments);
+  const modelVertices = useAppStore((s) => s.meshData?.vertices);
+  useEffect(() => {
+    useAppStore.getState().setViewSelectedRegions([]);
+  }, [modelVertices]);
+  const modelFaceLabels = useAppStore((s) => s.meshData?.segmentLabels);
+  // Hidden view state must reach the BACKEND: the implicit spatial tools
+  // (brush/spray/eraser/radius fills/radial gradients) cull hidden faces
+  // before committing there, so a dab can no longer paint through a hidden
+  // region (#24 gap the owner hit on #29 — fill was safe, brush was not).
+  // Model load resets hiddenSegments to empty, which also clears the backend.
+  useEffect(() => {
+    void syncHiddenLabels(Array.from(hiddenSegments));
+  }, [hiddenSegments, syncHiddenLabels]);
+  useEffect(() => {
+    const geo = meshRef.current?.geometry;
+    if (!geo || !modelFaceLabels) return;
+    const faceCount = modelFaceLabels.length;
+    let attr = geo.getAttribute("aHidden") as THREE.BufferAttribute | undefined;
+    if (!attr || attr.count !== faceCount * 3) {
+      attr = new THREE.Float32BufferAttribute(new Float32Array(faceCount * 3), 1);
+      geo.setAttribute("aHidden", attr);
+    }
+    const arr = attr.array as Float32Array;
+    for (let f = 0; f < faceCount; f++) {
+      const v = hiddenSegments.has(modelFaceLabels[f]) ? 1 : 0;
+      arr[f * 3] = v;
+      arr[f * 3 + 1] = v;
+      arr[f * 3 + 2] = v;
+    }
+    attr.needsUpdate = true;
+  }, [hiddenSegments, modelFaceLabels, meshRef]);
+
   const isPainting = useRef(false);
   // Segment paint state: track current label + painted faces for dedup
   const currentSegLabelRef = useRef<number | null>(null);
@@ -1206,32 +1254,6 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // model — is resolved because both now describe the same whole segment).
   // Every consumer — the shader uniform and the HUD alike — reads this one
   // value, keeping that class of divergence unrepresentable.
-  // Issue #24: hidden regions — display-only, cleared on model load.
-  const hiddenSegments = useAppStore((s) => s.hiddenSegments);
-  // View-tool multi-selection (Ctrl+click); H flips visibility for the set.
-  const viewSelectedRegions = useAppStore((s) => s.viewSelectedRegions);
-  // Issue #24: write the per-face hidden flags straight into the aHidden
-  // vertex attribute — the same pipeline the segment-label attribute uses.
-  // O(F) per toggle ≈ a few ms at 1.5M faces; imperceptible for a click.
-  const modelFaceLabels = useAppStore((s) => s.meshData?.segmentLabels);
-  useEffect(() => {
-    const geo = meshRef.current?.geometry;
-    if (!geo || !modelFaceLabels) return;
-    const faceCount = modelFaceLabels.length;
-    let attr = geo.getAttribute("aHidden") as THREE.BufferAttribute | undefined;
-    if (!attr || attr.count !== faceCount * 3) {
-      attr = new THREE.Float32BufferAttribute(new Float32Array(faceCount * 3), 1);
-      geo.setAttribute("aHidden", attr);
-    }
-    const arr = attr.array as Float32Array;
-    for (let f = 0; f < faceCount; f++) {
-      const v = hiddenSegments.has(modelFaceLabels[f]) ? 1 : 0;
-      arr[f * 3] = v;
-      arr[f * 3 + 1] = v;
-      arr[f * 3 + 2] = v;
-    }
-    attr.needsUpdate = true;
-  }, [hiddenSegments, modelFaceLabels]);
 
 
   const renderedHighlightLabel = useMemo<number | null>(() => {

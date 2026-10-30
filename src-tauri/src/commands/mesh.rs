@@ -9,12 +9,18 @@ use crate::mesh::model::{MeshDataDto, MeshModel};
 /// Global app state holding the current mesh
 pub struct AppState {
     pub mesh: Mutex<Option<MeshModel>>,
+    /// Hidden-region view state (#24/#29), synced from the frontend via
+    /// `set_hidden_labels`. Consumed by the implicit spatial paint tools'
+    /// cull; NOT used by explicit list-based actions (multi-select fill,
+    /// colour replace). Emptied on model load by the frontend sync.
+    pub hidden_labels: Mutex<std::collections::HashSet<u32>>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         Self {
             mesh: Mutex::new(None),
+            hidden_labels: Mutex::new(std::collections::HashSet::new()),
         }
     }
 }
