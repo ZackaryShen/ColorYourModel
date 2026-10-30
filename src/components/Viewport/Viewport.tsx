@@ -931,6 +931,12 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // highest-ROI fix that removes the import freeze.
   const showWireframe = !!meshData && meshData.faceCount <= 50000;
 
+  // Seed-shaped cursor for the plain sowing state (see the cursor effect
+  // below). SVG data URI: amber seed body with a green sprout, hotspot (10,17)
+  // = the seed tip that actually lands the click. "#" must stay %23-escaped.
+  const SEED_CURSOR =
+    `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M10 17C6.2 13.2 5 9.8 5 7.6 5 4.6 7.2 3 10 3s5 1.6 5 4.6c0 2.2-1.2 5.6-5 9.4z' fill='%23eab308' stroke='%2342200a' stroke-width='1.2'/%3E%3Cpath d='M10 6.6c-.2-2 1.2-3.6 3.4-3.6.2 2-1.2 3.6-3.4 3.6z' fill='%234ade80' stroke='%23166534' stroke-width='.8'/%3E%3C/svg%3E") 10 17, crosshair`;
+
   // Set canvas cursor based on active tool
   useEffect(() => {
     const canvas = gl.domElement;
@@ -940,6 +946,12 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // sub-mode flags; the tool class alone is ambiguous.
     if (isSeedTool && seedPickMode) {
       canvas.style.cursor = "pointer";
+    } else if (isSeedTool && !seedEraseMode) {
+      // User feedback: a bare crosshair reads as "measure", not "sow". The
+      // plain seed tool shows a seed-shaped cursor (SVG data URI, hotspot on
+      // the seed tip) so the sowing affordance is visible before the first
+      // click; erase mode keeps the neutral cursor.
+      canvas.style.cursor = SEED_CURSOR;
     } else if (isBrushTool && !segmentView) {
       canvas.style.cursor = "crosshair";
     } else if (isSegmentTool) {
@@ -952,7 +964,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.style.cursor = "default";
     }
     return () => { canvas.style.cursor = "default"; };
-  }, [gl, isBrushTool, isSegmentTool, isLassoTool, isSeedTool, segmentView, seedPickMode, activeTool]);
+  }, [gl, isBrushTool, isSegmentTool, isLassoTool, isSeedTool, segmentView, seedPickMode, seedEraseMode, activeTool]);
 
   const geometry = useMemo(() => {
     log.info("MeshDisplay", "Building geometry", { segmentView });

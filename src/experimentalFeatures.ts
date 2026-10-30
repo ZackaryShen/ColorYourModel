@@ -17,7 +17,8 @@ export type ExperimentalFeatureId =
   | "seedDetectPlanar"
   | "seedDetectMultiview"
   | "seedDetectCrossSection"
-  | "seedWeightSliders";
+  | "seedWeightSliders"
+  | "seedEyeDetect";
 
 export interface ExperimentalFeatureDef {
   id: ExperimentalFeatureId;
@@ -48,6 +49,11 @@ export const EXPERIMENTAL_FEATURES: readonly ExperimentalFeatureDef[] = [
     labelKey: "exp.seedWeightSliders",
     hintKey: "exp.seedWeightSlidersHint",
   },
+  {
+    id: "seedEyeDetect",
+    labelKey: "exp.seedEyeDetect",
+    hintKey: "exp.seedEyeDetectHint",
+  },
 ];
 
 /** In-code defaults: every experimental feature starts hidden. */
@@ -56,6 +62,7 @@ export const DEFAULT_EXPERIMENTAL_FEATURES: Record<ExperimentalFeatureId, boolea
   seedDetectMultiview: false,
   seedDetectCrossSection: false,
   seedWeightSliders: false,
+  seedEyeDetect: false,
 };
 
 export function isExperimentalFeatureId(v: unknown): v is ExperimentalFeatureId {
@@ -63,7 +70,8 @@ export function isExperimentalFeatureId(v: unknown): v is ExperimentalFeatureId 
     v === "seedDetectPlanar" ||
     v === "seedDetectMultiview" ||
     v === "seedDetectCrossSection" ||
-    v === "seedWeightSliders"
+    v === "seedWeightSliders" ||
+    v === "seedEyeDetect"
   );
 }
 

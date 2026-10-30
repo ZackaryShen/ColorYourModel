@@ -246,10 +246,16 @@ describe("SeedPanel experimental gates (Preferences)", () => {
     expect(screen.queryByRole("button", { name: "🟦 平面种子" })).toBeNull();
     expect(screen.queryByRole("button", { name: "👁 多视角" })).toBeNull();
     expect(screen.queryByRole("button", { name: "✂️ 截面" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "👁 自动识别眼睛" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "👁 眼睛识别" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /点选分区/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "全部显示" })).toBeNull();
     expect(screen.queryByText("显著性·曲率")).toBeNull();
     expect(screen.queryByText("显著性·凹度")).toBeNull();
     expect(suggestBtn()).toBeTruthy();
     expect(growBtn()).toBeTruthy();
+    // The eraser toggle is a KEPT feature, relabelled per user feedback.
+    expect(screen.getByRole("button", { name: "🩹 启用种子擦除" })).toBeTruthy();
   });
 
   it("opting in renders the detector rows and the weight sliders", () => {
@@ -258,11 +264,16 @@ describe("SeedPanel experimental gates (Preferences)", () => {
       seedDetectMultiview: true,
       seedDetectCrossSection: true,
       seedWeightSliders: true,
+      seedEyeDetect: true,
     });
     render(<SeedPanel />);
     expect(screen.getByRole("button", { name: "🟦 平面种子" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "👁 多视角" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "✂️ 截面" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "👁 自动识别眼睛" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "👁 眼睛识别" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /点选分区/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "全部显示" })).toBeTruthy();
     expect(screen.getByText("显著性·曲率")).toBeTruthy();
     expect(screen.getByText("显著性·凹度")).toBeTruthy();
   });

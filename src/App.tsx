@@ -65,7 +65,7 @@ function App() {
     <div style={styles.root}>
       {/* Top menu bar (File / View / Help) — conventional desktop entry
           points alongside the left tool Toolbar. */}
-      <MenuBar />
+      <MenuBar onOpenPreferences={() => setPrefsOpen(true)} />
 
       {/* Main layout */}
       <div style={styles.main}>

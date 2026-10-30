@@ -48,7 +48,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolName.segment": { zh: "分区画笔", en: "Segment Brush" },
   "toolName.lasso": { zh: "套索", en: "Lasso" },
   "toolName.seed": { zh: "种子", en: "Seed" },
-  "seed.hint": { zh: "种子分区：在模型上点击放置种子（每点一个区域），调节屏障角度后点「生长」。未点的区域由最近种子兜底。Backspace/Esc 清空。", en: "Seed: click to place seeds (one region each), tune the barrier angle, then Grow. Un-seeded patches fall back to the nearest seed. Backspace/Esc clears." },
+  "seed.hint": { zh: "种子分区：光标已变为种子图案，在模型上点击播种（每点一个区域），调节屏障角度后点「生长」。未点的区域由最近种子兜底。Backspace/Esc 清空。", en: "Seed: the cursor becomes a seed icon — click on the model to sow (one region per click), tune the barrier angle, then Grow. Un-seeded patches fall back to the nearest seed. Backspace/Esc clears." },
   "seed.barrier": { zh: "屏障角度 (°)", en: "Barrier angle (°)" },
   "seed.barrierHint": { zh: "大于此二面角的棱成为硬边界，区域不会越过折缝", en: "Edges above this dihedral angle are hard boundaries the regions won't cross" },
   "seed.optimizer": { zh: "智能优化（合并微小区域）", en: "Optimize (merge tiny regions)" },
@@ -63,7 +63,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.count": { zh: "已放置 {0} 个种子", en: "{0} seeds placed" },
   "seed.needOne": { zh: "请至少放置一个种子", en: "Place at least one seed first" },
   "seed.done": { zh: "种子分区完成：{0} 个区域", en: "Seed partition done: {0} regions" },
-  "seed.eraseMode": { zh: "擦除模式", en: "Eraser" },
+  "seed.eraseMode": { zh: "启用种子擦除", en: "Enable seed eraser" },
   "seed.closeTitle": {
     zh: "关闭 Seed 面板（Esc / 切回 View 工具；已放置的种子会被保留）",
     en: "Close Seed panel (Esc / switch back to View tool; placed seeds are kept)",
@@ -254,6 +254,12 @@ const dict: Record<string, Record<Lang, string>> = {
     zh: "默认隐藏的实验性功能。勾选启用，改动立即生效并跨会话记住；关闭对应开关会同时清掉已生成的临时数据。",
     en: "Experimental features, hidden by default. Tick to enable — changes apply immediately and persist across sessions; switching one off also clears its generated temp data.",
   },
+  "exp.seedEyeDetect": { zh: "智能分区：眼睛区域识别", en: "Smart partition: eye-region detection" },
+  "exp.seedEyeDetectHint": {
+    zh: "Layer 5 眼睛语义识别（自动识别 / 点选分区 / 眼睛识别及其图层显隐）；隐藏时融合生成的眼睛保护仍然生效。",
+    en: "Layer 5 eye-region semantics (auto detect / pick a partition / eye detect and its layer toggles); the fuse eye protection still applies when hidden.",
+  },
+  "menu.preferences": { zh: "偏好设置…", en: "Preferences…" },
   "exp.seedDetectPlanar": { zh: "智能分区：平面种子检测", en: "Smart partition: planar seed detection" },
   "exp.seedDetectPlanarHint": {
     zh: "检测连续平面区域并作为建议种子并入手动生长（Layer 1）。",

@@ -29,7 +29,11 @@ type MenuId = "file" | "view" | "help";
  * getCurrentWindow().close() so the paint-dirty exit confirmation (issue #7)
  * applies to menu-triggered exits too.
  */
-export function MenuBar() {
+export function MenuBar({
+  onOpenPreferences,
+}: {
+  onOpenPreferences?: () => void;
+}) {
   const t = useT();
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -135,6 +139,14 @@ export function MenuBar() {
       id: "help",
       label: t("menu.help"),
       items: [
+        // Developer-mode entry: per-feature experimental switches live in the
+        // Preferences dialog (also reachable via the StatusBar ⚙ button).
+        ...(onOpenPreferences
+          ? [
+              { kind: "item" as const, label: t("menu.preferences"), onClick: onOpenPreferences },
+              { kind: "sep" as const },
+            ]
+          : []),
         // Language-aware manual: the zh UI links the Chinese manual, the en
         // UI the English one (both exist in the deployed docs tree).
         { kind: "item", label: t("menu.userGuide"), onClick: () => openExternal(MANUAL_URL[language]) },

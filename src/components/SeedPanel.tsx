@@ -131,6 +131,7 @@ export function SeedPanel() {
   const showMultiviewDetect = experimentalFeatures.seedDetectMultiview;
   const showCrossSectionDetect = experimentalFeatures.seedDetectCrossSection;
   const showWeightSliders = experimentalFeatures.seedWeightSliders;
+  const showEyeDetect = experimentalFeatures.seedEyeDetect;
   const meshData = useAppStore((s) => s.meshData);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setActiveTool = useAppStore((s) => s.setActiveTool);
@@ -850,7 +851,7 @@ export function SeedPanel() {
   // the priority list — the user has to see that "clicking now picks" BEFORE
   // they would otherwise read "clicking now places a seed".
   const hint = (() => {
-    if (seedPickMode) return t("seed.eyePickHint");
+    if (showEyeDetect && seedPickMode) return t("seed.eyePickHint");
     if (seedEraseMode) return t("seed.eraseHint");
     if (eyeRegions.length > 0) return t("seed.eyeHint");
     if (showCrossSectionDetect && crossSectionRegions.length > 0)
@@ -945,16 +946,18 @@ export function SeedPanel() {
         >
           🩹 {t("seed.eraseMode")}
         </button>
-        <button
-          onClick={onTogglePick}
-          style={{
-            ...styles.subMode,
-            ...(seedPickMode ? styles.subModeActivePick : {}),
-          }}
-          title={seedPickMode ? t("seed.pickModeActive") : t("seed.pickMode")}
-        >
-          {seedPickMode ? "✓" : "🖱"} {t("seed.pickMode")}
-        </button>
+        {showEyeDetect && (
+          <button
+            onClick={onTogglePick}
+            style={{
+              ...styles.subMode,
+              ...(seedPickMode ? styles.subModeActivePick : {}),
+            }}
+            title={seedPickMode ? t("seed.pickModeActive") : t("seed.pickMode")}
+          >
+            {seedPickMode ? "✓" : "🖱"} {t("seed.pickMode")}
+          </button>
+        )}
       </div>
 
       <div style={styles.row}>
@@ -1104,6 +1107,8 @@ export function SeedPanel() {
         </>
       )}
 
+      {showEyeDetect && (
+      <>
       <div style={styles.row}>
         <button
           onClick={onDetectEyeAuto}
@@ -1227,6 +1232,8 @@ export function SeedPanel() {
           👁
         </button>
       </div>
+      </>
+      )}
 
       {segmentMode === "auto" && (
         <>

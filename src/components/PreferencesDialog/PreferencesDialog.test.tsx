@@ -21,7 +21,7 @@ describe("PreferencesDialog — experimental-feature toggles", () => {
   it("renders one unchecked checkbox per registry entry (default all hidden)", () => {
     render(<PreferencesDialog onClose={() => {}} />);
     const boxes = checkboxes();
-    expect(boxes).toHaveLength(4);
+    expect(boxes).toHaveLength(5);
     for (const box of boxes) {
       expect((box as HTMLInputElement).checked).toBe(false);
     }
@@ -35,7 +35,7 @@ describe("PreferencesDialog — experimental-feature toggles", () => {
       true,
     );
     expect(
-      useAppStore.getState().experimentalFeatures.seedWeightSliders,
+      useAppStore.getState().experimentalFeatures.seedEyeDetect,
     ).toBe(false);
   });
 

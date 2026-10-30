@@ -46,6 +46,7 @@ describe("sanitizeExperimentalFeatures (rehydrate whitelist)", () => {
     const result = sanitizeExperimentalFeatures({
       seedDetectPlanar: true,
       seedWeightSliders: false,
+      seedEyeDetect: true,
       seedDetectEye: true, // unknown id from a newer build → dropped
       seedDetectMultiview: "yes", // wrong type → dropped
       seedDetectCrossSection: 1, // wrong type → dropped
@@ -55,6 +56,7 @@ describe("sanitizeExperimentalFeatures (rehydrate whitelist)", () => {
       seedDetectMultiview: false,
       seedDetectCrossSection: false,
       seedWeightSliders: false,
+      seedEyeDetect: true,
     });
   });
 
@@ -66,6 +68,7 @@ describe("sanitizeExperimentalFeatures (rehydrate whitelist)", () => {
       seedDetectMultiview: false,
       seedDetectCrossSection: false,
       seedWeightSliders: false,
+      seedEyeDetect: false,
     });
   });
 });
