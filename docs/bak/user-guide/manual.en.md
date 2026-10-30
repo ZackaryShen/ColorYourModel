@@ -88,7 +88,7 @@ The 10 tools in the left toolbar are **mutually exclusive** (the active one gets
 
 ### Undo / redo
 
-Painting, erasing, manual regions and lasso all share one undo timeline (managed by the backend): **Ctrl+Z** undo, **Ctrl+Y** or **Ctrl+Shift+Z** redo, or the ↶ / ↷ toolbar buttons. One whole drag stroke is one entry — never dozens. Note that **🗑 Reset partition and Reset are NOT undoable**.
+Painting, erasing, manual regions and lasso all share one undo timeline (managed by the backend): **Ctrl+Z** undo, **Ctrl+Y** or **Ctrl+Shift+Z** redo, or the ↶ / ↷ toolbar buttons. One whole drag stroke is one entry — never dozens. Note that **🗑 Reset partition and Reset are NOT undoable** (both first ask through an in-app confirmation dialog — Cancel touches nothing).
 
 **History panel** (View → History panel): lists every operation Photoshop-style — "Original state" on top, then each operation in order (icon + name + touched-face count). The current state is highlighted; clicking a row ABOVE it jumps straight back, clicking a greyed row BELOW re-applies up to there — **one click lands on that exact state**, no Ctrl+Z mashing. The header shows the retained depth and memory (e.g. "Step 12 / 50 · 3.4 MB"): the backend keeps at most 50 steps / 256 MB and silently evicts the oldest, so the panel tells you how much room is left. Loading a new model resets the panel together with the timeline.
 
@@ -201,7 +201,7 @@ Fuse/grow results are a starting point; the **Regions** panel cleans up:
 - **Visibility** (#24): in the View/nav tool, the region under the cursor glows in realtime (same as Fill); **Ctrl+click** selects it (**orange outline**, distinct from the yellow hover outline / cyan hover tint, multi-select accumulates — and it is the SAME selection the Fill tool and the panel rows use), and **H** toggles the selection's visibility in one go (selection retained, so H flips back); the row's 👁 toggles too (dimmed row = hidden; display-only — hidden regions still export, never enter the undo timeline). Header buttons: one-click **show-all / hide-all** plus a hidden count; **Alt+click the eye = isolate** (show only this region). Hidden regions cannot be picked, painted, or hovered — the cursor reaches through them; **a single click on empty space or Esc blurs the selection**. Split / re-cut / merge output starts visible.
 - **Split**: re-cut an oversized region along its internal creases (default threshold 30°).
 - **Re-cut**: re-run a whole algorithm inside one region (the fix for tubular limbs convex decomposition can't cut); 8 algorithms, see section 6.
-- **Reset**: wipe all regions and paint (**not undoable**; asks for confirmation).
+- **Reset**: wipe all regions and paint (**not undoable**; an in-app confirmation dialog appears — Cancel or `Esc` touches nothing, only **Confirm reset** runs).
 
 The lasso (📍) is the last mile of refinement — where geometry offers no boundary (a smooth cheek, a flat wall band), draw the region by hand. Click vertices in turn, close at the start point or press `Enter` (≥3 points); closing runs a progress bar (snap → surface boundary completion → enclosure → smoothing → commit) because on million-face meshes every stage is real work.
 

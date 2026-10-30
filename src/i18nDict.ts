@@ -359,6 +359,12 @@ const dict: Record<string, Record<Lang, string>> = {
   "replace.done": { zh: "已替换 {0} 面 · {1} 个区域：{2} → {3}（Ctrl+Z 可一步撤销）", en: "Replaced {0} faces · {1} region(s): {2} → {3} (one Ctrl+Z undoes it)" },
   "replace.failed": { zh: "替换失败：{0}", en: "Replace failed: {0}" },
 
+  // Reset confirm dialog (issue #28)
+  "reset.confirmTitle": { zh: "清空所有分区", en: "Clear all regions" },
+  "reset.confirm": { zh: "确认清空", en: "Confirm reset" },
+  "reset.cancel": { zh: "取消", en: "Cancel" },
+  "reset.resetting": { zh: "清空中…", en: "Resetting…" },
+
   // Exit confirmation (issue #7)
   "exit.confirmTitle": { zh: "未保存的涂装工作", en: "Unsaved painting work" },
   "exit.stay": { zh: "留在应用", en: "Stay" },
