@@ -53,12 +53,19 @@ pub fn run() {
             commands::paint::project_image_paint,
             commands::paint::fill_paint,
             commands::paint::fill_segment_paint,
+            // Multi-select fill — N regions, one history entry (#29).
+            commands::paint::fill_segments_paint,
             commands::paint::spray_paint,
             commands::paint::smart_brush_paint,
             commands::paint::erase_paint,
             commands::paint::pick_color,
+            // Hidden-region view state sync (#24/#29): implicit spatial
+            // tools cull hidden faces before committing.
+            commands::paint::set_hidden_labels,
             // Colour panel "used colours" (issue #23).
             commands::paint::used_colors,
+            // Colour find & replace (issue #29).
+            commands::paint::replace_face_color,
             // Unified undo/redo — the single timeline covering paint, fill,
             // eraser and lasso. Replaced the former `manual_region_undo` and
             // `restore_face_colors` commands, both deleted in S2.

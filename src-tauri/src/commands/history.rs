@@ -127,6 +127,13 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
         return Ok(HistoryResult::empty(mesh.history.can_undo(), mesh.history.can_redo()));
     };
 
+    // Gradient membership repair: undo can move faces OFF a gradient line
+    // (they leave the merged swatch), redo moves them back ON. Scoped to the
+    // faces the history step actually touched, so a hand-painted line colour
+    // is never mistaken for gradient provenance. Safe to call through `mesh`
+    // — the field borrows split above ended with the undo/redo call.
+    mesh.sync_gradient_faces(&outcome.faces);
+
     // 0.2.0-P2: a transform entry moves VERTICES — after applying it, the
     // derived geometry state must be rebuilt and the new vertices shipped to
     // the frontend (the incremental colour patch cannot express this).
@@ -313,6 +320,11 @@ pub fn history_jump(target: usize, state: State<AppState>) -> Result<HistoryResu
     let Some(out) = history.jump_to(target, face_colors, segment_labels, vertices) else {
         return Ok(HistoryResult::empty(mesh.history.can_undo(), mesh.history.can_redo()));
     };
+
+    // Gradient membership repair, same contract as undo/redo above: the
+    // jump's union of touched faces is re-judged against the gradient lines
+    // at the destination state.
+    mesh.sync_gradient_faces(&out.faces);
 
     // A transform step moved VERTICES: the derived geometry state must be
     // rebuilt once here, at the jump's destination, before the payload reads it.

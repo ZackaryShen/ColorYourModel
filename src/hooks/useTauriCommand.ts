@@ -378,6 +378,36 @@ export function useTauriCommand() {
     }
   };
 
+  /** Push the hidden-region view set to the backend (#24/#29): implicit
+   *  spatial tools (brush/spray/eraser/radius fills/radial gradients) cull
+   *  hidden faces before committing, so a dab can no longer paint through a
+   *  hidden region. Fire-and-forget; empty array = nothing hidden. */
+  const syncHiddenLabels = async (labels: number[]): Promise<void> => {
+    try {
+      await invoke("set_hidden_labels", { labels });
+    } catch (e) {
+      log.error("useTauriCommand", "syncHiddenLabels failed", { count: labels.length, error: String(e) });
+    }
+  };
+
+  /** Fill N regions in ONE backend call (#29 multi-select fill): one IPC,
+   *  exactly one history entry — a single Ctrl+Z restores every filled
+   *  region. Returns the incremental payload or null on failure. */
+  const fillSegments = async (
+    labels: number[],
+    color: number[]
+  ): Promise<{ updatedFaces: number[]; updatedColors: number[][] } | null> => {
+    try {
+      return await invoke<{ updatedFaces: number[]; updatedColors: number[][] }>(
+        "fill_segments_paint",
+        { labels, color }
+      );
+    } catch (e) {
+      log.error("useTauriCommand", "fillSegments failed", { labels: labels.length, error: String(e) });
+      return null;
+    }
+  };
+
   /**
    * Paint a single face into a manual segment.
    * Called per-face during segment brush drag. `strokeId` groups the whole drag
@@ -801,6 +831,8 @@ export function useTauriCommand() {
     finalizeSegment,
     renameSegment,
     mergeSegments,
+    fillSegments,
+    syncHiddenLabels,
     splitSegment,
     resegmentRegion,
     seedGrow,

@@ -89,12 +89,6 @@ interface AppStore {
    *  extra column in the main layout. Transient: NOT persisted. */
   historyPanelOpen: boolean;
   setHistoryPanelOpen: (v: boolean) => void;
-  /** Issue #16 merge-gesture session (fill tool): the anchor region plus
-   *  everything it has absorbed, rendered by the viewport card and the
-   *  highlight. Cleared by any plain click, a tool switch, Esc, or a model
-   *  reload. Transient: NOT persisted. */
-  mergeSession: { target: number; absorbed: number[] } | null;
-  setMergeSession: (s: { target: number; absorbed: number[] } | null) => void;
   /** Issue #23: RGB currently hovered in the used-colours swatches — the
    *  viewport highlights every face carrying it. Null = no preview.
    *  Transient: NOT persisted. */
@@ -105,17 +99,14 @@ interface AppStore {
    *  Cleared on model load; pruned when regions disappear. */
   hiddenSegments: Set<number>;
   setHiddenSegments: (s: Set<number>) => void;
-  /** Issue #24 (feedback): the 分区 panel's Ctrl-multi-selection for
-   *  merging, lifted to the store so a click outside the model (viewport
-   *  empty space) can blur it. Transient: NOT persisted. */
-  mergePicked: number[];
-  setMergePicked: (v: number[]) => void;
-  /** Issue #24: regions multi-picked via View-tool Ctrl+click — the H
-   *  shortcut toggles visibility for the whole set. Outlined in the
-   *  viewport; Esc / empty-space click / model load clears it. Transient:
-   *  NOT persisted. */
-  viewSelectedRegions: number[];
-  setViewSelectedRegions: (v: number[]) => void;
+  /** THE multi-selection (owner unification on #29): Ctrl+click toggles
+   *  membership from the View tool, the Fill tool AND the 分区 panel rows —
+   *  one set, outlined orange in the viewport, driven by one card
+   *  (merge-to-first / fill-selected / H visibility). pickedRegions[0] is the
+   *  merge survivor. Esc / empty-space click / model load clears it.
+   *  Transient: NOT persisted. */
+  pickedRegions: number[];
+  setPickedRegions: (v: number[]) => void;
   /** Bumped whenever the timeline may have changed (any recorded op, an
    *  undo/redo/jump, a load). The history panel refetches on each bump. */
   historyVersion: number;
@@ -541,11 +532,9 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   statusMessage: "status.ready",
   debugLogOpen: false,
   historyPanelOpen: false,
-  mergeSession: null,
   usedColourHover: null,
   hiddenSegments: new Set<number>(),
-  mergePicked: [],
-  viewSelectedRegions: [],
+  pickedRegions: [],
   historyVersion: 0,
   isLoading: false,
   importProgress: 0,
@@ -573,7 +562,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       // with every region visible (labels from a previous model must never
       // hide faces of the new one).
       hiddenSegments: new Set<number>(),
-      viewSelectedRegions: [],
+      pickedRegions: [],
       segments: projectSegments(data.segments),
       statusMessage: translate("status.loaded", get().language, data.faceCount.toLocaleString()),
     })),
@@ -729,11 +718,9 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setStatusMessage: (msg) => set({ statusMessage: msg }),
   setDebugLogOpen: (v) => set({ debugLogOpen: v }),
   setHistoryPanelOpen: (v) => set({ historyPanelOpen: v }),
-  setMergeSession: (v) => set({ mergeSession: v }),
   setUsedColourHover: (rgb) => set({ usedColourHover: rgb }),
   setHiddenSegments: (v) => set({ hiddenSegments: v }),
-  setMergePicked: (v) => set({ mergePicked: v }),
-  setViewSelectedRegions: (v) => set({ viewSelectedRegions: v }),
+  setPickedRegions: (v) => set({ pickedRegions: v }),
 
   seedPoints: [],
   addSeedPoint: (p) => set((s) => ({ seedPoints: [...s.seedPoints, p] })),

@@ -24,11 +24,18 @@ pub struct Segment {
 /// One distinct colour currently present on the model, for the colour
 /// panel's "used colours" section (issue #23). Never crosses IPC as-is:
 /// the command layer maps it to a DTO with an extra `isDefault` flag.
+///
+/// `is_gradient` marks the merged gradient entry (see `gradient_faces`):
+/// `color` is the gradient's start colour and `gradient_to` its end colour,
+/// so the panel can render one gradient swatch instead of hundreds of
+/// interpolated ones.
 #[derive(Debug, Clone, Copy)]
 pub struct UsedColorEntry {
     pub color: [u8; 4],
     pub faces: u32,
     pub regions: u32,
+    pub is_gradient: bool,
+    pub gradient_to: Option<[u8; 4]>,
 }
 
 /// Label offset separating manual segments from auto-segment labels.
@@ -139,6 +146,19 @@ pub struct MeshModel {
     // Sole source of truth for Ctrl+Z since S2. See `mesh::history`.
     pub history: History,
 
+    // Gradient provenance (merged used-colours entry): the endpoint pairs
+    // gradient strokes were drawn with, and the faces the gradient tool has
+    // written. Kept so `used_colors` can collapse the hundreds of
+    // interpolated colours one stroke produces into ONE swatch, the way an
+    // Orca gradient filament occupies a single slot. Membership is repaired
+    // lazily (see `prune_gradient_faces` / `sync_gradient_faces`) — a face
+    // whose colour no longer sits on any recorded gradient line (undo,
+    // overpaint, eraser) silently leaves the set.
+    pub gradient_lines: Vec<([u8; 4], [u8; 4])>,
+    pub gradient_faces: HashSet<u32>,
+    /// Endpoints of the most recent gradient stroke, for the swatch render.
+    pub gradient_ends: Option<([u8; 4], [u8; 4])>,
+
     // Spatial acceleration
     pub face_kdtree: kiddo::KdTree<f32, 3>,
     pub vertex_kdtree: kiddo::KdTree<f32, 3>,
@@ -175,6 +195,9 @@ impl MeshModel {
             segment_names: HashMap::new(),
             next_manual_label: MANUAL_SEGMENT_OFFSET,
             history: History::new(),
+            gradient_lines: Vec::new(),
+            gradient_faces: HashSet::new(),
+            gradient_ends: None,
             face_kdtree: kiddo::KdTree::new(),
             vertex_kdtree: kiddo::KdTree::new(),
             face_adjacency: UnGraph::default(),
@@ -619,14 +642,130 @@ impl MeshModel {
         segments
     }
 
+    /// True when `color` lies on the straight lerp segment a→b (any t), with
+    /// the same per-channel rounding the gradient painters use. This is a
+    /// membership test for gradient faces, not a clustering heuristic: only
+    /// faces the gradient tool wrote are ever checked against it. The
+    /// candidate t solved from the steepest channel sits inside every other
+    /// channel's rounding interval, so verifying that one candidate (plus a
+    /// half-step epsilon for the boundary) is exact — the largest-slope
+    /// solution is the shared one the real stroke effectively used.
+    fn on_lerp_segment(color: [u8; 4], a: [u8; 4], b: [u8; 4]) -> bool {
+        if color[3] != 255 {
+            return false;
+        }
+        let mut candidates: Vec<f32> = Vec::new();
+        for i in 0..3 {
+            let (x, y, v) = (a[i] as f32, b[i] as f32, color[i] as f32);
+            if (y - x).abs() < f32::EPSILON {
+                if color[i] != a[i] {
+                    return false; // constant channel must match exactly
+                }
+            } else {
+                candidates.push((v - x) / (y - x));
+            }
+        }
+        if candidates.is_empty() {
+            return true; // a == b solid gradient: already exact-matched
+        }
+        candidates.iter().any(|&t| {
+            let t = t.clamp(0.0, 1.0);
+            (0..3).all(|i| {
+                let v = a[i] as f32 + (b[i] as f32 - a[i] as f32) * t;
+                (v - color[i] as f32).abs() <= 0.5 + 1e-4
+            })
+        })
+    }
+
+    /// True when `color` is reachable by the gradient tools with endpoints
+    /// (a, b): the radial painter lerps a→b directly, the path painter walks
+    /// a→mix50→b (knee only remaps t, it does not leave that polyline).
+    fn on_gradient_line(color: [u8; 4], a: [u8; 4], b: [u8; 4]) -> bool {
+        let mix50 = [
+            ((a[0] as f32) * 0.5 + (b[0] as f32) * 0.5) as u8,
+            ((a[1] as f32) * 0.5 + (b[1] as f32) * 0.5) as u8,
+            ((a[2] as f32) * 0.5 + (b[2] as f32) * 0.5) as u8,
+            255,
+        ];
+        Self::on_lerp_segment(color, a, b)
+            || Self::on_lerp_segment(color, a, mix50)
+            || Self::on_lerp_segment(color, mix50, b)
+    }
+
+    /// Record the faces a gradient stroke wrote (called by the two gradient
+    /// paint commands right after `commit`). Upserts the endpoint pair so
+    /// membership tests keep working for every gradient on the model.
+    pub fn record_gradient(&mut self, faces: &[u32], a: [u8; 4], b: [u8; 4]) {
+        if !self.gradient_lines.contains(&(a, b)) {
+            self.gradient_lines.push((a, b));
+        }
+        self.gradient_faces.extend(faces.iter().copied());
+        self.gradient_ends = Some((a, b));
+    }
+
+    /// Drop gradient faces whose current colour no longer sits on any
+    /// recorded gradient line (undo, overpaint, eraser). Repair-on-read:
+    /// every stale member silently leaves instead of ghosting a swatch.
+    /// Lines are kept even with zero members — redo must be able to re-enrol
+    /// the faces it restores, so a line only ever dies with the model.
+    pub fn prune_gradient_faces(&mut self) {
+        let lines = self.gradient_lines.clone();
+        self.gradient_faces.retain(|&face| {
+            self.face_colors
+                .get(face as usize)
+                .is_some_and(|&c| lines.iter().any(|&(a, b)| Self::on_gradient_line(c, a, b)))
+        });
+    }
+
+    /// Membership repair for undo/redo, which can move faces back ONTO a
+    /// gradient line (redo of a gradient stroke restores its colours while
+    /// the membership set was pruned by the undo). Bidirectional for exactly
+    /// the faces the history step touched — a whole-buffer rescan would
+    /// wrongly re-enrol faces the user painted by hand onto a line colour.
+    pub fn sync_gradient_faces(&mut self, touched: &[u32]) {
+        let lines = self.gradient_lines.clone();
+        for &face in touched {
+            let Some(&c) = self.face_colors.get(face as usize) else {
+                continue;
+            };
+            let on_line = lines.iter().any(|&(a, b)| Self::on_gradient_line(c, a, b));
+            if on_line {
+                self.gradient_faces.insert(face);
+            } else {
+                self.gradient_faces.remove(&face);
+            }
+        }
+    }
+
     /// One distinct colour currently on the model (issue #23): how many
     /// faces carry it and across how many regions. The alpha byte is part of
     /// the identity — paint always writes 255 today, so this is
     /// future-proofing, not behaviour. Deliberately NOT the export
     /// quantiser: two near-identical colours must stay two swatches.
+    ///
+    /// Faces written by the gradient tool collapse into ONE entry (the way
+    /// an Orca gradient filament occupies a single slot): their interpolated
+    /// colours are excluded from the per-colour tally and reported as a
+    /// single `is_gradient` row carrying the latest stroke's endpoints.
     pub fn used_colors(&self) -> Vec<UsedColorEntry> {
+        // `prune` needs &mut; here we work on a repair-free copy — members
+        // whose colour left every line simply count as ordinary colours.
+        let gradient_faces: HashSet<u32> = self
+            .gradient_faces
+            .iter()
+            .copied()
+            .filter(|&f| {
+                self.face_colors.get(f as usize).is_some_and(|&c| {
+                    self.gradient_lines.iter().any(|&(a, b)| Self::on_gradient_line(c, a, b))
+                })
+            })
+            .collect();
+
         let mut tally: HashMap<[u8; 4], (u32, HashSet<u32>)> = HashMap::new();
         for (face, color) in self.face_colors.iter().enumerate() {
+            if gradient_faces.contains(&(face as u32)) {
+                continue; // reported by the merged gradient entry instead
+            }
             let e = tally.entry(*color).or_insert((0, HashSet::new()));
             e.0 += 1;
             if let Some(label) = self.segment_labels.get(face) {
@@ -639,8 +778,28 @@ impl MeshModel {
                 color,
                 faces,
                 regions: regions.len() as u32,
+                is_gradient: false,
+                gradient_to: None,
             })
             .collect();
+
+        if !gradient_faces.is_empty() {
+            let (start, end) = self.gradient_ends.unwrap_or(([0, 0, 0, 255], [0, 0, 0, 255]));
+            let mut regions: HashSet<u32> = HashSet::new();
+            for &f in &gradient_faces {
+                if let Some(&l) = self.segment_labels.get(f as usize) {
+                    regions.insert(l);
+                }
+            }
+            used.push(UsedColorEntry {
+                color: start,
+                faces: gradient_faces.len() as u32,
+                regions: regions.len() as u32,
+                is_gradient: true,
+                gradient_to: Some(end),
+            });
+        }
+
         // Most faces first; ties broken by colour bytes so consecutive panel
         // refreshes never reshuffle the swatches.
         used.sort_by(|a, b| b.faces.cmp(&a.faces).then(a.color.cmp(&b.color)));
@@ -1040,5 +1199,119 @@ mod tests {
         assert_eq!(used.len(), 1);
         assert_eq!(used[0].color, DEFAULT_FACE_COLOR);
         assert_eq!(used[0].faces, 2);
+    }
+
+    /// A gradient stroke's interpolated colours collapse into ONE merged
+    /// entry (start→end swatch), not one row per distinct RGBA — the Orca
+    /// gradient-filament behaviour the used-colours panel must follow.
+    #[test]
+    fn gradient_stroke_collapses_into_one_used_entry() {
+        let mut m = labelled(&[1, 1, 2, 2]);
+        m.face_colors = vec![DEFAULT_FACE_COLOR; 4];
+        // Three distinct interpolated colours across two regions.
+        let a = [255, 0, 0, 255];
+        let b = [0, 0, 255, 255];
+        m.face_colors[0] = a;
+        m.face_colors[1] = [191, 0, 64, 255]; // real k=0.5 output of the a→mix50 segment (mix50 truncates to 127)
+        m.face_colors[2] = b;
+        m.record_gradient(&[0, 1, 2], a, b);
+        m.face_colors[3] = [255, 255, 0, 255]; // plain yellow, not gradient
+
+        let used = m.used_colors();
+        assert_eq!(used.len(), 2, "merged gradient + yellow");
+        let grad = used.iter().find(|e| e.is_gradient).expect("merged gradient entry");
+        assert_eq!(grad.faces, 3);
+        assert_eq!(grad.regions, 2, "gradient spans labels 1 and 2");
+        assert_eq!(grad.color, a, "swatch carries the start colour");
+        assert_eq!(grad.gradient_to, Some(b), "swatch carries the end colour");
+        assert_eq!(used.iter().find(|e| !e.is_gradient).unwrap().color, [255, 255, 0, 255]);
+    }
+
+    /// A plain brush stroke in exactly the gradient's endpoint colour is NOT
+    /// gradient provenance — only faces the gradient tool wrote enrol.
+    #[test]
+    fn hand_painted_line_colour_does_not_join_the_gradient() {
+        let mut m = labelled(&[0, 0]);
+        m.face_colors = vec![DEFAULT_FACE_COLOR; 2];
+        let a = [255, 0, 0, 255];
+        let b = [0, 0, 255, 255];
+        m.record_gradient(&[0], a, b);
+        m.face_colors[0] = a; // gradient face stays on the line
+        m.face_colors[1] = b; // hand-painted endpoint colour, never enrolled
+
+        let used = m.used_colors();
+        let grad = used.iter().find(|e| e.is_gradient).expect("face 0 stays gradient");
+        assert_eq!(grad.faces, 1, "hand-painted face 1 must not inflate the swatch");
+    }
+
+    /// Overpainting a gradient face off the line retires it from the merged
+    /// entry (lazy repair-on-read).
+    #[test]
+    fn overpainting_off_the_line_leaves_the_gradient() {
+        let mut m = labelled(&[0, 0]);
+        m.face_colors = vec![[255, 0, 0, 255], [0, 255, 0, 255]];
+        m.record_gradient(&[0, 1], [255, 0, 0, 255], [0, 255, 0, 255]);
+        m.face_colors[1] = [255, 255, 0, 255]; // off-line yellow
+
+        m.prune_gradient_faces();
+        let used = m.used_colors();
+        let grad = used.iter().find(|e| e.is_gradient).expect("face 0 still gradient");
+        assert_eq!(grad.faces, 1);
+    }
+
+    /// Undo/redo repair: undoing a gradient stroke removes the merged entry,
+    /// redoing it brings the swatch back (the redo-reclaim path).
+    #[test]
+    fn undo_removes_gradient_entry_and_redo_restores_it() {
+        let mut m = labelled(&[0, 0]);
+        m.face_colors = vec![DEFAULT_FACE_COLOR; 2];
+        let a = [255, 0, 0, 255];
+        let b = [0, 0, 255, 255];
+        // A gradient stroke as the commands record it: one Paint op + provenance.
+        // (159, 0, 95) is the real k=0.75 output of the a→mix50 segment.
+        let updates = [(0u32, a), (1u32, [159, 0, 95, 255])];
+        m.apply_paint(Some(1), &updates);
+        m.record_gradient(&[0, 1], a, b);
+        assert!(m.used_colors().iter().any(|e| e.is_gradient));
+
+        // Undo the stroke, then repair membership the way commands/history.rs does.
+        {
+            let crate::mesh::model::MeshModel { history, face_colors, segment_labels, vertices, .. } = &mut m;
+            let out = history.undo(face_colors, segment_labels, vertices).expect("undo");
+            m.sync_gradient_faces(&out.faces);
+        }
+        let used = m.used_colors();
+        assert!(!used.iter().any(|e| e.is_gradient), "undone gradient must not ghost a swatch");
+
+        // Redo brings the colours — and the merged entry — back.
+        {
+            let crate::mesh::model::MeshModel { history, face_colors, segment_labels, vertices, .. } = &mut m;
+            let out = history.redo(face_colors, segment_labels, vertices).expect("redo");
+            m.sync_gradient_faces(&out.faces);
+        }
+        let used = m.used_colors();
+        let grad = used.iter().find(|e| e.is_gradient).expect("redo restores the swatch");
+        assert_eq!(grad.faces, 2);
+        assert_eq!(grad.gradient_to, Some(b));
+    }
+
+    /// The line test is exact: midpoints of the segment pass, off-line
+    /// colours (including near-misses and non-255 alpha) fail.
+    #[test]
+    fn on_gradient_line_is_exact() {
+        let a = [0, 0, 0, 255];
+        let b = [200, 100, 0, 255];
+        assert!(MeshModel::on_gradient_line([100, 50, 0, 255], a, b), "exact midpoint");
+        // One-off colour: (100, 49, 0) is not on any rounding of the line.
+        assert!(!MeshModel::on_gradient_line([100, 49, 0, 255], a, b), "near-miss rejected");
+        // mix50 knee midpoint is reachable by the path painter.
+        let mix50 = [100, 50, 0, 255];
+        assert!(MeshModel::on_gradient_line(mix50, a, b));
+        // Path painter: a→mix50→b polyline, knee only remaps t.
+        assert!(MeshModel::on_gradient_line([50, 25, 0, 255], a, b), "a→mix50 half");
+        assert!(!MeshModel::on_gradient_line([100, 50, 0, 128], a, b), "alpha must be 255");
+        // Solid gradient (a == b): only that exact colour lies on it.
+        assert!(MeshModel::on_gradient_line([7, 8, 9, 255], [7, 8, 9, 255], [7, 8, 9, 255]));
+        assert!(!MeshModel::on_gradient_line([7, 8, 10, 255], [7, 8, 9, 255], [7, 8, 9, 255]));
     }
 }

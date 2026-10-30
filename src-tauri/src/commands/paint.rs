@@ -141,7 +141,12 @@ pub fn gradient_path_paint(
         samples.len(),
         updates.len()
     );
-    Ok(commit(mesh, stroke_id, updates))
+    let faces: Vec<u32> = updates.iter().map(|&(f, _)| f).collect();
+    let result = commit(mesh, stroke_id, updates);
+    // Provenance for the merged used-colours entry — without it the panel
+    // would list every interpolated colour as its own swatch.
+    mesh.record_gradient(&faces, color_a, color_b);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -157,15 +162,22 @@ pub fn gradient_radial_paint(
     let mesh = mesh_guard
         .as_mut()
         .ok_or("No mesh loaded")?;
-    let updates =
-        crate::paint::gradient::gradient_radial_hit(mesh, center_face, radius, color_inner, color_outer);
+    let hidden = hidden_snapshot(&state);
+    let updates = cull_hidden_pairs(
+        mesh,
+        crate::paint::gradient::gradient_radial_hit(mesh, center_face, radius, color_inner, color_outer),
+        &hidden,
+    );
     log::info!(
         "[cmd:gradient_radial_paint] center={} radius={} faces={}",
         center_face,
         radius,
         updates.len()
     );
-    Ok(commit(mesh, stroke_id, updates))
+    let faces: Vec<u32> = updates.iter().map(|&(f, _)| f).collect();
+    let result = commit(mesh, stroke_id, updates);
+    mesh.record_gradient(&faces, color_inner, color_outer);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -196,7 +208,8 @@ pub fn brush_paint(
             center_face, mesh.faces.len());
     }
 
-    let hits = brush_hit(mesh, center_face, radius);
+    let hidden = hidden_snapshot(&state);
+    let hits = cull_hidden(mesh, brush_hit(mesh, center_face, radius), &hidden);
     let center = mesh.face_center(center_face);
 
     // Colours are computed against the *current* buffer and written only after
@@ -229,7 +242,8 @@ pub fn fill_paint(
         face_id, color, radius
     );
 
-    Ok(apply_fill(mesh, face_id, color, radius))
+    let hidden = hidden_snapshot(&state);
+    Ok(apply_fill(mesh, face_id, color, radius, &hidden))
 }
 
 /// Core of [`fill_paint`] without the Tauri wrapper.
@@ -245,6 +259,7 @@ pub fn apply_fill(
     face_id: u32,
     color: [u8; 4],
     radius: f32,
+    hidden: &std::collections::HashSet<u32>,
 ) -> PaintResult {
     let faces = if radius > 0.0 {
         let center = mesh.face_center(face_id);
@@ -255,7 +270,7 @@ pub fn apply_fill(
                 local.push(fid);
             }
         }
-        local
+        cull_hidden(mesh, local, hidden)
     } else {
         region_faces(mesh, face_id)
     };
@@ -307,7 +322,12 @@ pub fn spray_paint(
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let updates = spray_hit(mesh, center_face, radius, strength, &color, density);
+    let hidden = hidden_snapshot(&state);
+    let updates = cull_hidden_pairs(
+        mesh,
+        spray_hit(mesh, center_face, radius, strength, &color, density),
+        &hidden,
+    );
     Ok(commit(mesh, stroke_id, updates))
 }
 
@@ -338,7 +358,8 @@ pub fn erase_paint(
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let hits = brush_hit(mesh, center_face, radius);
+    let hidden = hidden_snapshot(&state);
+    let hits = cull_hidden(mesh, brush_hit(mesh, center_face, radius), &hidden);
     // Iteration 21: the eraser restores DEFAULT_FACE_COLOR, not literal white,
     // so erased faces match never-painted ones on both canvas themes.
     let updates: Vec<(u32, [u8; 4])> = hits
@@ -347,6 +368,98 @@ pub fn erase_paint(
         .collect();
 
     Ok(commit(mesh, stroke_id, updates))
+}
+
+/// Drop faces whose segment label is in `hidden` — the backend half of the
+/// hidden-region view state (#24/#29): implicit spatial tools (brush / spray
+/// / eraser / radius fills / radial gradients) must not touch faces the user
+/// has hidden, even when the dab's radius sweeps over them. The hidden set
+/// lives in [`AppState::hidden_labels`], synced from the frontend whenever it
+/// changes; EXPLICIT list-based actions (multi-select fill, colour replace)
+/// deliberately do NOT cull — hiding is display-only there.
+fn cull_hidden(
+    mesh: &crate::mesh::model::MeshModel,
+    faces: Vec<u32>,
+    hidden: &std::collections::HashSet<u32>,
+) -> Vec<u32> {
+    if hidden.is_empty() {
+        return faces;
+    }
+    faces
+        .into_iter()
+        .filter(|f| !hidden.contains(&mesh.segment_labels[*f as usize]))
+        .collect()
+}
+
+/// Same cull for pre-built (face, payload) update lists.
+fn cull_hidden_pairs<T>(
+    mesh: &crate::mesh::model::MeshModel,
+    updates: Vec<(u32, T)>,
+    hidden: &std::collections::HashSet<u32>,
+) -> Vec<(u32, T)> {
+    if hidden.is_empty() {
+        return updates;
+    }
+    updates
+        .into_iter()
+        .filter(|(f, _)| !hidden.contains(&mesh.segment_labels[*f as usize]))
+        .collect()
+}
+
+/// Snapshot of the hidden label set (empty = nothing hidden).
+fn hidden_snapshot(state: &State<AppState>) -> std::collections::HashSet<u32> {
+    state
+        .hidden_labels
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default()
+}
+
+/// Core of `fill_segments_paint` (owner scenario on #29): paint EVERY face
+/// of the given labels with `color` in a single commit — N regions, exactly
+/// ONE history entry, one Ctrl+Z restores all of them. Duplicate/unknown
+/// labels are harmless (a face is emitted once; absent labels match nothing).
+/// A no-match call records nothing.
+pub fn apply_fill_segments(
+    mesh: &mut crate::mesh::model::MeshModel,
+    labels: &[u32],
+    color: [u8; 4],
+) -> PaintResult {
+    let wanted: std::collections::HashSet<u32> = labels.iter().copied().collect();
+    let updates: Vec<(u32, [u8; 4])> = mesh
+        .segment_labels
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| wanted.contains(l))
+        .map(|(i, _)| (i as u32, color))
+        .collect();
+    if updates.is_empty() {
+        return PaintResult {
+            updated_faces: Vec::new(),
+            updated_colors: Vec::new(),
+        };
+    }
+    commit(mesh, None, updates)
+}
+
+/// Fill N regions in one shot (multi-select fill, #29): one IPC, one
+/// history entry. The viewport drives this from the unified multi-selection
+/// card; the labels arrive from the picked set.
+#[tauri::command]
+pub fn fill_segments_paint(
+    labels: Vec<u32>,
+    color: [u8; 4],
+    state: State<AppState>,
+) -> Result<PaintResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let result = apply_fill_segments(mesh, &labels, color);
+    log::info!(
+        "[cmd:fill_segments_paint] labels={} faces={}",
+        labels.len(),
+        result.updated_faces.len()
+    );
+    Ok(result)
 }
 
 /// One row of the colour panel's "used colours" section (issue #23).
@@ -359,15 +472,25 @@ pub struct UsedColorDto {
     /// True for the never-painted default grey — the panel marks the swatch
     /// so "no colour yet" stays distinguishable from a painted grey.
     pub is_default: bool,
+    /// True for the merged gradient row: every gradient-interpolated colour
+    /// on the model reported as ONE swatch (`color` = start, `gradientTo` =
+    /// end), the way an Orca gradient filament occupies a single slot.
+    pub is_gradient: bool,
+    /// End colour of the latest gradient stroke; `None` on plain rows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gradient_to: Option<[u8; 4]>,
 }
 
 /// Every distinct colour currently on the model, most faces first (issue
 /// #23). The command is a thin DTO map over `MeshModel::used_colors` — the
-/// counting logic and its tests live in the mesh layer.
+/// counting logic and its tests live in the mesh layer. Gradient membership
+/// is repaired before reading so stale members (undone / overpainted
+/// strokes) cannot ghost the merged swatch.
 #[tauri::command]
 pub fn used_colors(state: State<AppState>) -> Result<Vec<UsedColorDto>, String> {
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    mesh.prune_gradient_faces();
     Ok(mesh
         .used_colors()
         .into_iter()
@@ -376,12 +499,132 @@ pub fn used_colors(state: State<AppState>) -> Result<Vec<UsedColorDto>, String> 
             // default grey gets the dashed "default" swatch. Distinguishing
             // painted-grey from never-painted would need per-face provenance
             // the colour buffer does not carry — accepted limitation.
-            is_default: e.color == DEFAULT_FACE_COLOR,
+            is_default: !e.is_gradient && e.color == DEFAULT_FACE_COLOR,
             color: e.color,
             faces: e.faces,
             regions: e.regions,
+            is_gradient: e.is_gradient,
+            gradient_to: e.gradient_to,
         })
         .collect())
+}
+
+/// Sync the hidden-region view state from the frontend (#24/#29). The set
+/// lives here so IMPLICIT spatial tools (brush / spray / eraser / radius
+/// fills / radial gradients) can cull hidden faces before committing;
+/// replaces the whole set on every call (empty = nothing hidden). Explicit
+/// list-based actions (multi-select fill, colour replace) ignore it.
+#[tauri::command]
+pub fn set_hidden_labels(labels: Vec<u32>, state: State<AppState>) -> Result<(), String> {
+    let mut hidden = state.hidden_labels.lock().map_err(|e| e.to_string())?;
+    *hidden = labels.into_iter().collect();
+    log::info!("[cmd:set_hidden_labels] count={}", hidden.len());
+    Ok(())
+}
+
+/// Result of a colour replace (issue #29): the incremental paint payload
+/// (same wire shape as [`PaintResult`], consumed by the GPU bridge) plus the
+/// authoritative counts for the applied-status message.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceColorResult {
+    pub updated_faces: Vec<u32>,
+    pub updated_colors: Vec<[u8; 4]>,
+    pub faces: u32,
+    pub regions: u32,
+}
+
+/// Faces whose exact colour equals `from` (RGBA identity — the same rule as
+/// the used-colours list). One O(F) pass over the WHOLE model — the replace
+/// semantic is "every region that used the colour" (owner decision on
+/// #29, the scoped variant was removed); regions are the DISTINCT segment
+/// labels among the matches.
+fn replace_updates(mesh: &crate::mesh::model::MeshModel, from: [u8; 4]) -> (Vec<u32>, u32) {
+    let mut faces = Vec::new();
+    let mut regions = std::collections::HashSet::new();
+    for (f, &c) in mesh.face_colors.iter().enumerate() {
+        if c != from {
+            continue;
+        }
+        faces.push(f as u32);
+        regions.insert(mesh.segment_labels[f]);
+    }
+    (faces, regions.len() as u32)
+}
+
+/// Pure core of `replace_face_color` (issue #29) — colours only: labels,
+/// names and segmentation are never touched. All matched faces go through
+/// `apply_paint` with `stroke_id: None`, so the whole replace lands as
+/// exactly ONE history entry; a no-match replace records NOTHING (an empty
+/// undo step would be noise the user has to step over).
+pub fn apply_replace_face_color(
+    mesh: &mut crate::mesh::model::MeshModel,
+    from: [u8; 4],
+    to: [u8; 4],
+) -> ReplaceColorResult {
+    if from == to || from == DEFAULT_FACE_COLOR {
+        // Same no-op/refusal contract as the command wrapper (tests exercise
+        // the core directly); see `replace_face_color` for the rationale.
+        return ReplaceColorResult {
+            updated_faces: Vec::new(),
+            updated_colors: Vec::new(),
+            faces: 0,
+            regions: 0,
+        };
+    }
+    let (faces, region_count) = replace_updates(mesh, from);
+    if faces.is_empty() {
+        return ReplaceColorResult {
+            updated_faces: Vec::new(),
+            updated_colors: Vec::new(),
+            faces: 0,
+            regions: 0,
+        };
+    }
+    let updates: Vec<(u32, [u8; 4])> = faces.iter().map(|&f| (f, to)).collect();
+    let result = commit(mesh, None, updates);
+    ReplaceColorResult {
+        updated_faces: result.updated_faces,
+        updated_colors: result.updated_colors,
+        faces: faces.len() as u32,
+        regions: region_count,
+    }
+}
+
+/// Apply the replace: one O(F) pass, exactly one history entry (issue #29).
+/// The guard rails are enforced here TOO, not only in the UI (backend
+/// authority): `from == to` is a mechanical no-op returning an empty result,
+/// and a whole-model repaint FROM the never-painted default grey is refused —
+/// it would silently recolour every untouched face.
+#[tauri::command]
+pub fn replace_face_color(
+    from: [u8; 4],
+    to: [u8; 4],
+    state: State<AppState>,
+) -> Result<ReplaceColorResult, String> {
+    if from == to {
+        return Ok(ReplaceColorResult {
+            updated_faces: Vec::new(),
+            updated_colors: Vec::new(),
+            faces: 0,
+            regions: 0,
+        });
+    }
+    if from == DEFAULT_FACE_COLOR {
+        return Err(
+            "replace from the unpainted default grey is refused: it would repaint every untouched face"
+                .to_string(),
+        );
+    }
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let result = apply_replace_face_color(mesh, from, to);
+    log::info!(
+        "[cmd:replace_face_color] faces={} regions={}",
+        result.faces,
+        result.regions
+    );
+    Ok(result)
 }
 
 #[tauri::command]
@@ -400,6 +643,7 @@ pub fn pick_color(face_id: u32, state: State<AppState>) -> Result<[u8; 4], Strin
 mod fill_tests {
     use super::*;
     use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR};
+    use std::collections::HashSet;
 
     const RED: [u8; 4] = [220, 30, 30, 255];
 
@@ -471,8 +715,241 @@ mod fill_tests {
             *c = RED;
         }
 
-        let result = apply_fill(&mut m, 0, [10, 200, 10, 255], 0.0);
+        let result = apply_fill(&mut m, 0, [10, 200, 10, 255], 0.0, &HashSet::new());
         assert_eq!(result.updated_faces, vec![0, 1], "flood stays inside label 1");
         assert_eq!(colors_of(&m, &[2, 3]), vec![RED; 2]);
+    }
+}
+
+#[cfg(test)]
+mod cull_hidden_tests {
+    //! Hidden-region view state (#24/#29): implicit spatial tools must not
+    //! touch faces the user has hidden, even when the dab's radius sweeps
+    //! over them. The backend keeps the hidden LABEL set (synced from the
+    //! frontend whenever it changes) and culls hit lists before committing.
+
+    use super::*;
+    use crate::mesh::model::MeshModel;
+    use std::collections::HashSet;
+
+    fn labeled_mesh() -> MeshModel {
+        let mut m = MeshModel::new();
+        m.vertices = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        m.faces = vec![[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
+        m.compute_normals();
+        m.build_adjacency();
+        m.init_default_colors();
+        m.segment_labels = vec![1, 1, 2, 2];
+        m
+    }
+
+    #[test]
+    fn faces_of_hidden_labels_are_dropped() {
+        let m = labeled_mesh();
+        let mut hidden = HashSet::new();
+        hidden.insert(2u32);
+
+        let out = cull_hidden(&m, vec![0, 1, 2, 3], &hidden);
+        assert_eq!(out, vec![0, 1], "label 2's faces are hidden");
+    }
+
+    #[test]
+    fn empty_hidden_set_is_a_noop() {
+        let m = labeled_mesh();
+        let hidden = HashSet::new();
+        let out = cull_hidden(&m, vec![2, 3], &hidden);
+        assert_eq!(out, vec![2, 3]);
+    }
+
+    #[test]
+    fn update_pairs_are_culled_by_face_key() {
+        let m = labeled_mesh();
+        let mut hidden = HashSet::new();
+        hidden.insert(2u32);
+
+        let updates = vec![(0u32, [9, 9, 9, 255]), (2, [8, 8, 8, 255]), (3, [7, 7, 7, 255])];
+        let out = cull_hidden_pairs(&m, updates, &hidden);
+        assert_eq!(out, vec![(0u32, [9, 9, 9, 255])]);
+    }
+}
+
+#[cfg(test)]
+mod fill_segments_tests {
+    //! Owner scenario on #29: multi-select regions (View tool / panel), then
+    //! fill them ALL in one go. N regions must be ONE history entry — not N.
+
+    use super::*;
+    use crate::mesh::model::MeshModel;
+
+    /// Tetrahedron, two regions: label 1 = faces {0, 1}, label 2 = {2, 3}.
+    fn two_region_mesh() -> MeshModel {
+        let mut m = MeshModel::new();
+        m.vertices = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        m.faces = vec![[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
+        m.compute_normals();
+        m.build_adjacency();
+        m.init_default_colors();
+        m.segment_labels = vec![1, 1, 2, 2];
+        m
+    }
+
+    #[test]
+    fn paints_union_of_labels_in_one_history_entry() {
+        let mut m = two_region_mesh();
+
+        let result = apply_fill_segments(&mut m, &[1, 2], [255, 0, 0, 255]);
+
+        assert_eq!(result.updated_faces.len(), 4);
+        assert!(m.face_colors.iter().all(|&c| c == [255, 0, 0, 255]));
+        // N regions, ONE undo step.
+        assert_eq!(m.history.undo_depth(), 1);
+        {
+            let crate::mesh::model::MeshModel { history, face_colors, segment_labels, vertices, .. } = &mut m;
+            history.jump_to(0, face_colors, segment_labels, vertices);
+        }
+        assert!(m.face_colors.iter().all(|&c| c == crate::mesh::model::DEFAULT_FACE_COLOR));
+    }
+
+    #[test]
+    fn duplicate_labels_paint_each_face_once() {
+        let mut m = two_region_mesh();
+
+        let result = apply_fill_segments(&mut m, &[1, 1, 2], [10, 20, 30, 255]);
+
+        assert_eq!(result.updated_faces, vec![0, 1, 2, 3], "no face twice");
+    }
+
+    #[test]
+    fn unknown_or_empty_labels_record_nothing() {
+        let mut m = two_region_mesh();
+
+        let empty = apply_fill_segments(&mut m, &[], [1, 2, 3, 255]);
+        let absent = apply_fill_segments(&mut m, &[99], [1, 2, 3, 255]);
+
+        assert_eq!(empty.updated_faces.len(), 0);
+        assert_eq!(absent.updated_faces.len(), 0);
+        assert_eq!(m.history.undo_depth(), 0, "no-op must not create an undo step");
+    }
+}
+
+#[cfg(test)]
+mod replace_colour_tests {
+    //! Issue #29: colour find & replace. ONE semantic (owner decision): a
+    //! whole-model replace — every region that used the source colour — as a
+    //! single O(F) pass landing as exactly ONE history entry (one Ctrl+Z
+    //! restores every replaced face), never touching labels, recording
+    //! nothing when nothing matches.
+
+    use super::*;
+    use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR};
+
+    const RED: [u8; 4] = [139, 69, 19, 255];
+    const GREEN: [u8; 4] = [40, 167, 69, 255];
+
+    /// Tetrahedron, two regions: label 1 = faces {0, 1}, label 2 = {2, 3}.
+    /// Faces 0 and 2 are pre-painted RED, face 1 BLUE, face 3 default grey.
+    fn replace_mesh() -> MeshModel {
+        let mut m = MeshModel::new();
+        m.vertices = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        m.faces = vec![[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
+        m.compute_normals();
+        m.build_adjacency();
+        m.init_default_colors();
+        m.segment_labels = vec![1, 1, 2, 2];
+        m.face_colors[0] = RED;
+        m.face_colors[2] = RED;
+        m
+    }
+
+    #[test]
+    fn whole_model_replace_is_one_history_step() {
+        let mut m = replace_mesh();
+        let before = m.face_colors.clone();
+
+        let result = apply_replace_face_color(&mut m, RED, GREEN);
+
+        assert_eq!(result.updated_faces, vec![0, 2]);
+        assert_eq!(result.faces, 2);
+        assert_eq!(result.regions, 2, "faces 0 and 2 sit in different regions");
+        assert_eq!(m.face_colors[0], GREEN);
+        assert_eq!(m.face_colors[2], GREEN);
+        // Exactly one undo step — not one per face.
+        assert_eq!(m.history.undo_depth(), 1);
+        // One Ctrl+Z (jump back to pristine) restores every face exactly —
+        // the split field borrow mirrors how commands/history.rs drives it.
+        {
+            let crate::mesh::model::MeshModel { history, face_colors, segment_labels, vertices, .. } = &mut m;
+            history.jump_to(0, face_colors, segment_labels, vertices);
+        }
+        assert_eq!(m.face_colors[0], RED, "undo restores the original colour");
+        assert_eq!(m.face_colors[2], RED);
+        assert_eq!(m.face_colors[1], before[1]);
+    }
+
+    #[test]
+    fn no_match_records_no_history() {
+        let mut m = replace_mesh();
+        let absent: [u8; 4] = [1, 2, 3, 255];
+
+        let result = apply_replace_face_color(&mut m, absent, GREEN);
+
+        assert_eq!(result.updated_faces.len(), 0);
+        assert_eq!(result.faces, 0);
+        assert_eq!(result.regions, 0);
+        // A no-op must not create an undo step the user has to step over.
+        assert_eq!(m.history.undo_depth(), 0);
+    }
+
+    #[test]
+    fn replace_keeps_labels_and_segmentation_intact() {
+        let mut m = replace_mesh();
+        let labels_before = m.segment_labels.clone();
+
+        apply_replace_face_color(&mut m, RED, GREEN);
+
+        assert_eq!(m.segment_labels, labels_before, "replace is a paint edit, not a segmentation edit");
+    }
+
+    #[test]
+    fn replace_updates_counts_faces_and_regions() {
+        let m = replace_mesh();
+
+        let (faces, regions) = replace_updates(&m, RED);
+        assert_eq!((faces.len(), regions as usize), (2, 2));
+
+        // Faces 1 and 3 were never painted, so they still carry the default
+        // grey — countable (the guard refuses that replace, not the math).
+        let (faces, regions) = replace_updates(&m, DEFAULT_FACE_COLOR);
+        assert_eq!((faces.len(), regions as usize), (2, 2));
+    }
+
+    #[test]
+    fn core_refuses_default_source_and_same_colour() {
+        let mut m = replace_mesh();
+
+        // from == to: mechanical no-op, empty result.
+        let result = apply_replace_face_color(&mut m, RED, RED);
+        assert_eq!(result.faces, 0);
+
+        // Default grey as source: refused by the same contract the UI guard
+        // implements — the IPC surface does not trust frontend state.
+        let result = apply_replace_face_color(&mut m, DEFAULT_FACE_COLOR, GREEN);
+        assert_eq!(result.faces, 0);
+        assert_eq!(m.history.undo_depth(), 0);
     }
 }

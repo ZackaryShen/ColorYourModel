@@ -17,9 +17,9 @@ export type ControlsHintKey =
  */
 export function hintKeyForTool(tool: PaintTool): ControlsHintKey {
   if (tool === PaintTool.View) return "controls.viewHint";
-  // Issue #16 (field feedback #4): fill is the merge gesture's home tool, so
-  // its hint advertises Ctrl+click — discoverable, and it warns that a plain
-  // click means fill (never an accidental merge).
+  // Issue #16 (field feedback #4) → #29 unification: fill is the Ctrl+click
+  // multi-select's home tool alongside View, so its hint advertises
+  // Ctrl+click — and warns that a plain click means fill.
   if (tool === PaintTool.Fill) return "controls.fillHint";
   const isBrush =
     tool === PaintTool.Brush ||

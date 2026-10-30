@@ -209,6 +209,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "color.usedColors": { zh: "已用颜色", en: "Used colours" },
   "color.usedTooltip": { zh: "{0} · {1} 面 · {2} 个区域", en: "{0} · {1} faces · {2} region(s)" },
   "color.usedDefaultTooltip": { zh: "默认色 · {0} · {1} 面 · {2} 个区域", en: "Default · {0} · {1} faces · {2} region(s)" },
+  "color.usedGradientTooltip": { zh: "渐变 {0} → {1} · {2} 面 · {3} 个区域（占一个色槽，同 Orca 渐变耗材）", en: "Gradient {0} → {1} · {2} faces · {3} region(s) (one slot, like an Orca gradient filament)" },
   "color.amsPalette": { zh: "AMS 调色板", en: "AMS Palette" },
 
   // SegmentsPanel
@@ -249,13 +250,8 @@ const dict: Record<string, Record<Lang, string>> = {
   "controls.scrollZoom": { zh: "🔍 滚轮: 缩放", en: "🔍 Scroll: Zoom" },
   "controls.viewHint": { zh: "左键 旋转 · 右键 平移 · Ctrl+点击 选分区 · H 显隐", en: "Left Rotate · Right Pan · Ctrl+click: pick region · H: hide/show" },
   "controls.brushHint": { zh: "模型上 左键绘制 · 空白处左键旋转 · 右键 平移 · Ctrl+滚轮 调笔刷", en: "On model: Left paints · On empty: Left rotates · Right Pan · Ctrl+Wheel brush size" },
-  "controls.fillHint": { zh: "左键 填充分区 · Ctrl+点击 合并分区 · 右键 平移 · 滚轮 缩放", en: "Left: fill region · Ctrl+click: merge regions · Right: pan · Wheel: zoom" },
+  "controls.fillHint": { zh: "左键 填充分区 · Ctrl+点击 多选分区 · 右键 平移 · 滚轮 缩放", en: "Left: fill region · Ctrl+click: multi-select regions · Right: pan · Wheel: zoom" },
   "controls.editHint": { zh: "左键 绘制/选取 · 右键 平移 · 中键 缩放 · 滚轮 缩放", en: "Left Paint/Select · Right Pan · Middle Zoom · Scroll Zoom" },
-  // Ctrl+click region merge (issue #16) — session card
-  "merge.cardTarget": { zh: "合并到 区域 {0}", en: "Merging into region {0}" },
-  "merge.cardCount": { zh: " · 已并入 {0} 个分区", en: " · {0} region(s) absorbed" },
-  "merge.cardNone": { zh: " · 尚无并入分区", en: " · nothing absorbed yet" },
-  "merge.cardHint": { zh: "Ctrl+点击继续并入 · 点目标本身或 Esc 结束", en: "Ctrl+click to absorb more · click the target or Esc to finish" },
 
   // Viewport — SegmentToggle
   "view.paintView": { zh: "🎨 涂色视图", en: "🎨 Paint View" },
@@ -340,6 +336,29 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.noModel": { zh: "尚未导入模型", en: "No model loaded" },
   "export.noModelHint": { zh: "导出需要先导入 STL 模型并完成涂装，请先从「文件 → 导入 STL…」或左侧工具栏导入。", en: "Exporting needs an imported (and painted) STL model first — use File → Import STL… or the left toolbar." },
 
+  // Unified multi-selection card (#29 unification)
+  "pick.cardCount": { zh: "已选 {0} 个分区", en: "{0} region(s) selected" },
+  "pick.fillSelected": { zh: "填充这些分区", en: "Fill selected" },
+  "pick.fillDone": { zh: "已填充 {0} 个分区（{1} 面，一次撤销可全部还原）", en: "Filled {0} region(s) ({1} faces — one Ctrl+Z undoes all)" },
+  "pick.fillNone": { zh: "选中分区没有可填充的面", en: "The selected regions have no faces to fill" },
+  "pick.fillFailed": { zh: "填充失败（详情见调试日志）", en: "Fill failed (see the debug log)" },
+  "pick.cardHint": { zh: "Ctrl+点击 继续 · H 显隐 · Esc 取消", en: "Ctrl+click to add · H visibility · Esc to clear" },
+
+  // Colour find & replace (issue #29)
+  "replace.title": { zh: "替换颜色", en: "Replace colour" },
+  "replace.from": { zh: "从", en: "From" },
+  "replace.to": { zh: "到", en: "To" },
+  "replace.pickSource": { zh: "选择来源颜色（模型上已有的颜色）", en: "Pick the source colour (one already on the model)" },
+  "replace.pickTarget": { zh: "选择目标颜色", en: "Pick the target colour" },
+  "replace.useCurrent": { zh: "用当前颜色", en: "Use current colour" },
+  "replace.preview": { zh: "将把 {0} 面 · {1} 个区域 从 {2} 改为 {3}", en: "Will change {0} faces · {1} region(s) from {2} to {3}" },
+  "replace.none": { zh: "模型上没有携带 {0} 的面", en: "No faces carry {0}" },
+  "replace.guardSame": { zh: "来源与目标颜色相同", en: "Source and target colours are identical" },
+  "replace.guardDefault": { zh: "不能以未上色的默认灰作为来源（会重刷所有未涂装的面）", en: "The unpainted default grey cannot be a source (it would repaint every untouched face)" },
+  "replace.apply": { zh: "应用", en: "Apply" },
+  "replace.done": { zh: "已替换 {0} 面 · {1} 个区域：{2} → {3}（Ctrl+Z 可一步撤销）", en: "Replaced {0} faces · {1} region(s): {2} → {3} (one Ctrl+Z undoes it)" },
+  "replace.failed": { zh: "替换失败：{0}", en: "Replace failed: {0}" },
+
   // Reset confirm dialog (issue #28)
   "reset.confirmTitle": { zh: "清空所有分区", en: "Clear all regions" },
   "reset.confirm": { zh: "确认清空", en: "Confirm reset" },
@@ -390,11 +409,6 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.themeToLight": { zh: "切换到浅色主题", en: "Switch to light theme" },
   "menu.themeToDark": { zh: "切换到深色主题", en: "Switch to dark theme" },
   "menu.historyPanel": { zh: "历史记录", en: "History panel" },
-  // Ctrl+click region merge (issue #16)
-  "merge.anchor": { zh: "已选区域 {0} — 继续 Ctrl+点击其他区域并入，点击它本身或按 Esc 取消", en: "Region {0} picked — Ctrl+click others to absorb them; click it again or press Esc to cancel" },
-  "merge.merged": { zh: "区域 {0} 已并入区域 {1}（移动 {2} 面）", en: "Region {0} absorbed into region {1} ({2} faces moved)" },
-  "merge.cleared": { zh: "已取消合并选择", en: "Merge selection cleared" },
-  "merge.needTwo": { zh: "至少需要两个分区才能合并", en: "Need at least two regions to merge" },
   "menu.debugLog": { zh: "调试日志 (Ctrl+Shift+L)", en: "Debug log (Ctrl+Shift+L)" },
   // History panel (issue #22)
   "history.title": { zh: "历史记录", en: "History" },
