@@ -17,6 +17,7 @@ import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-
 import { ViewGizmo } from "./ViewGizmo";
 import { isPointerInGizmo } from "./viewGizmoModel";
 import { MergeBar } from "./MergeBar";
+import { createSerialPaintQueue, type PaintJob } from "./paintQueue";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
 // Patched ONCE at module load. `acceleratedRaycast` falls back to the native
@@ -1433,14 +1434,22 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // The queued item carries the modifier state captured at event time, so a
   // Shift+click whole-region fill is not lost while an earlier paint is in
   // flight (iteration 18, M3).
-  const dragPendingFaceRef = useRef<{
-    faceId: number;
-    wholeRegion: boolean;
-    hoveredSegment?: number | null;
-    renderedHover?: number | null;
-    strokeId?: number | null;
-  } | null>(null);
-  const paintDrainingRef = useRef(false);
+  // Serial paint queue — see paintQueue.ts for why the drain is serialized
+  // (iteration 15) and latest-wins (iteration 16), and paintQueue.test.ts for
+  // the strokeId-forwarding contract whose loss was issue #20 (one drag undone
+  // one sample at a time).
+  const paintQueue = useMemo(
+    () =>
+      createSerialPaintQueue<PaintJob>((job) =>
+        handleFacePickedRef.current(job.faceId, {
+          wholeRegion: job.wholeRegion,
+          hoveredSegment: job.hoveredSegment,
+          renderedHover: job.renderedHover,
+          strokeId: job.strokeId,
+        })
+      ),
+    []
+  );
   // Backend coalesces consecutive paint calls that share a `stroke_id` into ONE
   // undo entry. We mint a fresh id per drag (pointerdown) and reuse it for the
   // whole drag, so a single brush stroke = one undo step. The id alone delimits
@@ -1458,7 +1467,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // reads null (iter29 v1-v3 all failed due to this race). The snapshot is a
     // HUD diagnostic only now; it never steers the fill target.
     const snap = useAppStore.getState().hoveredSegment;
-    dragPendingFaceRef.current = {
+    const job: PaintJob = {
       faceId,
       wholeRegion,
       hoveredSegment: snap ?? null,
@@ -1468,7 +1477,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // into one field would hide the very signal the HUD exists to expose.
       renderedHover: renderedHighlightLabelRef.current,
       // The stroke id minted at pointerdown; groups this whole drag into one
-      // backend undo entry (see strokeCounterRef above).
+      // backend undo entry (see strokeCounterRef above). Forwarding this field
+      // is load-bearing: dropping it was issue #20.
       strokeId: activeStrokeIdRef.current,
     };
     // iter30 PROBE: at click time, capture exactly what we snapshot.
@@ -1476,27 +1486,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // now derived from segmentLabels[faceId] inside paintFace).
     setHoverProbe(
       `[CLICK] face=${faceId} snap(store)=${snap ?? "null"} ` +
-      `→ final=${dragPendingFaceRef.current.hoveredSegment ?? "null"}`
+      `→ final=${job.hoveredSegment ?? "null"}`
     );
-    if (paintDrainingRef.current) return; // busy → drop intermediate (covered by radius)
-    paintDrainingRef.current = true;
-    (async () => {
-      const fn = handleFacePickedRef.current;
-      while (dragPendingFaceRef.current != null) {
-        const job = dragPendingFaceRef.current;
-        dragPendingFaceRef.current = null;
-        try {
-          await fn(job.faceId, {
-            wholeRegion: job.wholeRegion,
-            hoveredSegment: job.hoveredSegment,
-            renderedHover: job.renderedHover,
-          });
-        }
-        catch { /* ignore single-face failures */ }
-      }
-      paintDrainingRef.current = false;
-    })();
-  }, []);
+    paintQueue.enqueue(job);
+  }, [paintQueue]);
 
   // Alt key → temporary camera rotate even while a paint/segment/lasso tool is
   // active. While held, onPointerDown early-returns (see MeshDisplay) so the
