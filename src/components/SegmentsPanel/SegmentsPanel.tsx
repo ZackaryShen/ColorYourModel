@@ -178,9 +178,11 @@ export function SegmentsPanel() {
 
   const toggle = (id: number, additive: boolean) => {
     if (!additive) {
-      const single = pickedRegions.length === 1 && pickedRegions[0] === id;
-      setPickedRegions(single ? [] : [id]);
-      setSelectedSegment(single ? null : id);
+      // Plain click = single highlight (selectedSegment) ONLY. It must not
+      // feed pickedRegions: that set is the Ctrl-multi-selection (#29), and a
+      // plain panel click landing in it popped the multi-select card for one
+      // region. Re-click the same row to clear the highlight.
+      setSelectedSegment(selectedSegment === id ? null : id);
       return;
     }
     // Computed from the render's own `picked` rather than inside a functional
