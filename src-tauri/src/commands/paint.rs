@@ -349,6 +349,53 @@ pub fn erase_paint(
     Ok(commit(mesh, stroke_id, updates))
 }
 
+/// Core of `fill_segments_paint` (owner scenario on #29): paint EVERY face
+/// of the given labels with `color` in a single commit — N regions, exactly
+/// ONE history entry, one Ctrl+Z restores all of them. Duplicate/unknown
+/// labels are harmless (a face is emitted once; absent labels match nothing).
+/// A no-match call records nothing.
+pub fn apply_fill_segments(
+    mesh: &mut crate::mesh::model::MeshModel,
+    labels: &[u32],
+    color: [u8; 4],
+) -> PaintResult {
+    let wanted: std::collections::HashSet<u32> = labels.iter().copied().collect();
+    let updates: Vec<(u32, [u8; 4])> = mesh
+        .segment_labels
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| wanted.contains(l))
+        .map(|(i, _)| (i as u32, color))
+        .collect();
+    if updates.is_empty() {
+        return PaintResult {
+            updated_faces: Vec::new(),
+            updated_colors: Vec::new(),
+        };
+    }
+    commit(mesh, None, updates)
+}
+
+/// Fill N regions in one shot (multi-select fill, #29): one IPC, one
+/// history entry. The viewport drives this from the unified multi-selection
+/// card; the labels arrive from the picked set.
+#[tauri::command]
+pub fn fill_segments_paint(
+    labels: Vec<u32>,
+    color: [u8; 4],
+    state: State<AppState>,
+) -> Result<PaintResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let result = apply_fill_segments(mesh, &labels, color);
+    log::info!(
+        "[cmd:fill_segments_paint] labels={} faces={}",
+        labels.len(),
+        result.updated_faces.len()
+    );
+    Ok(result)
+}
+
 /// One row of the colour panel's "used colours" section (issue #23).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -579,6 +626,70 @@ mod fill_tests {
         let result = apply_fill(&mut m, 0, [10, 200, 10, 255], 0.0);
         assert_eq!(result.updated_faces, vec![0, 1], "flood stays inside label 1");
         assert_eq!(colors_of(&m, &[2, 3]), vec![RED; 2]);
+    }
+}
+
+#[cfg(test)]
+mod fill_segments_tests {
+    //! Owner scenario on #29: multi-select regions (View tool / panel), then
+    //! fill them ALL in one go. N regions must be ONE history entry — not N.
+
+    use super::*;
+    use crate::mesh::model::MeshModel;
+
+    /// Tetrahedron, two regions: label 1 = faces {0, 1}, label 2 = {2, 3}.
+    fn two_region_mesh() -> MeshModel {
+        let mut m = MeshModel::new();
+        m.vertices = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        m.faces = vec![[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
+        m.compute_normals();
+        m.build_adjacency();
+        m.init_default_colors();
+        m.segment_labels = vec![1, 1, 2, 2];
+        m
+    }
+
+    #[test]
+    fn paints_union_of_labels_in_one_history_entry() {
+        let mut m = two_region_mesh();
+
+        let result = apply_fill_segments(&mut m, &[1, 2], [255, 0, 0, 255]);
+
+        assert_eq!(result.updated_faces.len(), 4);
+        assert!(m.face_colors.iter().all(|&c| c == [255, 0, 0, 255]));
+        // N regions, ONE undo step.
+        assert_eq!(m.history.undo_depth(), 1);
+        {
+            let crate::mesh::model::MeshModel { history, face_colors, segment_labels, vertices, .. } = &mut m;
+            history.jump_to(0, face_colors, segment_labels, vertices);
+        }
+        assert!(m.face_colors.iter().all(|&c| c == crate::mesh::model::DEFAULT_FACE_COLOR));
+    }
+
+    #[test]
+    fn duplicate_labels_paint_each_face_once() {
+        let mut m = two_region_mesh();
+
+        let result = apply_fill_segments(&mut m, &[1, 1, 2], [10, 20, 30, 255]);
+
+        assert_eq!(result.updated_faces, vec![0, 1, 2, 3], "no face twice");
+    }
+
+    #[test]
+    fn unknown_or_empty_labels_record_nothing() {
+        let mut m = two_region_mesh();
+
+        let empty = apply_fill_segments(&mut m, &[], [1, 2, 3, 255]);
+        let absent = apply_fill_segments(&mut m, &[99], [1, 2, 3, 255]);
+
+        assert_eq!(empty.updated_faces.len(), 0);
+        assert_eq!(absent.updated_faces.len(), 0);
+        assert_eq!(m.history.undo_depth(), 0, "no-op must not create an undo step");
     }
 }
 

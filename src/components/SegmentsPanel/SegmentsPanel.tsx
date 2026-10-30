@@ -45,11 +45,12 @@ export function SegmentsPanel() {
       setStatusMessage(t("segments.isolateDone", segId));
       return;
     }
-    const group = mergePicked.includes(segId) ? mergePicked : [segId];
+    const group = pickedRegions.includes(segId) ? pickedRegions : [segId];
     applyHidden(toggleHiddenLabels(hiddenSegments, group));
   };
 
-  // Ordered multi-selection for merging. `mergePicked[0]` is the anchor and becomes
+  // Ordered multi-selection (#29 unification: shared with the viewport tools).
+  // `pickedRegions[0]` is the anchor and becomes
   // the surviving region — the target is never inferred from size or label,
   // because every such rule is wrong for some selection and silently produces
   // a merge into a region the user did not point at.
@@ -59,8 +60,8 @@ export function SegmentsPanel() {
   // a value the render loop reads every frame.
   // Issue #24 (feedback): lifted to the store so a click outside the model
   // (viewport empty space) can blur the merge selection.
-  const mergePicked = useAppStore((s) => s.mergePicked);
-  const setMergePicked = useAppStore((s) => s.setMergePicked);
+  const pickedRegions = useAppStore((s) => s.pickedRegions);
+  const setPickedRegions = useAppStore((s) => s.setPickedRegions);
   const [merging, setMerging] = useState(false);
 
   // Which row has its split form open, and the crease threshold for it. Kept
@@ -132,23 +133,23 @@ export function SegmentsPanel() {
   // dissolve a picked region, and sending its label to the backend afterwards
   // fails the existence check — or worse, hits a label that has been reissued.
   useEffect(() => {
-    const live = mergePicked.filter((id) => segments.some((s) => s.id === id));
+    const live = pickedRegions.filter((id) => segments.some((s) => s.id === id));
     // Only set when something ACTUALLY left — a fresh array reference on
     // every run would loop this effect forever (React update-depth crash).
-    if (live.length === mergePicked.length) return;
-    setMergePicked(live);
-  }, [segments, mergePicked, setMergePicked]);
+    if (live.length === pickedRegions.length) return;
+    setPickedRegions(live);
+  }, [segments, pickedRegions, setPickedRegions]);
 
   // Issue #24 (field feedback): a Ctrl-multi-selection needs a way OUT —
   // Esc clears it (blur), like every other modal-ish selection here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (mergePicked.length > 0) setMergePicked([]);
+      if (pickedRegions.length > 0) setPickedRegions([]);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mergePicked]);
+  }, [pickedRegions]);
 
   // Issue #24: a hidden label that no longer exists (merge / reset / undo
   // rewrote the partition) must not hide a future region reusing the label.
@@ -173,27 +174,27 @@ export function SegmentsPanel() {
     }
   }, [segments, resegmentFor]);
 
-  const target = mergePicked.length >= 2 ? segments.find((s) => s.id === mergePicked[0]) : undefined;
+  const target = pickedRegions.length >= 2 ? segments.find((s) => s.id === pickedRegions[0]) : undefined;
 
   const toggle = (id: number, additive: boolean) => {
     if (!additive) {
-      const single = mergePicked.length === 1 && mergePicked[0] === id;
-      setMergePicked(single ? [] : [id]);
+      const single = pickedRegions.length === 1 && pickedRegions[0] === id;
+      setPickedRegions(single ? [] : [id]);
       setSelectedSegment(single ? null : id);
       return;
     }
     // Computed from the render's own `picked` rather than inside a functional
     // updater: React may invoke an updater twice, and `setSelectedSegment` is a
     // side effect that must not ride along.
-    const next = mergePicked.includes(id) ? mergePicked.filter((x) => x !== id) : [...mergePicked, id];
-    setMergePicked(next);
+    const next = pickedRegions.includes(id) ? pickedRegions.filter((x) => x !== id) : [...pickedRegions, id];
+    setPickedRegions(next);
     setSelectedSegment(next[0] ?? null);
   };
 
   const runMerge = async () => {
     if (!target || merging) return;
     setMerging(true);
-    const moved = await mergeSegments(target.id, mergePicked.slice(1));
+    const moved = await mergeSegments(target.id, pickedRegions.slice(1));
     // Issue #24: the merged region keeps the TARGET label, and a hidden
     // target must not swallow the sources invisibly — merged regions start
     // visible.
@@ -202,8 +203,8 @@ export function SegmentsPanel() {
     setHiddenSegments(next);
     setMerging(false);
     if (moved === null) return;
-    setStatusMessage(t("segments.merged", mergePicked.length, moved));
-    setMergePicked([target.id]);
+    setStatusMessage(t("segments.merged", pickedRegions.length, moved));
+    setPickedRegions([target.id]);
     setSelectedSegment(target.id);
   };
 
@@ -349,7 +350,7 @@ export function SegmentsPanel() {
       <div style={styles.list}>
         {segments.map((seg) => {
           const editing = editingId === seg.id;
-          const pickIndex = mergePicked.indexOf(seg.id);
+          const pickIndex = pickedRegions.indexOf(seg.id);
           const splitOpen = splitFor === seg.id && !editing;
           const resegOpen = resegmentFor === seg.id && !editing;
           return (
@@ -510,7 +511,7 @@ export function SegmentsPanel() {
           disabled={merging}
           style={styles.mergeButton}
         >
-          {t("segments.mergeInto", mergePicked.length, target.name)}
+          {t("segments.mergeInto", pickedRegions.length, target.name)}
         </button>
       )}
     </div>

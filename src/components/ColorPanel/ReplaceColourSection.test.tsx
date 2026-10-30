@@ -63,7 +63,7 @@ beforeEach(() => {
     language: "zh",
     meshData: meshFixture(),
     currentColor: [40, 167, 69, 255],
-    viewSelectedRegions: [],
+    pickedRegions: [],
     pendingPaintResult: null,
     statusMessage: "",
   });

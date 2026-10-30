@@ -53,6 +53,8 @@ pub fn run() {
             commands::paint::project_image_paint,
             commands::paint::fill_paint,
             commands::paint::fill_segment_paint,
+            // Multi-select fill — N regions, one history entry (#29).
+            commands::paint::fill_segments_paint,
             commands::paint::spray_paint,
             commands::paint::smart_brush_paint,
             commands::paint::erase_paint,
