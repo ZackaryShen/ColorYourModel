@@ -59,6 +59,9 @@ pub fn run() {
             commands::paint::smart_brush_paint,
             commands::paint::erase_paint,
             commands::paint::pick_color,
+            // Hidden-region view state sync (#24/#29): implicit spatial
+            // tools cull hidden faces before committing.
+            commands::paint::set_hidden_labels,
             // Colour panel "used colours" (issue #23).
             commands::paint::used_colors,
             // Colour find & replace (issue #29).

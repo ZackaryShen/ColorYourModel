@@ -157,8 +157,12 @@ pub fn gradient_radial_paint(
     let mesh = mesh_guard
         .as_mut()
         .ok_or("No mesh loaded")?;
-    let updates =
-        crate::paint::gradient::gradient_radial_hit(mesh, center_face, radius, color_inner, color_outer);
+    let hidden = hidden_snapshot(&state);
+    let updates = cull_hidden_pairs(
+        mesh,
+        crate::paint::gradient::gradient_radial_hit(mesh, center_face, radius, color_inner, color_outer),
+        &hidden,
+    );
     log::info!(
         "[cmd:gradient_radial_paint] center={} radius={} faces={}",
         center_face,
@@ -196,7 +200,8 @@ pub fn brush_paint(
             center_face, mesh.faces.len());
     }
 
-    let hits = brush_hit(mesh, center_face, radius);
+    let hidden = hidden_snapshot(&state);
+    let hits = cull_hidden(mesh, brush_hit(mesh, center_face, radius), &hidden);
     let center = mesh.face_center(center_face);
 
     // Colours are computed against the *current* buffer and written only after
@@ -229,7 +234,8 @@ pub fn fill_paint(
         face_id, color, radius
     );
 
-    Ok(apply_fill(mesh, face_id, color, radius))
+    let hidden = hidden_snapshot(&state);
+    Ok(apply_fill(mesh, face_id, color, radius, &hidden))
 }
 
 /// Core of [`fill_paint`] without the Tauri wrapper.
@@ -245,6 +251,7 @@ pub fn apply_fill(
     face_id: u32,
     color: [u8; 4],
     radius: f32,
+    hidden: &std::collections::HashSet<u32>,
 ) -> PaintResult {
     let faces = if radius > 0.0 {
         let center = mesh.face_center(face_id);
@@ -255,7 +262,7 @@ pub fn apply_fill(
                 local.push(fid);
             }
         }
-        local
+        cull_hidden(mesh, local, hidden)
     } else {
         region_faces(mesh, face_id)
     };
@@ -307,7 +314,12 @@ pub fn spray_paint(
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let updates = spray_hit(mesh, center_face, radius, strength, &color, density);
+    let hidden = hidden_snapshot(&state);
+    let updates = cull_hidden_pairs(
+        mesh,
+        spray_hit(mesh, center_face, radius, strength, &color, density),
+        &hidden,
+    );
     Ok(commit(mesh, stroke_id, updates))
 }
 
@@ -338,7 +350,8 @@ pub fn erase_paint(
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let hits = brush_hit(mesh, center_face, radius);
+    let hidden = hidden_snapshot(&state);
+    let hits = cull_hidden(mesh, brush_hit(mesh, center_face, radius), &hidden);
     // Iteration 21: the eraser restores DEFAULT_FACE_COLOR, not literal white,
     // so erased faces match never-painted ones on both canvas themes.
     let updates: Vec<(u32, [u8; 4])> = hits
@@ -347,6 +360,51 @@ pub fn erase_paint(
         .collect();
 
     Ok(commit(mesh, stroke_id, updates))
+}
+
+/// Drop faces whose segment label is in `hidden` — the backend half of the
+/// hidden-region view state (#24/#29): implicit spatial tools (brush / spray
+/// / eraser / radius fills / radial gradients) must not touch faces the user
+/// has hidden, even when the dab's radius sweeps over them. The hidden set
+/// lives in [`AppState::hidden_labels`], synced from the frontend whenever it
+/// changes; EXPLICIT list-based actions (multi-select fill, colour replace)
+/// deliberately do NOT cull — hiding is display-only there.
+fn cull_hidden(
+    mesh: &crate::mesh::model::MeshModel,
+    faces: Vec<u32>,
+    hidden: &std::collections::HashSet<u32>,
+) -> Vec<u32> {
+    if hidden.is_empty() {
+        return faces;
+    }
+    faces
+        .into_iter()
+        .filter(|f| !hidden.contains(&mesh.segment_labels[*f as usize]))
+        .collect()
+}
+
+/// Same cull for pre-built (face, payload) update lists.
+fn cull_hidden_pairs<T>(
+    mesh: &crate::mesh::model::MeshModel,
+    updates: Vec<(u32, T)>,
+    hidden: &std::collections::HashSet<u32>,
+) -> Vec<(u32, T)> {
+    if hidden.is_empty() {
+        return updates;
+    }
+    updates
+        .into_iter()
+        .filter(|(f, _)| !hidden.contains(&mesh.segment_labels[*f as usize]))
+        .collect()
+}
+
+/// Snapshot of the hidden label set (empty = nothing hidden).
+fn hidden_snapshot(state: &State<AppState>) -> std::collections::HashSet<u32> {
+    state
+        .hidden_labels
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default()
 }
 
 /// Core of `fill_segments_paint` (owner scenario on #29): paint EVERY face
@@ -429,6 +487,19 @@ pub fn used_colors(state: State<AppState>) -> Result<Vec<UsedColorDto>, String> 
             regions: e.regions,
         })
         .collect())
+}
+
+/// Sync the hidden-region view state from the frontend (#24/#29). The set
+/// lives here so IMPLICIT spatial tools (brush / spray / eraser / radius
+/// fills / radial gradients) can cull hidden faces before committing;
+/// replaces the whole set on every call (empty = nothing hidden). Explicit
+/// list-based actions (multi-select fill, colour replace) ignore it.
+#[tauri::command]
+pub fn set_hidden_labels(labels: Vec<u32>, state: State<AppState>) -> Result<(), String> {
+    let mut hidden = state.hidden_labels.lock().map_err(|e| e.to_string())?;
+    *hidden = labels.into_iter().collect();
+    log::info!("[cmd:set_hidden_labels] count={}", hidden.len());
+    Ok(())
 }
 
 /// Result of a colour replace (issue #29): the incremental paint payload
@@ -552,6 +623,7 @@ pub fn pick_color(face_id: u32, state: State<AppState>) -> Result<[u8; 4], Strin
 mod fill_tests {
     use super::*;
     use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR};
+    use std::collections::HashSet;
 
     const RED: [u8; 4] = [220, 30, 30, 255];
 
@@ -623,9 +695,66 @@ mod fill_tests {
             *c = RED;
         }
 
-        let result = apply_fill(&mut m, 0, [10, 200, 10, 255], 0.0);
+        let result = apply_fill(&mut m, 0, [10, 200, 10, 255], 0.0, &HashSet::new());
         assert_eq!(result.updated_faces, vec![0, 1], "flood stays inside label 1");
         assert_eq!(colors_of(&m, &[2, 3]), vec![RED; 2]);
+    }
+}
+
+#[cfg(test)]
+mod cull_hidden_tests {
+    //! Hidden-region view state (#24/#29): implicit spatial tools must not
+    //! touch faces the user has hidden, even when the dab's radius sweeps
+    //! over them. The backend keeps the hidden LABEL set (synced from the
+    //! frontend whenever it changes) and culls hit lists before committing.
+
+    use super::*;
+    use crate::mesh::model::MeshModel;
+    use std::collections::HashSet;
+
+    fn labeled_mesh() -> MeshModel {
+        let mut m = MeshModel::new();
+        m.vertices = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        m.faces = vec![[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
+        m.compute_normals();
+        m.build_adjacency();
+        m.init_default_colors();
+        m.segment_labels = vec![1, 1, 2, 2];
+        m
+    }
+
+    #[test]
+    fn faces_of_hidden_labels_are_dropped() {
+        let m = labeled_mesh();
+        let mut hidden = HashSet::new();
+        hidden.insert(2u32);
+
+        let out = cull_hidden(&m, vec![0, 1, 2, 3], &hidden);
+        assert_eq!(out, vec![0, 1], "label 2's faces are hidden");
+    }
+
+    #[test]
+    fn empty_hidden_set_is_a_noop() {
+        let m = labeled_mesh();
+        let hidden = HashSet::new();
+        let out = cull_hidden(&m, vec![2, 3], &hidden);
+        assert_eq!(out, vec![2, 3]);
+    }
+
+    #[test]
+    fn update_pairs_are_culled_by_face_key() {
+        let m = labeled_mesh();
+        let mut hidden = HashSet::new();
+        hidden.insert(2u32);
+
+        let updates = vec![(0u32, [9, 9, 9, 255]), (2, [8, 8, 8, 255]), (3, [7, 7, 7, 255])];
+        let out = cull_hidden_pairs(&m, updates, &hidden);
+        assert_eq!(out, vec![(0u32, [9, 9, 9, 255])]);
     }
 }
 

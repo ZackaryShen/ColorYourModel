@@ -930,7 +930,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     setPendingPaintResult(null);
   }, [pendingPaintResult, updateFaceColors, setPendingPaintResult]);
   const { paintFace } = usePaintTool();
-  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState } = useTauriCommand();
+  const { paintSegmentFace, finalizeSegment, manualRegionAddPoint, finalizeManualRegion, undo, redo, historyState, syncHiddenLabels } = useTauriCommand();
   const { undo: historyUndo, redo: historyRedo } = useUndoRedo({ undo, redo, historyState });
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
@@ -953,6 +953,14 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     useAppStore.getState().setPickedRegions([]);
   }, [modelVertices]);
   const modelFaceLabels = useAppStore((s) => s.meshData?.segmentLabels);
+  // Hidden view state must reach the BACKEND: the implicit spatial tools
+  // (brush/spray/eraser/radius fills/radial gradients) cull hidden faces
+  // before committing there, so a dab can no longer paint through a hidden
+  // region (#24 gap the owner hit on #29 — fill was safe, brush was not).
+  // Model load resets hiddenSegments to empty, which also clears the backend.
+  useEffect(() => {
+    void syncHiddenLabels(Array.from(hiddenSegments));
+  }, [hiddenSegments, syncHiddenLabels]);
   useEffect(() => {
     const geo = meshRef.current?.geometry;
     if (!geo || !modelFaceLabels) return;
