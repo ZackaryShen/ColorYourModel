@@ -141,7 +141,12 @@ pub fn gradient_path_paint(
         samples.len(),
         updates.len()
     );
-    Ok(commit(mesh, stroke_id, updates))
+    let faces: Vec<u32> = updates.iter().map(|&(f, _)| f).collect();
+    let result = commit(mesh, stroke_id, updates);
+    // Provenance for the merged used-colours entry — without it the panel
+    // would list every interpolated colour as its own swatch.
+    mesh.record_gradient(&faces, color_a, color_b);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -169,7 +174,10 @@ pub fn gradient_radial_paint(
         radius,
         updates.len()
     );
-    Ok(commit(mesh, stroke_id, updates))
+    let faces: Vec<u32> = updates.iter().map(|&(f, _)| f).collect();
+    let result = commit(mesh, stroke_id, updates);
+    mesh.record_gradient(&faces, color_inner, color_outer);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -464,15 +472,25 @@ pub struct UsedColorDto {
     /// True for the never-painted default grey — the panel marks the swatch
     /// so "no colour yet" stays distinguishable from a painted grey.
     pub is_default: bool,
+    /// True for the merged gradient row: every gradient-interpolated colour
+    /// on the model reported as ONE swatch (`color` = start, `gradientTo` =
+    /// end), the way an Orca gradient filament occupies a single slot.
+    pub is_gradient: bool,
+    /// End colour of the latest gradient stroke; `None` on plain rows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gradient_to: Option<[u8; 4]>,
 }
 
 /// Every distinct colour currently on the model, most faces first (issue
 /// #23). The command is a thin DTO map over `MeshModel::used_colors` — the
-/// counting logic and its tests live in the mesh layer.
+/// counting logic and its tests live in the mesh layer. Gradient membership
+/// is repaired before reading so stale members (undone / overpainted
+/// strokes) cannot ghost the merged swatch.
 #[tauri::command]
 pub fn used_colors(state: State<AppState>) -> Result<Vec<UsedColorDto>, String> {
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    mesh.prune_gradient_faces();
     Ok(mesh
         .used_colors()
         .into_iter()
@@ -481,10 +499,12 @@ pub fn used_colors(state: State<AppState>) -> Result<Vec<UsedColorDto>, String> 
             // default grey gets the dashed "default" swatch. Distinguishing
             // painted-grey from never-painted would need per-face provenance
             // the colour buffer does not carry — accepted limitation.
-            is_default: e.color == DEFAULT_FACE_COLOR,
+            is_default: !e.is_gradient && e.color == DEFAULT_FACE_COLOR,
             color: e.color,
             faces: e.faces,
             regions: e.regions,
+            is_gradient: e.is_gradient,
+            gradient_to: e.gradient_to,
         })
         .collect())
 }

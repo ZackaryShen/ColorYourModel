@@ -155,6 +155,12 @@ export interface UsedColorEntry {
   regions: number;
   /** True for the never-painted default grey. */
   isDefault: boolean;
+  /** True for the merged gradient row: every gradient-interpolated colour
+   * on the model reported as ONE swatch (`color` → `gradientTo`), the way
+   * an Orca gradient filament occupies a single slot. */
+  isGradient?: boolean;
+  /** End colour of the latest gradient stroke; absent on plain rows. */
+  gradientTo?: [number, number, number, number];
 }
 
 // History panel (issue #22) — mirrors the backend DTOs in commands/history.rs.

@@ -125,16 +125,20 @@ export function ColorPanel() {
           <div style={styles.palette}>
             {used.map((u) => {
               const hex = toHex(u.color);
+              const toHexEnd = u.isGradient && u.gradientTo ? toHex(u.gradientTo) : null;
               const isActive =
                 currentColor[0] === u.color[0] &&
                 currentColor[1] === u.color[1] &&
                 currentColor[2] === u.color[2];
-              const tooltip = u.isDefault
-                ? t("color.usedDefaultTooltip", hex.toUpperCase(), u.faces.toLocaleString(), u.regions)
-                : t("color.usedTooltip", hex.toUpperCase(), u.faces.toLocaleString(), u.regions);
+              const tooltip = u.isGradient
+                ? t("color.usedGradientTooltip", hex.toUpperCase(),
+                    (toHexEnd ?? "").toUpperCase(), u.faces.toLocaleString(), u.regions)
+                : u.isDefault
+                  ? t("color.usedDefaultTooltip", hex.toUpperCase(), u.faces.toLocaleString(), u.regions)
+                  : t("color.usedTooltip", hex.toUpperCase(), u.faces.toLocaleString(), u.regions);
               return (
                 <button
-                  key={hex}
+                  key={toHexEnd ? `${hex}-${toHexEnd}` : hex}
                   title={tooltip}
                   onMouseEnter={() => setUsedColourHover([u.color[0], u.color[1], u.color[2]])}
                   onMouseLeave={() => setUsedColourHover(null)}
@@ -142,7 +146,11 @@ export function ColorPanel() {
                   className="cym-btn"
                   style={{
                     ...styles.swatch,
-                    backgroundColor: hex,
+                    // One gradient swatch for the whole interpolated range,
+                    // mirroring the Orca gradient-filament slot.
+                    background: toHexEnd
+                      ? `linear-gradient(90deg, ${hex}, ${toHexEnd})`
+                      : hex,
                     border: isActive
                       ? "2px solid var(--accent, #4a9eff)"
                       : u.isDefault
@@ -158,9 +166,12 @@ export function ColorPanel() {
 
       {/* Issue #29: colour find & replace — only meaningful once a model is
           loaded (the used list is empty before that, but replace does not
-          require any USED colour: the model may still be all-default). */}
+          require any USED colour: the model may still be all-default).
+          Gradient rows are excluded: replace looks faces up by exact colour,
+          and a gradient is a continuum with no single lookup key — replacing
+          a gradient means repainting it. */}
       {modelFaceColors && (
-        <ReplaceColourSection used={used} />
+        <ReplaceColourSection used={used.filter((u) => !u.isGradient)} />
       )}
     </div>
   );
