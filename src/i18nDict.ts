@@ -85,7 +85,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.clear": { zh: "清空种子", en: "Clear seeds" },
   "seed.count": { zh: "已放置 {0} 个种子", en: "{0} seeds placed" },
   "seed.needOne": { zh: "请至少放置一个种子", en: "Place at least one seed first" },
-  "seed.done": { zh: "种子分区完成：{0} 个区域", en: "Seed partition done: {0} regions" },
+  "seed.done": { zh: "种子分区完成：{0} 个区域 — 右上角「分区视图」可查看结果", en: "Seed partition done: {0} regions — use 分区视图 (top right) to inspect" },
   "seed.eraseMode": { zh: "启用种子擦除", en: "Enable seed eraser" },
   "seed.closeTitle": {
     zh: "关闭 Seed 面板（Esc / 切回 View 工具；已放置的种子会被保留）",

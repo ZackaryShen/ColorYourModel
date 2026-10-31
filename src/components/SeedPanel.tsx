@@ -1337,7 +1337,7 @@ export function SeedPanel() {
           and clears every algorithm overlay. Indispensable since the previous
           "× buttons" only cleared their own data slice. The click opens the
           in-app confirm (#28); only the dialog's danger button resets. */}
-      <div style={styles.row}>
+      <div style={styles.resetRow}>
         <button
           onClick={openResetConfirm}
           disabled={resetPhase === "running"}
@@ -1444,7 +1444,10 @@ const styles: Record<string, React.CSSProperties> = {
   row: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 },
   label: { flex: "0 0 auto", whiteSpace: "nowrap" },
   val: { flex: "0 0 auto", width: 32, textAlign: "right", color: "var(--text-2, #ccc)" },
-  buttonRow: { display: "flex", gap: 8, marginTop: 6 },
+  buttonRow: { display: "flex", gap: 8, marginTop: 10 },
+  // The destructive reset row sits alone at the very bottom (both modes) —
+  // give it clear separation from the primary action above it.
+  resetRow: { display: "flex", marginTop: 12 },
   fuse: {
     flex: 1,
     padding: "8px 10px",

@@ -1058,7 +1058,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     const b = meshData?.bbox;
     if (!b) return 0.02;
     const dx = b.max[0] - b.min[0], dy = b.max[1] - b.min[1], dz = b.max[2] - b.min[2];
-    return Math.max(0.004, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0012);
+    // Acceptance round 5 #4: was 0.0012 (×diagonal) — markers were too small
+    // to spot on a 1.5M-face model; +33%.
+    return Math.max(0.0054, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0016);
   }, [meshData?.bbox]);
 
   // The faint wireframe overlay is built from a WireframeGeometry that, for large
@@ -1906,7 +1908,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         // of adding one. Tolerance ~0.0032 × bbox diagonal — same order as the
         // lasso closeThreshold (0.004) so it feels like "click on the dot".
         if (seedEraseMode) {
-          const tol = dotSize * 4;
+          // Acceptance round 5 #3: the whole MARKER must be clickable, not
+          // just a small dot around its origin — tolerance is now one marker
+          // height (sphere + stem ≈ 3×size).
+          const tol = seedMarkerSize * 3;
           let best = -1;
           let bestD = Infinity;
           for (let i = 0; i < seedPoints.length; i++) {
@@ -1974,13 +1979,22 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
               local.faceIndex
             );
             if (res) {
+              // Acceptance round 5 #3: land the marker on the clicked face's
+              // CENTROID, not the snapped vertex — a seed sitting on a face
+              // corner read as "off target". The backend call still runs (it
+              // maintains the manual-partition state); only the display/
+              // storage position changes.
+              if (!meshData) return;
+              const fc = meshData.faces;
+              const vi0 = fc[local.faceIndex] * 3;
+              const vs = meshData.vertices;
               addSeedPoint({
-                x: res.snapped[0],
-                y: res.snapped[1],
-                z: res.snapped[2],
+                x: (vs[vi0] + vs[vi0 + 1] + vs[vi0 + 2]) / 3,
+                y: (vs[vi0 + 3] + vs[vi0 + 4] + vs[vi0 + 5]) / 3,
+                z: (vs[vi0 + 6] + vs[vi0 + 7] + vs[vi0 + 8]) / 3,
                 faceIndex: local.faceIndex,
               });
-              log.info("Viewport", "manual seed added via backend snap", {
+              log.info("Viewport", "manual seed added at face centroid", {
                 snapped: { x: res.snapped[0].toFixed(3), y: res.snapped[1].toFixed(3), z: res.snapped[2].toFixed(3) },
                 newCount: seedPoints.length + 1,
               });

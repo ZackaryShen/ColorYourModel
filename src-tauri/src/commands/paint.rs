@@ -137,7 +137,7 @@ pub fn apply_fill(
     // A fill is a single click, never a drag, so it can never coalesce with
     // anything: `None`.
     let updates: Vec<(u32, [u8; 4])> = faces.into_iter().map(|fid| (fid, color)).collect();
-    commit(mesh, None, updates, Some(color))
+    commit(mesh, None, updates, None)
 }
 
 #[tauri::command]
@@ -165,7 +165,7 @@ pub fn apply_fill_segment(
 ) -> PaintResult {
     let faces = segment_faces(mesh, segment_id);
     let updates: Vec<(u32, [u8; 4])> = faces.into_iter().map(|fid| (fid, color)).collect();
-    commit(mesh, None, updates, Some(color))
+    commit(mesh, None, updates, None)
 }
 
 #[tauri::command]
@@ -298,7 +298,7 @@ pub fn apply_fill_segments(
             updated_colors: Vec::new(),
         };
     }
-    commit(mesh, None, updates, Some(color))
+    commit(mesh, None, updates, None)
 }
 
 /// Fill N regions in one shot (multi-select fill, #29): one IPC, one
