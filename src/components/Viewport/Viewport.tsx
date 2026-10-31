@@ -1939,7 +1939,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         setStatusMessage(t("seed.eraseMiss"));
         return -1;
       };
-      eraseAtScreen(e.clientX, e.clientY);
+      const downRect = canvas.getBoundingClientRect();
+      eraseAtScreen(e.clientX - downRect.left, e.clientY - downRect.top);
       eraseDragRef.current = true;
       // Capture so the smear keeps firing even when the cursor leaves the
       // canvas mid-swipe (pointerup then always lands on the canvas).

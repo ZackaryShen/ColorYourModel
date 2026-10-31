@@ -362,7 +362,7 @@ export function useTauriCommand() {
     to: [number, number, number, number]
   ): Promise<PaintResult | null> => {
     try {
-      const r = await invoke<PaintResult>("replace_paint_source", { from, to });
+      const r = await invoke<PaintResult>("replace_paint_source_shaped", { from, to });
       return r ?? { updatedFaces: [], updatedColors: [] };
     } catch (e) {
       log.error("useTauriCommand", "replacePaintSource failed", { error: String(e) });

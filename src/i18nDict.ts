@@ -361,7 +361,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "replace.title": { zh: "替换颜色", en: "Replace colour" },
   "color.paintColours": { zh: "绘制颜色", en: "Paint colours" },
   "color.paintTooltip": { zh: "{0} · 画笔绘制的 {1} 面 · 点击选中后可整体换色", en: "{0} · {1} faces painted by the brush · click to select, then repaint as one" },
-  "color.repaintHint": { zh: "整体重涂这支笔迹：选一个目标色（纯色平铺）。", en: "Repaint this stroke: pick a target colour (flat fill)." },
+  "color.repaintHint": { zh: "整体重涂这支笔迹：选一个目标色，重涂会保留笔迹原有的浓淡形态。", en: "Repaint this stroke: pick a target colour — the stroke's falloff shading is preserved." },
   "color.repaintApply": { zh: "重涂这支笔迹", en: "Repaint stroke" },
   "color.repaintNote": { zh: "一步撤销可还原；Esc 取消选中。", en: "One undo step reverts it; Esc cancels the selection." },
   "color.repaintNone": {

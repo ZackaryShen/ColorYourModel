@@ -385,6 +385,71 @@ pub fn replace_paint_source(
     })
 }
 
+/// SHAPE-PRESERVING repaint (governance acceptance round 7, feedback #2):
+/// a stroke is not a flat fill — the falloff wrote a different blended colour
+/// per face. Recover each face's original strength by inverting
+/// `painted = base * (1-s) + from * s` against the never-painted base, then
+/// re-mix the NEW colour at that same strength, so the repainted stroke keeps
+/// its natural gradient instead of reading as a flat fill.
+#[tauri::command]
+pub fn replace_paint_source_shaped(
+    from: [u8; 4],
+    to: [u8; 4],
+    state: State<AppState>,
+) -> Result<PaintResult, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    if from == to {
+        return Ok(PaintResult {
+            updated_faces: Vec::new(),
+            updated_colors: Vec::new(),
+        });
+    }
+    let base = crate::mesh::model::DEFAULT_FACE_COLOR;
+    let faces: Vec<u32> = mesh.paint_source_faces(from);
+    if faces.is_empty() {
+        return Ok(PaintResult {
+            updated_faces: Vec::new(),
+            updated_colors: Vec::new(),
+        });
+    }
+    // Per-channel denominator |from - base|: channels where the source sat
+    // too close to the base cannot recover s reliably and are skipped.
+    let mut num = 0.0f32;
+    let mut den = 0.0f32;
+    for c in 0..3 {
+        let d = from[c] as f32 - base[c] as f32;
+        if d.abs() > 24.0 {
+            den += d * d;
+        }
+    }
+    let mut updates: Vec<(u32, [u8; 4])> = Vec::with_capacity(faces.len());
+    for &f in &faces {
+        let painted = mesh.paint_sources.get(&f).map(|p| p.1).unwrap_or(from);
+        if den > f32::EPSILON {
+            for c in 0..3 {
+                let d = from[c] as f32 - base[c] as f32;
+                if d.abs() > 24.0 {
+                    num += (painted[c] as f32 - base[c] as f32) * d;
+                }
+            }
+        }
+        let s = if den > f32::EPSILON { (num / den).clamp(0.0, 1.0) } else { 1.0 };
+        let new_c = mix_color(&base, &to, s);
+        updates.push((f, new_c));
+        num = 0.0;
+    }
+    mesh.apply_paint(None, &updates);
+    for &(face, painted) in &updates {
+        mesh.paint_sources.insert(face, (to, painted));
+    }
+    let (updated_faces, updated_colors) = updates.into_iter().unzip();
+    Ok(PaintResult {
+        updated_faces,
+        updated_colors,
+    })
+}
+
 /// Live faces painted with `source` — hover-highlight payload for the
 /// 绘制颜色 swatches (issue #29 governance, acceptance round 4 feedback #4).
 #[tauri::command]
