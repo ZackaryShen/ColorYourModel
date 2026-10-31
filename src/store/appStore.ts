@@ -725,6 +725,13 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setSegmentMode: (m) => {
     log.info("store", "setSegmentMode", { mode: m });
     set({ segmentMode: m });
+    // The two techniques are INCOMPATIBLE by design: auto (fuse) ignores
+    // seeds entirely, manual (grow) ignores the fuse vote. Say so on every
+    // switch instead of leaving the user to discover it (acceptance round 2,
+    // feedback #2).
+    get().setStatusMessage(
+      m === "manual" ? "seed.switchManual" : "seed.switchAuto"
+    );
   },
   suggestedSeeds: [],
   setSuggestedSeeds: (seeds) => {

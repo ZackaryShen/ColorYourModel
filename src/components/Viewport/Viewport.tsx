@@ -996,6 +996,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // Lasso (manual region) state
   const isLassoTool = activeTool === "lasso";
   const isSeedTool = activeTool === "seed";
+  // Seed sub-mode drives the cursor: seeds only sow in manual (grow) mode.
+  const segmentMode = useAppStore((s) => s.segmentMode);
   // View/Navigate mode: left button rotates the camera (no tool action).
   const isViewTool = activeTool === "view";
   // Tools that TARGET a partition and therefore show the whole-segment highlight
@@ -1070,6 +1072,12 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const SEED_CURSOR =
     `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M10 17C6.2 13.2 5 9.8 5 7.6 5 4.6 7.2 3 10 3s5 1.6 5 4.6c0 2.2-1.2 5.6-5 9.4z' fill='%23eab308' stroke='%2342200a' stroke-width='1.2'/%3E%3Cpath d='M10 6.6c-.2-2 1.2-3.6 3.4-3.6.2 2-1.2 3.6-3.4 3.6z' fill='%234ade80' stroke='%23166534' stroke-width='.8'/%3E%3C/svg%3E") 10 17, crosshair`;
 
+  // Eraser cursor for 启用种子擦除: a pink eraser block, hotspot at the
+  // erasing edge (user feedback: the sowing seed cursor must not read as
+  // "still placing seeds" once erasing is armed).
+  const ERASER_CURSOR =
+    `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cg transform='rotate(-40 10 10)'%3E%3Crect x='4' y='7' width='12' height='7' rx='1.5' fill='%23fca5a5' stroke='%237f1d1d' stroke-width='1.1'/%3E%3Crect x='4' y='12' width='12' height='3.5' rx='1.2' fill='%23fef2f2' stroke='%237f1d1d' stroke-width='1.1'/%3E%3C/g%3E%3C/svg%3E") 4 18, default`;
+
   // Set canvas cursor based on active tool
   useEffect(() => {
     const canvas = gl.domElement;
@@ -1079,11 +1087,15 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     // sub-mode flags; the tool class alone is ambiguous.
     if (isSeedTool && seedPickMode) {
       canvas.style.cursor = "pointer";
-    } else if (isSeedTool && !seedEraseMode) {
-      // User feedback: a bare crosshair reads as "measure", not "sow". The
-      // plain seed tool shows a seed-shaped cursor (SVG data URI, hotspot on
-      // the seed tip) so the sowing affordance is visible before the first
-      // click; erase mode keeps the neutral cursor.
+    } else if (isSeedTool && seedEraseMode) {
+      // 启用种子擦除 gets its own eraser-shaped cursor (user feedback: the
+      // seed cursor wrongly persisted into erase mode, advertising "still
+      // sowing" while the user is erasing).
+      canvas.style.cursor = ERASER_CURSOR;
+    } else if (isSeedTool && segmentMode === "manual") {
+      // Sowing cursor ONLY in manual (grow) mode: in auto (fuse) mode a mesh
+      // click never places a seed, so advertising one with the cursor was a
+      // lie (user feedback: the cursor must follow the sub-mode or vanish).
       canvas.style.cursor = SEED_CURSOR;
     } else if (isBrushTool && !segmentView) {
       canvas.style.cursor = "crosshair";
@@ -1097,7 +1109,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.style.cursor = "default";
     }
     return () => { canvas.style.cursor = "default"; };
-  }, [gl, isBrushTool, isSegmentTool, isLassoTool, isSeedTool, segmentView, seedPickMode, seedEraseMode, activeTool]);
+  }, [gl, isBrushTool, isSegmentTool, isLassoTool, isSeedTool, segmentMode, segmentView, seedPickMode, seedEraseMode, activeTool]);
 
   const geometry = useMemo(() => {
     log.info("MeshDisplay", "Building geometry", { segmentView });
@@ -2527,8 +2539,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           colour/opacity/depthTest differ (see SeedMarker). */}
       {isSeedTool && (
         <>
-          <SeedMarkers seeds={seedPoints} ghost={false} erase={seedEraseMode} size={seedMarkerSize} camera={camera} />
-          <SeedMarkers seeds={suggestedSeeds} ghost erase={false} size={seedMarkerSize} camera={camera} />
+          <SeedMarkers seeds={seedPoints} ghost={false} erase={seedEraseMode} size={seedMarkerSize} />
+          <SeedMarkers seeds={suggestedSeeds} ghost erase={false} size={seedMarkerSize} />
         </>
       )}
       <BoundaryLines regions={planarRegions} color="#22d3ee" visible={planarRegionsVisible} />
@@ -2551,53 +2563,65 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
 // glyph is billboarded to face the camera so it reads as a tidy seedling from
 // any angle. Same shape for committed and suggested; only colour/opacity/
 // depthTest differ — committed green, eraser red, suggested magenta + on-top.
+// Acceptance round 2, feedback #3 (seed-count jank): every marker used to
+// own 4 geometries + 4 materials + its OWN useFrame billboard pass. Dozens of
+// seeds meant hundreds of GPU resources and a useFrame callback per seed on
+// every frame. Now the geometries and the three colour materials are SHARED
+// module singletons (unit-sized, scaled per mesh), and billboarding happens
+// in ONE useFrame inside <SeedMarkers> over a shared ref list.
+const SEED_GEOMETRY = {
+  sphere: new THREE.SphereGeometry(1, 10, 10),
+  stem: new THREE.CylinderGeometry(0.16, 0.16, 2, 6),
+  leaf: new THREE.SphereGeometry(0.385, 8, 8),
+};
+const seedMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
+function seedMaterial(ghost: boolean, erase: boolean): THREE.MeshBasicMaterial {
+  const key = `${ghost}-${erase}`;
+  let m = seedMaterialCache.get(key);
+  if (!m) {
+    const color = erase ? "#ff4d4f" : ghost ? "#ff2bd6" : "#3ddc84";
+    m = new THREE.MeshBasicMaterial({
+      color,
+      depthTest: !ghost, // ghosts always visible (iter57)
+      transparent: ghost,
+      opacity: ghost ? 0.85 : 1,
+    });
+    seedMaterialCache.set(key, m);
+  }
+  return m;
+}
+
 function SeedMarker({
   pos,
   size,
   ghost,
   erase,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  camera,
+  register,
 }: {
   pos: [number, number, number];
   size: number;
   ghost: boolean;
   erase: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  camera: any;
+  register: (g: THREE.Group | null) => void;
 }) {
   const ref = useRef<THREE.Group>(null);
-  useFrame(() => {
-    if (ref.current && camera) ref.current.quaternion.copy(camera.quaternion);
-  });
-  const color = erase ? "#ff4d4f" : ghost ? "#ff2bd6" : "#3ddc84";
-  const depthTest = !ghost; // ghosts always visible (iter57)
+  useEffect(() => {
+    register(ref.current);
+    return () => register(null);
+  }, [register]);
+  const mat = seedMaterial(ghost, erase);
   const renderOrder = ghost ? 20 : 0;
   const r = size;
   const stemH = size * 2.0;
   const stemR = size * 0.16;
   const leafR = size * 0.55;
-  // Material factored once per marker (cheap: 4 meshes share the colour rule).
-  const matProps = { color, depthTest, transparent: ghost, opacity: ghost ? 0.85 : 1 };
   return (
     <group position={pos}>
       <group ref={ref}>
-        <mesh renderOrder={renderOrder}>
-          <sphereGeometry args={[r, 10, 10]} />
-          <meshBasicMaterial {...matProps} />
-        </mesh>
-        <mesh position={[0, r + stemH / 2, 0]} renderOrder={renderOrder}>
-          <cylinderGeometry args={[stemR, stemR, stemH, 6]} />
-          <meshBasicMaterial {...matProps} />
-        </mesh>
-        <mesh position={[leafR, r + stemH, 0]} renderOrder={renderOrder}>
-          <sphereGeometry args={[leafR * 0.7, 8, 8]} />
-          <meshBasicMaterial {...matProps} />
-        </mesh>
-        <mesh position={[-leafR, r + stemH, 0]} renderOrder={renderOrder}>
-          <sphereGeometry args={[leafR * 0.7, 8, 8]} />
-          <meshBasicMaterial {...matProps} />
-        </mesh>
+        <mesh geometry={SEED_GEOMETRY.sphere} scale={r} renderOrder={renderOrder} material={mat} />
+        <mesh geometry={SEED_GEOMETRY.stem} scale={size} position={[0, r + stemH / 2, 0]} renderOrder={renderOrder} material={mat} />
+        <mesh geometry={SEED_GEOMETRY.leaf} scale={size} position={[leafR, r + stemH, 0]} renderOrder={renderOrder} material={mat} />
+        <mesh geometry={SEED_GEOMETRY.leaf} scale={size} position={[-leafR, r + stemH, 0]} renderOrder={renderOrder} material={mat} />
       </group>
     </group>
   );
@@ -2608,18 +2632,32 @@ function SeedMarkers({
   ghost,
   erase,
   size,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  camera,
 }: {
   seeds: { x: number; y: number; z: number }[];
   ghost: boolean;
   erase: boolean;
   size: number;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  camera: any;
 }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const lastCountRef = useRef<number>(-1);
+  // One billboard pass for ALL markers (was: one useFrame per seed).
+  const groupsRef = useRef<Set<THREE.Group>>(new Set());
+  const register = useCallback((g: THREE.Group | null) => {
+    if (g) groupsRef.current.add(g);
+    else {
+      // Removal happens on unmount; the Set may hold a dead group until the
+      // next pass — prune entries whose parents detached (r3f nulls nothing
+      // here, so filter by presence in the scene graph on each sweep).
+      groupsRef.current = new Set([...groupsRef.current].filter((g2) => g2.parent));
+    }
+  }, []);
+  useFrame(({ camera: cam }) => {
+    if (!cam) return;
+    groupsRef.current.forEach((g) => {
+      if (g.parent) g.quaternion.copy(cam.quaternion);
+      else groupsRef.current.delete(g);
+    });
+  });
   if (seeds.length !== lastCountRef.current) {
     log.info("Viewport", ghost ? "GhostSeedMarkers rendering new suggestion set" : "ManualSeedMarkers rendering", {
       count: seeds.length,
@@ -2639,7 +2677,7 @@ function SeedMarkers({
           size={size}
           ghost={ghost}
           erase={erase}
-          camera={camera}
+          register={register}
         />
       ))}
     </>

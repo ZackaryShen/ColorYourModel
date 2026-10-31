@@ -265,16 +265,32 @@ function GizmoContent({
   const pal = THEME[theme];
   // Orca-style direction words (顶部/正面/... or TOP/FRONT/...), re-baked on
   // language and theme changes.
+  //
+  // Acceptance round 2, feedback #8: after an alt-tab / GPU texture eviction
+  // these canvas textures could render black with the letters gone, and only
+  // a language switch (which re-runs these memos) brought them back. Force a
+  // rebuild on window focus / tab visibility — cheap (six small canvases) and
+  // the failure becomes self-healing.
+  const [texEpoch, setTexEpoch] = useState(0);
+  useEffect(() => {
+    const rebuild = () => setTexEpoch((k) => k + 1);
+    window.addEventListener("focus", rebuild);
+    document.addEventListener("visibilitychange", rebuild);
+    return () => {
+      window.removeEventListener("focus", rebuild);
+      document.removeEventListener("visibilitychange", rebuild);
+    };
+  }, []);
   const faceTextures = useMemo(
     () =>
       GIZMO_FACES.map((f) =>
         makeFaceTexture(translate(GIZMO_VIEWS[f.viewIndex].faceKey, language), pal)
       ),
-    [pal, language]
+    [pal, language, texEpoch]
   );
   const headTextures = useMemo(
     () => GIZMO_AXES.map((a) => makeHeadTexture(a.label, a.color)),
-    []
+    [texEpoch]
   );
   useEffect(() => {
     return () => {

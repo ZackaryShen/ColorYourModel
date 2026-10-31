@@ -5,6 +5,7 @@ import { useT } from "../../i18n";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { ReplaceColourSection } from "./ReplaceColourSection";
 import { toHex } from "../../utils/colorFormat";
+import { condenseUsedColours } from "../../utils/usedColours";
 
 export function ColorPanel() {
   const t = useT();
@@ -21,6 +22,20 @@ export function ColorPanel() {
   const modelFaceColors = useAppStore((s) => s.meshData?.faceColors);
   const historyVersion = useAppStore((s) => s.historyVersion);
   const [used, setUsed] = useState<UsedColorEntry[]>([]);
+  // Issue #29 acceptance #6: the replace section starts collapsed and Esc
+  // collapses it (dropping its internal picks with the unmount).
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  useEffect(() => {
+    if (!replaceOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+      setReplaceOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [replaceOpen]);
 
   useEffect(() => {
     // Guards the async round-trip: a slow earlier fetch must never overwrite
@@ -32,7 +47,7 @@ export function ColorPanel() {
     }
     const timer = setTimeout(() => {
       void usedColors().then((res) => {
-        if (res && !cancelled) setUsed(res);
+        if (res && !cancelled) setUsed(condenseUsedColours(res));
       });
     }, 250);
     return () => {
@@ -158,9 +173,39 @@ export function ColorPanel() {
 
       {/* Issue #29: colour find & replace — only meaningful once a model is
           loaded (the used list is empty before that, but replace does not
-          require any USED colour: the model may still be all-default). */}
+          require any USED colour: the model may still be all-default).
+          Acceptance round 2 feedback #6: the section is COLLAPSIBLE and
+          starts collapsed — a picker the user is not using must not be a
+          permanent fixture. Esc or the × collapses it (state inside is
+          dropped, so picks never outlive the collapse). */}
       {modelFaceColors && (
-        <ReplaceColourSection used={used} />
+        <div>
+          <button
+            className="cym-btn"
+            style={styles.replaceToggle}
+            onClick={() => setReplaceOpen((v) => !v)}
+            title={t("color.replaceToggle")}
+          >
+            {replaceOpen ? "▾" : "▸"} {t("replace.title")}
+            {replaceOpen && (
+              <span
+                role="button"
+                aria-label={t("color.replaceClose")}
+                title={t("color.replaceClose")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setReplaceOpen(false);
+                }}
+                style={{ marginLeft: 6, opacity: 0.7 }}
+              >
+                ✕
+              </span>
+            )}
+          </button>
+          {replaceOpen && modelFaceColors && (
+            <ReplaceColourSection used={used} />
+          )}
+        </div>
       )}
     </div>
   );
@@ -202,6 +247,18 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 0,
     cursor: "pointer",
     background: "transparent",
+  },
+  replaceToggle: {
+    width: "100%",
+    textAlign: "left",
+    padding: "4px 6px",
+    marginBottom: 4,
+    background: "transparent",
+    color: "var(--text-2, #aaaaaa)",
+    fontSize: 12,
+    border: "1px solid var(--border, #555555)",
+    borderRadius: 6,
+    cursor: "pointer",
   },
   palette: {
     display: "grid",

@@ -67,6 +67,14 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.modeAuto": { zh: "自动（融合）", en: "Auto (fuse)" },
   "seed.modeManual": { zh: "手动（生长）", en: "Manual (grow)" },
   "seed.modeAutoTitle": { zh: "自动生成：全局边级投票，一键分区，无需放置种子", en: "Auto: global edge-vote, one-click partition, no seeds needed" },
+  "seed.switchManual": {
+    zh: "已切换到手动（生长）：点击模型放种子或用「推荐种子」，再点「生长」；已放的种子不会作用于自动（融合）。",
+    en: "Manual (grow): click the model to sow or use Suggest seeds, then Grow. Seeds you placed have no effect on Auto (fuse).",
+  },
+  "seed.switchAuto": {
+    zh: "已切换到自动（融合）：一键按折角投票分区；已放的种子不会参与自动融合。",
+    en: "Auto (fuse): one-click partition by edge vote. Seeds you placed do not participate in the fuse.",
+  },
   "seed.modeManualTitle": { zh: "手动生长：从你放置/推荐/检测出的种子做测地生长", en: "Manual: geodesic grow from your placed / suggested / detected seeds" },
   "seed.modeAutoHint": { zh: "当前：自动融合——点击「🧩 融合生成」按折角+平面+多视角全局投票切出分区，眼睛区域会被自动保护。", en: "Now: auto-fuse — click 🧩 Fuse & generate to cut the partition by dihedral+planar+MultiView global vote; eye regions are auto-protected." },
   "seed.modeManualHint": { zh: "当前：手动生长——先放置/推荐/检测种子，再点「🌱 生长」做测地分水岭；平面/多视角/截面的建议种子也会并入。", en: "Now: manual grow — place / suggest / detect seeds, then click 🌱 Grow for geodesic watershed from the nearest seed; planar/MultiView/cross-section suggestions also feed in." },
@@ -347,6 +355,8 @@ const dict: Record<string, Record<Lang, string>> = {
   "reset.resetting": { zh: "清空中…", en: "Resetting…" },
   // Colour find & replace (issue #29)
   "replace.title": { zh: "替换颜色", en: "Replace colour" },
+  "color.replaceToggle": { zh: "替换颜色", en: "Replace colour" },
+  "color.replaceClose": { zh: "收起替换颜色（Esc）", en: "Collapse replace (Esc)" },
   "replace.from": { zh: "从", en: "From" },
   "replace.to": { zh: "到", en: "To" },
   "replace.pickSource": { zh: "选择来源颜色（模型上已有的颜色）", en: "Pick the source colour (one already on the model)" },
