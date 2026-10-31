@@ -3,6 +3,7 @@ import { useAppStore } from "../../store/appStore";
 import { AMS_PALETTE, type UsedColorEntry } from "../../types/mesh";
 import { useT } from "../../i18n";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
+import { AMS_PALETTE as AMS } from "../../types/mesh";
 import { ReplaceColourSection } from "./ReplaceColourSection";
 import { toHex } from "../../utils/colorFormat";
 import { condenseUsedColours } from "../../utils/usedColours";
@@ -22,6 +23,64 @@ export function ColorPanel() {
   const modelFaceColors = useAppStore((s) => s.meshData?.faceColors);
   const historyVersion = useAppStore((s) => s.historyVersion);
   const [used, setUsed] = useState<UsedColorEntry[]>([]);
+  // Issue #29 governance acceptance: paint provenance — the BRUSH colour a
+  // stroke was painted with (not the blended per-face result). Selecting a
+  // group offers a one-click "repaint the whole stroke" replacement.
+  const { paintSourceGroups, replacePaintSource } = useTauriCommand();
+  const historyVersionBump = useAppStore((s) => s.historyVersion);
+  const [paintGroups, setPaintGroups] = useState<
+    { source: [number, number, number, number]; faces: number }[]
+  >([]);
+  const [selectedSource, setSelectedSource] = useState<[number, number, number, number] | null>(null);
+  const [repaintTo, setRepaintTo] = useState<[number, number, number, number] | null>(null);
+  const [repainting, setRepainting] = useState(false);
+  const setCurrentColorLocal = useAppStore((s) => s.setCurrentColor);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!modelFaceColors) {
+      setPaintGroups([]);
+      setSelectedSource(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void paintSourceGroups().then((res) => {
+        if (!cancelled) setPaintGroups(res ?? []);
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelFaceColors, historyVersionBump]);
+
+  // Esc deselects the paint-source group (before the replace-collapse listener
+  // gets a chance — this one is registered later, so it wins on the same key).
+  useEffect(() => {
+    if (selectedSource === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setSelectedSource(null);
+      setRepaintTo(null);
+      e.stopImmediatePropagation();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedSource]);
+
+  const applyRepaint = async () => {
+    if (!selectedSource || !repaintTo) return;
+    setRepainting(true);
+    const n = await replacePaintSource(selectedSource, repaintTo);
+    setRepainting(false);
+    if (n > 0) {
+      useAppStore.getState().markHistoryDirty();
+      useAppStore.getState().setStatusMessage(t("color.replacedSource", n));
+    }
+    setSelectedSource(null);
+    setRepaintTo(null);
+  };
   // Issue #29 acceptance #6: the replace section starts collapsed and Esc
   // collapses it (dropping its internal picks with the unmount).
   const [replaceOpen, setReplaceOpen] = useState(false);
@@ -132,6 +191,99 @@ export function ColorPanel() {
           );
         })}
       </div>
+
+      {/* Issue #29 governance: paint provenance — each swatch is the BRUSH
+          colour a stroke was painted with (icon-marked); selecting one offers
+          a one-click repaint of the whole stroke (acceptance round 3, #3). */}
+      {showUsed && paintGroups.length > 0 && (
+        <>
+          <div style={styles.subheader}>{t("color.paintColours")}</div>
+          <div style={styles.palette}>
+            {paintGroups.map((g) => {
+              const hex = toHex(g.source);
+              const key = `${g.source[0]},${g.source[1]},${g.source[2]},${g.source[3]}`;
+              const isSelected =
+                selectedSource !== null &&
+                selectedSource[0] === g.source[0] &&
+                selectedSource[1] === g.source[1] &&
+                selectedSource[2] === g.source[2] &&
+                selectedSource[3] === g.source[3];
+              return (
+                <button
+                  key={key}
+                  title={t("color.paintTooltip", hex.toUpperCase(), g.faces.toLocaleString())}
+                  onClick={() => {
+                    setSelectedSource(isSelected ? null : g.source);
+                    setRepaintTo(null);
+                  }}
+                  className="cym-btn"
+                  style={{
+                    ...styles.swatch,
+                    position: "relative",
+                    backgroundColor: hex,
+                    border: isSelected
+                      ? "2px solid var(--accent, #4a9eff)"
+                      : "1px solid var(--border, #555555)",
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -4,
+                      right: -3,
+                      fontSize: 9,
+                      pointerEvents: "none",
+                    }}
+                  >
+                    🖌
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {selectedSource && (
+            <div style={styles.replaceBox}>
+              <div style={styles.replaceHint}>{t("color.repaintHint")}</div>
+              <div style={styles.palette}>
+                {AMS.map((entry) => {
+                  const hex = toHex(entry.color);
+                  const isTo =
+                    repaintTo !== null &&
+                    repaintTo[0] === entry.color[0] &&
+                    repaintTo[1] === entry.color[1] &&
+                    repaintTo[2] === entry.color[2];
+                  return (
+                    <button
+                      key={entry.name}
+                      title={entry.name}
+                      onClick={() =>
+                        setRepaintTo([entry.color[0], entry.color[1], entry.color[2], 255])
+                      }
+                      className="cym-btn"
+                      style={{
+                        ...styles.swatch,
+                        backgroundColor: hex,
+                        border: isTo
+                          ? "2px solid var(--accent, #4a9eff)"
+                          : "1px solid var(--border, #555555)",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <button
+                className="cym-btn"
+                style={styles.replaceApply}
+                disabled={!repaintTo || repainting}
+                onClick={() => void applyRepaint()}
+              >
+                {repainting ? "…" : t("color.repaintApply")}
+              </button>
+              <div style={styles.replaceNote}>{t("color.repaintNote")}</div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Issue #23: the colours actually on the model, click = pick up. */}
       {showUsed && (
@@ -247,6 +399,29 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 0,
     cursor: "pointer",
     background: "transparent",
+  },
+  replaceBox: {
+    marginTop: 6,
+    padding: 6,
+    border: "1px solid var(--border, #555555)",
+    borderRadius: 6,
+  },
+  replaceHint: {
+    fontSize: 11,
+    color: "var(--text-2, #aaaaaa)",
+    marginBottom: 4,
+    lineHeight: 1.5,
+  },
+  replaceApply: {
+    width: "100%",
+    marginTop: 6,
+    padding: "5px 0",
+  },
+  replaceNote: {
+    fontSize: 10,
+    color: "var(--text-3, #777777)",
+    marginTop: 4,
+    lineHeight: 1.5,
   },
   replaceToggle: {
     width: "100%",

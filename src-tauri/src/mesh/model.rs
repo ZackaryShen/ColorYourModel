@@ -97,6 +97,15 @@ pub struct MeshModel {
     pub segment_labels: Vec<u32>,
     pub segments: HashMap<u32, Segment>,
 
+    /// Issue #29 (governance acceptance round 3): paint provenance — which
+    /// USER-chosen colour produced each painted face, and what the paint pass
+    /// actually wrote there. `face -> (source, painted)`. The used-colours
+    /// panel groups by `source` (the brush colour, not the blended result),
+    /// and replace_paint_source only touches faces whose CURRENT colour still
+    /// equals `painted` — so undo / overwrite / replace automatically retire
+    /// stale entries instead of needing explicit invalidation.
+    pub paint_sources: HashMap<u32, ([u8; 4], [u8; 4])>,
+
     /// User-supplied region names, keyed by segment label.
     ///
     /// `segments` is derived state — every label rewrite throws it away and
@@ -177,6 +186,7 @@ impl MeshModel {
             faces: Vec::new(),
             normals: Vec::new(),
             face_colors: Vec::new(),
+            paint_sources: HashMap::new(),
             segment_labels: Vec::new(),
             segments: HashMap::new(),
             segment_names: HashMap::new(),
@@ -751,6 +761,67 @@ impl MeshModel {
         for &(face, color) in updates {
             self.face_colors[face as usize] = color;
         }
+    }
+
+    /// Record paint provenance for a committed batch (issue #29 governance):
+    /// `Some(source)` = the user's brush colour for those faces; `None` =
+    /// the faces left the tracked set (erased, or flattened to a plain colour
+    /// by replace).
+    pub fn record_paint_sources(
+        &mut self,
+        source: Option<[u8; 4]>,
+        updates: &[(u32, [u8; 4])],
+    ) {
+        for &(face, painted) in updates {
+            match source {
+                Some(src) => {
+                    self.paint_sources.insert(face, (src, painted));
+                }
+                None => {
+                    self.paint_sources.remove(&face);
+                }
+            }
+        }
+    }
+
+    /// Live paint-source groups (issue #29 governance): user colour -> count
+    /// of faces whose CURRENT colour still matches what that brush pass wrote.
+    /// Entries whose faces were undone / repainted / replaced fail the colour
+    /// check and silently drop out — no explicit invalidation needed.
+    pub fn paint_source_groups(&self) -> Vec<([u8; 4], u32)> {
+        let mut tally: HashMap<[u8; 4], u32> = HashMap::new();
+        for (&face, &(source, painted)) in &self.paint_sources {
+            if self.face_colors.get(face as usize) == Some(&painted) {
+                *tally.entry(source).or_insert(0) += 1;
+            }
+        }
+        let mut out: Vec<([u8; 4], u32)> = tally.into_iter().collect();
+        out.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        out
+    }
+
+    /// Replace every live face painted with `from` by `to`, in ONE undo step.
+    /// Surviving registry entries are re-keyed to (to, to): the group now
+    /// reads as "painted with `to`". Returns the face count (0 = nothing
+    /// live — no history entry, mirroring replace_face_color's contract).
+    pub fn replace_paint_source(&mut self, from: [u8; 4], to: [u8; 4]) -> u32 {
+        let faces: Vec<u32> = self
+            .paint_sources
+            .iter()
+            .filter(|(face, (source, painted))| {
+                *source == from && self.face_colors.get(**face as usize) == Some(painted)
+            })
+            .map(|(face, _)| *face)
+            .collect();
+        if faces.is_empty() {
+            return 0;
+        }
+        let updates: Vec<(u32, [u8; 4])> = faces.iter().map(|&f| (f, to)).collect();
+        self.apply_paint(None, &updates);
+        for &(face, painted) in &updates {
+            self.paint_sources.insert(face, (to, painted));
+        }
+        faces.len() as u32
     }
 
     /// Overwrite one face's colour and segment label together, recording both.

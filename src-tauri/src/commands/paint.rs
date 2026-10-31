@@ -28,8 +28,10 @@ fn commit(
     mesh: &mut crate::mesh::model::MeshModel,
     stroke_id: Option<u64>,
     updates: Vec<(u32, [u8; 4])>,
+    source: Option<[u8; 4]>,
 ) -> PaintResult {
     mesh.apply_paint(stroke_id, &updates);
+    mesh.record_paint_sources(source, &updates);
     let (updated_faces, updated_colors) = updates.into_iter().unzip();
     PaintResult {
         updated_faces,
@@ -81,7 +83,7 @@ pub fn brush_paint(
         })
         .collect();
 
-    Ok(commit(mesh, stroke_id, updates))
+    Ok(commit(mesh, stroke_id, updates, Some(color)))
 }
 
 #[tauri::command]
@@ -135,7 +137,7 @@ pub fn apply_fill(
     // A fill is a single click, never a drag, so it can never coalesce with
     // anything: `None`.
     let updates: Vec<(u32, [u8; 4])> = faces.into_iter().map(|fid| (fid, color)).collect();
-    commit(mesh, None, updates)
+    commit(mesh, None, updates, Some(color))
 }
 
 #[tauri::command]
@@ -163,7 +165,7 @@ pub fn apply_fill_segment(
 ) -> PaintResult {
     let faces = segment_faces(mesh, segment_id);
     let updates: Vec<(u32, [u8; 4])> = faces.into_iter().map(|fid| (fid, color)).collect();
-    commit(mesh, None, updates)
+    commit(mesh, None, updates, Some(color))
 }
 
 #[tauri::command]
@@ -185,7 +187,7 @@ pub fn spray_paint(
         spray_hit(mesh, center_face, radius, strength, &color, density),
         &hidden,
     );
-    Ok(commit(mesh, stroke_id, updates))
+    Ok(commit(mesh, stroke_id, updates, Some(color)))
 }
 
 #[tauri::command]
@@ -202,7 +204,7 @@ pub fn smart_brush_paint(
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     let updates = smart_brush_hit(mesh, center_face, radius, strength, &falloff_mode, &color);
-    Ok(commit(mesh, stroke_id, updates))
+    Ok(commit(mesh, stroke_id, updates, Some(color)))
 }
 
 #[tauri::command]
@@ -224,7 +226,7 @@ pub fn erase_paint(
         .map(|fid| (fid, DEFAULT_FACE_COLOR))
         .collect();
 
-    Ok(commit(mesh, stroke_id, updates))
+    Ok(commit(mesh, stroke_id, updates, None))
 }
 
 /// Drop faces whose segment label is in `hidden` — the backend half of the
@@ -296,7 +298,7 @@ pub fn apply_fill_segments(
             updated_colors: Vec::new(),
         };
     }
-    commit(mesh, None, updates)
+    commit(mesh, None, updates, Some(color))
 }
 
 /// Fill N regions in one shot (multi-select fill, #29): one IPC, one
@@ -329,6 +331,47 @@ pub struct UsedColorDto {
     /// True for the never-painted default grey — the panel marks the swatch
     /// so "no colour yet" stays distinguishable from a painted grey.
     pub is_default: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PaintSourceGroup {
+    /// The user's brush colour (what the palette showed when painting).
+    pub source: [u8; 4],
+    /// Live faces still wearing exactly what that brush pass wrote.
+    pub faces: u32,
+}
+
+/// Paint provenance groups (issue #29 governance): the used-colours panel
+/// lists these as "painted with <colour>" entries — the BRUSH colour, not the
+/// blended per-face result.
+#[tauri::command]
+pub fn paint_source_groups(
+    state: State<AppState>,
+) -> Result<Vec<PaintSourceGroup>, String> {
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    Ok(mesh
+        .paint_source_groups()
+        .into_iter()
+        .map(|(source, faces)| PaintSourceGroup { source, faces })
+        .collect())
+}
+
+/// Replace every live face painted with `from` by `to` in ONE undo step
+/// (issue #29 governance acceptance: "repaint the whole stroke at once").
+/// Returns the replaced face count; 0 = nothing live (no history entry).
+#[tauri::command]
+pub fn replace_paint_source(
+    from: [u8; 4],
+    to: [u8; 4],
+    state: State<AppState>,
+) -> Result<u32, String> {
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    if from == to {
+        return Ok(0);
+    }
+    Ok(mesh.replace_paint_source(from, to))
 }
 
 /// Every distinct colour currently on the model, most faces first (issue
@@ -427,7 +470,7 @@ pub fn apply_replace_face_color(
         };
     }
     let updates: Vec<(u32, [u8; 4])> = faces.iter().map(|&f| (f, to)).collect();
-    let result = commit(mesh, None, updates);
+    let result = commit(mesh, None, updates, None);
     ReplaceColorResult {
         updated_faces: result.updated_faces,
         updated_colors: result.updated_colors,

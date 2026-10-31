@@ -1839,6 +1839,13 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       }
       // View mode → let OrbitControls handle it (rotate); never paint.
       if (isViewTool) return;
+      // Governance acceptance round 3 (#1): in auto (fuse) mode a mesh click
+      // NEVER places a seed — the cursor already says so, and now the handler
+      // agrees. Nudge toward the manual tab instead of silently doing nothing.
+      if (isSeedTool && segmentMode === "auto" && !seedPickMode) {
+        setStatusMessage(t("seed.autoNoSowing"));
+        return;
+      }
       // Iteration 78: Pick-for-Eye sub-mode intercepts clicks BEFORE the
       // seed-tool branch so a pick-mode click cannot accidentally also place
       // a seed (or erase one). Auto-exits on first committed hit — repeat

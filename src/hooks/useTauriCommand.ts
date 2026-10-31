@@ -346,6 +346,31 @@ export function useTauriCommand() {
 
   /** Used-colours listing for the colour panel (issue #23): one entry per
    *  distinct colour on the model, most faces first. */
+  const paintSourceGroups = async (): Promise<
+    { source: [number, number, number, number]; faces: number }[]
+  > => {
+    try {
+      return await invoke("paint_source_groups");
+    } catch (e) {
+      log.error("useTauriCommand", "paintSourceGroups failed", { error: String(e) });
+      return [];
+    }
+  };
+
+  const replacePaintSource = async (
+    from: [number, number, number, number],
+    to: [number, number, number, number]
+  ): Promise<number> => {
+    try {
+      const n = await invoke<number>("replace_paint_source", { from, to });
+      return n ?? 0;
+    } catch (e) {
+      log.error("useTauriCommand", "replacePaintSource failed", { error: String(e) });
+      setStatusMessage(t("paint.replaceSourceError", String(e)));
+      return 0;
+    }
+  };
+
   const usedColors = async (): Promise<UsedColorEntry[] | null> => {
     try {
       return await invoke<UsedColorEntry[]>("used_colors");
@@ -814,5 +839,7 @@ export function useTauriCommand() {
     historyEntries,
     historyJump,
     usedColors,
+    paintSourceGroups,
+    replacePaintSource,
   };
 }

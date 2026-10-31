@@ -67,6 +67,10 @@ const dict: Record<string, Record<Lang, string>> = {
   "seed.modeAuto": { zh: "自动（融合）", en: "Auto (fuse)" },
   "seed.modeManual": { zh: "手动（生长）", en: "Manual (grow)" },
   "seed.modeAutoTitle": { zh: "自动生成：全局边级投票，一键分区，无需放置种子", en: "Auto: global edge-vote, one-click partition, no seeds needed" },
+  "seed.autoNoSowing": {
+    zh: "自动（融合）模式下点击不播种 — 切到「手动（生长）」来放种子，或直接点「融合生成」。",
+    en: "Auto (fuse) ignores clicks — switch to Manual (grow) to sow, or just hit Fuse & generate.",
+  },
   "seed.switchManual": {
     zh: "已切换到手动（生长）：点击模型放种子或用「推荐种子」，再点「生长」；已放的种子不会作用于自动（融合）。",
     en: "Manual (grow): click the model to sow or use Suggest seeds, then Grow. Seeds you placed have no effect on Auto (fuse).",
@@ -355,6 +359,13 @@ const dict: Record<string, Record<Lang, string>> = {
   "reset.resetting": { zh: "清空中…", en: "Resetting…" },
   // Colour find & replace (issue #29)
   "replace.title": { zh: "替换颜色", en: "Replace colour" },
+  "color.paintColours": { zh: "绘制颜色", en: "Paint colours" },
+  "color.paintTooltip": { zh: "{0} · 画笔绘制的 {1} 面 · 点击选中后可整体换色", en: "{0} · {1} faces painted by the brush · click to select, then repaint as one" },
+  "color.repaintHint": { zh: "整体重涂这支笔迹：选一个目标色（纯色平铺）。", en: "Repaint this stroke: pick a target colour (flat fill)." },
+  "color.repaintApply": { zh: "重涂这支笔迹", en: "Repaint stroke" },
+  "color.repaintNote": { zh: "一步撤销可还原；Esc 取消选中。", en: "One undo step reverts it; Esc cancels the selection." },
+  "color.replacedSource": { zh: "已整体重涂 {0} 面", en: "Repainted {0} faces" },
+  "paint.replaceSourceError": { zh: "整体重涂失败: {0}", en: "Stroke repaint failed: {0}" },
   "color.replaceToggle": { zh: "替换颜色", en: "Replace colour" },
   "color.replaceClose": { zh: "收起替换颜色（Esc）", en: "Collapse replace (Esc)" },
   "replace.from": { zh: "从", en: "From" },

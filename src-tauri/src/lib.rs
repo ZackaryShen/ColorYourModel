@@ -56,6 +56,8 @@ pub fn run() {
             commands::paint::set_hidden_labels,
             // Colour panel "used colours" (issue #23).
             commands::paint::used_colors,
+            commands::paint::paint_source_groups,
+            commands::paint::replace_paint_source,
             // Colour find & replace (issue #29).
             commands::paint::replace_face_color,
             // Unified undo/redo — the single timeline covering paint, fill,

@@ -1283,20 +1283,6 @@ export function SeedPanel() {
         </>
       )}
 
-      {/* Reset partition — wipes meshData.segmentLabels + faceColors + history
-          and clears every algorithm overlay. Indispensable since the previous
-          "× buttons" only cleared their own data slice. The click opens the
-          in-app confirm (#28); only the dialog's danger button resets. */}
-      <div style={styles.row}>
-        <button
-          onClick={openResetConfirm}
-          disabled={resetPhase === "running"}
-          style={styles.danger}
-          title={t("seed.clearAllTitle")}
-        >
-          {resetPhase === "running" ? "…" : t("seed.clearAll")}
-        </button>
-      </div>
 
       {resetPhase !== "idle" && (
         <ResetConfirmDialog
@@ -1347,6 +1333,20 @@ export function SeedPanel() {
           </div>
         </>
       )}
+      {/* Reset partition — wipes meshData.segmentLabels + faceColors + history
+          and clears every algorithm overlay. Indispensable since the previous
+          "× buttons" only cleared their own data slice. The click opens the
+          in-app confirm (#28); only the dialog's danger button resets. */}
+      <div style={styles.row}>
+        <button
+          onClick={openResetConfirm}
+          disabled={resetPhase === "running"}
+          style={styles.danger}
+          title={t("seed.clearAllTitle")}
+        >
+          {resetPhase === "running" ? "…" : t("seed.clearAll")}
+        </button>
+      </div>
     </div>
   );
 }
