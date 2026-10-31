@@ -720,23 +720,19 @@ impl MeshModel {
     /// future-proofing, not behaviour. Deliberately NOT the export
     /// quantiser: two near-identical colours must stay two swatches.
     pub fn used_colors(&self) -> Vec<UsedColorEntry> {
-        // Acceptance round 4 feedback #3: faces tracked as LIVE paint strokes
-        // (provenance colour still matching) belong to the 绘制颜色 group and
-        // are excluded here — their blended variants used to flood this list.
-        let live_painted: std::collections::HashSet<u32> = self
-            .paint_sources
-            .iter()
-            .filter(|(face, (_src, painted))| {
-                self.face_colors.get(**face as usize) == Some(painted)
-            })
-            .map(|(face, _)| *face)
-            .collect();
+        // Acceptance rounds 4+6: faces tracked as LIVE paint strokes are
+        // counted by their SOURCE colour (the brush colour the user picked),
+        // NOT the blended per-face result — a stroke made with one purple
+        // reads as ONE purple in the list, however many blended variants the
+        // falloff produced. Everything else (fills, unpainted faces) counts
+        // by its literal colour as before.
         let mut tally: HashMap<[u8; 4], (u32, HashSet<u32>)> = HashMap::new();
         for (face, color) in self.face_colors.iter().enumerate() {
-            if live_painted.contains(&(face as u32)) {
-                continue;
-            }
-            let e = tally.entry(*color).or_insert((0, HashSet::new()));
+            let effective = match self.paint_sources.get(&(face as u32)) {
+                Some((src, painted)) if self.face_colors.get(face as usize) == Some(painted) => *src,
+                _ => *color,
+            };
+            let e = tally.entry(effective).or_insert((0, HashSet::new()));
             e.0 += 1;
             if let Some(label) = self.segment_labels.get(face) {
                 e.1.insert(*label);

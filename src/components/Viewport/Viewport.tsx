@@ -921,6 +921,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   const { undo: historyUndo, redo: historyRedo } = useUndoRedo({ undo, redo, historyState });
   const t = useT();
   const meshRef = useRef<THREE.Mesh>(null);
+  // Seed smear-erase: true between pointerdown and pointerup while 启用种子擦除.
+  const eraseDragRef = useRef(false);
   // (0.2.0 transformMode selector intentionally not ported — no transform feature on 012)
   // Issue #24: write the per-face hidden flags straight into the aHidden
   // vertex attribute — the SAME proven pipeline the segment-label attribute
@@ -1904,32 +1906,46 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           hit: { x: local.point.x.toFixed(3), y: local.point.y.toFixed(3), z: local.point.z.toFixed(3) },
           faceIndex: local.faceIndex,
         });
-        // Eraser mode (iteration 51): remove the nearest existing seed instead
-        // of adding one. Tolerance ~0.0032 × bbox diagonal — same order as the
-        // lasso closeThreshold (0.004) so it feels like "click on the dot".
-        if (seedEraseMode) {
-          // Acceptance round 5 #3: the whole MARKER must be clickable, not
-          // just a small dot around its origin — tolerance is now one marker
-          // height (sphere + stem ≈ 3×size).
-          const tol = seedMarkerSize * 3;
-          let best = -1;
-          let bestD = Infinity;
-          for (let i = 0; i < seedPoints.length; i++) {
-            const s = seedPoints[i];
-            const d = Math.hypot(local.point.x - s.x, local.point.y - s.y, local.point.z - s.z);
-            if (d < bestD) {
-              bestD = d;
-              best = i;
-            }
+    // Eraser mode — SMEAR ERASE (acceptance round 5 #1, round 6 #1): the old
+    // 3D-distance click test kept missing (the marker is billboarded to face
+    // the camera, so its SCREEN footprint is what the user aims at, and a
+    // click "on" it can be 2+ units away in 3D). Hit-test in SCREEN space
+    // instead: project each seed, and any seed whose projection lands within
+    // its on-screen glyph radius of the pointer dies. Holding the button and
+    // smearing across the model wipes every seed the cursor passes over.
+    if (seedEraseMode) {
+      const eraseAtScreen = (px: number, py: number): number => {
+        const rect = canvas.getBoundingClientRect();
+        let best = -1;
+        let bestD = Infinity;
+        const v = new THREE.Vector3();
+        for (let i = 0; i < seedPoints.length; i++) {
+          const s = seedPoints[i];
+          v.set(s.x, s.y, s.z).project(camera);
+          const sx = (v.x * 0.5 + 0.5) * rect.width;
+          const sy = (-v.y * 0.5 + 0.5) * rect.height;
+          // Practical 26px glyph radius — the whole icon is a fat hit target.
+          const d = Math.hypot(px - sx, py - sy);
+          if (d < bestD) {
+            bestD = d;
+            best = i;
           }
-          if (best >= 0 && bestD <= tol) {
-            removeSeedPoint(best);
-            setStatusMessage(t("seed.erased", seedPoints.length - 1));
-          } else {
-            setStatusMessage(t("seed.eraseMiss"));
-          }
-          return;
         }
+        if (best >= 0 && bestD <= 26) {
+          removeSeedPoint(best);
+          setStatusMessage(t("seed.erased", seedPoints.length - 1));
+          return best;
+        }
+        setStatusMessage(t("seed.eraseMiss"));
+        return -1;
+      };
+      eraseAtScreen(e.clientX, e.clientY);
+      eraseDragRef.current = true;
+      // Capture so the smear keeps firing even when the cursor leaves the
+      // canvas mid-swipe (pointerup then always lands on the canvas).
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* not critical */ }
+      return;
+    }
         // Iteration 61: allow BOTH manual seeds and suggested seeds to coexist.
         // Previously any click while suggestions existed auto-accepted the
         // nearest one and returned, so the user could never add a manual seed
@@ -2041,6 +2057,33 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     };
 
     const onPointerMove = (e: PointerEvent) => {
+      // Smear erase: while the eraser is held down, every sampled position
+      // wipes the seeds it passes over (acceptance round 6 #1).
+      if (eraseDragRef.current && seedEraseMode) {
+        const hitNow = raycastFace(e.clientX, e.clientY);
+        if (hitNow) {
+          const rect = canvas.getBoundingClientRect();
+          let best = -1;
+          let bestD = Infinity;
+          const v = new THREE.Vector3();
+          for (let i = 0; i < seedPoints.length; i++) {
+            const s = seedPoints[i];
+            v.set(s.x, s.y, s.z).project(camera);
+            const sx = (v.x * 0.5 + 0.5) * rect.width;
+            const sy = (-v.y * 0.5 + 0.5) * rect.height;
+            const d = Math.hypot(e.clientX - rect.left - sx, e.clientY - rect.top - sy);
+            if (d < bestD) {
+              bestD = d;
+              best = i;
+            }
+          }
+          if (best >= 0 && bestD <= 26) {
+            removeSeedPoint(best);
+            setStatusMessage(t("seed.erased", seedPoints.length - 1));
+          }
+        }
+        return;
+      }
       if (isPainting.current) {
         // Fill and eyedropper tools only act on the initial click, not drag.
         if (activeTool === "fill" || activeTool === "picker") return;
@@ -2258,6 +2301,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     };
 
     const onPointerUp = (e: PointerEvent) => {
+      eraseDragRef.current = false;
       try { canvas.releasePointerCapture(e.pointerId); } catch { /* not critical */ }
       if (isPainting.current) {
         isPainting.current = false;
