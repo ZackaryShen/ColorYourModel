@@ -364,6 +364,10 @@ const dict: Record<string, Record<Lang, string>> = {
   "color.repaintHint": { zh: "整体重涂这支笔迹：选一个目标色（纯色平铺）。", en: "Repaint this stroke: pick a target colour (flat fill)." },
   "color.repaintApply": { zh: "重涂这支笔迹", en: "Repaint stroke" },
   "color.repaintNote": { zh: "一步撤销可还原；Esc 取消选中。", en: "One undo step reverts it; Esc cancels the selection." },
+  "color.repaintNone": {
+    zh: "这支笔迹已失效（被撤销或重涂过），没有可重涂的面",
+    en: "This stroke is no longer live (undone or repainted) — nothing to repaint",
+  },
   "color.replacedSource": { zh: "已整体重涂 {0} 面", en: "Repainted {0} faces" },
   "paint.replaceSourceError": { zh: "整体重涂失败: {0}", en: "Stroke repaint failed: {0}" },
   "color.replaceToggle": { zh: "替换颜色", en: "Replace colour" },

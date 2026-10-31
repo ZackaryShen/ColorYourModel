@@ -365,13 +365,36 @@ pub fn replace_paint_source(
     from: [u8; 4],
     to: [u8; 4],
     state: State<AppState>,
-) -> Result<u32, String> {
+) -> Result<PaintResult, String> {
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
     if from == to {
-        return Ok(0);
+        return Ok(PaintResult {
+            updated_faces: Vec::new(),
+            updated_colors: Vec::new(),
+        });
     }
-    Ok(mesh.replace_paint_source(from, to))
+    // Returns the FULL face/colour payload: the frontend feeds it to the GPU
+    // bridge — without it the backend flips to the new colour while the
+    // canvas never does (acceptance round 4 feedback #2).
+    let updates = mesh.replace_paint_source(from, to);
+    let (updated_faces, updated_colors) = updates.into_iter().unzip();
+    Ok(PaintResult {
+        updated_faces,
+        updated_colors,
+    })
+}
+
+/// Live faces painted with `source` — hover-highlight payload for the
+/// 绘制颜色 swatches (issue #29 governance, acceptance round 4 feedback #4).
+#[tauri::command]
+pub fn paint_source_faces(
+    source: [u8; 4],
+    state: State<AppState>,
+) -> Result<Vec<u32>, String> {
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    Ok(mesh.paint_source_faces(source))
 }
 
 /// Every distinct colour currently on the model, most faces first (issue

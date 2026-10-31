@@ -58,6 +58,7 @@ pub fn run() {
             commands::paint::used_colors,
             commands::paint::paint_source_groups,
             commands::paint::replace_paint_source,
+            commands::paint::paint_source_faces,
             // Colour find & replace (issue #29).
             commands::paint::replace_face_color,
             // Unified undo/redo — the single timeline covering paint, fill,

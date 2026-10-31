@@ -842,6 +842,9 @@ function MeshDisplay() {
   // computed straight from the flat RGBA buffer — O(F) per hover change,
   // memoised so a 148k-face model costs a few ms.
   const usedColourHover = useAppStore((s) => s.usedColourHover);
+  // Issue #29 governance (acceptance round 4): outline the whole live stroke
+  // when its 绘制颜色 swatch is hovered — blended variants included.
+  const paintSourceHoverFaces = useAppStore((s) => s.paintSourceHoverFaces);
   const usedColourFaces = useMemo(() => {
     if (!usedColourHover || !meshData) return null;
     const [r, g, b] = usedColourHover;
@@ -2525,6 +2528,11 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           visible in both views, independent of the per-label outlines. */}
       {usedColourFaces && usedColourFaces.length > 0 && meshData && edgeMap && (
         <FaceSetOutline meshData={meshData} faces={usedColourFaces} edgeMap={edgeMap} />
+      )}
+      {/* Issue #29 governance (acceptance round 4): outline the whole hovered
+          paint stroke — every face the brush pass touched, variants included. */}
+      {paintSourceHoverFaces && paintSourceHoverFaces.length > 0 && meshData && edgeMap && (
+        <FaceSetOutline meshData={meshData} faces={paintSourceHoverFaces} edgeMap={edgeMap} />
       )}
       {/* Lasso overlay (manual region selection) */}
       {(lassoPoints.length > 0 || lassoPreview || lassoSnap) && (

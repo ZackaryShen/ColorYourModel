@@ -26,7 +26,8 @@ export function ColorPanel() {
   // Issue #29 governance acceptance: paint provenance — the BRUSH colour a
   // stroke was painted with (not the blended per-face result). Selecting a
   // group offers a one-click "repaint the whole stroke" replacement.
-  const { paintSourceGroups, replacePaintSource } = useTauriCommand();
+  const { paintSourceGroups, replacePaintSource, paintSourceFaces } = useTauriCommand();
+  const setPaintSourceHoverFaces = useAppStore((s) => s.setPaintSourceHoverFaces);
   const historyVersionBump = useAppStore((s) => s.historyVersion);
   const [paintGroups, setPaintGroups] = useState<
     { source: [number, number, number, number]; faces: number }[]
@@ -72,14 +73,40 @@ export function ColorPanel() {
   const applyRepaint = async () => {
     if (!selectedSource || !repaintTo) return;
     setRepainting(true);
-    const n = await replacePaintSource(selectedSource, repaintTo);
+    const result = await replacePaintSource(selectedSource, repaintTo);
     setRepainting(false);
-    if (n > 0) {
-      useAppStore.getState().markHistoryDirty();
-      useAppStore.getState().setStatusMessage(t("color.replacedSource", n));
+    setPaintSourceHoverFaces(null);
+    if (!result || result.updatedFaces.length === 0) {
+      // The stroke retired (undone / repainted elsewhere) between selection
+      // and apply — say so instead of failing silently (acceptance round 4 #2).
+      useAppStore.getState().setStatusMessage(t("color.repaintNone"));
+      setSelectedSource(null);
+      setRepaintTo(null);
+      return;
     }
+    // GPU + faceColors mirror + historyVersion bump ride the pending bridge —
+    // without this the backend flips colour while the canvas never does
+    // (acceptance round 4 feedback #2).
+    useAppStore.getState().setPendingPaintResult({
+      faces: result.updatedFaces,
+      colors: result.updatedColors,
+    });
+    useAppStore.getState().setStatusMessage(
+      t("color.replacedSource", result.updatedFaces.length)
+    );
     setSelectedSource(null);
     setRepaintTo(null);
+  };
+
+  // Hover highlight for a paint group: fetch the LIVE face set once per
+  // hover (one small IPC) and hand it to the viewport outline.
+  const hoverPaintGroup = async (source: [number, number, number, number] | null) => {
+    if (!source) {
+      setPaintSourceHoverFaces(null);
+      return;
+    }
+    const faces = await paintSourceFaces(source);
+    setPaintSourceHoverFaces(faces);
   };
   // Issue #29 acceptance #6: the replace section starts collapsed and Esc
   // collapses it (dropping its internal picks with the unmount).
@@ -212,6 +239,8 @@ export function ColorPanel() {
                 <button
                   key={key}
                   title={t("color.paintTooltip", hex.toUpperCase(), g.faces.toLocaleString())}
+                  onMouseEnter={() => void hoverPaintGroup(g.source)}
+                  onMouseLeave={() => setPaintSourceHoverFaces(null)}
                   onClick={() => {
                     setSelectedSource(isSelected ? null : g.source);
                     setRepaintTo(null);

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useT, translateError } from "../i18n";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, HistoryEntriesResult, UsedColorEntry, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
+import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, HistoryEntriesResult, UsedColorEntry, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion , PaintResult } from "../types/mesh";
 import type { ExportSelection } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
@@ -360,14 +360,25 @@ export function useTauriCommand() {
   const replacePaintSource = async (
     from: [number, number, number, number],
     to: [number, number, number, number]
-  ): Promise<number> => {
+  ): Promise<PaintResult | null> => {
     try {
-      const n = await invoke<number>("replace_paint_source", { from, to });
-      return n ?? 0;
+      const r = await invoke<PaintResult>("replace_paint_source", { from, to });
+      return r ?? { updatedFaces: [], updatedColors: [] };
     } catch (e) {
       log.error("useTauriCommand", "replacePaintSource failed", { error: String(e) });
       setStatusMessage(t("paint.replaceSourceError", String(e)));
-      return 0;
+      return null;
+    }
+  };
+
+  const paintSourceFaces = async (
+    source: [number, number, number, number]
+  ): Promise<number[]> => {
+    try {
+      return (await invoke<number[]>("paint_source_faces", { source })) ?? [];
+    } catch (e) {
+      log.error("useTauriCommand", "paintSourceFaces failed", { error: String(e) });
+      return [];
     }
   };
 
@@ -841,5 +852,6 @@ export function useTauriCommand() {
     usedColors,
     paintSourceGroups,
     replacePaintSource,
+    paintSourceFaces,
   };
 }

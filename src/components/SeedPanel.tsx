@@ -1357,7 +1357,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--bg-panel, #2d2d2d)",
     border: "1px solid var(--border, #555)",
     borderRadius: 10,
-    padding: "10px 14px",
+    padding: "12px 14px",
     color: "var(--text-1, #eee)",
     fontSize: 12,
     width: 360,
@@ -1438,7 +1438,10 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   hint: { color: "var(--text-3, #aaa)", fontSize: 11, lineHeight: 1.5, marginBottom: 8 },
-  row: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 },
+  // Acceptance round 4 feedback #1: rows were packed tight (6px) — widen to
+  // 10px so the panel breathes; mode tabs and the header keep their own
+  // rhythm.
+  row: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 },
   label: { flex: "0 0 auto", whiteSpace: "nowrap" },
   val: { flex: "0 0 auto", width: 32, textAlign: "right", color: "var(--text-2, #ccc)" },
   buttonRow: { display: "flex", gap: 8, marginTop: 6 },

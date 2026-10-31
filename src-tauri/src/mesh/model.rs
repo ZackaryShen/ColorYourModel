@@ -720,8 +720,22 @@ impl MeshModel {
     /// future-proofing, not behaviour. Deliberately NOT the export
     /// quantiser: two near-identical colours must stay two swatches.
     pub fn used_colors(&self) -> Vec<UsedColorEntry> {
+        // Acceptance round 4 feedback #3: faces tracked as LIVE paint strokes
+        // (provenance colour still matching) belong to the 绘制颜色 group and
+        // are excluded here — their blended variants used to flood this list.
+        let live_painted: std::collections::HashSet<u32> = self
+            .paint_sources
+            .iter()
+            .filter(|(face, (_src, painted))| {
+                self.face_colors.get(**face as usize) == Some(painted)
+            })
+            .map(|(face, _)| *face)
+            .collect();
         let mut tally: HashMap<[u8; 4], (u32, HashSet<u32>)> = HashMap::new();
         for (face, color) in self.face_colors.iter().enumerate() {
+            if live_painted.contains(&(face as u32)) {
+                continue;
+            }
             let e = tally.entry(*color).or_insert((0, HashSet::new()));
             e.0 += 1;
             if let Some(label) = self.segment_labels.get(face) {
@@ -804,7 +818,7 @@ impl MeshModel {
     /// Surviving registry entries are re-keyed to (to, to): the group now
     /// reads as "painted with `to`". Returns the face count (0 = nothing
     /// live — no history entry, mirroring replace_face_color's contract).
-    pub fn replace_paint_source(&mut self, from: [u8; 4], to: [u8; 4]) -> u32 {
+    pub fn replace_paint_source(&mut self, from: [u8; 4], to: [u8; 4]) -> Vec<(u32, [u8; 4])> {
         let faces: Vec<u32> = self
             .paint_sources
             .iter()
@@ -814,14 +828,28 @@ impl MeshModel {
             .map(|(face, _)| *face)
             .collect();
         if faces.is_empty() {
-            return 0;
+            return Vec::new();
         }
         let updates: Vec<(u32, [u8; 4])> = faces.iter().map(|&f| (f, to)).collect();
         self.apply_paint(None, &updates);
         for &(face, painted) in &updates {
             self.paint_sources.insert(face, (to, painted));
         }
-        faces.len() as u32
+        updates
+    }
+
+    /// Live faces painted with `source` (issue #29 governance, acceptance
+    /// round 4): hover highlight over the 绘制颜色 swatches outlines exactly
+    /// the faces whose current colour still matches what that brush pass
+    /// wrote — the blended variants included, not just the nominal colour.
+    pub fn paint_source_faces(&self, source: [u8; 4]) -> Vec<u32> {
+        self.paint_sources
+            .iter()
+            .filter(|(face, (src, painted))| {
+                *src == source && self.face_colors.get(**face as usize) == Some(painted)
+            })
+            .map(|(face, _)| *face)
+            .collect()
     }
 
     /// Overwrite one face's colour and segment label together, recording both.

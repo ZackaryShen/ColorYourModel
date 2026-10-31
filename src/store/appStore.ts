@@ -97,6 +97,11 @@ interface AppStore {
    *  Transient: NOT persisted. */
   usedColourHover: [number, number, number] | null;
   setUsedColourHover: (rgb: [number, number, number] | null) => void;
+  /** Issue #29 governance (acceptance round 4): live faces of the paint
+   *  group under the cursor in the 绘制颜色 row — outlined in the viewport
+   *  (blended variants included). Null = no preview. Transient. */
+  paintSourceHoverFaces: number[] | null;
+  setPaintSourceHoverFaces: (faces: number[] | null) => void;
   /** Paint results produced OUTSIDE the R3F tree (e.g. the colour
    *  find-&-replace section) park here; the Viewport applies them to the GPU
    *  geometry through the same incremental path in-canvas painting uses, then
@@ -528,6 +533,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   experimentalFeatures: { ...DEFAULT_EXPERIMENTAL_FEATURES },
   historyPanelOpen: false,
   usedColourHover: null,
+  paintSourceHoverFaces: null,
   pendingPaintResult: null,
   historyVersion: 0,
   isLoading: false,
@@ -710,6 +716,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   },
   setHistoryPanelOpen: (v) => set({ historyPanelOpen: v }),
   setUsedColourHover: (rgb) => set({ usedColourHover: rgb }),
+  setPaintSourceHoverFaces: (faces) => set({ paintSourceHoverFaces: faces }),
   setPendingPaintResult: (r) => set({ pendingPaintResult: r }),
 
   seedPoints: [],
