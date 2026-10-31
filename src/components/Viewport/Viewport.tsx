@@ -1820,31 +1820,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // View mode → let OrbitControls handle it (rotate); never paint.
       if (isViewTool) return;
       // Alt → temporary camera rotate always wins, even over merge picking.
-      if (_altHeld) return;
-      // Issue #16: Ctrl/Cmd+click toggles the clicked face's region in/out of
-      // the merge multi-select. Sits BEFORE the view-tool return and every
-      // tool branch: View is the DEFAULT tool, so a first-run user ctrl+clicks
-      // without ever switching tools — a pick living below that return would
-      // be dead on arrival. Off-model / unsegmented clicks fall through
-      // untouched so Ctrl+drag keeps orbiting; Ctrl has no other pointerdown
-      // role (brush resize is Ctrl+wheel).
-      if (e.ctrlKey || e.metaKey) {
-        if (!meshData?.segmentLabels) return;
-        const hit = getLocalHit(e.clientX, e.clientY);
-        if (!hit || hit.faceIndex < 0) return;
-        const lbl = meshData.segmentLabels[hit.faceIndex];
-        // Live-partition membership only (same rule as the seed pick branch):
-        // a stale or unsegmented label must never enter the merge set — hint
-        // toward segmenting instead.
-        if (lbl === undefined || !segmentIds.has(lbl)) {
-          setStatusMessage(t("merge.hint"));
-          return;
-        }
-        toggleMergePicked(lbl);
-        setStatusMessage(t("merge.hint"));
-        return;
-      }
       // View mode → let OrbitControls handle it (rotate); never paint.
+      if (isViewTool) return;
       if (isViewTool) return;
       // Governance acceptance round 3 (#1): in auto (fuse) mode a mesh click
       // NEVER places a seed — the cursor already says so, and now the handler
@@ -1924,14 +1901,23 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           v.set(s.x, s.y, s.z).project(camera);
           const sx = (v.x * 0.5 + 0.5) * rect.width;
           const sy = (-v.y * 0.5 + 0.5) * rect.height;
-          // Practical 26px glyph radius — the whole icon is a fat hit target.
+          // Practical 32px glyph radius — the whole icon is a fat hit target.
           const d = Math.hypot(px - sx, py - sy);
           if (d < bestD) {
             bestD = d;
             best = i;
           }
         }
-        if (best >= 0 && bestD <= 26) {
+        // DIAG probe (acceptance round 7 #1): one line per attempt so a miss
+        // is explainable from the debug log instead of guesswork.
+        log.info("[seed-erase] candidates", {
+          seeds: seedPoints.length,
+          px: Math.round(px),
+          py: Math.round(py),
+          bestD: best < 0 ? null : Math.round(bestD),
+          hit: best >= 0 && bestD <= 32,
+        } as unknown as string);
+        if (best >= 0 && bestD <= 32) {
           removeSeedPoint(best);
           setStatusMessage(t("seed.erased", seedPoints.length - 1));
           return best;
@@ -2061,8 +2047,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // Smear erase: while the eraser is held down, every sampled position
       // wipes the seeds it passes over (acceptance round 6 #1).
       if (eraseDragRef.current && seedEraseMode) {
-        const hitNow = raycastFace(e.clientX, e.clientY);
-        if (hitNow) {
+        {
           const rect = canvas.getBoundingClientRect();
           let best = -1;
           let bestD = Infinity;
@@ -2596,6 +2581,13 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           visible in both views, independent of the per-label outlines. */}
       {usedColourFaces && usedColourFaces.length > 0 && meshData && edgeMap && (
         <FaceSetOutline meshData={meshData} faces={usedColourFaces} edgeMap={edgeMap} />
+      )}
+      {/* Issue #24: outline of the View-tool Ctrl-multi-selection (anchor
+          colour first, the rest secondary) — without this the selection had
+          NO viewport feedback and read as "cannot select" (acceptance round
+          7 feedback #2). */}
+      {viewSelectedRegions.length > 0 && meshData && edgeMap && facesBySeg && (
+        <SegmentOutline meshData={meshData} labels={viewSelectedRegions} edgeMap={edgeMap} facesBySeg={facesBySeg} />
       )}
       {/* Issue #29 governance (acceptance round 4): outline the whole hovered
           paint stroke — every face the brush pass touched, variants included. */}
