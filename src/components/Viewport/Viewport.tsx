@@ -1984,16 +1984,25 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
               // corner read as "off target". The backend call still runs (it
               // maintains the manual-partition state); only the display/
               // storage position changes.
+              // (Same flat-array math as the eye-region seeds above: faces[]
+              // holds VERTEX INDICES, vertices[] holds xyz triples.)
               if (!meshData) return;
-              const fc = meshData.faces;
-              const vi0 = fc[local.faceIndex] * 3;
+              {
+              const fi = local.faceIndex * 3;
+              const v0 = meshData.faces[fi];
+              const v1 = meshData.faces[fi + 1];
+              const v2 = meshData.faces[fi + 2];
+              const j0 = v0 * 3;
+              const j1 = v1 * 3;
+              const j2 = v2 * 3;
               const vs = meshData.vertices;
-              addSeedPoint({
-                x: (vs[vi0] + vs[vi0 + 1] + vs[vi0 + 2]) / 3,
-                y: (vs[vi0 + 3] + vs[vi0 + 4] + vs[vi0 + 5]) / 3,
-                z: (vs[vi0 + 6] + vs[vi0 + 7] + vs[vi0 + 8]) / 3,
-                faceIndex: local.faceIndex,
-              });
+                addSeedPoint({
+                  x: (vs[j0] + vs[j1] + vs[j2]) / 3,
+                  y: (vs[j0 + 1] + vs[j1 + 1] + vs[j2 + 1]) / 3,
+                  z: (vs[j0 + 2] + vs[j1 + 2] + vs[j2 + 2]) / 3,
+                  faceIndex: local.faceIndex,
+                });
+              }
               log.info("Viewport", "manual seed added at face centroid", {
                 snapped: { x: res.snapped[0].toFixed(3), y: res.snapped[1].toFixed(3), z: res.snapped[2].toFixed(3) },
                 newCount: seedPoints.length + 1,
