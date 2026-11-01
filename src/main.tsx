@@ -17,6 +17,26 @@ const strictMode = import.meta.env.VITE_NO_STRICT !== "1";
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 
+// FREEZE heartbeat (governance acceptance round 7): the app froze for minutes
+// after a handful of seed clicks. A stalled rAF measures EXACTLY how long the
+// main thread was blocked and survives in the debug log — no more guessing.
+if (import.meta.env.DEV) {
+  let last = performance.now();
+  const tick = () => {
+    const now = performance.now();
+    const gap = now - last;
+    if (gap > 800) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[freeze-diag] main thread stalled ${Math.round(gap)}ms at ${new Date().toLocaleTimeString()}`
+      );
+    }
+    last = now;
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
 root.render(
   strictMode ? (
     <React.StrictMode>
