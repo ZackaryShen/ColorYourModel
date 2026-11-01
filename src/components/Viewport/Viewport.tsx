@@ -1977,10 +1977,18 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         }
         (async () => {
           try {
+            // FREEZE DIAG (acceptance round 7 #freeze): the app froze for
+            // minutes after a handful of sow clicks — time every hop of the
+            // sow path so the log pins which leg costs the time.
+            const tSow0 = performance.now();
             const res = await manualRegionAddPoint(
               [local.point.x, local.point.y, local.point.z],
               local.faceIndex
             );
+            log.info("Viewport", "[sow-diag] backend add point done", {
+              ms: Math.round(performance.now() - tSow0),
+              faceIndex: local.faceIndex,
+            });
             if (res) {
               // Acceptance round 5 #3: land the marker on the clicked face's
               // CENTROID, not the snapped vertex — a seed sitting on a face
@@ -2011,6 +2019,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
                 newCount: seedPoints.length + 1,
               });
               setStatusMessage(t("seed.count", seedPoints.length + 1));
+              log.info("Viewport", "[sow-diag] seed added + panel render path done", {
+                totalMs: Math.round(performance.now() - tSow0),
+              });
             }
           } catch (err) {
             log.error("Viewport", "seed add failed", { error: String(err) });
