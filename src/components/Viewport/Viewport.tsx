@@ -1065,6 +1065,51 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     return Math.max(0.0054, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0016);
   }, [meshData?.bbox]);
 
+  // World-space seed erase matching (acceptance round 8, FINAL): compare the
+  // surface hit point with each seed's stored position directly. Zero
+  // dependence on camera matrices or projections — both the raycast hit and
+  // the marker glyph live on the mesh surface, and the threshold is the
+  // marker's world size, so "click the red dot" always matches what the user
+  // sees at any zoom level. (Vector3.project() disagreed with the rendered
+  // marker position by hundreds of px; even the picking-ray distance gave
+  // garbage — see round 8 logs with distPx up to 13293.)
+  const eraseNearWorldPoint = useCallback(
+    (p: THREE.Vector3): number => {
+      let best = -1;
+      let bestD = Infinity;
+      const seedVec = new THREE.Vector3();
+      for (let i = 0; i < seedPoints.length; i++) {
+        const s = seedPoints[i];
+        seedVec.set(s.x, s.y, s.z);
+        const d = p.distanceTo(seedVec);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      const thresh = seedMarkerSize * 2.5;
+      if (best >= 0 && bestD <= thresh) {
+        log.info("Viewport", "[seed-erase] hit", {
+          seed: best,
+          dWorld: Math.round(bestD * 1000) / 1000,
+        });
+        removeSeedPoint(best);
+        setStatusMessage(t("seed.erased", seedPoints.length - 1));
+        return best;
+      }
+      log.info("Viewport", "[seed-erase] miss", {
+        seeds: seedPoints.length,
+        dWorld: Math.round(bestD * 1000) / 1000,
+        thresh: Math.round(thresh * 1000) / 1000,
+      });
+      setStatusMessage(
+        `erase miss: nearest seed ${Math.round(bestD * 100) / 100}wu (threshold ${Math.round(thresh * 100) / 100}wu)`
+      );
+      return -1;
+    },
+    [seedPoints, removeSeedPoint, setStatusMessage, t, seedMarkerSize]
+  );
+
   // The faint wireframe overlay is built from a WireframeGeometry that, for large
   // meshes, synchronously allocates a ~360k-element array with millions of string
   // concatenations (three's edge de-dup) — the REAL cause of the multi-second
@@ -1943,8 +1988,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         );
         return -1;
       };
-      const downRect = canvas.getBoundingClientRect();
-      eraseAtScreen(e.clientX - downRect.left, e.clientY - downRect.top);
+      // World-space match against the surface hit point (round 8 FINAL).
+      eraseNearWorldPoint(local.point);
       eraseDragRef.current = true;
       // Capture so the smear keeps firing even when the cursor leaves the
       // canvas mid-swipe (pointerup then always lands on the canvas).
@@ -2077,25 +2122,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // wipes the seeds it passes over (acceptance round 6 #1).
       if (eraseDragRef.current && seedEraseMode) {
         {
-          const rect = canvas.getBoundingClientRect();
-          let best = -1;
-          let bestD = Infinity;
-          const v = new THREE.Vector3();
-          for (let i = 0; i < seedPoints.length; i++) {
-            const s = seedPoints[i];
-            v.set(s.x, s.y, s.z).project(camera);
-            const sx = (v.x * 0.5 + 0.5) * rect.width;
-            const sy = (-v.y * 0.5 + 0.5) * rect.height;
-            const d = Math.hypot(e.clientX - rect.left - sx, e.clientY - rect.top - sy);
-            if (d < bestD) {
-              bestD = d;
-              best = i;
-            }
-          }
-          if (best >= 0 && bestD <= 26) {
-            removeSeedPoint(best);
-            setStatusMessage(t("seed.erased", seedPoints.length - 1));
-          }
+          const hitSmear = raycastFace(e.clientX, e.clientY);
+          if (hitSmear && hitSmear.point) eraseNearWorldPoint(hitSmear.point);
         }
         return;
       }
@@ -2392,7 +2420,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, toggleMergePicked, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, toggleMergePicked, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed, eraseNearWorldPoint]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {
