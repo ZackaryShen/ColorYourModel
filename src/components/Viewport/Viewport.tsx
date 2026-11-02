@@ -1908,21 +1908,32 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
             best = i;
           }
         }
-        // DIAG probe (acceptance round 7 #1): one line per attempt so a miss
-        // is explainable from the debug log instead of guesswork.
-        log.info("[seed-erase] candidates", {
-          seeds: seedPoints.length,
-          px: Math.round(px),
-          py: Math.round(py),
-          bestD: best < 0 ? null : Math.round(bestD),
-          hit: best >= 0 && bestD <= 32,
-        } as unknown as string);
+        // DIAG probe (acceptance round 7 #1, upgraded round 8): the miss
+        // evidence goes straight to the STATUS BAR (visible in any screenshot)
+        // — projected seed position vs click position vs distance — so a
+        // failing erase is explainable without opening the debug viewer.
         if (best >= 0 && bestD <= 32) {
+          log.info("Viewport", "[seed-erase] hit", {
+            seed: best,
+            dist: Math.round(bestD),
+          });
           removeSeedPoint(best);
           setStatusMessage(t("seed.erased", seedPoints.length - 1));
           return best;
         }
-        setStatusMessage(t("seed.eraseMiss"));
+        const ns = best >= 0 ? seedPoints[best] : null;
+        v.set(ns ? ns.x : 0, ns ? ns.y : 0, ns ? ns.z : 0).project(camera);
+        const nsx = Math.round((v.x * 0.5 + 0.5) * rect.width);
+        const nsy = Math.round((-v.y * 0.5 + 0.5) * rect.height);
+        log.info("Viewport", "[seed-erase] miss", {
+          seeds: seedPoints.length,
+          click: [Math.round(px), Math.round(py)],
+          nearestSeedScreen: [nsx, nsy],
+          dist: best >= 0 ? Math.round(bestD) : null,
+        });
+        setStatusMessage(
+          `erase miss: click(${Math.round(px)},${Math.round(py)}) seed@(${nsx},${nsy}) d=${best >= 0 ? Math.round(bestD) : "-"}px`
+        );
         return -1;
       };
       const downRect = canvas.getBoundingClientRect();
