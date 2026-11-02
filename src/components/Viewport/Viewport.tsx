@@ -1895,16 +1895,24 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         const rect = canvas.getBoundingClientRect();
         let best = -1;
         let bestD = Infinity;
-        const v = new THREE.Vector3();
+        // Screen-space matching WITHOUT Vector3.project(): that projection
+        // disagreed with the actual rendered marker position by hundreds of
+        // pixels (round 8 evidence: click hit 3D pos ~ seed 3D pos, projected
+        // screen pos off by 244px), while the raycast path (raycaster.
+        // setFromCamera) is proven correct by every sow/paint hit. So match
+        // seeds via the SAME ray path and convert world distance to pixels
+        // with the orthographic frustum scale.
+        const ortho = camera as THREE.OrthographicCamera;
+        const worldPerPx =
+          (ortho.top - ortho.bottom) / (ortho.zoom || 1) /
+          Math.max(rect.height, 1);
+        const seedVec = new THREE.Vector3();
         for (let i = 0; i < seedPoints.length; i++) {
           const s = seedPoints[i];
-          v.set(s.x, s.y, s.z).project(camera);
-          const sx = (v.x * 0.5 + 0.5) * rect.width;
-          const sy = (-v.y * 0.5 + 0.5) * rect.height;
-          // Practical 32px glyph radius — the whole icon is a fat hit target.
-          const d = Math.hypot(px - sx, py - sy);
-          if (d < bestD) {
-            bestD = d;
+          seedVec.set(s.x, s.y, s.z);
+          const dPx = raycaster.ray.distanceToPoint(seedVec) / worldPerPx;
+          if (dPx < bestD) {
+            bestD = dPx;
             best = i;
           }
         }
@@ -1922,17 +1930,16 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           return best;
         }
         const ns = best >= 0 ? seedPoints[best] : null;
-        v.set(ns ? ns.x : 0, ns ? ns.y : 0, ns ? ns.z : 0).project(camera);
-        const nsx = Math.round((v.x * 0.5 + 0.5) * rect.width);
-        const nsy = Math.round((-v.y * 0.5 + 0.5) * rect.height);
+        if (ns) {
+          seedVec.set(ns.x, ns.y, ns.z);
+          bestD = raycaster.ray.distanceToPoint(seedVec) / worldPerPx;
+        }
         log.info("Viewport", "[seed-erase] miss", {
           seeds: seedPoints.length,
-          click: [Math.round(px), Math.round(py)],
-          nearestSeedScreen: [nsx, nsy],
-          dist: best >= 0 ? Math.round(bestD) : null,
+          distPx: best >= 0 ? Math.round(bestD) : null,
         });
         setStatusMessage(
-          `erase miss: click(${Math.round(px)},${Math.round(py)}) seed@(${nsx},${nsy}) d=${best >= 0 ? Math.round(bestD) : "-"}px`
+          `erase miss: nearest seed d=${best >= 0 ? Math.round(bestD) : "-"}px (threshold 32px)`
         );
         return -1;
       };
