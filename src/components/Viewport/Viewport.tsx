@@ -18,6 +18,7 @@ import { ViewGizmo } from "./ViewGizmo";
 import { isPointerInGizmo } from "./viewGizmoModel";
 import { MergeBar } from "./MergeBar";
 import { filterVisibleHits, firstVisibleHit, toggleHiddenLabels } from "../../utils/segmentVisibility";
+import { nearestSeedPx, pointerToCanvasPx, seedEraseRadiusPx, type SeedLike } from "../../utils/seedErase";
 import { createSerialPaintQueue, type PaintJob } from "./paintQueue";
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
@@ -1065,49 +1066,69 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     return Math.max(0.0054, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.0016);
   }, [meshData?.bbox]);
 
-  // World-space seed erase matching (acceptance round 8, FINAL): compare the
-  // surface hit point with each seed's stored position directly. Zero
-  // dependence on camera matrices or projections — both the raycast hit and
-  // the marker glyph live on the mesh surface, and the threshold is the
-  // marker's world size, so "click the red dot" always matches what the user
-  // sees at any zoom level. (Vector3.project() disagreed with the rendered
-  // marker position by hundreds of px; even the picking-ray distance gave
-  // garbage — see round 8 logs with distPx up to 13293.)
-  const eraseNearWorldPoint = useCallback(
-    (p: THREE.Vector3): number => {
-      let best = -1;
-      let bestD = Infinity;
-      const seedVec = new THREE.Vector3();
-      for (let i = 0; i < seedPoints.length; i++) {
-        const s = seedPoints[i];
-        seedVec.set(s.x, s.y, s.z);
-        const d = p.distanceTo(seedVec);
-        if (d < bestD) {
-          bestD = d;
-          best = i;
-        }
-      }
-      const thresh = seedMarkerSize * 2.5;
-      if (best >= 0 && bestD <= thresh) {
-        log.info("Viewport", "[seed-erase] hit", {
-          seed: best,
-          dWorld: Math.round(bestD * 1000) / 1000,
+  // Screen-space seed erase matching (acceptance round 9 — the actual fix).
+  //
+  // Seeds are stored MODEL-LOCAL (face centroids taken from
+  // `meshData.vertices`, STL Z-up — see `src/types/mesh.ts`). The model and
+  // its markers live inside the group rotated -π/2 about X (render tree
+  // below), so local ≠ world: world = (x, z, -y). R6/R7 projected the LOCAL
+  // point with the camera's world matrix; R8-first measured the world picking
+  // ray against LOCAL seeds. Both errors are √2·ρ_yz — up to a whole model —
+  // which is why no threshold ever helped. The fix is to convert local →
+  // world FIRST, then compare in the pixels the user actually aims at.
+  //
+  // Matching the projected GLYPH (not the surface hit point) also makes the
+  // target independent of surface angle, of whether the ray hits the mesh
+  // under the marker, and of zoom (the radius is clamped in px). The pure
+  // math lives in utils/seedErase.ts (unit-tested); this callback only owns
+  // the local→world→NDC conversion and the store side effects.
+  const eraseNearPointer = useCallback(
+    (clientX: number, clientY: number): number => {
+      if (seedPoints.length === 0) return -1;
+      const rect = gl.domElement.getBoundingClientRect();
+      const pointer = pointerToCanvasPx(clientX, clientY, rect);
+      const ortho = camera as THREE.OrthographicCamera;
+      // R3F sizes the ortho frustum to the canvas in CSS px, so camera.zoom
+      // is exactly px-per-world-unit.
+      const radiusPx = seedEraseRadiusPx(seedMarkerSize, ortho.zoom || 1);
+      const mesh = meshRef.current;
+      // No mesh → no markers to erase. Never fall back to projecting the local
+      // coordinates as if they were world — that is precisely this bug.
+      if (!mesh) return -1;
+      const v = new THREE.Vector3();
+      const projectSeed = (s: SeedLike) => {
+        v.set(s.x, s.y, s.z);
+        // LOCAL → WORLD. Skipping this line is the entire bug (see above).
+        mesh.localToWorld(v);
+        v.project(camera);
+        return {
+          x: (v.x * 0.5 + 0.5) * rect.width,
+          y: (-v.y * 0.5 + 0.5) * rect.height,
+        };
+      };
+      const hit = nearestSeedPx(seedPoints, projectSeed, pointer, radiusPx);
+      if (!hit) {
+        // Nearest seed even when outside the radius — one number that says
+        // whether the aim or the projection is off.
+        const near = nearestSeedPx(seedPoints, projectSeed, pointer, Infinity);
+        log.info("Viewport", "[seed-erase] miss", {
+          seeds: seedPoints.length,
+          nearestPx: near ? Math.round(near.distancePx) : null,
+          radiusPx: Math.round(radiusPx),
         });
-        removeSeedPoint(best);
-        setStatusMessage(t("seed.erased", seedPoints.length - 1));
-        return best;
+        setStatusMessage(t("seed.eraseMiss"));
+        return -1;
       }
-      log.info("Viewport", "[seed-erase] miss", {
-        seeds: seedPoints.length,
-        dWorld: Math.round(bestD * 1000) / 1000,
-        thresh: Math.round(thresh * 1000) / 1000,
+      log.info("Viewport", "[seed-erase] hit", {
+        seed: hit.index,
+        distPx: Math.round(hit.distancePx),
+        radiusPx: Math.round(radiusPx),
       });
-      setStatusMessage(
-        `erase miss: nearest seed ${Math.round(bestD * 100) / 100}wu (threshold ${Math.round(thresh * 100) / 100}wu)`
-      );
-      return -1;
+      removeSeedPoint(hit.index);
+      setStatusMessage(t("seed.erased", seedPoints.length - 1));
+      return hit.index;
     },
-    [seedPoints, removeSeedPoint, setStatusMessage, t, seedMarkerSize]
+    [seedPoints, removeSeedPoint, setStatusMessage, t, seedMarkerSize, gl, camera, meshRef]
   );
 
   // The faint wireframe overlay is built from a WireframeGeometry that, for large
@@ -1867,19 +1888,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // Alt → temporary camera rotate always wins, even over merge picking.
       // View mode → let OrbitControls handle it (rotate); never paint.
       if (isViewTool) return;
-      if (isViewTool) return;
-      // Governance acceptance round 3 (#1): in auto (fuse) mode a mesh click
-      // NEVER places a seed — the cursor already says so, and now the handler
-      // agrees. Nudge toward the manual tab instead of silently doing nothing.
-      if (isSeedTool && segmentMode === "auto" && !seedPickMode) {
-        setStatusMessage(t("seed.autoNoSowing"));
-        return;
-      }
-      // Iteration 78: Pick-for-Eye sub-mode intercepts clicks BEFORE the
-      // seed-tool branch so a pick-mode click cannot accidentally also place
-      // a seed (or erase one). Auto-exits on first committed hit — repeat
-      // picking requires re-arming the button — so a Pick-active state
-      // never lingers across more than the one click the user actually wanted.
+      // Pick-for-eye sub-mode intercepts the click BEFORE the seed branch so a
+      // pick can neither place nor erase a seed. Auto-exits on the first
+      // committed hit — repeat picking requires re-arming the button — so a
+      // Pick-active state never lingers past the click the user wanted.
       if (isSeedTool && seedPickMode) {
         const hit = getLocalHit(e.clientX, e.clientY);
         if (!hit || hit.faceIndex == null || !meshData?.segmentLabels) {
@@ -1911,91 +1923,28 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         return;
       }
       if (isSeedTool) {
-        log.info("Viewport", "seed tool: pointer down", {
-          x: e.clientX,
-          y: e.clientY,
-          seedEraseMode,
-          suggestedCount: suggestedSeeds.length,
-          acceptedCount: seedPoints.length,
-        });
-        const local = getLocalHit(e.clientX, e.clientY);
-        // Off-model click: let OrbitControls rotate.
-        if (!local) {
-          log.info("Viewport", "seed click missed model — letting orbit rotate");
+        // ERASE FIRST. It is a screen-space glyph match, so it needs neither a
+        // mesh hit under the cursor (markers can hang over the silhouette) nor
+        // manual (non-auto) mode. Previously the auto/fuse guard returned
+        // before this branch, so a visible red marker could be un-clickable.
+        if (seedEraseMode) {
+          eraseNearPointer(e.clientX, e.clientY);
+          eraseDragRef.current = true;
+          // Capture so the smear keeps firing even when the cursor leaves the
+          // canvas mid-swipe (pointerup then always lands on the canvas).
+          try { canvas.setPointerCapture(e.pointerId); } catch { /* not critical */ }
           return;
         }
-        log.info("Viewport", "seed click landed on model", {
-          hit: { x: local.point.x.toFixed(3), y: local.point.y.toFixed(3), z: local.point.z.toFixed(3) },
-          faceIndex: local.faceIndex,
-        });
-    // Eraser mode — SMEAR ERASE (acceptance round 5 #1, round 6 #1): the old
-    // 3D-distance click test kept missing (the marker is billboarded to face
-    // the camera, so its SCREEN footprint is what the user aims at, and a
-    // click "on" it can be 2+ units away in 3D). Hit-test in SCREEN space
-    // instead: project each seed, and any seed whose projection lands within
-    // its on-screen glyph radius of the pointer dies. Holding the button and
-    // smearing across the model wipes every seed the cursor passes over.
-    if (seedEraseMode) {
-      const eraseAtScreen = (px: number, py: number): number => {
-        const rect = canvas.getBoundingClientRect();
-        let best = -1;
-        let bestD = Infinity;
-        // Screen-space matching WITHOUT Vector3.project(): that projection
-        // disagreed with the actual rendered marker position by hundreds of
-        // pixels (round 8 evidence: click hit 3D pos ~ seed 3D pos, projected
-        // screen pos off by 244px), while the raycast path (raycaster.
-        // setFromCamera) is proven correct by every sow/paint hit. So match
-        // seeds via the SAME ray path and convert world distance to pixels
-        // with the orthographic frustum scale.
-        const ortho = camera as THREE.OrthographicCamera;
-        const worldPerPx =
-          (ortho.top - ortho.bottom) / (ortho.zoom || 1) /
-          Math.max(rect.height, 1);
-        const seedVec = new THREE.Vector3();
-        for (let i = 0; i < seedPoints.length; i++) {
-          const s = seedPoints[i];
-          seedVec.set(s.x, s.y, s.z);
-          const dPx = raycaster.ray.distanceToPoint(seedVec) / worldPerPx;
-          if (dPx < bestD) {
-            bestD = dPx;
-            best = i;
-          }
+        // Governance acceptance round 3 (#1): in auto (fuse) mode a mesh click
+        // NEVER places a seed — the cursor already says so. Nudge toward the
+        // manual tab instead of silently doing nothing.
+        if (segmentMode === "auto") {
+          setStatusMessage(t("seed.autoNoSowing"));
+          return;
         }
-        // DIAG probe (acceptance round 7 #1, upgraded round 8): the miss
-        // evidence goes straight to the STATUS BAR (visible in any screenshot)
-        // — projected seed position vs click position vs distance — so a
-        // failing erase is explainable without opening the debug viewer.
-        if (best >= 0 && bestD <= 32) {
-          log.info("Viewport", "[seed-erase] hit", {
-            seed: best,
-            dist: Math.round(bestD),
-          });
-          removeSeedPoint(best);
-          setStatusMessage(t("seed.erased", seedPoints.length - 1));
-          return best;
-        }
-        const ns = best >= 0 ? seedPoints[best] : null;
-        if (ns) {
-          seedVec.set(ns.x, ns.y, ns.z);
-          bestD = raycaster.ray.distanceToPoint(seedVec) / worldPerPx;
-        }
-        log.info("Viewport", "[seed-erase] miss", {
-          seeds: seedPoints.length,
-          distPx: best >= 0 ? Math.round(bestD) : null,
-        });
-        setStatusMessage(
-          `erase miss: nearest seed d=${best >= 0 ? Math.round(bestD) : "-"}px (threshold 32px)`
-        );
-        return -1;
-      };
-      // World-space match against the surface hit point (round 8 FINAL).
-      eraseNearWorldPoint(local.point);
-      eraseDragRef.current = true;
-      // Capture so the smear keeps firing even when the cursor leaves the
-      // canvas mid-swipe (pointerup then always lands on the canvas).
-      try { canvas.setPointerCapture(e.pointerId); } catch { /* not critical */ }
-      return;
-    }
+        const local = getLocalHit(e.clientX, e.clientY);
+        // Off-model click: let OrbitControls rotate.
+        if (!local) return;
         // Iteration 61: allow BOTH manual seeds and suggested seeds to coexist.
         // Previously any click while suggestions existed auto-accepted the
         // nearest one and returned, so the user could never add a manual seed
@@ -2040,18 +1989,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         }
         (async () => {
           try {
-            // FREEZE DIAG (acceptance round 7 #freeze): the app froze for
-            // minutes after a handful of sow clicks — time every hop of the
-            // sow path so the log pins which leg costs the time.
-            const tSow0 = performance.now();
             const res = await manualRegionAddPoint(
               [local.point.x, local.point.y, local.point.z],
               local.faceIndex
             );
-            log.info("Viewport", "[sow-diag] backend add point done", {
-              ms: Math.round(performance.now() - tSow0),
-              faceIndex: local.faceIndex,
-            });
             if (res) {
               // Acceptance round 5 #3: land the marker on the clicked face's
               // CENTROID, not the snapped vertex — a seed sitting on a face
@@ -2082,9 +2023,6 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
                 newCount: seedPoints.length + 1,
               });
               setStatusMessage(t("seed.count", seedPoints.length + 1));
-              log.info("Viewport", "[sow-diag] seed added + panel render path done", {
-                totalMs: Math.round(performance.now() - tSow0),
-              });
             }
           } catch (err) {
             log.error("Viewport", "seed add failed", { error: String(err) });
@@ -2121,10 +2059,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // Smear erase: while the eraser is held down, every sampled position
       // wipes the seeds it passes over (acceptance round 6 #1).
       if (eraseDragRef.current && seedEraseMode) {
-        {
-          const hitSmear = raycastFace(e.clientX, e.clientY);
-          if (hitSmear && hitSmear.point) eraseNearWorldPoint(hitSmear.point);
-        }
+        // Same screen-space match as the click. No raycast: a smear must also
+        // erase markers that hang off the silhouette or off the surface, and
+        // the world-hit/local-seed mix here was the 100%-miss bug (round 8).
+        eraseNearPointer(e.clientX, e.clientY);
         return;
       }
       if (isPainting.current) {
@@ -2420,7 +2358,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, toggleMergePicked, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed, eraseNearWorldPoint]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, toggleMergePicked, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed, eraseNearPointer]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {
@@ -2783,11 +2721,29 @@ function SeedMarkers({
       groupsRef.current = new Set([...groupsRef.current].filter((g2) => g2.parent));
     }
   }, []);
+  // Scratch quaternions for the world-space billboard (module-level reuse is
+  // unsafe — several marker sets render at once — so they are per-component).
+  const _billboardParentQuat = useMemo(() => new THREE.Quaternion(), []);
+  const _billboardChildQuat = useMemo(() => new THREE.Quaternion(), []);
   useFrame(({ camera: cam }) => {
     if (!cam) return;
+    // True world-space billboard. These groups sit inside the model's
+    // -π/2-about-X group, so writing the camera's WORLD quaternion into this
+    // CHILD left the sapling 90° off: the stem/leaves rotated into the mesh
+    // and were depth-culled, so the marker read as a bare dot (~2px) instead
+    // of the glyph the hit test is sized against. Compose the parent out:
+    //   child_local = parent_world⁻¹ · camera_world
+    // (The anchor `<group position={pos}>` above owns the position — this only
+    // fixes orientation, never where the seed is.)
     groupsRef.current.forEach((g) => {
-      if (g.parent) g.quaternion.copy(cam.quaternion);
-      else groupsRef.current.delete(g);
+      if (!g.parent) {
+        groupsRef.current.delete(g);
+        return;
+      }
+      g.parent.getWorldQuaternion(_billboardParentQuat);
+      _billboardChildQuat.copy(cam.quaternion);
+      _billboardParentQuat.invert().multiply(_billboardChildQuat);
+      g.quaternion.copy(_billboardParentQuat);
     });
   });
   if (seeds.length !== lastCountRef.current) {

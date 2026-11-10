@@ -40,6 +40,16 @@
 
 ## [Unreleased]
 
+### Fixed — 种子橡皮擦：跨坐标系比较（round 9，2026-11-10）
+
+- **根因：种子是 model-local，而相机/射线是 world**。种子坐标 = 点击三角形的质心，直接取自 `meshData.vertices`（STL Z-up，`src/types/mesh.ts`）；模型与种子标记整体挂在 `<-π/2,0,0>` 旋转组下（`Viewport.tsx:2580`），`world = (x, z, −y)`。R6/R7 用 `project(局部种子)`、R8-first 用世界拾取射线去量局部种子，误差恒为 `√2·ρ_yz`（可达整个模型尺度），**调阈值永远无效**。现改为统一 `localToWorld(seed)` → `project(camera)` → CSS 像素比较；命中半径取实际绘制出的 sapling 字号 `clamp(seedMarkerSize×3.5×zoom, 14, 48)px`——任意缩放、任意表面角度、甚至标记挂在轮廓外时都成立。
+- **拖拽擦除不再把世界命中点喂给局部比较器**（原 `Viewport.tsx:2126`，100% miss，误差 61–203 倍阈值）；smear 与点击共用同一像素匹配，且不再要求射线命中模型表面。
+- **擦除分支提到 auto/fuse 播种守卫之前**：切到「融合生成」后红色种子仍可见、点击却毫无反应的状态不再存在。
+- **种子字形 billboard 修正**：`child_local = parent_world⁻¹ · camera_world`。原先把相机**世界**四元数写进旋转组的**子**节点，字形整整偏 90°，花茎/叶子转进模型内部被深度剔除，视觉上只剩 ~2px 的球（只影响朝向，不影响种子位置）。
+- **清理**：删除定义了却从未调用、且携带已被证伪假设的 `eraseAtScreen` 死代码；删除 sow 路径 `[sow-diag]` 计时探针与每次点击的 verbose 日志。保留 `[seed-erase] hit/miss`（hit 带 `distPx`/`radiusPx`，miss 带最近种子 `nearestPx`）作为验收证据。
+- **回归**：新增零依赖纯函数 `src/utils/seedErase.ts` + 14 个单测（半径钳制、半径边界含平局、非有限投影、`client→canvas` 平移、"必须使用渲染后投影"契约）。`npx tsc --noEmit` 零错误、`npx vitest run` **161/161**。
+- 取证依据：`docs/superpowers/analysis/2026-11-07-seed-erase-*.md`；可运行取证应用 `tools/seed-erase-forensics/`（六策略 PASS/FAIL + 4px 偏移场景自测 12/12）。
+
 ### Fixed — 清空/重置分区的确认框从未真正弹出（#28，2026-10-29）
 
 - **破坏性重置不再无确认直冲**（#28）：清空分区（种子面板）与重置分区（分区面板）原先用 `window.confirm` 做守卫——在 Tauri WebView2 里该调用被 tauri-plugin-dialog 接管为异步 Promise，且 `plugin:dialog|confirm` 不在能力 ACL 内会直接拒绝：守卫拿到 truthy Promise 形同虚设，**点击立刻清空全部分区 + 涂装并清空撤销栈**，只留一条红色 ACL 报错横幅。现改为应用内 `ResetConfirmDialog`（复用 #21 的 DialogShell、红色危险按钮）：点击按钮先弹框，**取消 / Esc / 点遮罩不动任何数据**，确认才执行；运行中按钮转「清空中…」并禁用（防双击重复发 IPC）。整个流程由纯函数状态机 `resetGateTransition` 锁定（idle → confirming → running → idle：破坏性动作只能从已打开的对话框进入、每次确认至多触发一次、运行中不可取消/重复触发）。测试从「mock window.confirm」改为真实对话框流程——旧测试正是因此漏检（jsdom 的 confirm 是受控同步函数，与生产环境的异步插件行为不符）。全量 vitest 138/138、tsc 零错误；无 Rust / 能力文件改动（刻意不补 `dialog:allow-confirm`：ACL 保持关闭，谁再引入 window.confirm 会立刻红横幅暴露，而不是静默放行）
