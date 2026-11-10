@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Seed-eraser forensic lab · ColorYourModel</title>
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr__top">
+    <h1>Seed-eraser forensic lab</h1>
+    <span class="hdr__sub">ColorYourModel · <code>feature_012_governance</code> @ <code>64d544e</code> · geometry transcribed from <code>src/components/Viewport/Viewport.tsx</code></span>
+  </div>
+  <p class="hdr__lede">
+    The reported symptom: clicking a <b class="red">red sapling marker</b> never erases it.
+    The cause is a coordinate-space split. Seeds are stored <b>model-local</b> — the centroid of the clicked triangle,
+    read straight out of <code>meshData.vertices</code> (STL layout, Z-up). The mesh <i>and</i> the seed markers live in a
+    scene group rotated <b>−π/2 about X</b>, so <code class="mono">world = (x, z, −y)</code> while every raycast and
+    projection is in <b>world</b> space. The eraser's threshold is <code class="mono">seedMarkerSize × 2.5</code> world units
+    (a few pixels at the fitted zoom), and the billboard copies the camera's <i>world</i> quaternion into a <i>child</i> of the
+    rotated group, so the glyph is drawn 90° off too.
+  </p>
+  <dl class="hdr__facts" id="facts"></dl>
+</header>
+
+<main class="main">
+  <section class="stage">
+    <div class="stage__wrap" id="stageWrap">
+      <canvas id="gl"></canvas>
+      <canvas id="overlay"></canvas>
+      <div class="stage__legend" id="legend">
+        <span><i class="mk mk--green"></i>rendered marker (= S2)</span>
+        <span><i class="mk mk--magenta"></i>S1 phantom (local read as world)</span>
+        <span><i class="mk mk--white"></i>click</span>
+        <span><i class="mk mk--ring"></i>S5 erase radius</span>
+        <span><i class="mk mk--ring2"></i>S2 32 px radius</span>
+        <span><i class="mk mk--red-line"></i>glyph as drawn (bug)</span>
+        <span><i class="mk mk--cyan-line"></i>glyph corrected</span>
+      </div>
+      <div class="stage__hint" id="hint">left-click the model to sow · <b>erase</b> mode: click a red marker · right-drag / Alt+drag orbit · wheel zoom</div>
+    </div>
+    <div class="stage__bar">
+      <div class="seg" id="modeGroup" role="group" aria-label="tool mode">
+        <button data-mode="sow" title="click the model to add a seed at the face centroid">Sow</button>
+        <button data-mode="erase" class="on" title="click a red marker to erase it">Erase</button>
+      </div>
+      <div class="seg seg--match" id="matcherGroup" role="group" aria-label="erase matching strategy">
+        <span class="seglabel">erase with</span>
+        <button data-matcher="s5" class="on" title="app-faithful at HEAD: worldToLocal(hit) vs local seed, threshold 2.5 x size">S5 · HEAD</button>
+        <button data-matcher="s2" title="corrected: project(localToWorld(seed)) vs pointer, 32 px glyph radius">S2 · fixed</button>
+      </div>
+      <span class="chip chip--red" id="matcherChip">S5 tolerance ≈ — px</span>
+      <div class="stage__note" id="stageNote"></div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <section class="card">
+      <h2>Scene</h2>
+      <div class="row">
+        <label for="modelSel">Model</label>
+        <select id="modelSel"></select>
+      </div>
+      <div class="row2">
+        <label for="seedCount">Seeds</label>
+        <input id="seedCount" type="number" min="1" max="12" value="5" />
+        <button id="btnPlace">Auto-place</button>
+        <button id="btnCenter">At centre</button>
+      </div>
+      <div class="row2">
+        <button id="btnClear">Clear seeds</button>
+        <button id="btnFit">Reset view</button>
+      </div>
+      <div class="row">
+        <label for="billboardSel">Billboard</label>
+        <select id="billboardSel">
+          <option value="bug">bug — copy camera quaternion (verbatim)</option>
+          <option value="correct">correct — parent⁻¹ · camera</option>
+        </select>
+      </div>
+      <label class="chk"><input type="checkbox" id="chkMutate" checked /> erase actually removes the seed (app-faithful)</label>
+      <label class="chk"><input type="checkbox" id="chkOverlay" checked /> overlay crosshairs + glyph footprint</label>
+      <label class="chk"><input type="checkbox" id="chkInset" checked /> 8× inset magnifier (top-right)</label>
+      <p class="drop" id="dropHint">… or drop an <code>.stl</code> file here (binary / ASCII, Z-up)</p>
+    </section>
+
+    <section class="card" id="matcherCard">
+      <h2>Erase matching <span class="muted">drives what the eraser actually does</span></h2>
+      <div class="choices" id="matcherChoices">
+        <label class="choice">
+          <input type="radio" name="matcher" value="s5" checked />
+          <span class="choice__body">
+            <b>S5 — app-faithful at HEAD</b>
+            <span class="choice__sub" id="s5Desc">worldToLocal(hit) vs local seed · threshold 2.5×size = 0.2400 wu ≈ 3.25 px. Clicks that miss the surface do nothing, and the aim must land inside that radius.</span>
+          </span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="matcher" value="s2" />
+          <span class="choice__body">
+            <b>S2 — corrected</b>
+            <span class="choice__sub" id="s2Desc">project(localToWorld(seed)) vs pointer · 32 px glyph radius. Erases even when the pointer is on the glyph rather than the surface.</span>
+          </span>
+        </label>
+      </div>
+      <p class="hintline" id="matcherHint">Click a red marker with this setting, then switch and click again.</p>
+    </section>
+
+    <section class="card">
+      <h2>This click <span class="muted" id="clickMeta">— no click yet —</span></h2>
+      <p class="muted" id="clickNote">Click the model. Every strategy is evaluated for that pixel, with the units and threshold each one really uses.</p>
+      <table class="tbl" id="tblClick">
+        <thead>
+          <tr>
+            <th>Strategy</th><th class="num">Value</th><th class="num">Threshold</th><th class="num">Nearest</th><th>Verdict</th>
+          </tr>
+        </thead>
+        <tbody><tr class="empty"><td colspan="5">no click yet</td></tr></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Smear eraser <span class="muted">Viewport.tsx:2125-2126</span></h2>
+      <p class="muted" id="smearLine">In erase mode, press the left button on a marker and drag: every pointermove calls
+        <code>eraseNearWorldPoint(worldHit)</code> — the S6 path. Watch the counters.</p>
+    </section>
+
+    <section class="card">
+      <h2>Click log</h2>
+      <ol class="log" id="clickLog"><li class="muted">empty</li></ol>
+    </section>
+
+    <section class="card">
+      <h2>Engine cross-check</h2>
+      <p class="muted" id="xcheck">Run a self-test to compare core.mjs against three.js.</p>
+    </section>
+  </aside>
+</main>
+
+<section class="selftest">
+  <div class="selftest__head">
+    <div>
+      <h2>Auto self-test</h2>
+      <p class="muted">
+        Places seeds, then clicks each <b>rendered</b> marker in <b>two scenarios</b> — <b>centred</b> and
+        <b>4 px off</b> (human aim) — and fills the expected-vs-actual table. The tolerance column shows S5’s
+        <code>2.5×size</code> threshold in screen px next to S2/S4’s fixed 32 px. Same math as <code>node probe.mjs</code>.
+      </p>
+    </div>
+    <div class="selftest__actions">
+      <button id="btnSelfTest" class="primary">Auto self-test</button>
+      <button id="btnCopy">Copy report JSON</button>
+    </div>
+  </div>
+  <div class="status" id="stStatus">not run yet</div>
+  <div class="scen-grid" id="stTables">
+    <div class="scen-empty muted">press “Auto self-test” — both aim scenarios will be filled in side by side</div>
+  </div>
+  <details id="stDetails">
+    <summary>Per-click detail (expected vs actual, every strategy, every click)</summary>
+    <div id="stDetail"></div>
+  </details>
+</section>
+
+<footer class="ftr">
+  <span>Core math: <code>core.mjs</code> (no three.js) — the page cross-checks it against the real engine on every click.</span>
+  <span>Source of truth: <code>Viewport.tsx</code> @ <code>64d544e</code> · no file outside <code>tools/seed-erase-forensics/</code> was modified.</span>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>

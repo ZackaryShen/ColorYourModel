@@ -1,0 +1,17 @@
+{
+  "name": "seed-erase-forensics",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Forensic exhibit of ColorYourModel's seed-eraser coordinate-space bug: model-local seeds vs world-space rays (Viewport.tsx @ 64d544e)",
+  "type": "module",
+  "scripts": {
+    "probe": "node probe.mjs",
+    "verify": "node verify-three.mjs",
+    "serve": "python3 -m http.server 8137 --bind 127.0.0.1"
+  },
+  "keywords": ["forensics", "threejs", "coordinate-spaces", "ColorYourModel"],
+  "license": "MIT",
+  "dependencies": {
+    "three": "0.170.0"
+  }
+}
