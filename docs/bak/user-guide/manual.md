@@ -1,8 +1,8 @@
-# CYM 使用手册（v0.1.1）
+# CYM 使用手册（v0.1.2）
 
 > **简体中文** | [English](manual.en.md)
 >
-> 面向使用者的完整操作说明：每个按钮是干什么的、每个快捷键是什么、每一类交互怎么用，以及哪些能力目前收益有限、用前要有预期。以零基础视角编写；与代码行为冲突时以源码为准。本文对应 **v0.1.1**，界面语言默认跟随系统（中文环境中文、其他环境英文，可随时切换）。
+> 面向使用者的完整操作说明：每个按钮是干什么的、每个快捷键是什么、每一类交互怎么用，以及哪些能力目前收益有限、用前要有预期。以零基础视角编写；与代码行为冲突时以源码为准。本文对应 **v0.1.2**，界面语言默认跟随系统（中文环境中文、其他环境英文，可随时切换）。
 >
 > 操作演示与更多成品见 [Examples Gallery](../cases/examples.md)；构建与开发环境见 [Getting Started](getting-started.md)。
 
@@ -28,7 +28,7 @@ flowchart LR
     E --> F["切片软件<br/>多材料打印"]
 ```
 
-> 下载安装包：[GitHub Releases](https://github.com/ZackaryShen/ColorYourModel/releases)。当前 v0.1.1 提供 Windows / Linux / macOS（universal，未签名）安装包。
+> 下载安装包：[GitHub Releases](https://github.com/ZackaryShen/ColorYourModel/releases)。当前 v0.1.2 提供 Windows / Linux / macOS（universal，未签名）安装包。
 
 ## 界面总览
 

@@ -9,7 +9,7 @@
 > 把 3D 打印白模 STL 变成基于分区的彩色 3MF，直接多耗材彩色打印。
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.1.1-blue)](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.1)
+[![Release](https://img.shields.io/badge/release-v0.1.2-blue)](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.2)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
 ![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 
@@ -39,13 +39,13 @@ flowchart TD
 
 ## 下载安装
 
-到 [**Releases**](https://github.com/ZackaryShen/ColorYourModel/releases) 页下载即用安装包——当前版本 [v0.1.1](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.1)。
+到 [**Releases**](https://github.com/ZackaryShen/ColorYourModel/releases) 页下载即用安装包——当前版本 [v0.1.2](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.2)。
 
 | 平台 | 安装包 |
 |------|--------|
-| Windows | [`x64-setup.exe`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_x64-setup.exe)（推荐）· [`x64_en-US.msi`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_x64_en-US.msi) |
-| Linux | [`amd64.deb`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_amd64.deb) · [`x86_64.rpm`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel-0.1.1-1.x86_64.rpm) · [`AppImage`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_amd64.AppImage)（自带 WebKit，约 80 MB） |
-| macOS | [`universal.dmg`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_universal.dmg)（Apple Silicon + Intel，未签名） |
+| Windows | [`x64-setup.exe`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel_0.1.2_x64-setup.exe)（推荐）· [`x64_en-US.msi`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel_0.1.2_x64_en-US.msi) |
+| Linux | [`amd64.deb`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel_0.1.2_amd64.deb) · [`x86_64.rpm`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel-0.1.2-1.x86_64.rpm) · [`AppImage`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel_0.1.2_amd64.AppImage)（自带 WebKit，约 80 MB） |
+| macOS | [`universal.dmg`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel_0.1.2_universal.dmg)（Apple Silicon + Intel，未签名） |
 
 > macOS 包未签名（无 Apple Developer 账号），首启被 Gatekeeper 拦截时执行 `xattr -cr /Applications/ColorYourModel.app`。界面语言默认跟随系统（中文环境中文、其他环境英文），可随时在 视图 → 语言 切换。源码构建见[快速开始](#快速开始)。
 

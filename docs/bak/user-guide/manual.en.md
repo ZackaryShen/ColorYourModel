@@ -1,8 +1,8 @@
-# CYM User Manual (v0.1.1)
+# CYM User Manual (v0.1.2)
 
 > **English** | [简体中文](manual.md)
 >
-> The complete operator's manual: what every button does, every keyboard shortcut, every kind of interaction — plus which capabilities are experimental or have known limitations right now. Written for first-time users; when this page and the code disagree, the source code wins. This page matches **v0.1.1**; the UI language follows the system locale (Chinese on zh systems, English elsewhere) and can be switched any time.
+> The complete operator's manual: what every button does, every keyboard shortcut, every kind of interaction — plus which capabilities are experimental or have known limitations right now. Written for first-time users; when this page and the code disagree, the source code wins. This page matches **v0.1.2**; the UI language follows the system locale (Chinese on zh systems, English elsewhere) and can be switched any time.
 >
 > For real-run demos see the [Examples Gallery](../cases/examples.md); for build & development setup see [Getting Started](getting-started.md).
 
@@ -28,7 +28,7 @@ flowchart LR
     E --> F["Slicer<br/>multi-material print"]
 ```
 
-> Download: [GitHub Releases](https://github.com/ZackaryShen/ColorYourModel/releases). v0.1.1 ships Windows installers, Linux packages and a macOS universal dmg (unsigned).
+> Download: [GitHub Releases](https://github.com/ZackaryShen/ColorYourModel/releases). v0.1.2 ships Windows installers, Linux packages and a macOS universal dmg (unsigned).
 
 ## Interface overview
 
