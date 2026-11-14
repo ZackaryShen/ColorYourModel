@@ -207,6 +207,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "segments.resetConfirm": { zh: "确定重置分区并清除所有上色吗？此操作不可撤销。", en: "Reset all regions and clear all paint? This cannot be undone." },
   "segments.empty": { zh: "暂无分区，请先导入模型", en: "No segments yet. Import a model first." },
   "segments.renameHint": { zh: "双击重命名，Ctrl+点击多选", en: "Double-click to rename, Ctrl-click to multi-select" },
+  "segments.defaultName": { zh: "分区 {0}", en: "Region {0}" },
   "segments.mergeInto": { zh: "合并 {0} 个分区到「{1}」", en: "Merge {0} regions into \"{1}\"" },
   "segments.merged": { zh: "已合并 {0} 个分区（{1} 个面）", en: "Merged {0} regions ({1} faces)" },
   // Issue #16 on-mesh merge picking. One string doubles as the first-pick
