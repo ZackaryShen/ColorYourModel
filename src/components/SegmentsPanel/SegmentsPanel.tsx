@@ -4,6 +4,7 @@ import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useSegmentMerge } from "../../hooks/useSegmentMerge";
 import { useT } from "../../i18n";
 import { segmentColorHex } from "../../utils/segmentPalette";
+import { displaySegmentName } from "../../utils/segmentLabel";
 import { toggleHiddenLabels, isolateLabel, pruneHiddenLabels } from "../../utils/segmentVisibility";
 import { resetGateTransition, type ResetPhase } from "../../utils/resetGate";
 import { ResetConfirmDialog } from "../ResetConfirmDialog";
@@ -398,7 +399,7 @@ export function SegmentsPanel() {
                     style={styles.itemInput}
                   />
                 ) : (
-                  <span style={styles.itemName}>{seg.name}</span>
+                  <span style={styles.itemName}>{displaySegmentName(seg.name, t)}</span>
                 )}
                 <span style={styles.itemCount}>{seg.faceCount}</span>
                 {!editing && !splitOpen && !resegOpen && (
@@ -495,7 +496,7 @@ export function SegmentsPanel() {
           disabled={merging}
           style={styles.mergeButton}
         >
-          {t("segments.mergeInto", picked.length, target.name)}
+          {t("segments.mergeInto", picked.length, displaySegmentName(target.name, t))}
         </button>
       )}
       {resetPhase !== "idle" && (

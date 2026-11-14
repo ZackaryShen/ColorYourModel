@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useAppStore } from "../../store/appStore";
 import { useSegmentMerge } from "../../hooks/useSegmentMerge";
 import { useT } from "../../i18n";
+import { displaySegmentName } from "../../utils/segmentLabel";
 
 /**
  * Floating merge bar (issue #16): bottom-centre HTML overlay over the canvas,
@@ -36,7 +37,7 @@ export function MergeBar() {
           disabled={merging || !anchor}
           onClick={() => void mergePicked()}
         >
-          {t("segments.mergeInto", picked.length, anchor?.name ?? "")}
+          {t("segments.mergeInto", picked.length, anchor ? displaySegmentName(anchor.name, t) : "")}
         </button>
         <button
           className="cym-btn"
