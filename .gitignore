@@ -59,3 +59,7 @@ src-tauri/resources/orca_source/
 samples/**
 !samples/**/
 !samples/**/*.png
+
+# Local demo-video production workspace (TTS/ffmpeg scratch + raw takes).
+# Only the finished cuts under docs/release/videos/ are committed.
+demo-video/
