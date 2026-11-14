@@ -9,7 +9,7 @@
 > Turn white-model STLs into region-based, multi-colour 3MFs ready for multi-material 3D printing.
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.1.1-blue)](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.1)
+[![Release](https://img.shields.io/badge/release-v0.1.2-blue)](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.2)
 ![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
 ![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 
@@ -39,13 +39,13 @@ Thirteen real runs — sculpts, AI-generated meshes, signage, architecture — l
 
 ## Download
 
-Ready-to-run installers live on the [**releases**](https://github.com/ZackaryShen/ColorYourModel/releases) page — current: [v0.1.1](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.1).
+Ready-to-run installers live on the [**releases**](https://github.com/ZackaryShen/ColorYourModel/releases) page — current: [v0.1.2](https://github.com/ZackaryShen/ColorYourModel/releases/tag/v0.1.2).
 
 | Platform | Installer |
 |----------|-----------|
-| Windows | [`x64-setup.exe`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_x64-setup.exe) (recommended) · [`x64_en-US.msi`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_x64_en-US.msi) |
-| Linux | [`amd64.deb`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_amd64.deb) · [`x86_64.rpm`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel-0.1.1-1.x86_64.rpm) · [`AppImage`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_amd64.AppImage) (bundles WebKit, ~80 MB) |
-| macOS | [`universal.dmg`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.1/ColorYourModel_0.1.1_universal.dmg) (Apple Silicon + Intel, unsigned) |
+| Windows | [`x64-setup.exe`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel_0.1.2_x64-setup.exe) (recommended) · [`x64_en-US.msi`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel_0.1.2_x64_en-US.msi) |
+| Linux | [`amd64.deb`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel_0.1.2_amd64.deb) · [`x86_64.rpm`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel-0.1.2-1.x86_64.rpm) · [`AppImage`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel_0.1.2_amd64.AppImage) (bundles WebKit, ~80 MB) |
+| macOS | [`universal.dmg`](https://github.com/ZackaryShen/ColorYourModel/releases/download/v0.1.2/ColorYourModel_0.1.2_universal.dmg) (Apple Silicon + Intel, unsigned) |
 
 > The macOS build is unsigned (no Apple Developer account) — if Gatekeeper blocks first launch, run `xattr -cr /Applications/ColorYourModel.app`. The UI language follows the system locale (Chinese on zh systems, English elsewhere); switch any time via View → Language. To build from source, see [Getting started](#getting-started).
 
