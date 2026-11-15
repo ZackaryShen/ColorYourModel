@@ -4,6 +4,7 @@
 pub mod model;
 pub mod opc;
 pub mod paint;
+pub mod plates;
 pub mod subdivide;
 
 #[cfg(test)]
