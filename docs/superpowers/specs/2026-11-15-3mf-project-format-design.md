@@ -41,6 +41,10 @@ feature_020_p2_paint 曾设计 `.cym`（ZIP：`project.json` + `model.bin`）作
 - 盘划分只存在于 `Metadata/model_settings.config`：`<plate>`（`plater_id`、`plater_name`、`locked`、`filament_map_mode`、`filament_maps`）+ `<model_instance>`（`object_id` / `instance_id` / `identify_id`）；另有 `<object id>` 块（`name` / `extruder` / `<part>` 及其 `matrix` / `source_*` / `mesh_stat`）与 `<assemble>`（`assemble_item`）。实物位置在 `build/item@transform`（3MF 3×4 行向量矩阵，末 3 个为平移）。
 - **双盘实测**（`model.3mf`，同版本 Orca 产出，5.5MB）：2 个 `<plate>`、2 个 `build/item`、2 个外部 part；盘 1 的对象是 148,460 面**全叶子**涂装（槽 1–7 都真实用到），盘 2 的对象是 993,568 面（含细分）。两盘共用**一套** 7 色 `filament_colour`，`filament_maps` 长度 = 色槽数。
 - **`<assemble>` 不是打印位置**：同一文件里 `assemble_item` 的 transform（对象 4：缩放 0.701、平移到 0,0,75）与 `build/item` 的（缩放 0.701、平移到 459.6,122.2,52.6）**数值不同**，前者是排布装配视图的元数据。几何/打印位置只信 `build × component`。
+- **盘归属按世界坐标判定，不是按 `model_instance` 列表**（真机实测 + 源码 `PartPlateList::update_all_plates_pos_and_size` / `compute_origin`）：盘在世界空间里排成一行，列间距 = `床宽 × 1.2`（`LOGICAL_PART_PLATE_GAP = 1/5`）；对象落在哪个盘的矩形里就属于哪个盘。`model_settings` 的 `<plate>` 只提供盘的**存在与命名**。
+  - 实测对照：`model.3mf` 对象 4 在 x=459.6，床宽 270.5 → 盘 2 区间 `[324.6, 595.1]`，落在其中，所以它在盘 2。
+  - 反例（自造样本的第一次迭代）：3 个 `<plate>` 都写对、盘也建出来了，但对象全在 x=60/135/210（都在盘 1 的 `[0, 270.5]` 内）→ Orca 把三个对象全放在盘 1，盘 2/3 空。
+- 由上述规则推出的工程约定：**导入时把每盘几何归一化到盘局部坐标**（减去该盘原点 `(plater_id-1) × 床宽 × 1.2`），**导出时再按盘加回偏移**。这样 Tab 内视图/包围盒始终正常，且写回后归属不变。床宽取所选机型 `printable_area` 的 max x。
 - `<part><metadata key="matrix">` 与 component transform 在单盘样本里数值相同（平移都是 3.81e-06），双盘样本里差到 1e-6 量级——**不叠加应用**。
 - 单位在 `model@unit`（该文件 `millimeter`），导入需按 unit 换算。
 
@@ -141,7 +145,7 @@ Metadata/cym/history_<i>.bin         每盘撤销/重做栈（见 3）
 | next_manual_label | u32 |
 | 区域名表 | u32 count，然后 (u32 label, u16 len, utf8 bytes) × count |
 
-**不重复存几何**：3MF 的 mesh 是权威几何。指纹 = FNV-1a 64（哈希**规范化坐标**的 f32 LE 字节 ∥ `faces u32 LE`，不引入新依赖）+ 顶点/面计数。
+**不重复存几何**：3MF 的 mesh 是权威几何。指纹 = FNV-1a 64（哈希**规范化坐标**的 f32 LE 字节 ∥ `faces u32 LE`，不引入新依赖）+ 顶点/面计数。**哈希域是盘局部坐标**：导入归一化之后、导出加盘偏移之前，两侧对同一组顶点取值，否则多盘文件必然失配。
 
 **规范化哈希（builder 审查发现的坑）**：现有 writer 用 `{:.6}` 定点输出顶点（`threemf.rs:212-214`），f32 的位模式经「格式化→解析」后会变——实测 `model.3mf` 的 222,678 个坐标分量里 2,873 个（1.29%）落在这个精度歧义带。若直接哈希内存里的 f32 位，自家文件重开就会判「几何被改过」而丢掉全部工程状态。修法：保存时把每个坐标先 `format!("{:.6}", v)` 再 `parse::<f32>()` 得到**读回时必然得到的那个值**，哈希它的字节。读取端解析同一字符串用的是同一个 `str::parse::<f32>`，逐位一致。不改变 writer 输出格式，不冒切片器兼容风险。
 
@@ -178,7 +182,7 @@ kind 5 = p2 分支的 `OpKind::Transform`：整模型变换条目不携带颜色
 2. 解析主模型：`metadata` / `resources`（`object` 为 `mesh` 或 `components`）/ `build`。
 3. 递归展开 `components`（同 part 或 `p:path` 外部 part），累乘 transform。
 4. 盘划分：有 `model_settings.config` → 按 `<plate>` 的 `model_instance` 分组 build item；没有 → 全部合成单盘。
-5. 每盘：按 `build/item@transform` × `component@transform` 烘焙顶点 → 多对象合并为单一 indexed mesh（顶点按位模式去重，同 `loader.rs` 的 STL 合并）。
+5. 每盘：按 `build/item@transform` × `component@transform` 烘焙顶点 → 多对象合并为单一 indexed mesh（顶点按位模式去重，同 `loader.rs` 的 STL 合并）→ **减去该盘世界原点 `(plater_id-1) × 床宽 × 1.2`，归一化到盘局部坐标**。
    **`model_settings.config` 里的 `<part><metadata key="matrix">` 与 `source_offset_*` 不参与烘焙**：实测 `梁圣.3mf` 中 part matrix（4×4 行主序）与 component transform（3MF 3×4）是**同一个变换的两种写法**（平移都是 3.81e-06），两者都应用会双重变换。几何位置只信 3MF core 的 `build × component`。
 6. 颜色：解码 `paint_color`（含细分）→ 槽 → `filament_colour[slot-1]`；**无 `paint_color` 与 state 0 都归槽 1 颜色**（该文件为白）；无 `project_settings.config` 时归 `DEFAULT_FACE_COLOR`。**整对象上色**走另一条通道：`model_settings.config` 里 `<object>`/`<part>` 的 `<metadata key="extruder" value="0">`（0-based 槽索引），没有逐三角 `paint_color` 的对象/部件用它的颜色作基色——`model_settings.config` 反正要解析，不认它会让 Orca 里看着有色的盘导进来变成一片灰。
 7. 细分重建：中点按「顶点对 (min,max) 索引」缓存复用 —— 共享边两侧必须得到逐位相同的中点，否则网格沿边开裂。子三角形顶点顺序按 libslic3r `TriangleSelector` 划分规则（见约束里的未确认项）。
@@ -220,6 +224,7 @@ kind 5 = p2 分支的 `OpKind::Transform`：整模型变换条目不携带颜色
 | Orca/Bambu 保存过的文件（私有 part 丢失） | 基础导入：几何 + `paint_color` 颜色 + 盘 |
 | 其他工具 3MF（无 `paint_color`，只有 `basematerials`） | 几何导入，颜色为默认灰（v1 已知限制） |
 | 无 `model_settings.config` 的多对象 3MF | 全部合并为单盘 |
+| `model_settings` 的盘归属与该对象所处世界坐标矛盾 | **以位置为准**（与切片器显示一致）+ 日志 warn |
 | `unit` 非毫米 | 按 3MF unit 换算到毫米（inch/meter/micron/centimeter） |
 | 只有 `3D/3dmodel.model`、无 rels | 直接按主模型解析 |
 
@@ -302,14 +307,16 @@ kind 5 = p2 分支的 `OpKind::Transform`：整模型变换条目不携带颜色
 
 ## 风险
 
-1. **多盘写出未真机往返**：已有真实双盘样本（`model.3mf`）作逆向依据，`model_settings.config` 的字段集已实测可得；但“我们写出的文件在 Orca 里显示两盘”仍未验证。→ P1 交付时先给你一个合成 2 盘样本做真机确认。
-2. **子三角形几何划分规则未确认**：位语法已实测通过，但“哪几条边分裂/子三角顶点顺序”必须 port `TriangleSelector`。错了会错色（几何仍闭合），靠颜色连通性测试兜住。
+1. **多盘写出仍需真机复验**：盘归属的机制已经实测清楚（按世界坐标 + 列间距 1.2×床宽），样本已按此修正，但“修正后的三盘样本在 Orca 里每盘各一个对象”尚未确认。→ 用户复验 `examples/3plate_sample.3mf`。
+2. **子三角形几何划分规则**：位语法已用真实文件 8,693/8,693 逐比特验证；`special_side` 与子节点逆序已从 OrcaSlicer `TriangleSelector.cpp` 源码确认，剩余风险仅在“边到子三角形的顶点顺序”实现细节，靠颜色连通性与真机对照兜住。
 3. **1M 面 XML 写出/解析性能**：需要基准，否则大模型导出会卡。
 4. **Orca 重写会丢私有 part**：用户可能以为“保存了工程”，实际只剩原生颜色 → 界面需明示“该文件已被切片器重写”。
-5. **`build/item` 与 `assemble` 语义差异**：双盘样本里两者数值不同，已按“只信 build × component”处理；若真机上位置不对，回退方案是改用每盘局部坐标并在导出时写回对应 transform。
+5. **盘原点常量（1.2 倍床宽）来自源码而非文档**：若 Snapmaker 分支改动该常量，对象仍会落在正确盘内（只要内缩量大于误差），但贴着盘边放的对象可能落到相邻盘。写出时保持至少 20mm 内缩。
 
 ## 验证记录（本轮只读 spike，未写任何产品代码）
 
 **单盘 `梁圣.3mf`**：OPC 结构、外部 part、`model_settings.config` 盘结构、`build` transform、`filament_colour` 4 色调色板、`paint_color` 状态机解码（8,693/8,693 通过）、细分规模（148,460 → 993,568 面，6.7×，单三角最多 970 叶子）与逐色面数。
 
 **双盘 `model.3mf`**：2 个 `<plate>` / 2 个 `build/item` / 2 个外部 part；盘 1 = 148,460 面全叶子涂装（槽 1–7 真实用到）、盘 2 = 993,568 面含细分；两盘共用 7 色 `filament_colour`（`#8A8A8A #FFFFFF #000000 #D2B48C #00B0F0 #C99D65 #949262`）；`filament_maps` 长度 = 7；`assemble_item` 与 `build/item` 的 transform 数值不同（证实 assemble 不是打印位置）；`<part>` matrix 与 component transform 数值近等（证实不叠加）。
+
+**三盘样本真机验证（第一轮失败，已定因）**：`examples/3plate_sample.3mf` 在 Snapmaker Orca 中打开后，3 个盘都建出来了（盘名/对象名/5 色耗材/彩色对象都正确），但**三个对象全在盘 1**，盘 2/3 为空。根因不在 `model_settings` 写法（盘块被正确读取），而在 Orca 的盘归属判定：按对象**世界坐标**落在哪个盘矩形内归属，盘列间距 = 床宽 × 1.2（`LOGICAL_PART_PLATE_GAP = 1/5`，`PartPlateList::compute_origin`）。对照真实文件：`model.3mf` 的对象 4 在 x=459.6，床宽 270.5 → 盘 2 区间 `[324.6, 595.1]`，正是它能落在盘 2 的原因。样本已改为 x = 60 / 384.6 / 709.2 重新生成，待第二轮真机确认。由此确立“导入归一化到盘局部、导出按盘加回偏移”的工程约定（见「约束」）。
