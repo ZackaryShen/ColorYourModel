@@ -18,6 +18,12 @@ export interface MeshData {
   bbox: BoundingBox;
   faceCount: number;
   segments: Segment[];
+  /** 1-based plate this mesh came from (P0 always imports the first plate).
+   *  Optional so fixtures/payloads written before 3MF import stay valid; callers
+   *  treat an absent value as 1. */
+  plateIndex?: number;
+  /** Plates the source file declared; absent means 1 (STL / old payload). */
+  plateCount?: number;
 }
 
 export interface PaintResult {

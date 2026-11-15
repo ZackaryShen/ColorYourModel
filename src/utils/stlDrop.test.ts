@@ -29,7 +29,7 @@ describe("planFileDrop", () => {
   });
 
   it("rejects files whose extension is not part of the import pipeline", () => {
-    for (const path of ["C:\\m\\part.obj", "C:\\m\\part.3mf", "C:\\m\\README"]) {
+    for (const path of ["C:\\m\\part.obj", "C:\\m\\part.cym", "C:\\m\\README"]) {
       expect(planFileDrop([path], false)).toEqual({
         action: "reject",
         reason: "extension",
@@ -48,15 +48,10 @@ describe("planFileDrop", () => {
     });
   });
 
-  it("routes a .cym project through the same format-aware pipeline", () => {
-    expect(planFileDrop(["C:\\p\\project.cym"], false)).toEqual({
-      action: "import",
-      path: "C:\\p\\project.cym",
-    });
-    expect(planFileDrop(["C:\\p\\project.cym"], true)).toEqual({
-      action: "confirm-replace",
-      path: "C:\\p\\project.cym",
-    });
+  it("accepts .3mf next to .stl and rejects .cym", () => {
+    expect(planFileDrop(["C:\\m\\a.3mf"], false)).toEqual({ action: "import", path: "C:\\m\\a.3mf" });
+    expect(planFileDrop(["C:\\m\\a.stl"], false)).toEqual({ action: "import", path: "C:\\m\\a.stl" });
+    expect(planFileDrop(["C:\\m\\a.cym"], false)).toEqual({ action: "reject", reason: "extension" });
   });
 
   it("treats an empty drop as a multi-file rejection (never imports)", () => {

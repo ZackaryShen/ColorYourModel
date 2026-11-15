@@ -10,7 +10,7 @@ export type Lang = "zh" | "en";
 // ─── Translation dictionaries ────────────────────────────────────
 const dict: Record<string, Record<Lang, string>> = {
   // Toolbar — buttons
-  "toolbar.import": { zh: "导入 STL 文件", en: "Import STL file" },
+  "toolbar.import": { zh: "导入 STL / 3MF 文件", en: "Import STL / 3MF file" },
   "toolbar.export": { zh: "导出涂装模型为 3MF", en: "Export painted model as 3MF" },
   "toolbar.reSegment": { zh: "重新自动分区（阈值: 30°）", en: "Re-run auto segmentation (threshold: 30°)" },
   "toolbar.smartSegment": { zh: "智能分区（SDF 形态直径）", en: "Smart segment (SDF shape diameter)" },
@@ -24,11 +24,16 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolbar.importComplete": { zh: "导入完成", en: "Import complete" },
   "toolbar.importFailed": { zh: "导入失败", en: "Import failed" },
   "toolbar.startImport": { zh: "开始导入…", en: "Starting import…" },
+  // Status line after a multi-plate 3MF import: P0 shows plate 1 only.
+  "toolbar.importPlateOfTotal": {
+    zh: "导入第 {0} / {1} 盘（多盘分页在后续版本）",
+    en: "Imported plate {0} of {1} (multi-plate paging comes later)",
+  },
 
   // Drag & drop import (issue #21)
-  "drop.hint": { zh: "松开以导入 STL", en: "Drop STL to import" },
+  "drop.hint": { zh: "松开以导入 STL / 3MF", en: "Drop STL / 3MF to import" },
   "drop.rejectMulti": { zh: "一次只能导入一个模型", en: "Only one model can be imported at a time" },
-  "drop.rejectExtension": { zh: "只支持 STL 模型或 .cym 工程文件", en: "Only STL models or .cym project files are supported" },
+  "drop.rejectExtension": { zh: "只支持 STL 模型或 3MF 工程文件", en: "Only STL models or 3MF project files are supported" },
   "drop.importInProgress": { zh: "正在导入，请稍候…", en: "An import is already in progress…" },
   "drop.replaceTitle": { zh: "替换当前模型？", en: "Replace current model?" },
   "drop.replaceBody": { zh: "窗口中已有模型。导入新文件将丢弃当前模型及其未导出的涂装。", en: "A model is already loaded. Importing will discard it together with any unexported paint." },

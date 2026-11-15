@@ -8,9 +8,10 @@
  * unexported painting (same stake as the exit confirm, issue #7).
  */
 
-/** Extensions the import pipeline understands: .stl imports a model, .cym
- *  opens a full project — the same pair the 📂 dialog filter offers. */
-export const DROPPABLE_EXTENSIONS = ["stl", "cym"] as const;
+/** Extensions the import pipeline understands: .stl imports a model, .3mf
+ *  opens a full project (its plates) — the same pair the 📂 dialog filter
+ *  offers. */
+export const DROPPABLE_EXTENSIONS = ["stl", "3mf"] as const;
 
 export type StlDropDecision =
   | { action: "import"; path: string }

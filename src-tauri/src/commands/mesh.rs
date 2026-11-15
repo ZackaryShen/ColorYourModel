@@ -50,8 +50,21 @@ pub fn load_model(
         );
     });
 
-    let model = match ext.as_str() {
-        "stl" => load_stl(&file_path, &*progress_cb)?,
+    // Format dispatch: both branches yield the mesh to show plus how many
+    // plates the source declared, so the DTO is built once below.
+    let (model, plate_count): (MeshModel, u32) = match ext.as_str() {
+        "stl" => (load_stl(&file_path, &*progress_cb)?, 1),
+        "3mf" => {
+            let project = crate::threemf::read_project(&file_path, &*progress_cb)?;
+            let count = project.plates.len() as u32;
+            if count > 1 {
+                log::warn!("[cmd:load_model] {count} plates; P0 imports the first only");
+            }
+            let mut plates = project.plates;
+            // `read_project` always yields at least one plate (a file with no
+            // plate metadata gets a single implicit one).
+            (plates.remove(0).mesh, count)
+        }
         _ => return Err(format!("Unsupported file format: {}", ext)),
     };
 
@@ -61,13 +74,17 @@ pub fn load_model(
         serde_json::json!({ "progress": 1.0, "stage": "Import complete" }),
     );
 
-    let dto = model.to_dto();
+    let mut dto = model.to_dto();
+    dto.plate_index = 1;
+    dto.plate_count = plate_count;
 
     log::info!(
-        "[cmd:load_model] DTO ready: {} verts, {} faces, {} color_entries",
+        "[cmd:load_model] DTO ready: {} verts, {} faces, {} color_entries, plate {}/{}",
         dto.vertices.len() / 3,
         dto.faces.len() / 3,
-        dto.face_colors.len() / 4
+        dto.face_colors.len() / 4,
+        dto.plate_index,
+        dto.plate_count
     );
 
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;

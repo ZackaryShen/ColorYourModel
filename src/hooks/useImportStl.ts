@@ -6,7 +6,7 @@ import { DROPPABLE_EXTENSIONS } from "../utils/stlDrop";
 import { log } from "../utils/logger";
 
 /**
- * Shared STL import flow (file picker → import progress → loadModel → status
+ * Shared model import flow (file picker → import progress → loadModel → status
  * messages). Extracted from the Toolbar button (iteration 14) when the File
  * menu needed the same behaviour; the Toolbar keeps its own progress-event
  * listeners, this hook only owns the click-to-loaded path.
@@ -29,7 +29,24 @@ export function useImportStl() {
     setImportProgress(0, t("toolbar.startImport"));
 
     try {
-      await loadModel(selected);
+      const data = await loadModel(selected);
+      // A multi-plate 3MF lands as its first plate (P0). The DTO fields are
+      // additive, so an absent value means a single-plate source (STL or an
+      // older payload).
+      const plateIndex = data.plateIndex ?? 1;
+      const plateCount = data.plateCount ?? 1;
+
+      // No automatic segmentation on import (removed 2026-08-29): the fuse flow
+      // (SeedPanel → 融合生成) builds its own vote channels and wipes existing
+      // labels, so per-import compute was dead work. Region generation starts
+      // explicitly from the Seed panel.
+      setImportProgress(1, t("toolbar.importComplete"));
+      setStatusMessage(
+        plateCount > 1
+          ? t("toolbar.importPlateOfTotal", plateIndex, plateCount)
+          : t("toolbar.importComplete")
+      );
+      setLoading(false);
     } catch (e) {
       log.error("importStl", "Import failed", { error: String(e) });
       // P0 2026-10-12: a status-bar line alone let a broken/unsupported file
@@ -37,28 +54,19 @@ export function useImportStl() {
       setImportError(String(e));
       setStatusMessage(`${t("toolbar.importFailed")}: ${e}`);
       setLoading(false);
-      return;
     }
-
-    // No automatic segmentation on import (removed 2026-08-29): the fuse flow
-    // (SeedPanel → 融合生成) builds its own vote channels and wipes existing
-    // labels, so per-import compute was dead work. Region generation starts
-    // explicitly from the Seed panel.
-    setImportProgress(1, t("toolbar.importComplete"));
-    setStatusMessage(t("toolbar.importComplete"));
-    setLoading(false);
   };
 
   const importStl = async () => {
     log.info("importStl", "Import action triggered");
     const selected = await open({
       multiple: false,
-      // 0.2.0-P1: the entry point is format-aware — .stl imports fresh, .cym
-      // opens a full project (labels + paint + region names restored). The
-      // filter and the drop gate (planFileDrop) share one extension list so
-      // the two entry points can never drift apart.
+      // The entry point is format-aware — .3mf opens a full 3MF project (P0
+      // loads its first plate), .stl imports a fresh model. The filter and the
+      // drop gate (planFileDrop) share one extension list so the two entry
+      // points can never drift apart.
       filters: [
-        { name: "3D Models / CYM Project", extensions: [...DROPPABLE_EXTENSIONS] },
+        { name: "3MF Project / STL Model", extensions: [...DROPPABLE_EXTENSIONS] },
       ],
     });
     if (!selected) {

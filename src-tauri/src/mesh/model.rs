@@ -176,6 +176,22 @@ pub struct MeshDataDto {
     pub bbox: BoundingBox,
     pub face_count: u32,
     pub segments: Vec<Segment>,
+    /// 1-based index of the plate this mesh came from. Always 1 today: P0
+    /// imports the first plate of a multi-plate 3MF. Additive field — older
+    /// payloads that predate 3MF import deserialize to the single-plate
+    /// default instead of failing.
+    #[serde(default = "one")]
+    pub plate_index: u32,
+    /// How many plates the source file declared. 1 for STL and single-plate
+    /// 3MF; >1 tells the frontend it is looking at plate 1 of N.
+    #[serde(default = "one")]
+    pub plate_count: u32,
+}
+
+/// serde default for the additive plate fields: a payload written before they
+/// existed describes exactly one plate.
+fn one() -> u32 {
+    1
 }
 
 impl MeshModel {
@@ -886,6 +902,10 @@ impl MeshModel {
             bbox: self.bbox.clone(),
             face_count: self.faces.len() as u32,
             segments,
+            // `to_dto` alone always describes a single-plate model; the 3MF
+            // branch in `commands::mesh::load_model` overwrites `plate_count`.
+            plate_index: 1,
+            plate_count: 1,
         }
     }
 
@@ -1271,5 +1291,28 @@ mod tests {
         assert_eq!(used.len(), 1);
         assert_eq!(used[0].color, DEFAULT_FACE_COLOR);
         assert_eq!(used[0].faces, 2);
+    }
+
+    /// `plate_index`/`plate_count` were added additively for 3MF import. An
+    /// older payload shape (no plate fields) must still deserialize, and a
+    /// plain `to_dto` reports the single-plate defaults; only the 3MF branch
+    /// in `commands::mesh::load_model` overwrites the count.
+    #[test]
+    fn dto_plate_fields_default_to_one_and_accept_old_payloads() {
+        let legacy = serde_json::json!({
+            "vertices": [],
+            "faces": [],
+            "faceColors": [],
+            "segmentLabels": [],
+            "bbox": { "min": [0.0, 0.0, 0.0], "max": [0.0, 0.0, 0.0] },
+            "faceCount": 0,
+            "segments": [],
+        });
+        let dto: MeshDataDto =
+            serde_json::from_value(legacy).expect("pre-3MF payload still deserializes");
+        assert_eq!((dto.plate_index, dto.plate_count), (1, 1));
+
+        let fresh = MeshModel::new().to_dto();
+        assert_eq!((fresh.plate_index, fresh.plate_count), (1, 1));
     }
 }
