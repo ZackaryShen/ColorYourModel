@@ -287,7 +287,7 @@ kind 5 = p2 分支的 `OpKind::Transform`：整模型变换条目不携带颜色
 
 ## 我已按推荐定下的决策（评审时可推翻）
 
-1. 未涂装面（无 `paint_color` / state 0）→ 槽 1 颜色，不归 CYM 默认灰。理由：再导出不换色。
+1. 未涂装语义（2026-11-16 修订，按切片器实际行为）：**对象没有 `paint_color` 时，整对象用该对象的 `extruder` 元数据基色**（0-based → 槽 `e+1`）；对象有 `paint_color` 时，其内部 `state = 0` 的叶子同样回落到该对象基色；对象没有 `extruder` 元数据才回落到槽 1。理由：Orca 的 `EnforcerBlockerType::NONE` 语义就是"未涂装 → 对象挤出机"，回落到槽 1 会在 `extruder != 0` 的对象上错色，且再导出会把错色写死。
 2. 不实现 `.cym` 读取；p2 `mesh/project.rs` 的二进制编码（含其分节长度预检与面索引校验）**吸收为交换容器格式**，不是复制第二套 codec。
 3. 交换文件用私有二进制容器（与工程 part 共用状态编码，但不是 3MF）。
 4. 历史持久化预算 64MB，超出丢最旧。
@@ -315,6 +315,18 @@ kind 5 = p2 分支的 `OpKind::Transform`：整模型变换条目不携带颜色
 独立 subagent（不可对话）复审了本文档与仓库源码，确认：3MF 结构事实、`paint_color` 的 8,693/8,693 解码、993,568 叶子面、`MeshModel` 单网格、`MeshDataDto` 字段、`AppState` 单模型、历史 50 条/256MB、`load_model` 只认 stl、`DROPPABLE_EXTENSIONS` 内容均与文档一致；libslic3r 源码未 vendored 但可联网取，故“port TriangleSelector”不阻塞。
 
 它提出 9 个问题，其中 7 个已由决策 7–15 解决（指纹精度、transform 历史、part matrix、`tab_id`、按盘分批、联合调色板、extruder 基色），2 个已由用户回答并写入「已确认的关键输入」。它同时指出一处文档漂移已修正：`.cym` 后端与「打开/保存工程」菜单只存在于未合入的 p2 分支，本分支没有，因此 §6 的“移除菜单项”表述已改为“不再需要”。
+
+## P1 待办与已知取舍（P0 收尾时从 ledger 收敛）
+
+1. **指纹哈希域 = 写出的世界坐标**（已在 P0 修正 I1 并加回归测试）。P1 多盘写出必须在**加盘原点之后**对写入的顶点取指纹，读取侧在**减盘原点之前**取；两侧都不能用盘局部坐标。
+2. **逐面基色**（P0 已按对象 `extruder` 携带 `base_slots`）。P1 的多对象盘导出必须保持"对象 → 挤出机"的对应，不要在合并时再塌缩。
+3. **盘序号与工程 part 绑定**：part 名 `plate_<i>.bin` 由 header 序号推导；header 越界会回退到第 1 条。P1 应当把 `plater_id` 显式写进 header 并在读取时严格匹配。
+4. **loader 按盘分批**：`read_project` 目前会实例化所有盘（P0 只取第一盘），多盘文件导入会白算一遍。P1 按 spec 决策 11 拆成 `load_plates` / `load_plate`。
+5. **位置 vs `model_settings` 归属**：P0 只按 `model_settings` 分组；spec 的"以位置为准"告警留给 P1（需要床宽）。
+6. **工程状态丢失提示**：P0 已用三态（restored/absent/dropped）与 `history_dropped` 上报；P1 增加 UI 文案时不要把它和"文件没有工程 part"混为一谈。
+7. **解码分配上限**：history 已受 64MiB + depth/byte 预算约束，name 表受 `face_count*8+1024` 启发式约束（可能误拒极端编辑的小网格 → 整份状态丢弃并提示）。P1 可把启发式换成显式上限字段。
+8. **清理项**：`materials::resolve` / `resolve_with_base` 已无生产调用方（`read_project` 用 `palette_colour` 内联逻辑，与 `colour_at` 重复）；`threemf::paint` 的 `leaf_slots`/`leaf_count` 仅测试使用；`Package::read` 对 history part 仍可短暂膨胀到 512MiB 再被拒。
+9. **测试缺口**：真实文件的颜色连通性对照、`unit="inch"` 的导出侧断言、以及"被涂装对象内部 state 0 取对象基色"的行为断言。
 
 ## 风险
 
