@@ -86,6 +86,37 @@ impl OpKind {
             OpKind::Split => "split",
         }
     }
+
+    /// Stable one-byte encoding, persisted inside the project file.
+    ///
+    /// These numbers are a file-format contract: once a project has been
+    /// written they must not be reassigned. Byte 5 is reserved for a future
+    /// model-transform operation and is deliberately left unused here.
+    pub fn to_u8(self) -> u8 {
+        match self {
+            OpKind::Paint => 0,
+            OpKind::SegmentPaint => 1,
+            OpKind::ManualRegion => 2,
+            OpKind::Merge => 3,
+            OpKind::Split => 4,
+        }
+    }
+
+    /// Decode a byte written by [`OpKind::to_u8`].
+    ///
+    /// Returns `None` for every byte this build does not know, including the
+    /// reserved byte 5: a project carrying an operation from a newer build must
+    /// fail to load rather than silently undo it as the wrong kind.
+    pub fn from_u8(b: u8) -> Option<OpKind> {
+        match b {
+            0 => Some(OpKind::Paint),
+            1 => Some(OpKind::SegmentPaint),
+            2 => Some(OpKind::ManualRegion),
+            3 => Some(OpKind::Merge),
+            4 => Some(OpKind::Split),
+            _ => None,
+        }
+    }
 }
 
 /// One undoable operation, stored as the state that existed before it ran.
@@ -113,6 +144,28 @@ impl HistoryEntry {
             + self.labels.capacity() * std::mem::size_of::<(u32, u32)>()
     }
 
+    /// Heap footprint measured by `len`, not `capacity`.
+    ///
+    /// [`History::from_raw`] charges loaded entries this way: a rebuilt entry
+    /// owns `Vec`s whose capacity is an artefact of how the snapshot was
+    /// filled, so charging capacity would make a loaded project's byte budget
+    /// depend on the load path rather than on what it stored.
+    fn bytes_by_len(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.colors.len() * std::mem::size_of::<(u32, [u8; 4])>()
+            + self.labels.len() * std::mem::size_of::<(u32, u32)>()
+    }
+
+    /// Project this entry into the owned form the project file persists.
+    fn as_raw(&self) -> RawEntry {
+        RawEntry {
+            kind: self.kind,
+            stroke_id: self.stroke_id,
+            colors: self.colors.clone(),
+            labels: self.labels.clone(),
+        }
+    }
+
     /// Swap every stored value with the live one, turning this entry into its
     /// own inverse.
     fn apply_swap(&mut self, colors: &mut [[u8; 4]], labels: &mut [u32]) {
@@ -121,6 +174,30 @@ impl HistoryEntry {
         }
         for (face, stored) in self.labels.iter_mut() {
             std::mem::swap(&mut labels[*face as usize], stored);
+        }
+    }
+}
+
+/// One history entry projected into owned, payload-only form.
+///
+/// This is the serialization seam: it mirrors [`HistoryEntry`]'s fields without
+/// the stack or accounting state the `History` owns. The derives are part of
+/// that contract — the project-file tests compare snapshots for equality.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawEntry {
+    pub kind: OpKind,
+    pub stroke_id: Option<u64>,
+    pub colors: Vec<(u32, [u8; 4])>,
+    pub labels: Vec<(u32, u32)>,
+}
+
+impl RawEntry {
+    fn into_entry(self) -> HistoryEntry {
+        HistoryEntry {
+            kind: self.kind,
+            stroke_id: self.stroke_id,
+            colors: self.colors,
+            labels: self.labels,
         }
     }
 }
@@ -304,6 +381,45 @@ impl History {
     /// #22): the depth limit stops being invisible once it is on display.
     pub fn max_depth(&self) -> usize {
         self.max_depth
+    }
+
+    /// Project both stacks into owned payloads, for the project file.
+    ///
+    /// `.0` is the undo stack oldest→newest; `.1` is the redo stack with its
+    /// top (the next redo) last — the same order the stacks themselves hold.
+    /// The result is the timeline only: no open stroke, no byte account.
+    pub fn to_raw(&self) -> (Vec<RawEntry>, Vec<RawEntry>) {
+        (
+            self.undo.iter().map(HistoryEntry::as_raw).collect(),
+            self.redo.iter().map(HistoryEntry::as_raw).collect(),
+        )
+    }
+
+    /// Rebuild a history from [`History::to_raw`] output.
+    ///
+    /// Stack order is preserved, including the redo top-last convention. No
+    /// stroke survives the trip: a just-loaded history must not coalesce the
+    /// next paint call into an entry from the previous session, and the
+    /// first-sighting set that bounds a stroke starts empty.
+    ///
+    /// `bytes` is recomputed from the loaded payload lengths (not `capacity`,
+    /// which is an artefact of how each `Vec` was filled), so the eviction
+    /// budget reflects what was actually loaded. The default depth and byte
+    /// limits apply, and entries are restored verbatim rather than evicted
+    /// here — the snapshot is the state the caller asked for.
+    pub fn from_raw(undo: Vec<RawEntry>, redo: Vec<RawEntry>) -> Self {
+        let mut history = Self::new();
+        history.undo = undo.into_iter().map(RawEntry::into_entry).collect();
+        history.redo = redo.into_iter().map(RawEntry::into_entry).collect();
+        history.open_stroke = None;
+        history.open_faces.clear();
+        history.bytes = history
+            .undo
+            .iter()
+            .chain(history.redo.iter())
+            .map(HistoryEntry::bytes_by_len)
+            .sum();
+        history
     }
 
     /// Drop everything.
@@ -707,5 +823,207 @@ mod tests {
         h.redo(&mut colors, &mut labels).unwrap();
         assert_eq!(labels, vec![0, 0, 100_000, 100_000]);
         assert_eq!(colors, vec![[0, 0, 0, 255]; 4], "a merge never repaints");
+    }
+
+    /// A three-operation timeline on a three-face buffer: two paint strokes
+    /// with distinct ids, then a label-only merge. The returned buffers hold
+    /// the state *after* all three operations.
+    fn three_op_timeline() -> (History, Vec<[u8; 4]>, Vec<u32>) {
+        let (mut colors, mut labels) = buffers(3);
+        let mut h = History::new();
+
+        h.record(OpKind::Paint, Some(1), &[(0, colors[0])], &[]);
+        colors[0] = [10, 0, 0, 255];
+
+        h.record(OpKind::Paint, Some(2), &[(1, colors[1])], &[]);
+        colors[1] = [20, 0, 0, 255];
+
+        h.record(OpKind::Merge, None, &[], &[(2, labels[2])]);
+        labels[2] = 100_000;
+
+        (h, colors, labels)
+    }
+
+    /// The byte formula `from_raw` must use: payload measured by `len`.
+    fn len_bytes(e: &RawEntry) -> usize {
+        std::mem::size_of::<HistoryEntry>()
+            + e.colors.len() * std::mem::size_of::<(u32, [u8; 4])>()
+            + e.labels.len() * std::mem::size_of::<(u32, u32)>()
+    }
+
+    /// A history saved and reloaded must undo and redo identically, including
+    /// when the snapshot is taken while an entry sits on the redo branch.
+    #[test]
+    fn raw_round_trip_preserves_undo_and_redo_effects() {
+        let (mut h, colors_after_all, labels_after_all) = three_op_timeline();
+        assert_eq!(h.undo_depth(), 3, "two paints + one merge");
+
+        // Undo the merge before the snapshot, so the round trip has to carry a
+        // populated redo branch as well as both stacks' ordering.
+        let mut live_colors = colors_after_all.clone();
+        let mut live_labels = labels_after_all.clone();
+        h.undo(&mut live_colors, &mut live_labels).unwrap();
+        let colors_after_undo = live_colors.clone();
+        let labels_after_undo = live_labels.clone();
+        assert_eq!(labels_after_undo, vec![0, 0, 0], "the merge is undone again");
+        assert_eq!(colors_after_undo, colors_after_all, "a merge never repaints");
+
+        let (undo, redo) = h.to_raw();
+        assert_eq!(undo.len(), 2);
+        assert_eq!(redo.len(), 1);
+        let mut restored = History::from_raw(undo, redo);
+        assert_eq!(restored.undo_depth(), 2);
+        assert_eq!(restored.redo_depth(), 1);
+
+        let mut restored_colors = colors_after_undo.clone();
+        let mut restored_labels = labels_after_undo.clone();
+
+        // Redo the merge on the reloaded history: same effect.
+        let out = restored
+            .redo(&mut restored_colors, &mut restored_labels)
+            .unwrap();
+        assert!(out.labels_changed);
+        assert_eq!(restored_colors, colors_after_all, "redo colours");
+        assert_eq!(restored_labels, labels_after_all, "redo labels");
+
+        // Undo it again: back to the recorded state.
+        restored
+            .undo(&mut restored_colors, &mut restored_labels)
+            .unwrap();
+        assert_eq!(restored_colors, colors_after_undo);
+        assert_eq!(restored_labels, labels_after_undo);
+
+        // Walk the rest of both timelines in lockstep: every undo and redo must
+        // leave the two histories in the same colour/label state.
+        for step in 0..2 {
+            let live = h.undo(&mut live_colors, &mut live_labels);
+            let reloaded = restored.undo(&mut restored_colors, &mut restored_labels);
+            assert_eq!(live.is_some(), reloaded.is_some(), "undo {step} availability");
+            assert_eq!(live_colors, restored_colors, "undo {step} colours");
+            assert_eq!(live_labels, restored_labels, "undo {step} labels");
+        }
+        assert!(!h.can_undo() && !restored.can_undo());
+        assert_eq!(h.redo_depth(), 3);
+        assert_eq!(restored.redo_depth(), 3);
+        assert_eq!(live_colors, vec![[0, 0, 0, 255]; 3], "pristine colours");
+        assert_eq!(live_labels, vec![0, 0, 0], "pristine labels");
+
+        // At pristine every operation sits on the redo branch. Snapshot again
+        // and replay: the top-last order must survive, because replaying the
+        // entries out of order restores intermediate states out of sequence.
+        let (pristine_undo, pristine_redo) = h.to_raw();
+        assert!(pristine_undo.is_empty());
+        assert_eq!(pristine_redo.len(), 3);
+        let mut redo_only = History::from_raw(pristine_undo, pristine_redo);
+        let mut redo_colors = live_colors.clone();
+        let mut redo_labels = live_labels.clone();
+        for step in 0..3 {
+            let live = h.redo(&mut live_colors, &mut live_labels);
+            let reloaded = redo_only.redo(&mut redo_colors, &mut redo_labels);
+            assert_eq!(live.is_some(), reloaded.is_some(), "redo {step} availability");
+            assert_eq!(live_colors, redo_colors, "redo {step} colours");
+            assert_eq!(live_labels, redo_labels, "redo {step} labels");
+        }
+        assert_eq!(live_colors, colors_after_all);
+        assert_eq!(live_labels, labels_after_all);
+    }
+
+    /// `from_raw` must charge the loaded payload by `len`, not `capacity`, or
+    /// the byte budget of a loaded project depends on how the vectors were
+    /// filled.
+    #[test]
+    fn from_raw_recomputes_the_byte_accounting() {
+        let (h, _colors, _labels) = three_op_timeline();
+        let (undo, redo) = h.to_raw();
+        let expected: usize = undo.iter().chain(redo.iter()).map(len_bytes).sum();
+        assert!(expected > 0, "the fixture must store a real payload");
+
+        let restored = History::from_raw(undo, redo);
+        assert_eq!(restored.bytes(), expected, "bytes = sum of stored payloads");
+        assert_eq!(restored.max_depth(), DEFAULT_MAX_DEPTH);
+        assert_eq!(restored.undo_depth(), 3);
+        assert_eq!(restored.redo_depth(), 0);
+
+        // Spare capacity must not be charged: a caller-built Vec with room for
+        // 64 colours still stores one.
+        let mut colors = Vec::with_capacity(64);
+        colors.push((0, [1, 2, 3, 4]));
+        let mut labels = Vec::with_capacity(64);
+        labels.push((1, 7));
+        let sparse = History::from_raw(
+            vec![RawEntry {
+                kind: OpKind::SegmentPaint,
+                stroke_id: None,
+                colors,
+                labels,
+            }],
+            Vec::new(),
+        );
+        let one_entry = std::mem::size_of::<HistoryEntry>()
+            + std::mem::size_of::<(u32, [u8; 4])>()
+            + std::mem::size_of::<(u32, u32)>();
+        assert_eq!(sparse.bytes(), one_entry, "len, not capacity");
+    }
+
+    /// A freshly loaded history must not merge the next paint call into a
+    /// stroke that belonged to the previous session.
+    #[test]
+    fn an_open_stroke_never_survives_a_round_trip() {
+        let (mut colors, mut labels) = buffers(2);
+        let mut h = History::new();
+
+        // Two appends under one id coalesce into a single entry.
+        h.record(OpKind::Paint, Some(7), &[(0, colors[0])], &[]);
+        colors[0] = [1, 0, 0, 255];
+        h.record(OpKind::Paint, Some(7), &[(1, colors[1])], &[]);
+        colors[1] = [1, 0, 0, 255];
+        assert_eq!(h.undo_depth(), 1, "same stroke id coalesces");
+
+        let (undo, redo) = h.to_raw();
+        let mut restored = History::from_raw(undo, redo);
+
+        // Recording under the same id must open a new entry...
+        restored.record(OpKind::Paint, Some(7), &[(0, colors[0])], &[]);
+        assert_eq!(restored.undo_depth(), 2, "the open stroke did not survive");
+
+        // ...and its first-sighting set must be empty too: face 0 must be
+        // recorded even though the old open stroke had already seen it.
+        colors[0] = [9, 9, 9, 255];
+        restored.undo(&mut colors, &mut labels).unwrap();
+        assert_eq!(
+            colors[0], [1, 0, 0, 255],
+            "the open-face dedup must not leak either"
+        );
+    }
+
+    /// Kind bytes are a persisted contract; byte 5 is reserved for a future
+    /// model-transform op and must not be reused before that op exists.
+    #[test]
+    fn kind_bytes_are_stable() {
+        assert_eq!(OpKind::Paint.to_u8(), 0);
+        assert_eq!(OpKind::SegmentPaint.to_u8(), 1);
+        assert_eq!(OpKind::ManualRegion.to_u8(), 2);
+        assert_eq!(OpKind::Merge.to_u8(), 3);
+        assert_eq!(OpKind::Split.to_u8(), 4);
+
+        for kind in [
+            OpKind::Paint,
+            OpKind::SegmentPaint,
+            OpKind::ManualRegion,
+            OpKind::Merge,
+            OpKind::Split,
+        ] {
+            assert_eq!(
+                OpKind::from_u8(kind.to_u8()),
+                Some(kind),
+                "{} must round trip",
+                kind.key()
+            );
+        }
+
+        assert_eq!(OpKind::from_u8(5), None, "kind 5 预留给模型变换，本版本不可加载");
+        for b in 6..=u8::MAX {
+            assert_eq!(OpKind::from_u8(b), None, "byte {b} is not a known op kind");
+        }
     }
 }
