@@ -3,6 +3,7 @@ mod export;
 mod mesh;
 mod paint;
 mod segment;
+mod threemf;
 
 use commands::mesh::AppState;
 
