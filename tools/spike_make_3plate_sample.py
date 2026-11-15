@@ -66,11 +66,29 @@ def hex_prism(r=9.0, h=30.0):
         f.append([0, i+1, i]); slots.append(2)
     return v, f, slots
 
+# Orca assigns an object to the plate whose WORLD RECTANGLE contains it;
+# plates are laid out in a row with pitch = bed_width * (1 + LOGICAL_PART_PLATE_GAP=0.2).
+# So each plate's object must be offset into that plate's cell, not just listed in
+# model_settings (verified against ~/Downloads/model.3mf: object 4 at x=459.6 lands
+# in plate 2's span [324.6, 595.1] for a 270.5 bed).
+def bed_width():
+    import base64
+    with zipfile.ZipFile(BASE) as z:
+        cfg = json.loads(z.read("Metadata/project_settings.config"))
+    xs = []
+    for pt in cfg.get("printable_area", []):
+        x, _, y = pt.partition("x")
+        xs.append(float(x))
+    return max(xs) if xs else 220.0
+
+PITCH = bed_width() * 1.2
+LOCAL_X = 60.0   # inset from the plate's left edge
+
 # plate -> (object id, name, mesh, placement x,y)
 PLATES = [
-    (1, "Plate1-Cube",   cube(),      60.0, 110.0),
-    (2, "Plate2-Tetra",  tetra(),    135.0, 110.0),
-    (3, "Plate3-Prism",  hex_prism(),210.0, 110.0),
+    (1, "Plate1-Cube",   cube(),      LOCAL_X + 0 * PITCH, 110.0),
+    (2, "Plate2-Tetra",  tetra(),     LOCAL_X + 1 * PITCH, 110.0),
+    (3, "Plate3-Prism",  hex_prism(), LOCAL_X + 2 * PITCH, 110.0),
 ]
 
 def fmt(x):
