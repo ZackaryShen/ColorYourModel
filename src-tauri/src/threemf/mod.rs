@@ -40,16 +40,50 @@ const ENGINEERING_DIR: &str = "Metadata/cym";
 /// Engineering header: format version, unit, and one fingerprint per plate.
 const ENGINEERING_HEADER_PART: &str = "Metadata/cym/project.json";
 
+/// What happened to the optional engineering state (`Metadata/cym/*`) of a
+/// plate.
+///
+/// A `bool` cannot separate "the file never carried engineering state" from
+/// "it carried some and this build discarded it": the first is a normal plain
+/// import with no notice, the second must tell the user the saved state was
+/// dropped. Keeping the three outcomes explicit is what lets the command layer
+/// and the status bar distinguish them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineeringState {
+    /// The saved engineering state matched the geometry and was applied.
+    Restored,
+    /// The file carried no engineering parts at all.
+    Absent,
+    /// Engineering parts existed but could not be applied (version, parse,
+    /// fingerprint, decode, or a missing plate part).
+    Dropped,
+}
+
+impl EngineeringState {
+    /// Stable wire name for the frontend DTO.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EngineeringState::Restored => "restored",
+            EngineeringState::Absent => "absent",
+            EngineeringState::Dropped => "dropped",
+        }
+    }
+}
+
 /// One plate ready to become a tab.
 pub struct ImportedPlate {
     pub plater_id: u32,
     pub name: String,
     /// Geometry is in millimetres and **plate-local** coordinates: the plate's
     /// world-grid origin has already been subtracted, so plate 1 and plate 7
-    /// both start near the origin. `engineering` says whether the exact saved
-    /// state (labels, RGBA, names, history, high-water mark) was restored.
+    /// both start near the origin. `engineering_state` says whether the exact
+    /// saved state (labels, RGBA, names, history, high-water mark) survived.
     pub mesh: MeshModel,
-    pub engineering: bool,
+    pub engineering_state: EngineeringState,
+    /// True when a `history_<i>.bin` part existed but could not be restored
+    /// (unknown op kind, corrupt payload, or an unreadable part). A missing
+    /// history part is not a loss: the file never carried one.
+    pub history_dropped: bool,
 }
 
 /// Everything one 3MF contributes: the declared unit and one plate per
@@ -78,7 +112,13 @@ pub fn read_project(path: &Path, progress: &dyn Fn(f32, &str)) -> Result<Importe
     let settings = read_settings(&mut package);
     let groups = plates::group(&scene.build, &settings);
 
-    // Read each optional metadata part once, not once per plate.
+    // Read each optional metadata part once, not once per plate. Whether the
+    // header part *exists* is tracked separately from whether it parsed: a
+    // rejected part must surface as "dropped", never as "plain file".
+    let engineering_header_present = package
+        .part_names()
+        .iter()
+        .any(|part| part == ENGINEERING_HEADER_PART);
     let engineering_header = read_engineering_header(&mut package);
     let project_settings = read_optional(&mut package, PROJECT_SETTINGS_PART);
     let palette = project_settings.as_deref().and_then(read_palette);
@@ -107,6 +147,7 @@ pub fn read_project(path: &Path, progress: &dyn Fn(f32, &str)) -> Result<Importe
             &mut package,
             &context,
             engineering_header.as_ref(),
+            engineering_header_present,
             index,
             group,
         )?);
@@ -135,6 +176,7 @@ fn import_plate(
     package: &mut Package,
     context: &PlateContext,
     engineering_header: Option<&project_state::ProjectState>,
+    engineering_header_present: bool,
     index: usize,
     group: &PlateGroup,
 ) -> Result<ImportedPlate, String> {
@@ -187,9 +229,10 @@ fn import_plate(
     mesh.segment_labels = vec![0; face_count];
     mesh.unit = "millimeter".to_string();
 
-    let engineering = try_restore(
+    let restore = try_restore(
         package,
         engineering_header,
+        engineering_header_present,
         index,
         fingerprint,
         &mut mesh,
@@ -207,7 +250,8 @@ fn import_plate(
         plater_id,
         name: plate_name(context.settings, context.scene, group, plater_id),
         mesh,
-        engineering,
+        engineering_state: restore.state,
+        history_dropped: restore.history_dropped,
     })
 }
 
@@ -356,9 +400,10 @@ fn plate_origin(plater_id: u32, plate_count: usize, bed_width: f32, bed_depth: f
 
 /// Parse `Metadata/cym/project.json` once for the whole file.
 ///
-/// `None` covers "file has no engineering state" silently and every failure
-/// (unparsable, incompatible version, no plates) with a warning. Restore then
-/// per plate only has to find its header and compare fingerprints.
+/// `None` covers both "file has no engineering state" and every parse failure
+/// (unparsable, incompatible version, no plates). The caller tracks whether the
+/// part *existed* separately, so a rejected part is reported as
+/// [`EngineeringState::Dropped`] rather than as a plain file.
 fn read_engineering_header(package: &mut Package) -> Option<project_state::ProjectState> {
     let bytes = read_optional(package, ENGINEERING_HEADER_PART)?;
     let Ok(text) = std::str::from_utf8(&bytes) else {
@@ -379,21 +424,56 @@ fn read_engineering_header(package: &mut Package) -> Option<project_state::Proje
     Some(project)
 }
 
+/// What restoring one plate's engineering state produced.
+struct RestoreOutcome {
+    state: EngineeringState,
+    history_dropped: bool,
+}
+
+impl RestoreOutcome {
+    fn absent() -> Self {
+        Self {
+            state: EngineeringState::Absent,
+            history_dropped: false,
+        }
+    }
+
+    fn dropped(history_dropped: bool) -> Self {
+        Self {
+            state: EngineeringState::Dropped,
+            history_dropped,
+        }
+    }
+}
+
 /// Restore exact engineering state when it belongs to this geometry.
 ///
-/// Returns `false` — never an error — for every way the state can fail to
-/// apply: no header, missing or corrupt plate part, or a fingerprint that does
-/// not match the plate just assembled. The caller keeps the plain-import
-/// colours in that case.
+/// Never an error: every way the state can fail to apply degrades to plain
+/// import. The outcome distinguishes "the file carried no engineering parts"
+/// (`Absent`, no notice) from "parts existed but were rejected" (`Dropped`,
+/// which the UI must surface), and reports a present-but-unreadable history
+/// separately.
 fn try_restore(
     package: &mut Package,
     project: Option<&project_state::ProjectState>,
+    header_part_present: bool,
     plate_index: usize,
     fingerprint: project_state::Fingerprint,
     mesh: &mut MeshModel,
-) -> bool {
+) -> RestoreOutcome {
     let Some(project) = project else {
-        return false;
+        // The header was absent or unreadable. Only "something existed" is a
+        // drop worth telling the user about; a file with no `Metadata/cym/*`
+        // part at all is a normal plain import.
+        let plate_present = part_exists(package, &plate_part_name(plate_index));
+        let history_present = part_exists(package, &history_part_name(plate_index));
+        if header_part_present || plate_present || history_present {
+            log::warn!(
+                "3mf: engineering state exists but could not be read; using plain import"
+            );
+            return RestoreOutcome::dropped(history_present);
+        }
+        return RestoreOutcome::absent();
     };
     let Some((header_index, header)) = project
         .plates
@@ -401,8 +481,12 @@ fn try_restore(
         .map(|header| (plate_index, header))
         .or_else(|| project.plates.first().map(|header| (0, header)))
     else {
-        return false;
+        // `read_engineering_header` rejects an empty plate list, so this is
+        // only reachable for a hand-built `ProjectState`.
+        return RestoreOutcome::dropped(part_exists(package, &history_part_name(plate_index)));
     };
+    let plate_part = plate_part_name(header_index);
+    let history_part = history_part_name(header_index);
 
     // The caller hashes the subdivided, millimetre geometry **before** the
     // plate-origin shift: that is the world-coordinate domain the writer
@@ -416,21 +500,20 @@ fn try_restore(
             fingerprint.vertex_count,
             fingerprint.face_count,
         );
-        return false;
+        return RestoreOutcome::dropped(part_exists(package, &history_part));
     }
 
     // Parts are numbered by the plate's 1-based ordinal (the header is located
     // by index, so an out-of-range plate falls back to the first part too).
-    let plate_part = format!("{ENGINEERING_DIR}/plate_{}.bin", header_index + 1);
     let Some(state_bytes) = read_optional(package, &plate_part) else {
         log::warn!("3mf: engineering header matched, but {plate_part} is missing");
-        return false;
+        return RestoreOutcome::dropped(part_exists(package, &history_part));
     };
     let state = match project_state::decode_plate_state(&state_bytes, mesh.faces.len()) {
         Ok(state) => state,
         Err(error) => {
             log::warn!("3mf: {plate_part} ignored ({error})");
-            return false;
+            return RestoreOutcome::dropped(part_exists(package, &history_part));
         }
     };
     mesh.face_colors = state.face_colors;
@@ -438,14 +521,22 @@ fn try_restore(
     mesh.segment_names = state.segment_names;
     mesh.next_manual_label = state.next_manual_label;
 
-    // History is optional on its own: `Ok(None)` (or a missing/corrupt part)
-    // means "open with an empty stack", never "reject the file".
-    let history_part = format!("{ENGINEERING_DIR}/history_{}.bin", header_index + 1);
+    // History is optional on its own: a missing part means "open with an empty
+    // stack", never "reject the file". A part that exists but cannot decode is
+    // a real loss, so the DTO reports it instead of silently emptying the
+    // stack.
+    let mut history_dropped = false;
     if let Some(history_bytes) = read_optional(package, &history_part) {
         match project_state::decode_history(&history_bytes, mesh.faces.len()) {
             Ok(Some(history)) => mesh.history = history,
-            Ok(None) => log::warn!("3mf: persisted history is unreadable; keeping an empty stack"),
-            Err(error) => log::warn!("3mf: persisted history ignored ({error})"),
+            Ok(None) => {
+                log::warn!("3mf: persisted history is unreadable; keeping an empty stack");
+                history_dropped = true;
+            }
+            Err(error) => {
+                log::warn!("3mf: persisted history ignored ({error})");
+                history_dropped = true;
+            }
         }
     }
 
@@ -461,7 +552,24 @@ fn try_restore(
             label.saturating_add(1).max(MANUAL_SEGMENT_OFFSET)
         });
     mesh.next_manual_label = mesh.next_manual_label.max(floor);
-    true
+    RestoreOutcome {
+        state: EngineeringState::Restored,
+        history_dropped,
+    }
+}
+
+/// Engineering part names for a plate's zero-based ordinal.
+fn plate_part_name(plate_index: usize) -> String {
+    format!("{ENGINEERING_DIR}/plate_{}.bin", plate_index + 1)
+}
+
+fn history_part_name(plate_index: usize) -> String {
+    format!("{ENGINEERING_DIR}/history_{}.bin", plate_index + 1)
+}
+
+/// Whether the package lists a part with exactly this name.
+fn part_exists(package: &Package, name: &str) -> bool {
+    package.part_names().iter().any(|part| part == name)
 }
 
 /// `model_settings.config`, or the "no plate information" default on any
@@ -618,7 +726,8 @@ mod tests {
         assert_eq!(plate.plater_id, 1);
         // No model_settings: the grouping default names the only plate.
         assert_eq!(plate.name, "plate 1");
-        assert!(!plate.engineering);
+        assert_eq!(plate.engineering_state, EngineeringState::Absent);
+        assert!(!plate.history_dropped);
         assert_eq!(plate.mesh.vertices, QUAD_VERTICES);
         assert_eq!(plate.mesh.faces, QUAD_FACES);
         // `1C` decodes to a leaf in extruder slot 4 -> palette index 3.
@@ -660,7 +769,7 @@ mod tests {
 
         let project = read(entries);
         let plate = &project.plates[0];
-        assert!(!plate.engineering);
+        assert_eq!(plate.engineering_state, EngineeringState::Absent);
         assert_eq!(plate.mesh.segment_labels, vec![0, 0]);
         assert!(plate.mesh.segment_names.is_empty());
         assert_eq!(plate.mesh.next_manual_label, MANUAL_SEGMENT_OFFSET);
@@ -722,7 +831,8 @@ mod tests {
 
         let mut project = read(entries);
         let mut plate = project.plates.remove(0);
-        assert!(plate.engineering);
+        assert_eq!(plate.engineering_state, EngineeringState::Restored);
+        assert!(!plate.history_dropped);
         assert_eq!(plate.mesh.face_colors, stored.face_colors);
         assert_eq!(plate.mesh.segment_labels, vec![0, 100_003]);
         // Names survive through `rebuild_segments`, i.e. they reach the DTO.
@@ -785,7 +895,11 @@ mod tests {
 
         let project = read(entries);
         let plate = &project.plates[0];
-        assert!(!plate.engineering);
+        assert_eq!(
+            plate.engineering_state,
+            EngineeringState::Dropped,
+            "a matching-counts/different-hash header is a drop, not a plain file"
+        );
         assert_eq!(plate.mesh.face_colors, vec![colour(3), colour(0)]);
         assert_eq!(plate.mesh.segment_labels, vec![0, 0]);
         assert_eq!(plate.mesh.next_manual_label, MANUAL_SEGMENT_OFFSET);
@@ -828,7 +942,7 @@ mod tests {
             ("Metadata/cym/project.json", b"{ not json".to_vec()),
         ];
         let project = read(entries);
-        assert!(!project.plates[0].engineering);
+        assert_eq!(project.plates[0].engineering_state, EngineeringState::Dropped);
         assert_eq!(project.plates[0].mesh.face_colors[0], colour(3));
 
         // (b) header is readable and matches, but the plate part is truncated.
@@ -851,7 +965,7 @@ mod tests {
             ),
         ];
         let project = read(entries);
-        assert!(!project.plates[0].engineering);
+        assert_eq!(project.plates[0].engineering_state, EngineeringState::Dropped);
         assert_eq!(project.plates[0].mesh.face_colors[0], colour(3));
 
         // (c) an unknown major format_version is ignored, not fatal.
@@ -870,15 +984,74 @@ mod tests {
             ("Metadata/cym/plate_1.bin", state),
         ];
         let project = read(entries);
-        assert!(!project.plates[0].engineering);
+        assert_eq!(project.plates[0].engineering_state, EngineeringState::Dropped);
         assert_eq!(project.plates[0].mesh.face_colors[0], colour(3));
+    }
+
+    #[test]
+    fn a_present_but_unreadable_history_is_reported_while_the_state_restores() {
+        let object = mesh_object(1, "Part", QUAD_VERTICES, QUAD_FACES, &[None, None]);
+
+        let mut stored = MeshModel::new();
+        stored.vertices = QUAD_VERTICES.to_vec();
+        stored.faces = QUAD_FACES.to_vec();
+        stored.face_colors = vec![[1, 2, 3, 255], [4, 5, 6, 255]];
+        stored.segment_labels = vec![0, 0];
+        stored
+            .history
+            .record(OpKind::Paint, None, &[(0, [0, 0, 0, 255])], &[]);
+        let mut history_bytes = encode_history(&stored.history);
+        // The first entry's kind byte follows the undo count; byte 5 is the
+        // reserved future transform kind this build does not know.
+        history_bytes[4] = 5;
+
+        let header = ProjectState {
+            active_plate: 1,
+            unit: "millimeter".to_string(),
+            plates: vec![PlateStateHeader {
+                plater_id: 1,
+                name: "Part".to_string(),
+                object_ids: vec![1],
+                fingerprint: fingerprint_of(QUAD_VERTICES, QUAD_FACES),
+            }],
+        };
+        let base_entries = || {
+            vec![
+                (
+                    "3D/3dmodel.model",
+                    model_part(&object, r#"<item objectid="1"/>"#),
+                ),
+                (
+                    "Metadata/cym/project.json",
+                    encode_project_json(&header).into_bytes(),
+                ),
+                ("Metadata/cym/plate_1.bin", encode_plate_state(&stored)),
+            ]
+        };
+
+        // The state restores; the unreadable history is reported, not silently
+        // replaced by an empty stack.
+        let mut entries = base_entries();
+        entries.push(("Metadata/cym/history_1.bin", history_bytes));
+        let project = read(entries);
+        let plate = &project.plates[0];
+        assert_eq!(plate.engineering_state, EngineeringState::Restored);
+        assert!(plate.history_dropped);
+        assert!(!plate.mesh.history.can_undo());
+        assert_eq!(plate.mesh.face_colors, stored.face_colors);
+
+        // A missing history part is not a loss: the file never carried one.
+        let project = read(base_entries());
+        let plate = &project.plates[0];
+        assert_eq!(plate.engineering_state, EngineeringState::Restored);
+        assert!(!plate.history_dropped);
     }
 
     #[test]
     fn a_3mf_without_any_paint_or_palette_still_imports_as_default_grey() {
         let object = mesh_object(1, "Part", TRIANGLE_VERTICES, TRIANGLE_FACE, &[None]);
         let project = read(one_object(&object));
-        assert!(!project.plates[0].engineering);
+        assert_eq!(project.plates[0].engineering_state, EngineeringState::Absent);
         assert_eq!(project.plates[0].mesh.face_colors, vec![DEFAULT_FACE_COLOR]);
 
         // A project_settings part without a palette is just as optional.
@@ -965,7 +1138,7 @@ mod tests {
         let plate = &project.plates[0];
         assert_eq!(plate.name, "Body");
         assert_eq!(plate.plater_id, 1);
-        assert!(!plate.engineering);
+        assert_eq!(plate.engineering_state, EngineeringState::Absent);
         // `extruder` is 0-based, so extruder 1 is palette index 1.
         assert_eq!(plate.mesh.face_colors, vec![colour(1)]);
     }
@@ -1099,7 +1272,10 @@ mod tests {
                 ("Metadata/cym/plate_1.bin", encode_plate_state(&stored)),
             ];
             let project = read(entries);
-            assert!(project.plates[0].engineering);
+            assert_eq!(
+                project.plates[0].engineering_state,
+                EngineeringState::Restored
+            );
             project.plates[0].mesh.next_manual_label
         }
 
@@ -1197,8 +1373,17 @@ mod tests {
 
         let project = read(entries);
         assert_eq!(project.plates.len(), 2);
-        assert!(!project.plates[0].engineering);
-        assert!(project.plates[1].engineering);
+        // Plate 1's header exists and matches, but its part is absent: the
+        // file carried state for it that could not be applied (a drop, not a
+        // plain file). Plate 2 restores.
+        assert_eq!(
+            project.plates[0].engineering_state,
+            EngineeringState::Dropped
+        );
+        assert_eq!(
+            project.plates[1].engineering_state,
+            EngineeringState::Restored
+        );
         // Both plates are in their own local frame: the shift still applies to
         // the geometry even though the fingerprint was taken before it.
         assert_eq!(project.plates[0].mesh.vertices[0], [0.0, 0.0, 0.0]);
@@ -1207,6 +1392,13 @@ mod tests {
         assert_eq!(project.plates[1].mesh.segment_labels, vec![100_010]);
         assert_eq!(project.plates[1].mesh.segment_names[&100_010], "Back face");
         assert_eq!(project.plates[1].mesh.next_manual_label, 100_011);
+    }
+
+    #[test]
+    fn engineering_state_wire_names_are_stable() {
+        assert_eq!(EngineeringState::Restored.as_str(), "restored");
+        assert_eq!(EngineeringState::Absent.as_str(), "absent");
+        assert_eq!(EngineeringState::Dropped.as_str(), "dropped");
     }
 
     #[test]
@@ -1219,6 +1411,12 @@ mod tests {
         assert_eq!(p.plates.len(), 2);
         assert_eq!(p.plates[0].mesh.faces.len(), 148_460);
         assert_eq!(p.plates[1].mesh.faces.len(), 993_568);
+        // A slicer-written file carries no CYM engineering parts: plain
+        // import, and no "state was dropped" notice.
+        for plate in &p.plates {
+            assert_eq!(plate.engineering_state, EngineeringState::Absent);
+            assert!(!plate.history_dropped);
+        }
     }
 
     #[test]
@@ -1232,5 +1430,7 @@ mod tests {
         assert_eq!(p.plates[0].mesh.faces.len(), 993_568);
         // 74,226 base vertices plus the midpoints subdivision creates.
         assert_eq!(p.plates[0].mesh.vertices.len(), 652_451);
+        assert_eq!(p.plates[0].engineering_state, EngineeringState::Absent);
+        assert!(!p.plates[0].history_dropped);
     }
 }

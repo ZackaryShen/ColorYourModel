@@ -712,8 +712,9 @@ mod tests {
         assert_eq!(project.plates.len(), 1, "P0 writes exactly one plate");
         assert_eq!(project.unit, "millimeter");
         let plate = &mut project.plates[0];
-        assert!(
-            plate.engineering,
+        assert_eq!(
+            plate.engineering_state,
+            crate::threemf::EngineeringState::Restored,
             "a file this build wrote must restore its engineering state"
         );
         assert_eq!(plate.plater_id, 1);
@@ -781,8 +782,9 @@ mod tests {
         let project =
             crate::threemf::read_project(&path, &|_, _| {}).expect("the export must read back");
         let plate = &project.plates[0];
-        assert!(
-            plate.engineering,
+        assert_eq!(
+            plate.engineering_state,
+            crate::threemf::EngineeringState::Restored,
             "a high-precision coordinate must not make the reader drop the state"
         );
         assert_eq!(plate.mesh.vertices, canonical(&mesh.vertices));

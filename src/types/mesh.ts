@@ -24,6 +24,14 @@ export interface MeshData {
   plateIndex?: number;
   /** Plates the source file declared; absent means 1 (STL / old payload). */
   plateCount?: number;
+  /** What happened to a 3MF source's optional engineering state. `absent` is a
+   *  plain import with no notice (the file never carried any); `dropped` means
+   *  parts existed but were rejected, so the UI must tell the user their saved
+   *  labels/colours were not restored. Absent for STL. */
+  engineeringState?: "restored" | "absent" | "dropped";
+  /** True when a persisted undo history part existed but could not be decoded
+   *  (the model opens with an empty stack). A missing part stays false. */
+  historyDropped?: boolean;
 }
 
 export interface PaintResult {

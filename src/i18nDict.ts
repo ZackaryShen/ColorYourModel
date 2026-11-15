@@ -273,6 +273,18 @@ const dict: Record<string, Record<Lang, string>> = {
   // source as the viewport help bar (controls.viewHint / brushHint / editHint).
   "status.ready": { zh: "就绪", en: "Ready" },
   "status.loaded": { zh: "已加载 {0} 个面", en: "Loaded {0} faces" },
+  // 3MF engineering state existed but could not be applied (fingerprint/version/
+  // decode mismatch): the user must know their saved labels/colours were not
+  // restored, and that a slicer may have rewritten the file.
+  "status.engineeringDropped": {
+    zh: "工程数据与几何不匹配，已按普通 3MF 导入",
+    en: "Engineering data does not match the geometry; imported as a plain 3MF",
+  },
+  // The engineering state restored, but its persisted undo history was rejected.
+  "status.historyDropped": {
+    zh: "撤销历史未能载入，已从空历史开始",
+    en: "Undo history could not be loaded; starting with an empty history",
+  },
 
   // Debug log viewer (iteration 59) + its status-bar toggle
   "debugLog.title": { zh: "🐞 调试日志（{0} 条）", en: "🐞 Debug log ({0} entries)" },

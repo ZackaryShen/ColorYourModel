@@ -186,6 +186,17 @@ pub struct MeshDataDto {
     /// 3MF; >1 tells the frontend it is looking at plate 1 of N.
     #[serde(default = "one")]
     pub plate_count: u32,
+    /// What happened to a 3MF's optional engineering state:
+    /// `"restored" | "absent" | "dropped"`. `None` for STL (no engineering
+    /// concept) and for payloads written before this field existed. `dropped`
+    /// means parts existed but were rejected and the UI must say so.
+    #[serde(default)]
+    pub engineering_state: Option<String>,
+    /// True when a persisted undo history part existed but could not be
+    /// decoded, so the model opened with an empty stack. Missing history (no
+    /// part at all) is not a loss and stays `false`.
+    #[serde(default)]
+    pub history_dropped: bool,
 }
 
 /// serde default for the additive plate fields: a payload written before they
@@ -906,6 +917,10 @@ impl MeshModel {
             // branch in `commands::mesh::load_model` overwrites `plate_count`.
             plate_index: 1,
             plate_count: 1,
+            // Engineering state is a 3MF concept; the command layer fills
+            // these in for that branch.
+            engineering_state: None,
+            history_dropped: false,
         }
     }
 
@@ -1314,5 +1329,39 @@ mod tests {
 
         let fresh = MeshModel::new().to_dto();
         assert_eq!((fresh.plate_index, fresh.plate_count), (1, 1));
+    }
+
+    /// The engineering report travels on the same DTO: optional camelCase
+    /// fields (STL has no engineering concept, old payloads predate them) that
+    /// the 3MF command branch fills in.
+    #[test]
+    fn dto_engineering_fields_are_optional_camel_case_and_default_to_none() {
+        let legacy = serde_json::json!({
+            "vertices": [],
+            "faces": [],
+            "faceColors": [],
+            "segmentLabels": [],
+            "bbox": { "min": [0.0, 0.0, 0.0], "max": [0.0, 0.0, 0.0] },
+            "faceCount": 0,
+            "segments": [],
+        });
+        let legacy: MeshDataDto =
+            serde_json::from_value(legacy).expect("pre-engineering payload still deserializes");
+        assert_eq!(legacy.engineering_state, None);
+        assert!(!legacy.history_dropped);
+
+        let mut dto = MeshModel::new().to_dto();
+        assert_eq!(dto.engineering_state, None, "STL has no engineering state");
+        assert!(!dto.history_dropped);
+
+        dto.engineering_state = Some("dropped".to_string());
+        dto.history_dropped = true;
+        let value = serde_json::to_value(&dto).expect("DTO is serialisable");
+        assert_eq!(value["engineeringState"], "dropped");
+        assert_eq!(value["historyDropped"], true);
+        assert!(
+            value.get("engineering_state").is_none(),
+            "the wire form is camelCase"
+        );
     }
 }

@@ -50,10 +50,16 @@ pub fn load_model(
         );
     });
 
-    // Format dispatch: both branches yield the mesh to show plus how many
-    // plates the source declared, so the DTO is built once below.
-    let (model, plate_count): (MeshModel, u32) = match ext.as_str() {
-        "stl" => (load_stl(&file_path, &*progress_cb)?, 1),
+    // Format dispatch: both branches yield the mesh to show, how many plates
+    // the source declared and the engineering-state report (a 3MF can drop its
+    // persisted state/history without failing), so the DTO is built once below.
+    let (model, plate_count, engineering_state, history_dropped): (
+        MeshModel,
+        u32,
+        Option<String>,
+        bool,
+    ) = match ext.as_str() {
+        "stl" => (load_stl(&file_path, &*progress_cb)?, 1, None, false),
         "3mf" => {
             let project = crate::threemf::read_project(&file_path, &*progress_cb)?;
             let count = project.plates.len() as u32;
@@ -63,7 +69,13 @@ pub fn load_model(
             let mut plates = project.plates;
             // `read_project` always yields at least one plate (a file with no
             // plate metadata gets a single implicit one).
-            (plates.remove(0).mesh, count)
+            let plate = plates.remove(0);
+            (
+                plate.mesh,
+                count,
+                Some(plate.engineering_state.as_str().to_string()),
+                plate.history_dropped,
+            )
         }
         _ => return Err(format!("Unsupported file format: {}", ext)),
     };
@@ -77,6 +89,8 @@ pub fn load_model(
     let mut dto = model.to_dto();
     dto.plate_index = 1;
     dto.plate_count = plate_count;
+    dto.engineering_state = engineering_state;
+    dto.history_dropped = history_dropped;
 
     log::info!(
         "[cmd:load_model] DTO ready: {} verts, {} faces, {} color_entries, plate {}/{}",

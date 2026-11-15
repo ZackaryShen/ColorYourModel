@@ -59,4 +59,14 @@ describe("i18nDict", () => {
       translate("err.meshNoFaces", "zh")
     );
   });
+
+  it("carries the mandated 3MF engineering-loss notices", () => {
+    // Spec §4.8 / §3 require these exact user-facing sentences.
+    expect(translate("status.engineeringDropped", "zh")).toBe(
+      "工程数据与几何不匹配，已按普通 3MF 导入"
+    );
+    expect(translate("status.historyDropped", "zh")).toBe(
+      "撤销历史未能载入，已从空历史开始"
+    );
+  });
 });

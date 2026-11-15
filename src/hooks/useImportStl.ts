@@ -4,6 +4,40 @@ import { useAppStore } from "../store/appStore";
 import { useTauriCommand } from "./useTauriCommand";
 import { DROPPABLE_EXTENSIONS } from "../utils/stlDrop";
 import { log } from "../utils/logger";
+import type { MeshData } from "../types/mesh";
+
+/** The import report fields that decide the status-line message. */
+export type ImportStatusFields = Pick<
+  MeshData,
+  "plateIndex" | "plateCount" | "engineeringState" | "historyDropped"
+>;
+
+/**
+ * Status-line text after an import.
+ *
+ * Precedence matters: a dropped engineering state (saved labels/colours were
+ * rejected, often because a slicer rewrote the file) is the most important
+ * thing the user must know, then a dropped undo history, then the normal
+ * multi-plate notice. STL and single-plate 3MF keep "import complete".
+ */
+export function importStatusMessage(
+  data: ImportStatusFields,
+  t: (key: string, ...args: (string | number)[]) => string
+): string {
+  if (data.engineeringState === "dropped") {
+    return t("status.engineeringDropped");
+  }
+  if (data.historyDropped) {
+    return t("status.historyDropped");
+  }
+  // The DTO fields are additive; absent means a single-plate source (STL or an
+  // older payload).
+  const plateIndex = data.plateIndex ?? 1;
+  const plateCount = data.plateCount ?? 1;
+  return plateCount > 1
+    ? t("toolbar.importPlateOfTotal", plateIndex, plateCount)
+    : t("toolbar.importComplete");
+}
 
 /**
  * Shared model import flow (file picker → import progress → loadModel → status
@@ -30,22 +64,12 @@ export function useImportStl() {
 
     try {
       const data = await loadModel(selected);
-      // A multi-plate 3MF lands as its first plate (P0). The DTO fields are
-      // additive, so an absent value means a single-plate source (STL or an
-      // older payload).
-      const plateIndex = data.plateIndex ?? 1;
-      const plateCount = data.plateCount ?? 1;
-
       // No automatic segmentation on import (removed 2026-08-29): the fuse flow
       // (SeedPanel → 融合生成) builds its own vote channels and wipes existing
       // labels, so per-import compute was dead work. Region generation starts
       // explicitly from the Seed panel.
       setImportProgress(1, t("toolbar.importComplete"));
-      setStatusMessage(
-        plateCount > 1
-          ? t("toolbar.importPlateOfTotal", plateIndex, plateCount)
-          : t("toolbar.importComplete")
-      );
+      setStatusMessage(importStatusMessage(data, t));
       setLoading(false);
     } catch (e) {
       log.error("importStl", "Import failed", { error: String(e) });
