@@ -2,6 +2,7 @@
 //! palette resolution, `paint_color` decoding and triangle subdivision rebuild.
 
 pub mod paint;
+pub mod subdivide;
 
 #[cfg(test)]
 pub mod test_support;
