@@ -2,6 +2,7 @@
 //! palette resolution, `paint_color` decoding and triangle subdivision rebuild.
 
 pub mod assemble;
+pub mod materials;
 pub mod model;
 pub mod opc;
 pub mod paint;
