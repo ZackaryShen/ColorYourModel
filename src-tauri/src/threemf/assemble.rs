@@ -21,15 +21,21 @@
 use std::collections::{HashMap, HashSet};
 
 use super::model::{RawMesh, Scene, Transform};
-use super::plates::PlateGroup;
+use super::plates::{ModelSettings, PlateGroup};
 
-/// One plate's geometry, with `paint[i]` belonging to `faces[i]`.
+/// One plate's geometry, with `paint[i]` and `base_slots[i]` belonging to
+/// `faces[i]`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AssembledMesh {
     pub vertices: Vec<[f32; 3]>,
     pub faces: Vec<[u32; 3]>,
     /// Raw `paint_color` values, parallel to `faces` in traversal order.
     pub paint: Vec<Option<String>>,
+    /// The object's `model_settings` `extruder` (0-based palette index) for
+    /// each face, parallel to `faces`. It is the face's base colour when its
+    /// `paint_color` is absent (or state 0). `None` means the object declares
+    /// no extruder and the reader falls back to the slicer's slot 1.
+    pub base_slots: Vec<Option<u8>>,
 }
 
 /// Component nesting followed before assembly gives up. Real Orca/Bambu
@@ -48,30 +54,54 @@ struct Piece<'a> {
 
 /// Assemble the build items of one plate into a single mesh.
 ///
+/// `settings` supplies each build object's base extruder: a plate may mix
+/// objects on different filaments, so the base travels with every face rather
+/// than being resolved once for the plate.
+///
 /// A plate with no build items yields an empty mesh. An error carries the
 /// offending object or build index, so a failed import can name what is broken.
-pub fn assemble(scene: &Scene, group: &PlateGroup) -> Result<AssembledMesh, String> {
+pub fn assemble(
+    scene: &Scene,
+    group: &PlateGroup,
+    settings: &ModelSettings,
+) -> Result<AssembledMesh, String> {
     if group.item_indices.is_empty() {
         return Ok(AssembledMesh::default());
     }
-    if let Some(mesh) = single_verbatim_mesh(scene, group) {
+    if let Some((mesh, object_id)) = single_verbatim_mesh(scene, group) {
+        let base = object_base(settings, object_id);
         return Ok(AssembledMesh {
             vertices: mesh.vertices.clone(),
             faces: mesh.faces.clone(),
             paint: mesh.paint.clone(),
+            // The fast path must not reorder or dedupe geometry (the
+            // fingerprint depends on it); the per-face bases are built
+            // alongside in face order.
+            base_slots: vec![base; mesh.faces.len()],
         });
     }
-    bake_and_merge(scene, group)
+    bake_and_merge(scene, group, settings)
+}
+
+/// The `model_settings` `extruder` of a build object, 0-based.
+///
+/// The lookup is by the **build item's** object id — the id the plate lists
+/// and `model_settings.config` keys — because `plates.rs` does not parse
+/// per-`<part>` metadata and a component's object id can collide with an
+/// unrelated top-level entry.
+fn object_base(settings: &ModelSettings, object_id: u32) -> Option<u8> {
+    settings.objects.get(&object_id)?.extruder
 }
 
 /// The untouched mesh of a plate that holds exactly one object, if this plate
-/// qualifies for the verbatim path.
+/// qualifies for the verbatim path. The object id is returned so the caller can
+/// resolve that object's base extruder.
 ///
 /// Qualifying means a single build item with the identity transform whose
 /// object is an inline mesh with no components, or a component-free leaf
 /// reached through exactly one identity component. No dedupe and no reordering
 /// happens on this path; the geometry fingerprint downstream depends on it.
-fn single_verbatim_mesh<'a>(scene: &'a Scene, group: &PlateGroup) -> Option<&'a RawMesh> {
+fn single_verbatim_mesh<'a>(scene: &'a Scene, group: &PlateGroup) -> Option<(&'a RawMesh, u32)> {
     let [index] = group.item_indices.as_slice() else {
         return None;
     };
@@ -100,11 +130,15 @@ fn single_verbatim_mesh<'a>(scene: &'a Scene, group: &PlateGroup) -> Option<&'a 
     // Validation does not touch the order. A malformed mesh falls through to
     // the baking path only so the error is produced in one place.
     validate_mesh(mesh, item.object_id, part).ok()?;
-    Some(mesh)
+    Some((mesh, item.object_id))
 }
 
 /// Bake every build item's geometry into one deduplicated mesh.
-fn bake_and_merge(scene: &Scene, group: &PlateGroup) -> Result<AssembledMesh, String> {
+fn bake_and_merge(
+    scene: &Scene,
+    group: &PlateGroup,
+    settings: &ModelSettings,
+) -> Result<AssembledMesh, String> {
     let mut out = AssembledMesh::default();
     let mut vertex_map: HashMap<[u32; 3], u32> = HashMap::new();
 
@@ -116,6 +150,7 @@ fn bake_and_merge(scene: &Scene, group: &PlateGroup) -> Result<AssembledMesh, St
             )
         })?;
         let part = build_part_key(scene, item.object_id)?;
+        let base = object_base(settings, item.object_id);
         let mut pieces = Vec::new();
         collect_pieces(
             scene,
@@ -133,7 +168,7 @@ fn bake_and_merge(scene: &Scene, group: &PlateGroup) -> Result<AssembledMesh, St
         }
         for piece in pieces {
             validate_mesh(piece.mesh, piece.object_id, piece.part)?;
-            append_piece(piece, &mut out, &mut vertex_map)?;
+            append_piece(piece, base, &mut out, &mut vertex_map)?;
         }
     }
     Ok(out)
@@ -190,6 +225,7 @@ fn collect_pieces<'a>(
 /// coordinate bit pattern and offsetting face indices into the merged mesh.
 fn append_piece(
     piece: Piece,
+    base: Option<u8>,
     out: &mut AssembledMesh,
     vertex_map: &mut HashMap<[u32; 3], u32>,
 ) -> Result<(), String> {
@@ -235,6 +271,7 @@ fn append_piece(
         })?;
         out.faces.push(mapped);
         out.paint.push(paint);
+        out.base_slots.push(base);
     }
     Ok(())
 }
@@ -329,9 +366,35 @@ fn unique<'a>(mut items: impl Iterator<Item = &'a str>) -> Option<&'a str> {
 mod tests {
     use super::*;
     use crate::threemf::model::{BuildItem, Component, SceneObject};
+    use crate::threemf::plates::ObjectMeta;
 
     const MAIN: &str = "3D/3dmodel.model";
     const PART: &str = "3D/Objects/part_1.model";
+
+    /// The pre-existing tests exercise geometry only; a default config has no
+    /// extruder metadata, so every face's base slot is `None`.
+    fn assemble(scene: &Scene, group: &PlateGroup) -> Result<AssembledMesh, String> {
+        super::assemble(scene, group, &ModelSettings::default())
+    }
+
+    fn settings_with(extruders: &[(u32, u8)]) -> ModelSettings {
+        ModelSettings {
+            objects: extruders
+                .iter()
+                .map(|&(id, extruder)| {
+                    (
+                        id,
+                        ObjectMeta {
+                            name: None,
+                            extruder: Some(extruder),
+                        },
+                    )
+                })
+                .collect(),
+            plates: vec![],
+            present: false,
+        }
+    }
 
     fn object(id: u32, mesh: Option<RawMesh>, components: Vec<Component>) -> SceneObject {
         SceneObject {
@@ -688,6 +751,56 @@ mod tests {
         let err = assemble(&scene, &group(&[0])).expect_err("ambiguous object id is an error");
 
         assert!(err.contains("ambiguous"), "error must say why: {err}");
+    }
+
+    #[test]
+    fn each_faces_base_slot_comes_from_its_build_object() {
+        // Two objects on one plate, deliberately on different filaments. The
+        // merged fast path must not reorder or dedupe, but each face has to
+        // carry the extruder of the object it came from.
+        let scene = make_scene(
+            &[(
+                MAIN,
+                vec![
+                    object(1, Some(triangle()), vec![]),
+                    object(2, Some(triangle()), vec![]),
+                ],
+            )],
+            vec![
+                item(1, Transform::identity()),
+                item(2, translated(10.0, 0.0, 0.0)),
+            ],
+        );
+        let settings = settings_with(&[(1, 0), (2, 2), (9, 1)]);
+
+        let assembled =
+            super::assemble(&scene, &group(&[0, 1]), &settings).expect("two objects merge");
+
+        assert_eq!(assembled.faces, vec![[0, 1, 2], [3, 4, 5]]);
+        assert_eq!(
+            assembled.base_slots,
+            vec![Some(0), Some(2)],
+            "each face inherits its own object's 0-based extruder"
+        );
+
+        // The verbatim single-object path carries the base too.
+        let single = make_scene(
+            &[(MAIN, vec![object(1, Some(triangle()), vec![])])],
+            vec![item(1, Transform::identity())],
+        );
+        let assembled =
+            super::assemble(&single, &group(&[0]), &settings).expect("one object is verbatim");
+        assert_eq!(assembled.base_slots, vec![Some(0)]);
+
+        // An object with no settings entry has no base; the reader falls back
+        // to slot 1 rather than inheriting another object's extruder.
+        let missing = make_scene(
+            &[(MAIN, vec![object(7, Some(triangle()), vec![])])],
+            vec![item(7, Transform::identity())],
+        );
+        let assembled =
+            super::assemble(&missing, &group(&[0]), &settings).expect("object without settings");
+        assert_eq!(assembled.base_slots, vec![None]);
     }
 
     #[test]

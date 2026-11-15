@@ -29,7 +29,7 @@ use self::opc::Package;
 use self::paint::PaintNode;
 use self::plates::{ModelSettings, PlateGroup};
 use crate::export::project_state;
-use crate::mesh::model::{MeshModel, MANUAL_SEGMENT_OFFSET};
+use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR, MANUAL_SEGMENT_OFFSET};
 
 /// Package part holding `model_settings.config`.
 const MODEL_SETTINGS_PART: &str = "Metadata/model_settings.config";
@@ -140,12 +140,8 @@ fn import_plate(
 ) -> Result<ImportedPlate, String> {
     let plater_id = group.plater_id.unwrap_or(index as u32 + 1);
 
-    let assembled = assemble::assemble(context.scene, group)
+    let assembled = assemble::assemble(context.scene, group, context.settings)
         .map_err(|error| format!("plate {plater_id}: {error}"))?;
-    // A plate with no `paint_color` at all resolves through the object's
-    // `extruder` metadata; a plate with any paint resolves per face (Task 6's
-    // handoff). This distinction is why the empty-slot form is passed on.
-    let has_paint = assembled.paint.iter().any(Option::is_some);
     let trees = decode_paint(&assembled.paint);
     let expanded = subdivide::expand(&assembled.vertices, &assembled.faces, &trees);
 
@@ -175,15 +171,13 @@ fn import_plate(
         })
         .collect();
 
-    let object_base = group
-        .item_indices
-        .first()
-        .and_then(|&item| context.scene.build.get(item))
-        .and_then(|item| context.settings.objects.get(&item.object_id))
-        .and_then(|meta| meta.extruder);
-    let slots: &[u8] = if has_paint { &expanded.slots } else { &[] };
-    let face_colors =
-        materials::resolve_with_base(expanded.faces.len(), slots, context.palette, object_base);
+    let face_colors = resolve_face_colors(
+        &expanded,
+        &assembled.faces,
+        &trees,
+        &assembled.base_slots,
+        context.palette,
+    );
 
     let mut mesh = MeshModel::new();
     mesh.vertices = vertices;
@@ -237,6 +231,75 @@ fn decode_paint(paint: &[Option<String>]) -> Vec<Option<PaintNode>> {
             }
         })
         .collect()
+}
+
+/// Resolve one colour per expanded face.
+///
+/// A face with a `paint_color` slot uses that 1-based slot. A face without one
+/// — no attribute at all, or a tree leaf in state 0 — uses the base slot its
+/// object declared through `model_settings` `extruder` (0-based), falling back
+/// to the slicer's unpainted slot 1. Bases travel per face because one plate
+/// can mix objects on different filaments.
+fn resolve_face_colors(
+    expanded: &subdivide::Expanded,
+    base_faces: &[[u32; 3]],
+    trees: &[Option<PaintNode>],
+    base_slots: &[Option<u8>],
+    palette: Option<&Palette>,
+) -> Vec<[u8; 4]> {
+    let Some(palette) = palette else {
+        return vec![DEFAULT_FACE_COLOR; expanded.faces.len()];
+    };
+
+    // `subdivide::expand` emits the faces of one base triangle contiguously,
+    // in base-face order, so a base slot repeats by that tree's leaf count.
+    // If the walk does not account for every expanded face (only possible for
+    // a hand-built mesh the assembler would otherwise reject), ignore the
+    // bases rather than colour one object's faces with a neighbour's base.
+    let mapped = base_faces.len() == base_slots.len()
+        && trees.len() == base_faces.len()
+        && expanded.slots.len() == expanded.faces.len();
+    let mut colors = Vec::with_capacity(expanded.faces.len());
+    let mut cursor = 0usize;
+    for (index, tree) in trees.iter().enumerate().take(base_faces.len()) {
+        let count = match tree {
+            Some(tree) => paint::leaf_count(tree),
+            None => 1,
+        };
+        let base = if mapped { base_slots[index] } else { None };
+        for &slot in expanded.slots.iter().skip(cursor).take(count) {
+            colors.push(match slot {
+                0 => match base {
+                    Some(base) => palette_colour(palette, usize::from(base)),
+                    None => palette_colour(palette, 0),
+                },
+                slot => palette_colour(palette, usize::from(slot) - 1),
+            });
+        }
+        cursor += count;
+    }
+    if colors.len() != expanded.faces.len() {
+        return (0..expanded.faces.len())
+            .map(|index| match expanded.slots.get(index).copied().unwrap_or(0) {
+                0 => palette_colour(palette, 0),
+                slot => palette_colour(palette, usize::from(slot) - 1),
+            })
+            .collect();
+    }
+    colors
+}
+
+/// Palette index `index`, clamped to the last colour. An empty palette (which
+/// the parser rejects, but the public tuple struct can still be built)
+/// degrades to the default grey instead of indexing.
+///
+/// Mirrors `materials::colour_at`, which is private to that module, so the
+/// reader can mix per-face paint slots with per-object base slots.
+fn palette_colour(palette: &Palette, index: usize) -> [u8; 4] {
+    match palette.0.len() {
+        0 => DEFAULT_FACE_COLOR,
+        len => palette.0[index.min(len - 1)],
+    }
 }
 
 /// The plate's display name: the config's plate name, then the object name,
@@ -905,6 +968,83 @@ mod tests {
         assert!(!plate.engineering);
         // `extruder` is 0-based, so extruder 1 is palette index 1.
         assert_eq!(plate.mesh.face_colors, vec![colour(1)]);
+    }
+
+    #[test]
+    fn each_object_on_a_plate_keeps_its_own_extruder_base_colour() {
+        // Two unpainted objects on one plate, on different filaments. The
+        // plate must not collapse them onto the first object's colour.
+        let object_a = mesh_object(1, "A", TRIANGLE_VERTICES, TRIANGLE_FACE, &[None]);
+        let mut b_vertices = TRIANGLE_VERTICES.to_vec();
+        for vertex in &mut b_vertices {
+            vertex[0] += 10.0;
+        }
+        let object_b = mesh_object(2, "B", &b_vertices, TRIANGLE_FACE, &[None]);
+        let objects = r#"<object id="1"><metadata key="extruder" value="0"/></object>
+            <object id="2"><metadata key="extruder" value="2"/></object>"#;
+        let entries = vec![
+            (
+                "3D/3dmodel.model",
+                model_part(
+                    &format!("{object_a}{object_b}"),
+                    r#"<item objectid="1"/><item objectid="2"/>"#,
+                ),
+            ),
+            (
+                "Metadata/model_settings.config",
+                model_settings(objects, &plate(1, "Mixed", &[1, 2])),
+            ),
+            (
+                "Metadata/project_settings.config",
+                project_settings(PALETTE, None),
+            ),
+        ];
+
+        let project = read(entries);
+        let plate = &project.plates[0];
+        assert_eq!(plate.mesh.faces.len(), 2);
+        // Extruder 0 -> palette index 0, extruder 2 -> palette index 2.
+        assert_eq!(plate.mesh.face_colors, vec![colour(0), colour(2)]);
+    }
+
+    #[test]
+    fn an_unpainted_object_keeps_its_own_base_beside_a_painted_object() {
+        // Object A is painted (slot 4 -> palette index 3); object B has no
+        // paint at all and must use its own extruder (2), not slot 1.
+        let object_a = mesh_object(1, "Painted", TRIANGLE_VERTICES, TRIANGLE_FACE, &[Some("1C")]);
+        let mut b_vertices = TRIANGLE_VERTICES.to_vec();
+        for vertex in &mut b_vertices {
+            vertex[0] += 10.0;
+        }
+        let object_b = mesh_object(2, "Plain", &b_vertices, TRIANGLE_FACE, &[None]);
+        let objects = r#"<object id="1"><metadata key="extruder" value="0"/></object>
+            <object id="2"><metadata key="extruder" value="2"/></object>"#;
+        let entries = vec![
+            (
+                "3D/3dmodel.model",
+                model_part(
+                    &format!("{object_a}{object_b}"),
+                    r#"<item objectid="1"/><item objectid="2"/>"#,
+                ),
+            ),
+            (
+                "Metadata/model_settings.config",
+                model_settings(objects, &plate(1, "Mixed", &[1, 2])),
+            ),
+            (
+                "Metadata/project_settings.config",
+                project_settings(PALETTE, None),
+            ),
+        ];
+
+        let project = read(entries);
+        let plate = &project.plates[0];
+        assert_eq!(plate.mesh.faces.len(), 2);
+        assert_eq!(
+            plate.mesh.face_colors,
+            vec![colour(3), colour(2)],
+            "the painted face follows paint_color; the plain face follows its own extruder"
+        );
     }
 
     #[test]
