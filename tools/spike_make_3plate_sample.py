@@ -66,30 +66,46 @@ def hex_prism(r=9.0, h=30.0):
         f.append([0, i+1, i]); slots.append(2)
     return v, f, slots
 
-# Orca assigns an object to the plate whose WORLD RECTANGLE contains it;
-# plates are laid out in a row with pitch = bed_width * (1 + LOGICAL_PART_PLATE_GAP=0.2).
-# So each plate's object must be offset into that plate's cell, not just listed in
-# model_settings (verified against ~/Downloads/model.3mf: object 4 at x=459.6 lands
-# in plate 2's span [324.6, 595.1] for a 270.5 bed).
-def bed_width():
-    import base64
+# Orca assigns an object to the plate whose WORLD RECTANGLE contains it.
+# Plate grid layout (OrcaSlicer PartPlate.hpp / PartPlate.cpp):
+#   cols = round(sqrt(count)), +1 if sqrt(count) > round(sqrt(count))
+#   row = index / cols, col = index % cols
+#   origin = (col * W * 1.2, -row * D * 1.2)      # rows go towards -Y
+#   pitch factor 1.2 = 1 + LOGICAL_PART_PLATE_GAP (1/5)
+# Verified against ~/Downloads/model.3mf: object 4 at x=459.6 sits in plate 2's
+# cell [324.6, 595.1] for a 270.5 bed.
+def bed_size():
     with zipfile.ZipFile(BASE) as z:
         cfg = json.loads(z.read("Metadata/project_settings.config"))
-    xs = []
+    xs, ys = [], []
     for pt in cfg.get("printable_area", []):
         x, _, y = pt.partition("x")
-        xs.append(float(x))
-    return max(xs) if xs else 220.0
+        xs.append(float(x)); ys.append(float(y))
+    return (max(xs) if xs else 220.0, max(ys) if ys else 220.0)
 
-PITCH = bed_width() * 1.2
-LOCAL_X = 60.0   # inset from the plate's left edge
+BED_W, BED_D = bed_size()
 
-# plate -> (object id, name, mesh, placement x,y)
+def plate_origin(index0):
+    import math
+    count = len(PLATES)
+    root = math.sqrt(count)
+    cols = int(root) if root == int(root) else int(root) + 1
+    row, col = index0 // cols, index0 % cols
+    return (col * BED_W * 1.2, -row * BED_D * 1.2)
+
+LOCAL_X, LOCAL_Y = 60.0, 110.0   # inset from the plate's own origin
+
+def plate_xy(index0):
+    ox, oy = plate_origin(index0)
+    return ox + LOCAL_X, oy + LOCAL_Y
+
+# plate -> (object id, name, mesh, placement x,y) -- x,y filled below
 PLATES = [
-    (1, "Plate1-Cube",   cube(),      LOCAL_X + 0 * PITCH, 110.0),
-    (2, "Plate2-Tetra",  tetra(),     LOCAL_X + 1 * PITCH, 110.0),
-    (3, "Plate3-Prism",  hex_prism(), LOCAL_X + 2 * PITCH, 110.0),
+    (1, "Plate1-Cube",   cube()),
+    (2, "Plate2-Tetra",  tetra()),
+    (3, "Plate3-Prism",  hex_prism()),
 ]
+PLATES = [(oid, name, mesh) + plate_xy(i) for i, (oid, name, mesh) in enumerate(PLATES)]
 
 def fmt(x):
     return f"{x:.6f}".rstrip("0").rstrip(".") or "0"

@@ -41,10 +41,19 @@ feature_020_p2_paint 曾设计 `.cym`（ZIP：`project.json` + `model.bin`）作
 - 盘划分只存在于 `Metadata/model_settings.config`：`<plate>`（`plater_id`、`plater_name`、`locked`、`filament_map_mode`、`filament_maps`）+ `<model_instance>`（`object_id` / `instance_id` / `identify_id`）；另有 `<object id>` 块（`name` / `extruder` / `<part>` 及其 `matrix` / `source_*` / `mesh_stat`）与 `<assemble>`（`assemble_item`）。实物位置在 `build/item@transform`（3MF 3×4 行向量矩阵，末 3 个为平移）。
 - **双盘实测**（`model.3mf`，同版本 Orca 产出，5.5MB）：2 个 `<plate>`、2 个 `build/item`、2 个外部 part；盘 1 的对象是 148,460 面**全叶子**涂装（槽 1–7 都真实用到），盘 2 的对象是 993,568 面（含细分）。两盘共用**一套** 7 色 `filament_colour`，`filament_maps` 长度 = 色槽数。
 - **`<assemble>` 不是打印位置**：同一文件里 `assemble_item` 的 transform（对象 4：缩放 0.701、平移到 0,0,75）与 `build/item` 的（缩放 0.701、平移到 459.6,122.2,52.6）**数值不同**，前者是排布装配视图的元数据。几何/打印位置只信 `build × component`。
-- **盘归属按世界坐标判定，不是按 `model_instance` 列表**（真机实测 + 源码 `PartPlateList::update_all_plates_pos_and_size` / `compute_origin`）：盘在世界空间里排成一行，列间距 = `床宽 × 1.2`（`LOGICAL_PART_PLATE_GAP = 1/5`）；对象落在哪个盘的矩形里就属于哪个盘。`model_settings` 的 `<plate>` 只提供盘的**存在与命名**。
-  - 实测对照：`model.3mf` 对象 4 在 x=459.6，床宽 270.5 → 盘 2 区间 `[324.6, 595.1]`，落在其中，所以它在盘 2。
-  - 反例（自造样本的第一次迭代）：3 个 `<plate>` 都写对、盘也建出来了，但对象全在 x=60/135/210（都在盘 1 的 `[0, 270.5]` 内）→ Orca 把三个对象全放在盘 1，盘 2/3 空。
-- 由上述规则推出的工程约定：**导入时把每盘几何归一化到盘局部坐标**（减去该盘原点 `(plater_id-1) × 床宽 × 1.2`），**导出时再按盘加回偏移**。这样 Tab 内视图/包围盒始终正常，且写回后归属不变。床宽取所选机型 `printable_area` 的 max x。
+- **盘归属按世界坐标判定，不是按 `model_instance` 列表**（两轮真机实测 + 源码 `PartPlateList::compute_origin` / `compute_colum_count`）：盘在世界空间里排成**网格**，`model_settings` 的 `<plate>` 只提供盘的**存在与命名**。对象落在哪个盘的矩形里就属于哪个盘。
+  - 网格公式（OrcaSlicer `PartPlate.hpp` / `PartPlate.cpp`，与 Snapmaker Orca 2.4.1 实测一致）：
+    ```text
+    count = 盘数
+    cols  = round(sqrt(count))，若 sqrt(count) > round(sqrt(count)) 则 +1   # 即向上取整
+    row   = (plater_id-1) / cols      col = (plater_id-1) % cols
+    origin = (col * 床宽 * 1.2, -(row * 床深 * 1.2))      # 行方向朝 -Y
+    1.2 = 1 + LOGICAL_PART_PLATE_GAP (1/5)
+    ```
+  - 实测对照 1：`model.3mf` 对象 4 在 x=459.6，床宽 270.5 → 盘 2 单元 `[324.6, 595.1]`，落其中 ✓（2 盘时 cols=2，盘 2 在同一行）。
+  - 实测对照 2：自造三盘样本第一版把三个对象放在 x=60/135/210（都在盘 1 单元）→ 三个对象全被归到盘 1。
+  - 实测对照 3：第二版按“一行”排布（x=60/384.6/709.2）→ 3 盘时 cols=2，盘 3 在 `row=1, col=0`（**-Y 方向**），第三个对象因此落在所有盘之外，Orca 用红框标成越界。
+- 由上述规则推出的工程约定：**导入时把每盘几何归一化到盘局部坐标**（减去该盘 `origin`），**导出时再按盘加回 `origin`**。这样 Tab 内视图/包围盒始终正常，且写回后归属不变。床宽/床深取所选机型 `printable_area` 的 max x / max y；盘数 = 本次导出的 Tab 数。对象在盘内的局部位置保持至少 20mm 内缩，给常量误差留余量。
 - `<part><metadata key="matrix">` 与 component transform 在单盘样本里数值相同（平移都是 3.81e-06），双盘样本里差到 1e-6 量级——**不叠加应用**。
 - 单位在 `model@unit`（该文件 `millimeter`），导入需按 unit 换算。
 
@@ -319,4 +328,9 @@ kind 5 = p2 分支的 `OpKind::Transform`：整模型变换条目不携带颜色
 
 **双盘 `model.3mf`**：2 个 `<plate>` / 2 个 `build/item` / 2 个外部 part；盘 1 = 148,460 面全叶子涂装（槽 1–7 真实用到）、盘 2 = 993,568 面含细分；两盘共用 7 色 `filament_colour`（`#8A8A8A #FFFFFF #000000 #D2B48C #00B0F0 #C99D65 #949262`）；`filament_maps` 长度 = 7；`assemble_item` 与 `build/item` 的 transform 数值不同（证实 assemble 不是打印位置）；`<part>` matrix 与 component transform 数值近等（证实不叠加）。
 
-**三盘样本真机验证（第一轮失败，已定因）**：`examples/3plate_sample.3mf` 在 Snapmaker Orca 中打开后，3 个盘都建出来了（盘名/对象名/5 色耗材/彩色对象都正确），但**三个对象全在盘 1**，盘 2/3 为空。根因不在 `model_settings` 写法（盘块被正确读取），而在 Orca 的盘归属判定：按对象**世界坐标**落在哪个盘矩形内归属，盘列间距 = 床宽 × 1.2（`LOGICAL_PART_PLATE_GAP = 1/5`，`PartPlateList::compute_origin`）。对照真实文件：`model.3mf` 的对象 4 在 x=459.6，床宽 270.5 → 盘 2 区间 `[324.6, 595.1]`，正是它能落在盘 2 的原因。样本已改为 x = 60 / 384.6 / 709.2 重新生成，待第二轮真机确认。由此确立“导入归一化到盘局部、导出按盘加回偏移”的工程约定（见「约束」）。
+**三盘样本真机验证（两轮失败，规则已定死）**：
+1. 第一轮：3 个盘都建出来了（盘名/对象名/5 色耗材/彩色对象都正确），但**三个对象全在盘 1**。→ 盘归属按世界坐标判定，不是 `model_instance` 列表。
+2. 第二轮：按“盘排成一行”把对象放到 x=60/384.6/709.2 → 盘 1/2 各一个对象，**第三个对象落在所有盘之外**（Orca 红框标越界）。→ 盘是**网格**：3 盘时 `cols=2`，盘 3 在 `row=1, col=0`，原点 y 为负。
+3. 第三轮：按 `cols = ceil(sqrt(count))`、`origin = (col·W·1.2, -row·D·1.2)` 重新生成（对象位于 (60,110)、(384.6,110)、(60,-215.2)），待真机确认。
+
+由此确立“导入归一化到盘局部、导出按盘加回 origin”的工程约定（见「约束」），并把网格公式固定为兼容契约。
