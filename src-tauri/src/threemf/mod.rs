@@ -149,8 +149,14 @@ fn import_plate(
     let trees = decode_paint(&assembled.paint);
     let expanded = subdivide::expand(&assembled.vertices, &assembled.faces, &trees);
 
-    // Plate-local coordinates: the writer re-adds this origin, and the
-    // fingerprint hashes the local form, so both sides cover the same domain.
+    // The fingerprint domain is the world coordinates **as written into the
+    // file**, i.e. before the plate-origin shift below. The writer hashes the
+    // vertices it emits (also world space); hashing the plate-local form here
+    // would break on a non-zero origin because `fl(fl(world - origin) + origin)`
+    // is not `world` at 264 mm (f32 ulp there dwarfs the `{:.6}` grid).
+    let fingerprint = project_state::fingerprint_of(&expanded.vertices, &expanded.faces);
+
+    // Plate-local coordinates for the tab: the writer re-adds this origin.
     let origin = plate_origin(
         plater_id,
         context.plate_count,
@@ -187,7 +193,13 @@ fn import_plate(
     mesh.segment_labels = vec![0; face_count];
     mesh.unit = "millimeter".to_string();
 
-    let engineering = try_restore(package, engineering_header, index, &mut mesh);
+    let engineering = try_restore(
+        package,
+        engineering_header,
+        index,
+        fingerprint,
+        &mut mesh,
+    );
 
     // Derived state, in the same order every other loader uses.
     mesh.compute_normals();
@@ -314,6 +326,7 @@ fn try_restore(
     package: &mut Package,
     project: Option<&project_state::ProjectState>,
     plate_index: usize,
+    fingerprint: project_state::Fingerprint,
     mesh: &mut MeshModel,
 ) -> bool {
     let Some(project) = project else {
@@ -328,9 +341,9 @@ fn try_restore(
         return false;
     };
 
-    // The fingerprint is over subdivided, plate-local, millimetre geometry —
-    // the same values the writer hashed.
-    let fingerprint = project_state::fingerprint_of(&mesh.vertices, &mesh.faces);
+    // The caller hashes the subdivided, millimetre geometry **before** the
+    // plate-origin shift: that is the world-coordinate domain the writer
+    // hashes, and the only domain that survives a non-zero origin.
     if fingerprint != header.fingerprint {
         log::warn!(
             "3mf: engineering state belongs to different geometry \
@@ -969,20 +982,31 @@ mod tests {
     #[test]
     fn engineering_state_is_applied_to_the_plate_it_belongs_to() {
         let plate_one = mesh_object(1, "A", TRIANGLE_VERTICES, TRIANGLE_FACE, &[None]);
-        let mut plate_two_vertices = TRIANGLE_VERTICES.to_vec();
-        for vertex in &mut plate_two_vertices {
-            vertex[0] += 264.0;
-        }
-        let plate_two = mesh_object(2, "B", &plate_two_vertices, TRIANGLE_FACE, &[None]);
-        // The fingerprint is over plate-local geometry: plate 2's cell origin
-        // is one 220 mm bed + 20% spacing to the right.
-        let normalized: Vec<[f32; 3]> = plate_two_vertices
+        // Plate 2's cell origin is one 220 mm bed + 20% spacing to the right
+        // (264 mm). Fractional coordinates are deliberate: the fingerprint must
+        // be taken on these world values *before* the origin is subtracted, so
+        // a regression to the plate-local domain changes the hash.
+        let plate_two_vertices = vec![
+            [264.125, 0.25, 0.5],
+            [265.375, 0.25, 0.5],
+            [264.125, 1.75, 0.5],
+        ];
+        let local: Vec<[f32; 3]> = plate_two_vertices
             .iter()
             .map(|vertex| [vertex[0] - 264.0, vertex[1], vertex[2]])
             .collect();
+        let plate_two = mesh_object(2, "B", &plate_two_vertices, TRIANGLE_FACE, &[None]);
         let resources = format!("{plate_one}{plate_two}");
         let build = r#"<item objectid="1"/><item objectid="2"/>"#;
         let plates = format!("{}{}", plate(1, "Front", &[1]), plate(2, "Back", &[2]));
+
+        // Precondition: the two hash domains really are distinguishable for
+        // this fixture, so the test below cannot pass with a local-domain hash.
+        assert_ne!(
+            fingerprint_of(&plate_two_vertices, TRIANGLE_FACE),
+            fingerprint_of(&local, TRIANGLE_FACE),
+            "world and plate-local fingerprints must differ for this fixture"
+        );
 
         // Plate 2's state is the only one written; plate 1's header matches
         // but its part is absent, so only plate 2 may restore.
@@ -1008,7 +1032,8 @@ mod tests {
                     plater_id: 2,
                     name: "Back".to_string(),
                     object_ids: vec![2],
-                    fingerprint: fingerprint_of(&normalized, TRIANGLE_FACE),
+                    // The domain is the world coordinates as written.
+                    fingerprint: fingerprint_of(&plate_two_vertices, TRIANGLE_FACE),
                 },
             ],
         };
@@ -1034,9 +1059,10 @@ mod tests {
         assert_eq!(project.plates.len(), 2);
         assert!(!project.plates[0].engineering);
         assert!(project.plates[1].engineering);
-        // Both plates are in their own local frame.
+        // Both plates are in their own local frame: the shift still applies to
+        // the geometry even though the fingerprint was taken before it.
         assert_eq!(project.plates[0].mesh.vertices[0], [0.0, 0.0, 0.0]);
-        assert_eq!(project.plates[1].mesh.vertices[0], [0.0, 0.0, 0.0]);
+        assert_eq!(project.plates[1].mesh.vertices, local);
         assert_eq!(project.plates[1].mesh.face_colors, vec![[7, 8, 9, 255]]);
         assert_eq!(project.plates[1].mesh.segment_labels, vec![100_010]);
         assert_eq!(project.plates[1].mesh.segment_names[&100_010], "Back face");
