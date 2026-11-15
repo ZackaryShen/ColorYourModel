@@ -219,6 +219,10 @@ mod tests {
         let out = expand(&v, &[[0, 1, 2]], &[Some(split(0, vec![leaf(1), leaf(2)]))]);
         assert_eq!(out.vertices.len(), 4);
         assert_eq!(out.faces.len(), 2);
+        // Side 0 is edge (1,2), so vertex 3 is its midpoint. Child 0 keeps the
+        // parent's winding around vertex 0, child 1 around the split edge.
+        assert_eq!(out.faces, vec![[0, 1, 3], [3, 2, 0]]);
+        assert_eq!(out.slots, vec![1, 2]);
         let total: f32 = out.faces.iter().map(|f| area(&out.vertices, *f)).sum();
         assert!((total - 0.5).abs() < 1e-6, "children must tile the parent, got {total}");
         assert_eq!(out.slots.len(), 2);
@@ -231,6 +235,13 @@ mod tests {
         let out = expand(&v, &[[0, 1, 2]], &[Some(split(2, vec![leaf(1), leaf(2), leaf(3)]))]);
         assert_eq!(out.vertices.len(), 5, "3 base + 2 midpoints; the kept side has none");
         assert_eq!(out.faces.len(), 3);
+        // Kept side 2 is edge (0,1); the midpoints are on (2,0) and (2,1), i.e.
+        // vertices 3 and 4. Child 0 is the corner at vertex 2, children 1 and 2
+        // split the quad left around the unsplit edge (0,1).
+        assert_eq!(out.faces, vec![[2, 3, 4], [3, 0, 4], [0, 1, 4]]);
+        assert_eq!(out.slots, vec![1, 2, 3]);
+        let total: f32 = out.faces.iter().map(|f| area(&out.vertices, *f)).sum();
+        assert!((total - 0.5).abs() < 1e-6, "children must tile the parent, got {total}");
     }
 
     #[test]
@@ -239,10 +250,15 @@ mod tests {
         let out = expand(&v, &[[0, 1, 2]], &[Some(split(0, vec![leaf(1), leaf(2), leaf(3), leaf(4)]))]);
         assert_eq!(out.vertices.len(), 6);
         assert_eq!(out.faces.len(), 4);
+        // Midpoints: 3 on (0,1), 4 on (1,2), 5 on (0,2). Children 0..2 are the
+        // corners around vertices 0, 1, 2; child 3 is the middle triangle.
+        assert_eq!(out.faces, vec![[0, 3, 5], [3, 1, 4], [4, 2, 5], [3, 4, 5]]);
         // child slot 3 is the middle triangle: all three of its vertices are new.
         let middle = out.faces[3];
         assert!(middle.iter().all(|i| *i >= 3), "middle child must use the three midpoints: {middle:?}");
         assert_eq!(out.slots, vec![1, 2, 3, 4]);
+        let total: f32 = out.faces.iter().map(|f| area(&out.vertices, *f)).sum();
+        assert!((total - 0.5).abs() < 1e-6, "children must tile the parent, got {total}");
     }
 
     #[test]
