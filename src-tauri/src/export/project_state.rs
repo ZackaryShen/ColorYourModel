@@ -18,9 +18,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::mesh::history::{
-    History, OpKind, RawEntry, DEFAULT_BYTE_BUDGET, DEFAULT_MAX_DEPTH,
-};
+use crate::mesh::history::{History, OpKind, RawEntry, DEFAULT_BYTE_BUDGET, DEFAULT_MAX_DEPTH};
 use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR};
 
 /// Major version of the engineering parts.

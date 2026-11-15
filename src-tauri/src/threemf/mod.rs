@@ -468,9 +468,7 @@ fn try_restore(
         let plate_present = part_exists(package, &plate_part_name(plate_index));
         let history_present = part_exists(package, &history_part_name(plate_index));
         if header_part_present || plate_present || history_present {
-            log::warn!(
-                "3mf: engineering state exists but could not be read; using plain import"
-            );
+            log::warn!("3mf: engineering state exists but could not be read; using plain import");
             return RestoreOutcome::dropped(history_present);
         }
         return RestoreOutcome::absent();
@@ -942,7 +940,10 @@ mod tests {
             ("Metadata/cym/project.json", b"{ not json".to_vec()),
         ];
         let project = read(entries);
-        assert_eq!(project.plates[0].engineering_state, EngineeringState::Dropped);
+        assert_eq!(
+            project.plates[0].engineering_state,
+            EngineeringState::Dropped
+        );
         assert_eq!(project.plates[0].mesh.face_colors[0], colour(3));
 
         // (b) header is readable and matches, but the plate part is truncated.
@@ -965,7 +966,10 @@ mod tests {
             ),
         ];
         let project = read(entries);
-        assert_eq!(project.plates[0].engineering_state, EngineeringState::Dropped);
+        assert_eq!(
+            project.plates[0].engineering_state,
+            EngineeringState::Dropped
+        );
         assert_eq!(project.plates[0].mesh.face_colors[0], colour(3));
 
         // (c) an unknown major format_version is ignored, not fatal.
@@ -984,7 +988,10 @@ mod tests {
             ("Metadata/cym/plate_1.bin", state),
         ];
         let project = read(entries);
-        assert_eq!(project.plates[0].engineering_state, EngineeringState::Dropped);
+        assert_eq!(
+            project.plates[0].engineering_state,
+            EngineeringState::Dropped
+        );
         assert_eq!(project.plates[0].mesh.face_colors[0], colour(3));
     }
 
@@ -1051,7 +1058,10 @@ mod tests {
     fn a_3mf_without_any_paint_or_palette_still_imports_as_default_grey() {
         let object = mesh_object(1, "Part", TRIANGLE_VERTICES, TRIANGLE_FACE, &[None]);
         let project = read(one_object(&object));
-        assert_eq!(project.plates[0].engineering_state, EngineeringState::Absent);
+        assert_eq!(
+            project.plates[0].engineering_state,
+            EngineeringState::Absent
+        );
         assert_eq!(project.plates[0].mesh.face_colors, vec![DEFAULT_FACE_COLOR]);
 
         // A project_settings part without a palette is just as optional.
