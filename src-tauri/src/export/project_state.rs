@@ -18,7 +18,9 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::mesh::history::{History, OpKind, RawEntry};
+use crate::mesh::history::{
+    History, OpKind, RawEntry, DEFAULT_BYTE_BUDGET, DEFAULT_MAX_DEPTH,
+};
 use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR};
 
 /// Major version of the engineering parts.
@@ -229,6 +231,20 @@ pub fn decode_project_json(text: &str) -> Result<ProjectState, String> {
 /// documented `CYMST1\x01` signature to the eight bytes the layout reserves.
 pub const PLATE_MAGIC: &[u8; 8] = b"CYMST1\x01\0";
 
+/// Plausible upper bound on the region-name table: a plate names at most a
+/// handful of regions per face, and the slack absorbs stale names (names are
+/// deliberately not pruned when a region disappears). A larger table is a
+/// forged count, not a file this editor wrote, and must be rejected before it
+/// can drive a `HashMap` allocation.
+const MAX_NAME_TABLE_PER_FACE: usize = 8;
+const MAX_NAME_TABLE_SLACK: usize = 1024;
+
+fn name_table_limit(face_count: usize) -> usize {
+    face_count
+        .saturating_mul(MAX_NAME_TABLE_PER_FACE)
+        .saturating_add(MAX_NAME_TABLE_SLACK)
+}
+
 /// Per-face project state for one plate. The history lives in its own part and
 /// is deliberately absent here.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -344,7 +360,16 @@ pub fn decode_plate_state(bytes: &[u8], face_count: usize) -> Result<PlateState,
     if !cursor.has_room_for(name_count, 6) {
         return Err("plate state: size mismatch in the region-name table".to_string());
     }
-    let mut segment_names = HashMap::with_capacity(name_count);
+    // The byte check above only says the body could hold the table. Bound the
+    // count itself: a name table much larger than the face count is forged.
+    let name_limit = name_table_limit(stored_face_count);
+    if name_count > name_limit {
+        return Err(format!(
+            "plate state: region-name table claims {name_count} names for \
+             {stored_face_count} faces (limit {name_limit})"
+        ));
+    }
+    let mut segment_names = HashMap::with_capacity(name_count.min(name_limit));
     for _ in 0..name_count {
         let label = cursor.u32()?;
         let len = cursor.u16()? as usize;
@@ -490,29 +515,80 @@ fn empty_history_container() -> Vec<u8> {
 /// would panic later. When anything makes the history unusable the whole
 /// stack is dropped (`Ok(None)`) rather than partially restored, because a
 /// partial timeline silently changes what Ctrl+Z does.
+///
+/// The file-supplied counts are bounded by the format's own budgets before any
+/// buffer is allocated: the part may not exceed
+/// [`MAX_PERSISTED_HISTORY_BYTES`], each stack may not exceed the in-memory
+/// depth limit, and the decoded payload may not exceed the in-memory byte
+/// budget. Without that, a crafted 512 MB (allowed) entry could ask
+/// [`Vec::with_capacity`] for gigabytes.
 pub fn decode_history(bytes: &[u8], face_count: usize) -> Result<Option<History>, String> {
+    if bytes.len() > MAX_PERSISTED_HISTORY_BYTES {
+        return Err(format!(
+            "history: {} bytes exceeds the {} byte persisted-history budget",
+            bytes.len(),
+            MAX_PERSISTED_HISTORY_BYTES
+        ));
+    }
     let mut cursor = Cursor::new(bytes);
 
     let undo_count = cursor.u32()? as usize;
+    if undo_count > DEFAULT_MAX_DEPTH {
+        log::warn!(
+            "history: {undo_count} undo entries exceed the {DEFAULT_MAX_DEPTH}-entry depth \
+             budget; dropping the persisted history"
+        );
+        return Ok(None);
+    }
     if !cursor.has_room_for(undo_count, MIN_ENTRY_BYTES) {
         return Err("history: size mismatch in the undo stack".to_string());
     }
-    let mut undo = Vec::with_capacity(undo_count);
+    // The count is at most `DEFAULT_MAX_DEPTH` now; clamping (rather than
+    // passing a file-supplied value) makes the capacity bound explicit.
+    let mut undo = Vec::with_capacity(undo_count.min(DEFAULT_MAX_DEPTH));
+    let mut decoded_bytes = 0usize;
     for _ in 0..undo_count {
         match decode_entry(&mut cursor, face_count)? {
-            Some(entry) => undo.push(entry),
+            Some(entry) => {
+                decoded_bytes = decoded_bytes.saturating_add(entry_memory_bytes(&entry));
+                if decoded_bytes > DEFAULT_BYTE_BUDGET {
+                    log::warn!(
+                        "history: decoded undo payload exceeds the {DEFAULT_BYTE_BUDGET}-byte \
+                         budget; dropping the persisted history"
+                    );
+                    return Ok(None);
+                }
+                undo.push(entry);
+            }
             None => return Ok(None),
         }
     }
 
     let redo_count = cursor.u32()? as usize;
+    if redo_count > DEFAULT_MAX_DEPTH {
+        log::warn!(
+            "history: {redo_count} redo entries exceed the {DEFAULT_MAX_DEPTH}-entry depth \
+             budget; dropping the persisted history"
+        );
+        return Ok(None);
+    }
     if !cursor.has_room_for(redo_count, MIN_ENTRY_BYTES) {
         return Err("history: size mismatch in the redo stack".to_string());
     }
-    let mut redo = Vec::with_capacity(redo_count);
+    let mut redo = Vec::with_capacity(redo_count.min(DEFAULT_MAX_DEPTH));
     for _ in 0..redo_count {
         match decode_entry(&mut cursor, face_count)? {
-            Some(entry) => redo.push(entry),
+            Some(entry) => {
+                decoded_bytes = decoded_bytes.saturating_add(entry_memory_bytes(&entry));
+                if decoded_bytes > DEFAULT_BYTE_BUDGET {
+                    log::warn!(
+                        "history: decoded history payload exceeds the {DEFAULT_BYTE_BUDGET}-byte \
+                         budget; dropping the persisted history"
+                    );
+                    return Ok(None);
+                }
+                redo.push(entry);
+            }
             None => return Ok(None),
         }
     }
@@ -528,6 +604,15 @@ pub fn decode_history(bytes: &[u8], face_count: usize) -> Result<Option<History>
     // with `with_capacity(n)` and exactly `n` pushes, so their capacity does
     // not overstate what is stored.
     Ok(Some(History::from_raw(undo, redo)))
+}
+
+/// In-memory footprint of one decoded entry, matching [`History::from_raw`]'s
+/// len-based accounting. Used to keep a file from exceeding the live history's
+/// byte budget.
+fn entry_memory_bytes(entry: &RawEntry) -> usize {
+    std::mem::size_of::<RawEntry>()
+        + entry.colors.len() * std::mem::size_of::<(u32, [u8; 4])>()
+        + entry.labels.len() * std::mem::size_of::<(u32, u32)>()
 }
 
 fn decode_entry(cursor: &mut Cursor<'_>, face_count: usize) -> Result<Option<RawEntry>, String> {
@@ -551,7 +636,9 @@ fn decode_entry(cursor: &mut Cursor<'_>, face_count: usize) -> Result<Option<Raw
     if !cursor.has_room_for(color_count, 8) {
         return Err("history: size mismatch in the colour payload".to_string());
     }
-    let mut colors = Vec::with_capacity(color_count);
+    // Never pre-allocate a file-supplied count beyond what the mesh can hold:
+    // an entry cannot touch more faces than exist.
+    let mut colors = Vec::with_capacity(color_count.min(face_count));
     for _ in 0..color_count {
         let face = cursor.u32()?;
         let rgba: [u8; 4] = cursor
@@ -572,7 +659,7 @@ fn decode_entry(cursor: &mut Cursor<'_>, face_count: usize) -> Result<Option<Raw
     if !cursor.has_room_for(label_count, 8) {
         return Err("history: size mismatch in the label payload".to_string());
     }
-    let mut labels = Vec::with_capacity(label_count);
+    let mut labels = Vec::with_capacity(label_count.min(face_count));
     for _ in 0..label_count {
         let face = cursor.u32()?;
         let label = cursor.u32()?;
@@ -1167,6 +1254,63 @@ mod tests {
             .expect("empty history is Some");
         assert_eq!(restored.undo_depth(), 0);
         assert_eq!(restored.redo_depth(), 0);
+    }
+
+    /// The entry count is file-supplied. A body whose length is consistent
+    /// with the count (a few MB) but whose count is thousands of times the
+    /// depth budget must be dropped before `Vec::with_capacity` sees it — the
+    /// pre-fix code would reserve one `RawEntry` slot per claimed entry.
+    #[test]
+    fn an_absurd_stack_count_is_dropped_before_it_can_be_allocated() {
+        let count: u32 = 200_000;
+        let body_len = 4 + count as usize * MIN_ENTRY_BYTES;
+        let mut bytes = Vec::with_capacity(body_len);
+        bytes.extend_from_slice(&count.to_le_bytes());
+        bytes.resize(body_len, 0);
+
+        // The length check alone would pass: every entry's minimum ten bytes
+        // are present. Only the depth budget can reject this.
+        assert!(body_len > 1_000_000, "the fixture is deliberately multi-MB");
+        assert!(
+            matches!(decode_history(&bytes, 1), Ok(None)),
+            "an over-depth count must drop the history, not allocate for it"
+        );
+    }
+
+    /// The persisted part may not exceed its own byte budget, even when the
+    /// bytes would otherwise parse as a valid (empty) container.
+    #[test]
+    fn a_history_body_over_the_persisted_budget_is_rejected() {
+        let mut bytes = vec![0u8; MAX_PERSISTED_HISTORY_BYTES + 1];
+        // A valid empty container at the front does not excuse the excess.
+        bytes[..8].copy_from_slice(&[0u8; 8]);
+        let err = match decode_history(&bytes, 0) {
+            Err(err) => err,
+            Ok(_) => panic!("over-budget part must be rejected"),
+        };
+        assert!(err.contains("budget"), "unexpected error: {err}");
+    }
+
+    /// A forged name count whose six-bytes-per-name body is present passes the
+    /// old length check, so only a plausible-count bound can stop the
+    /// `HashMap::with_capacity` from reserving hundreds of megabytes.
+    #[test]
+    fn a_forged_region_name_count_is_rejected_before_the_hashmap_is_allocated() {
+        let faces = 4usize;
+        let forged: u32 = 1_000_000;
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(PLATE_MAGIC);
+        bytes.extend_from_slice(&(faces as u32).to_le_bytes());
+        // Labels (4 B/face) + RGBA (4 B/face) + the high-water mark.
+        bytes.resize(8 + 4 + faces * 4 + faces * 4 + 4, 0);
+        bytes.extend_from_slice(&forged.to_le_bytes());
+        // One empty name record is u32 label + u16 len = 6 bytes; the body is
+        // therefore "length-valid" for the forged count.
+        bytes.resize(bytes.len() + forged as usize * 6, 0);
+
+        let err = decode_plate_state(&bytes, faces)
+            .expect_err("a name table 250,000x the face count is forged");
+        assert!(err.contains("region-name"), "unexpected error: {err}");
     }
 
     #[test]
