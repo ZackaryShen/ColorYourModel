@@ -56,6 +56,7 @@ export function useImportStl() {
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setImportError = useAppStore((s) => s.setImportError);
+  const setProjectPath = useAppStore((s) => s.setProjectPath);
 
   const importFromPath = async (selected: string) => {
     log.info("importStl", `Importing: ${selected}`);
@@ -64,6 +65,7 @@ export function useImportStl() {
 
     try {
       const data = await loadModel(selected);
+      setProjectPath(/\.3mf$/i.test(selected) ? selected : null);
       // No automatic segmentation on import (removed 2026-08-29): the fuse flow
       // (SeedPanel → 融合生成) builds its own vote channels and wipes existing
       // labels, so per-import compute was dead work. Region generation starts

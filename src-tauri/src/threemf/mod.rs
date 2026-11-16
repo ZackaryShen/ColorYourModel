@@ -21,6 +21,7 @@ pub mod subdivide;
 #[cfg(test)]
 pub mod test_support;
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use self::materials::Palette;
@@ -238,6 +239,15 @@ fn import_plate(
         &mut mesh,
     );
 
+    // A file with colours but no engineering state has no region labels of its
+    // own. Importing it with one giant region (`labels = 0`) makes every fill
+    // and lasso act on the whole model and reads as a bug in the panel, so the
+    // inherited colours become the regions: one region per distinct colour,
+    // dominant colour first. A restored project keeps the labels it stored.
+    if restore.state != EngineeringState::Restored {
+        mesh.segment_labels = labels_from_colors(&mesh.face_colors);
+    }
+
     // Derived state, in the same order every other loader uses.
     mesh.compute_normals();
     mesh.compute_bbox();
@@ -253,6 +263,27 @@ fn import_plate(
         engineering_state: restore.state,
         history_dropped: restore.history_dropped,
     })
+}
+
+/// Group inherited face colours into region labels.
+///
+/// Labels are assigned 0..N-1 ordered by descending face count, with the colour
+/// bytes as the tie-break, so the result is deterministic and the dominant
+/// colour becomes region 0. A single-colour model therefore still yields the
+/// single region it had before.
+fn labels_from_colors(colors: &[[u8; 4]]) -> Vec<u32> {
+    let mut counts: HashMap<[u8; 4], u32> = HashMap::new();
+    for color in colors {
+        *counts.entry(*color).or_insert(0) += 1;
+    }
+    let mut ordered: Vec<([u8; 4], u32)> = counts.into_iter().collect();
+    ordered.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let label_of: HashMap<[u8; 4], u32> = ordered
+        .iter()
+        .enumerate()
+        .map(|(index, (color, _))| (*color, index as u32))
+        .collect();
+    colors.iter().map(|color| label_of[color]).collect()
 }
 
 /// Decode every `paint_color` tree, degrading one malformed value to "no
@@ -757,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn without_engineering_parts_the_paint_colours_are_used_and_labels_are_empty() {
+    fn without_engineering_parts_each_inherited_colour_becomes_its_own_region() {
         let object = mesh_object(1, "Part", QUAD_VERTICES, QUAD_FACES, &[Some("1C"), None]);
         let mut entries = one_object(&object);
         entries.push((
@@ -768,10 +799,30 @@ mod tests {
         let project = read(entries);
         let plate = &project.plates[0];
         assert_eq!(plate.engineering_state, EngineeringState::Absent);
-        assert_eq!(plate.mesh.segment_labels, vec![0, 0]);
+        assert_eq!(plate.mesh.face_colors, vec![colour(3), colour(0)]);
+        // Two distinct inherited colours -> two regions, one per colour. A
+        // single giant region made every fill act on the whole model.
+        assert_ne!(
+            plate.mesh.segment_labels[0], plate.mesh.segment_labels[1],
+            "the two inherited colours must not collapse into one region"
+        );
+        assert_eq!(plate.mesh.segments.len(), 2);
         assert!(plate.mesh.segment_names.is_empty());
         assert_eq!(plate.mesh.next_manual_label, MANUAL_SEGMENT_OFFSET);
-        assert_eq!(plate.mesh.face_colors, vec![colour(3), colour(0)]);
+    }
+
+    #[test]
+    fn a_single_inherited_colour_still_yields_the_single_region() {
+        let object = mesh_object(1, "Part", QUAD_VERTICES, QUAD_FACES, &[Some("1C"), Some("1C")]);
+        let mut entries = one_object(&object);
+        entries.push((
+            "Metadata/project_settings.config",
+            project_settings(PALETTE, None),
+        ));
+
+        let plate = &read(entries).plates[0];
+        assert_eq!(plate.mesh.segment_labels, vec![0, 0]);
+        assert_eq!(plate.mesh.segments.len(), 1);
     }
 
     #[test]
@@ -899,7 +950,9 @@ mod tests {
             "a matching-counts/different-hash header is a drop, not a plain file"
         );
         assert_eq!(plate.mesh.face_colors, vec![colour(3), colour(0)]);
-        assert_eq!(plate.mesh.segment_labels, vec![0, 0]);
+        // The dropped project's stored labels are gone, so regions fall back to
+        // the inherited colours — but they are regions, not one blob.
+        assert_eq!(plate.mesh.segments.len(), 2);
         assert_eq!(plate.mesh.next_manual_label, MANUAL_SEGMENT_OFFSET);
     }
 

@@ -20,6 +20,11 @@ interface AppStore {
   // Mesh
   meshData: MeshData | null;
   isLoaded: boolean;
+  /** Path of the 3MF this model was opened from, or null when the model came
+   *  from an STL (there is nothing to save back to). Set by the import hook
+   *  and updated by Save As, so Cmd+S can write straight back into the file
+   *  the user opened — a 3MF is both the export and the project. */
+  projectPath: string | null;
 
   // Tool
   activeTool: PaintTool;
@@ -157,6 +162,7 @@ interface AppStore {
 
   // Actions
   setMeshData: (data: MeshData) => void;
+  setProjectPath: (path: string | null) => void;
   updateSegmentLabels: (labels: number[], segments: Segment[], faceColors?: number[]) => void;
   /** Write back the colors a paint command just produced into the CANONICAL
    *  `meshData.faceColors`. Mutates in place and deliberately does NOT call
@@ -494,6 +500,7 @@ function mergePrefs(persisted: unknown, current: AppStore): AppStore {
 const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   meshData: null,
   isLoaded: false,
+  projectPath: null,
 
   activeTool: PaintTool.View,
   brushRadius: 2.0,
@@ -556,6 +563,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
     set(() => ({
       meshData: data,
       isLoaded: true,
+      projectPath: null,
       canUndo: false,
       canRedo: false,
       paintDirty: false,
@@ -570,6 +578,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       segments: projectSegments(data.segments),
       statusMessage: translate("status.loaded", get().language, data.faceCount.toLocaleString()),
     })),
+
+  setProjectPath: (path) => set({ projectPath: path }),
 
   updateSegmentLabels: (labels, segments, faceColors) =>
     set((state) => ({

@@ -636,7 +636,7 @@ mod tests {
             static NEXT: AtomicU64 = AtomicU64::new(0);
             let serial = NEXT.fetch_add(1, Ordering::Relaxed);
             let path = std::env::temp_dir().join(format!(
-                "cym-threemf-{}-{serial}.3mf",
+                "cym-threemf-model-{}-{serial}.3mf",
                 std::process::id()
             ));
             let file = std::fs::File::create(&path).expect("create fixture");
