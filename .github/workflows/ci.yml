@@ -30,6 +30,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Unit tests (gate)
         run: npx vitest run
+      - name: Feedback service tests
+        run: node --test feedback-worker/worker.test.mjs
 
   rust:
     runs-on: ubuntu-latest
