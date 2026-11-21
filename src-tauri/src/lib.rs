@@ -77,6 +77,7 @@ pub fn run() {
             commands::export::export_palette_preview,
             commands::js_bridge::report_js_error,
             commands::js_bridge::report_app_ready,
+            commands::feedback::open_feedback_window,
             // Update module: GitHub Releases check / download / passive install.
             commands::update::check_update,
             commands::update::download_update,

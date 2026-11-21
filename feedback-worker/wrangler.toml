@@ -1,0 +1,15 @@
+name = "coloryourmodel-feedback"
+main = "worker.mjs"
+compatibility_date = "2026-11-01"
+workers_dev = true
+preview_urls = false
+
+[[ratelimits]]
+name = "FEEDBACK_RATE_LIMIT"
+namespace_id = "200201"
+simple = { limit = 4, period = 60 }
+
+[[ratelimits]]
+name = "ISSUE_RATE_LIMIT"
+namespace_id = "200202"
+simple = { limit = 20, period = 60 }
