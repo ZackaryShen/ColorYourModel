@@ -96,6 +96,16 @@ const MOUSE_NONE = -1 as unknown as THREE.MOUSE;
 // avoids per-frame Vector3 allocation in BrushCursorImperative, iteration 16).
 const UP_Z = new THREE.Vector3(0, 0, 1);
 
+// The segment brush picks the face under the center, so its marker stays
+// the same size on screen instead of showing a model-space brush radius.
+const SEGMENT_BRUSH_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8" fill="none" stroke="#181818" stroke-width="3"/>
+    <circle cx="12" cy="12" r="8" fill="none" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="12" cy="12" r="1.5" fill="#fff" stroke="#181818" />
+  </svg>`
+)}") 12 12, cell`;
+
 // SINGLE OWNER of OrbitControls' mouse-button mapping. View tool: LEFT=rotate.
 // Paint-like tools (brush/segment/fill/picker): LEFT = paint when over the
 // model, LEFT = rotate when over empty space (so a drag on empty orbits, not
@@ -1173,7 +1183,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     } else if (isBrushTool && !segmentView) {
       canvas.style.cursor = "crosshair";
     } else if (isSegmentTool) {
-      canvas.style.cursor = "cell";
+      canvas.style.cursor = SEGMENT_BRUSH_CURSOR;
     } else if (isLassoTool) {
       canvas.style.cursor = "crosshair";
     } else if (activeTool === "fill" || activeTool === "picker") {
