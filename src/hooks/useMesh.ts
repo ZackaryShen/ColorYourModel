@@ -38,9 +38,9 @@ export function useMesh() {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute(
       "position",
-      new THREE.Float32BufferAttribute(new Float32Array(meshData.vertices), 3)
+      new THREE.Float32BufferAttribute(meshData.vertices instanceof Float32Array ? meshData.vertices : new Float32Array(meshData.vertices), 3)
     );
-    geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(meshData.faces), 1));
+    geometry.setIndex(new THREE.BufferAttribute(meshData.faces instanceof Uint32Array ? meshData.faces : new Uint32Array(meshData.faces), 1));
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
     // NOTE: `geometryRef` is deliberately NOT written here. It is contracted to

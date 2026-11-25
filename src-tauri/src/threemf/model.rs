@@ -35,9 +35,7 @@ pub struct Transform(pub [f32; 12]);
 impl Transform {
     /// The identity transform.
     pub fn identity() -> Transform {
-        Transform([
-            1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
-        ])
+        Transform([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
     }
 
     /// The 3MF composition: `other` is applied first, then `self`.
@@ -136,18 +134,35 @@ pub struct Scene {
 /// tolerated. Coordinates and transform translations are returned in
 /// millimetres. An unreadable main part, a component that names a missing
 /// part, and malformed model XML are errors.
-#[cfg(test)]
 pub fn read_scene(pkg: &mut Package) -> Result<Scene, String> {
-    read_scene_with_budget(pkg, GeometryBudget::new(MAX_EDITOR_FACES))
+    read_scene_with_budget(pkg, GeometryBudget::new(MAX_EDITOR_FACES * 2))
 }
 
 struct ModelReadBudget {
+    model_bytes: u64,
     geometry: GeometryBudget,
     paint_bytes: usize,
     object_nodes: usize,
 }
 
 impl ModelReadBudget {
+    fn new(geometry: GeometryBudget) -> Self {
+        Self {
+            model_bytes: super::opc::MAX_ENTRY_BYTES,
+            paint_bytes: geometry.faces * 4,
+            geometry,
+            object_nodes: MAX_EDITOR_FACES,
+        }
+    }
+
+    fn read_part(&mut self, pkg: &mut Package, part: &str) -> Result<ParsedPart, String> {
+        let bytes = pkg
+            .read_at_most(part, self.model_bytes)
+            .map_err(|e| format!("model part {part:?}: {e}"))?;
+        self.model_bytes -= bytes.len() as u64;
+        parse_part(&bytes, part, self)
+    }
+
     fn claim_node(&mut self) -> Result<(), String> {
         self.object_nodes = self
             .object_nodes
@@ -157,10 +172,7 @@ impl ModelReadBudget {
     }
 }
 
-pub(super) fn read_scene_with_budget(
-    pkg: &mut Package,
-    geometry: GeometryBudget,
-) -> Result<Scene, String> {
+fn read_scene_with_budget(pkg: &mut Package, geometry: GeometryBudget) -> Result<Scene, String> {
     let main_part = pkg.model_part();
 
     let mut parts = HashMap::new();
@@ -170,19 +182,10 @@ pub(super) fn read_scene_with_budget(
     let mut queued = HashSet::new();
     queued.insert(main_part.clone());
     pending.push_back(main_part.clone());
-    let mut model_bytes = super::opc::MAX_ENTRY_BYTES;
-    let mut budget = ModelReadBudget {
-        geometry,
-        paint_bytes: geometry.faces * 4,
-        object_nodes: MAX_EDITOR_FACES,
-    };
+    let mut budget = ModelReadBudget::new(geometry);
 
     while let Some(name) = pending.pop_front() {
-        let bytes = pkg
-            .read_at_most(&name, model_bytes)
-            .map_err(|e| format!("model part {name:?}: {e}"))?;
-        model_bytes -= bytes.len() as u64;
-        let parsed = parse_part(&bytes, &name, &mut budget)?;
+        let parsed = budget.read_part(pkg, &name)?;
 
         if name == main_part {
             unit = parsed.unit;
@@ -204,8 +207,50 @@ pub(super) fn read_scene_with_budget(
         parts.insert(name, parsed.objects);
     }
 
+    Ok(Scene { unit, parts, build })
+}
+
+/// Parse only the parts reachable from the requested build items.
+pub fn read_selected_scene(pkg: &mut Package, indices: &[usize]) -> Result<Scene, String> {
+    let main = pkg.model_part();
+    let mut budget = ModelReadBudget::new(GeometryBudget::new(MAX_EDITOR_FACES * 2));
+    let parsed = budget.read_part(pkg, &main)?;
+    let build = indices
+        .iter()
+        .map(|&i| {
+            parsed
+                .build
+                .get(i)
+                .cloned()
+                .ok_or("Build item no longer exists")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut queue: VecDeque<_> = build
+        .iter()
+        .map(|item| (main.clone(), item.object_id))
+        .collect();
+    let mut visited = HashSet::new();
+    let mut parts = HashMap::from([(main, parsed.objects)]);
+    while let Some((part, id)) = queue.pop_front() {
+        if !visited.insert((part.clone(), id)) {
+            continue;
+        }
+        if !parts.contains_key(&part) {
+            let parsed = budget.read_part(pkg, &part)?;
+            parts.insert(part.clone(), parsed.objects);
+        }
+        let object = parts[&part]
+            .get(&id)
+            .ok_or_else(|| format!("model part {part:?} has no object {id}"))?;
+        queue.extend(object.components.iter().map(|child| {
+            (
+                child.path.clone().unwrap_or_else(|| part.clone()),
+                child.object_id,
+            )
+        }));
+    }
     Ok(Scene {
-        unit,
+        unit: parsed.unit,
         parts,
         build,
     })
@@ -251,9 +296,7 @@ fn parse_part(xml: &[u8], part: &str, budget: &mut ModelReadBudget) -> Result<Pa
         }
     }
     if !parser.model_closed {
-        return Err(format!(
-            "{part}: model XML has no complete <model> element"
-        ));
+        return Err(format!("{part}: model XML has no complete <model> element"));
     }
     // A malformed document that nests elements illegally may leave an object
     // open without a mismatched end tag for quick-xml to catch; keep it rather
@@ -456,9 +499,8 @@ impl PartParser<'_> {
     fn vertex(&self, e: &BytesStart) -> Result<[f32; 3], String> {
         let mut coordinates = [None; 3];
         for attribute in e.attributes() {
-            let attribute = attribute.map_err(|err| {
-                format!("{}: malformed attribute in <vertex>: {err}", self.part)
-            })?;
+            let attribute = attribute
+                .map_err(|err| format!("{}: malformed attribute in <vertex>: {err}", self.part))?;
             match attribute.key.local_name().as_ref() {
                 b"x" => coordinates[0] = Some(self.f32_attribute(&attribute, "vertex", "x")?),
                 b"y" => coordinates[1] = Some(self.f32_attribute(&attribute, "vertex", "y")?),
@@ -503,10 +545,7 @@ impl PartParser<'_> {
             }
         }
         let [Some(v1), Some(v2), Some(v3)] = indices else {
-            return Err(format!(
-                "{}: <triangle> is missing v1, v2 or v3",
-                self.part
-            ));
+            return Err(format!("{}: <triangle> is missing v1, v2 or v3", self.part));
         };
         Ok(([v1, v2, v3], paint))
     }
@@ -620,7 +659,10 @@ fn parse_transform(raw: &str, part: &str, scale: f32) -> Result<Transform, Strin
     let mut count = 0usize;
     for token in raw.split_whitespace() {
         if count == values.len() {
-            return Err(format!("{part}: transform has more than {} numbers", values.len()));
+            return Err(format!(
+                "{part}: transform has more than {} numbers",
+                values.len()
+            ));
         }
         let value = token
             .parse::<f32>()
@@ -669,6 +711,31 @@ mod tests {
     use std::io::Write;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn a_selected_plate_reads_only_its_world_positioned_components() {
+        let main = r#"<model xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">
+          <resources>
+            <object id="1"><components><component objectid="5" p:path="/3D/Objects/ok.model"/></components></object>
+            <object id="2"><components><component objectid="6" p:path="/3D/Objects/bad.model"/></components></object>
+          </resources>
+          <build><item objectid="1" transform="1 0 0 0 1 0 0 0 1 250 0 0"/><item objectid="2"/></build>
+        </model>"#;
+        let child = r#"<model><resources><object id="5"><mesh><vertices>
+          <vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/>
+          </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object></resources></model>"#;
+        let fixture = Fixture::new(&[
+            ("3D/3dmodel.model", main),
+            ("3D/Objects/ok.model", child),
+            ("3D/Objects/bad.model", "not XML"),
+        ]);
+        let mut package = Package::open(fixture.path()).unwrap();
+        let selected = read_selected_scene(&mut package, &[0]).unwrap();
+        assert_eq!(selected.build[0].transform.0[9], 250.0);
+        assert!(selected.parts.contains_key("3D/Objects/ok.model"));
+        assert!(!selected.parts.contains_key("3D/Objects/bad.model"));
+        assert!(read_selected_scene(&mut package, &[1]).is_err());
+    }
 
     /// Temporary synthetic 3MF package, removed when the fixture is dropped.
     struct Fixture {
@@ -870,9 +937,7 @@ mod tests {
 
         // A scale on the build item also scales the component's translation,
         // which the opposite composition order would not do.
-        let scaled_build = Transform([
-            3.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 3.0, 10.0, 0.0, 0.0,
-        ]);
+        let scaled_build = Transform([3.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 3.0, 10.0, 0.0, 0.0]);
         assert_eq!(
             scaled_build
                 .compose(component.transform)
@@ -985,11 +1050,7 @@ mod tests {
             .collect();
         assert_eq!(
             paths,
-            vec![
-                None,
-                Some("3D/Objects/b.model"),
-                Some("3D/3dmodel.model")
-            ]
+            vec![None, Some("3D/Objects/b.model"), Some("3D/3dmodel.model")]
         );
         let b_mesh = scene.parts["3D/Objects/b.model"][&5]
             .mesh
@@ -1018,7 +1079,11 @@ mod tests {
             ),
             (
                 "short transform",
-                model("millimeter", "", r#"<item objectid="1" transform="1 2 3"/>"#),
+                model(
+                    "millimeter",
+                    "",
+                    r#"<item objectid="1" transform="1 2 3"/>"#,
+                ),
             ),
             (
                 "missing triangle index",

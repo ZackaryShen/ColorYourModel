@@ -133,7 +133,7 @@ impl MachinePreset {
 
 /// Everything the export dialog resolved. `None` anywhere means "the user did
 /// not choose", and the writer falls back to its generic profile.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportSelection {
     pub machine_id: String,

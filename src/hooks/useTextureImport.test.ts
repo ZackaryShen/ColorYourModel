@@ -10,6 +10,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invokeCommand = vi.mocked(invoke);
 
 const oldMesh: MeshData = {
+  tabId: 7,
   vertices: [0, 0, 0, 2, 0, 0, 0, 2, 0],
   faces: [0, 1, 2],
   faceColors: [0, 0, 255, 255],
@@ -21,6 +22,11 @@ const oldMesh: MeshData = {
 
 const newMesh: MeshData = {
   ...oldMesh,
+  tabId: 8,
+  tabs: [
+    { id: 7, name: "Existing plate", faceCount: 1, dirty: true },
+    { id: 8, name: "Tide", faceCount: 1, dirty: true },
+  ],
   faceColors: [255, 0, 0, 255],
   segmentLabels: [0],
   segments: [],
@@ -43,10 +49,36 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function binaryMesh(data: MeshData): ArrayBuffer {
+  const { vertices, faces, segmentLabels, faceColors, ...metadata } = data;
+  const json = new TextEncoder().encode(JSON.stringify(metadata));
+  const bytes = new ArrayBuffer(20 + 4 * (vertices.length + faces.length + segmentLabels.length) + faceColors.length + json.length);
+  const header = new DataView(bytes);
+  [vertices.length, faces.length, segmentLabels.length, faceColors.length, json.length]
+    .forEach((length, i) => header.setUint32(i * 4, length, true));
+  let offset = 20;
+  new Float32Array(bytes, offset, vertices.length).set(vertices);
+  offset += vertices.length * 4;
+  new Uint32Array(bytes, offset, faces.length).set(faces);
+  offset += faces.length * 4;
+  new Uint32Array(bytes, offset, segmentLabels.length).set(segmentLabels);
+  offset += segmentLabels.length * 4;
+  new Uint8Array(bytes, offset, faceColors.length).set(faceColors);
+  new Uint8Array(bytes, offset + faceColors.length).set(json);
+  return bytes;
+}
+
 beforeEach(() => {
   invokeCommand.mockReset();
   useAppStore.setState({
     meshData: oldMesh,
+    tabs: [{ id: 7, name: "Existing plate", faceCount: 1, dirty: true }],
+    activeTabId: 7,
+    projectPath: "/models/saved.3mf",
+    importBusy: false,
+    saveBusy: false,
+    pendingImportPath: null,
+    pendingCloseTabId: null,
     isLoaded: true,
     paintDirty: true,
     canUndo: true,
@@ -56,8 +88,8 @@ beforeEach(() => {
 });
 
 describe("GLB preview and apply", () => {
-  it("retains the active model until explicit apply completes and starts new unsaved work", async () => {
-    const apply = deferred<MeshData>();
+  it("keeps the active plate until apply and appends an unsaved plate without changing the project path", async () => {
+    const apply = deferred<ArrayBuffer>();
     invokeCommand.mockImplementation(async (command) => {
       if (command === "prepare_texture") return preview;
       if (command === "apply_texture") return apply.promise;
@@ -66,6 +98,7 @@ describe("GLB preview and apply", () => {
     const { result } = renderHook(useTextureImport);
     act(() => { result.current.open("/models/tide.glb"); });
     await waitFor(() => expect(result.current.session?.phase).toBe("ready"));
+    expect(useAppStore.getState().importBusy).toBe(true);
     expect(invokeCommand.mock.calls.map(([command]) => command)).toEqual(["prepare_texture"]);
     expect(useAppStore.getState().meshData).toBe(oldMesh);
     expect(useAppStore.getState().canUndo).toBe(true);
@@ -76,9 +109,15 @@ describe("GLB preview and apply", () => {
     expect(result.current.session?.phase).toBe("applying");
     expect(useAppStore.getState().meshData).toBe(oldMesh);
 
-    await act(async () => { apply.resolve(newMesh); });
+    await act(async () => { apply.resolve(binaryMesh(newMesh)); });
     expect(result.current.session).toBeNull();
-    expect(useAppStore.getState().meshData).toBe(newMesh);
+    expect(useAppStore.getState().meshData).toMatchObject({
+      tabId: 8, faces: Uint32Array.from(newMesh.faces), faceColors: Uint8Array.from(newMesh.faceColors),
+    });
+    expect(useAppStore.getState().tabs).toEqual(newMesh.tabs);
+    expect(useAppStore.getState().activeTabId).toBe(8);
+    expect(useAppStore.getState().projectPath).toBe("/models/saved.3mf");
+    expect(useAppStore.getState().importBusy).toBe(false);
     expect(useAppStore.getState().paintDirty).toBe(true);
     expect(useAppStore.getState().canUndo).toBe(false);
     expect(useAppStore.getState().canRedo).toBe(false);
@@ -118,6 +157,7 @@ describe("GLB preview and apply", () => {
     expect(useAppStore.getState().meshData).toBe(oldMesh);
     expect(useAppStore.getState().paintDirty).toBe(true);
     expect(useAppStore.getState().canUndo).toBe(true);
+    expect(useAppStore.getState().importBusy).toBe(false);
     expect(invokeCommand.mock.calls[1]).toEqual(["cancel_texture", { jobId: invokeCommand.mock.calls[0][1]?.jobId }]);
   });
 

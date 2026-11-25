@@ -35,10 +35,8 @@ const COPY = {
     applyError: "无法应用涂色",
     rendererError: "无法显示模型预览",
     imageLoading: "正在显示原始贴图…",
-    discard: "应用后，当前模型和未保存的涂装将被替换。",
     retry: "重试",
-    apply: "确认应用",
-    replace: "应用并替换模型",
+    apply: "应用到新盘",
     cancel: "取消",
     faces: (count: number) => count.toLocaleString("zh") + " 面",
     colors: (count: number) => count.toLocaleString("zh") + " 色",
@@ -71,10 +69,8 @@ const COPY = {
     applyError: "Could not apply the paint",
     rendererError: "Could not display the model preview",
     imageLoading: "Loading the original texture…",
-    discard: "Applying will replace the current model and its unsaved paint.",
     retry: "Retry",
-    apply: "Apply paint",
-    replace: "Apply and replace model",
+    apply: "Apply to new plate",
     cancel: "Cancel",
     faces: (count: number) => count.toLocaleString("en") + (count === 1 ? " face" : " faces"),
     colors: (count: number) => count.toLocaleString("en") + (count === 1 ? " color" : " colors"),
@@ -83,20 +79,18 @@ const COPY = {
 
 interface PreviewDialogProps {
   session: TextureImportSession;
-  hasModel: boolean;
   onApply: () => void;
   onCancel: () => void;
   onColorLimit: (count: number) => void;
   onRetry: () => void;
 }
 
-export function TexturePreviewDialog({ session, hasModel, onApply, onCancel, onColorLimit, onRetry }: PreviewDialogProps) {
+export function TexturePreviewDialog({ session, onApply, onCancel, onColorLimit, onRetry }: PreviewDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const language = useAppStore((state) => state.language);
   const theme = useAppStore((state) => state.theme);
   const setTheme = useAppStore((state) => state.setTheme);
   const busy = useAppStore((state) => state.isLoading);
-  const dirty = useAppStore((state) => state.paintDirty);
   const copy = COPY[language];
   const t = useT();
 
@@ -255,14 +249,14 @@ export function TexturePreviewDialog({ session, hasModel, onApply, onCancel, onC
         <div className="texture-preview-note">
           {applying || (preparing && preview) ? (
             <span role="status">{applying ? copy.applying : copy.progress}</span>
-          ) : hasModel && dirty ? copy.discard : null}
+          ) : null}
         </div>
         <button className="texture-preview-button cym-btn" disabled={applying} onClick={onCancel}>{copy.cancel}</button>
         {error ? (
           <button className="texture-preview-button texture-preview-primary cym-btn" onClick={onRetry}>{copy.retry}</button>
         ) : (
           <button className="texture-preview-button texture-preview-primary cym-btn" disabled={!canApply} onClick={onApply}>
-            {hasModel ? copy.replace : copy.apply}
+            {copy.apply}
           </button>
         )}
       </footer>

@@ -106,13 +106,13 @@ pub fn snap_point_to_vertex_on_face(
     // 1-ring extension (faces sharing any hit-face vertex)
     let mut one_ring: Vec<u32> = face_only.clone();
     for &v in &hit_face {
-        for (fi2, face) in mesh.faces.iter().enumerate() {
-            if (fi2 as u32) == face_id { continue; }
-            if face[0] == v || face[1] == v || face[2] == v {
-                for &w in face {
-                    if seen.insert(w) {
-                        one_ring.push(w);
-                    }
+        for &neighbor in mesh.faces_at_vertex(v) {
+            if neighbor == face_id {
+                continue;
+            }
+            for w in mesh.faces[neighbor as usize] {
+                if seen.insert(w) {
+                    one_ring.push(w);
                 }
             }
         }
@@ -190,22 +190,20 @@ fn sq_dist(a: &[f32; 3], b: &[f32; 3]) -> f32 {
 /// Used for the same-side test in `snap_point_to_vertex_on_face`.
 fn vertex_normal(mesh: &MeshModel, v: u32) -> [f32; 3] {
     let mut n = [0.0f32; 3];
-    let mut count = 0u32;
-    for (fi, face) in mesh.faces.iter().enumerate() {
-        if face[0] == v || face[1] == v || face[2] == v {
-            if fi < mesh.normals.len() {
-                let fnormal = mesh.normals[fi];
-                n[0] += fnormal[0];
-                n[1] += fnormal[1];
-                n[2] += fnormal[2];
-                count += 1;
+    let mut found = false;
+    for &face in mesh.faces_at_vertex(v) {
+        if let Some(normal) = mesh.normals.get(face as usize) {
+            for axis in 0..3 {
+                n[axis] += normal[axis];
             }
+            found = true;
         }
     }
-    if count == 0 {
-        return [0.0, 0.0, 1.0];
+    if found {
+        normalize(n)
+    } else {
+        [0.0, 0.0, 1.0]
     }
-    normalize(n)
 }
 
 /// Build the vertex-edge adjacency graph ONCE (reused across all loop edges).

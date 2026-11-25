@@ -39,7 +39,7 @@ function renderPreview(active: TextureImportSession = session) {
   const onApply = vi.fn();
   const onCancel = vi.fn();
   render(
-    <TexturePreviewDialog session={active} hasModel onApply={onApply} onCancel={onCancel}
+    <TexturePreviewDialog session={active} onApply={onApply} onCancel={onCancel}
       onColorLimit={vi.fn()} onRetry={vi.fn()} />,
   );
   return { onApply, onCancel };
@@ -57,7 +57,7 @@ describe("texture import preview", () => {
   it("explains a reduced preview and keeps the apply decision available", () => {
     renderPreview({ ...session, preview: { ...session.preview!, warning: "budget" } });
     expect(screen.getByText(/subdivision face budget was reached/i)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Apply and replace model" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Apply to new plate" }) as HTMLButtonElement).disabled).toBe(false);
   });
   it("preserves the selected comparison mode and divider when switching theme", () => {
     renderPreview();
@@ -70,12 +70,12 @@ describe("texture import preview", () => {
     expect(screen.getByText("Tide Vase.glb")).toBeTruthy();
   });
 
-  it("requires an explicit replace action and displays returned mesh counts", () => {
+  it("requires an explicit add-plate action and displays returned mesh counts", () => {
     const { onApply } = renderPreview();
     expect(screen.getByText("1 face")).toBeTruthy();
     expect(screen.getByText("2 faces")).toBeTruthy();
     expect(onApply).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Apply and replace model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply to new plate" }));
     expect(onApply).toHaveBeenCalledOnce();
   });
 
@@ -84,7 +84,7 @@ describe("texture import preview", () => {
     const dialog = screen.getByRole("dialog");
     act(() => { dialog.dispatchEvent(new Event("cancel", { cancelable: true })); });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    fireEvent.click(screen.getByRole("button", { name: "Apply and replace model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply to new plate" }));
     expect(onCancel).not.toHaveBeenCalled();
     expect(onApply).not.toHaveBeenCalled();
   });

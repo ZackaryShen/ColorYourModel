@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/appStore";
@@ -41,6 +41,13 @@ describe("texture mappings in ExportDialog", () => {
     useAppStore.setState({
       language: "en",
       lastExportSelection: null,
+      activeTabId: 3,
+      tabEpoch: 1,
+      saveBusy: false,
+      importBusy: false,
+      pendingCloseTabId: null,
+      pendingImportPath: null,
+      isLoading: false,
       meshData: {
         texturePainting: true,
         vertices: [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0],
@@ -105,6 +112,8 @@ describe("texture mappings in ExportDialog", () => {
     save.mockResolvedValue("/tmp/mapped.3mf.3mf");
     render(<ExportDialog onClose={() => {}} />);
     const blueSlot = await screen.findByRole("combobox", { name: "Slot for #0000FF" });
+    expect(invoke).toHaveBeenCalledWith("texture_mapping_preview", { tabId: 3 });
+    expect(screen.getByText(/exports the active texture plate/)).toBeTruthy();
     fireEvent.change(blueSlot, { target: { value: "4" } });
 
     await waitFor(() => expect(screen.getByLabelText("Filament assignment preview").textContent)
@@ -112,7 +121,7 @@ describe("texture mappings in ExportDialog", () => {
     const confirm = screen.getByRole("button", { name: "Confirm and export" }) as HTMLButtonElement;
     await waitFor(() => expect(confirm.disabled).toBe(false));
     fireEvent.click(confirm);
-    await waitFor(() => expect(export3mf).toHaveBeenCalledWith("/tmp/mapped.3mf.3mf", selection, {
+    await waitFor(() => expect(export3mf).toHaveBeenCalledWith("/tmp/mapped.3mf.3mf", selection, false, {
       revision: "preview-revision",
       mapping: {
         selection,
@@ -120,6 +129,21 @@ describe("texture mappings in ExportDialog", () => {
         assignments: [{ rgb: blue, slot: 4 }, { rgb: red, slot: 4 }],
       },
     }));
+  });
+
+  it("drops a mapped export if the source plate generation changes while the picker is open", async () => {
+    let settle!: (path: string) => void;
+    save.mockReturnValue(new Promise((resolve) => { settle = resolve; }));
+    render(<ExportDialog onClose={() => {}} />);
+    fireEvent.change(await screen.findByRole("combobox", { name: "Slot for #0000FF" }), { target: { value: "4" } });
+    const confirm = screen.getByRole<HTMLButtonElement>("button", { name: "Confirm and export" });
+    await waitFor(() => expect(confirm.disabled).toBe(false));
+    fireEvent.click(confirm);
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    act(() => { useAppStore.setState({ tabEpoch: 2 }); });
+    await act(async () => settle("/tmp/stale.3mf"));
+    expect(export3mf).not.toHaveBeenCalled();
+    expect(useAppStore.getState().saveBusy).toBe(false);
   });
 
   it("exports a normal mesh to OBJ without a texture mapping", async () => {
@@ -131,7 +155,7 @@ describe("texture mappings in ExportDialog", () => {
     await screen.findByRole("checkbox", { name: "Select slot 2" });
     fireEvent.click(screen.getByRole("button", { name: "OBJ (with colour)" }));
     fireEvent.click(screen.getByRole("button", { name: "Choose location & export" }));
-    await waitFor(() => expect(exportObj).toHaveBeenCalledWith("/tmp/legacy.obj"));
+    await waitFor(() => expect(exportObj).toHaveBeenCalledWith("/tmp/legacy.obj.obj"));
     expect(invoke).not.toHaveBeenCalledWith("texture_mapping_preview");
     expect(export3mf).not.toHaveBeenCalled();
   });

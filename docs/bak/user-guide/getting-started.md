@@ -41,9 +41,9 @@ flowchart LR
 
 ## Convert an embedded GLB texture
 
-Open one static GLB from the file menu or drag it onto CYM. It needs UVs and one embedded opaque PNG or JPEG base-color texture. Inspect the original texture and converted faces side by side, in a single view, or using the comparison slider. The 1–16 color limit controls the editable model palette. Confirm to apply the converted model, then use the existing painting tools.
+Open one static GLB from the file menu or drag it onto CYM. It needs UVs and one embedded opaque PNG or JPEG base-color texture. Inspect the original texture and converted faces side by side, in a single view, or using the comparison slider. The 1–16 color limit controls the editable model palette. Confirm to add the converted model as a new plate, then use the existing painting tools.
 
-The preview follows the application theme. Canceling or encountering an unsupported file leaves the current model and its edits in place.
+The preview follows the application theme. Existing plates and the workspace save destination are preserved while previewing and importing the GLB.
 
 ## Verification & tests
 

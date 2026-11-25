@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { captureTabOwnership, invokeTab, isCurrentTabOwnership } from "../../utils/tabCommand";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useT } from "../../i18n";
@@ -51,6 +52,9 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const meshData = useAppStore((s) => s.meshData);
+  const activeTabId = useAppStore((s) => s.activeTabId);
+  const tabEpoch = useAppStore((s) => s.tabEpoch);
+  const [owner] = useState(captureTabOwnership);
   const [sourceMesh] = useState(meshData);
   const isTexture = sourceMesh?.texturePainting === true;
   const [format, setFormat] = useState<"3mf" | "obj">("3mf");
@@ -88,8 +92,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     const persisted = useAppStore.getState().lastExportSelection;
     const loadPreview = isTexture
-      ? invoke<TextureMappingPreview>("texture_mapping_preview")
-      : invoke<string[]>("export_palette_preview");
+      ? invokeTab<TextureMappingPreview>("texture_mapping_preview", {}, owner.tabId)
+      : invokeTab<string[]>("export_palette_preview", {}, owner.tabId);
 
     void Promise.all([invoke<MachineSummary[]>("list_export_presets"), loadPreview]).then(([presets, preview]) => {
       if (cancelled) return;
@@ -121,7 +125,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       setLoadError(String(error));
     });
     return () => { cancelled = true; };
-  }, [isTexture, sourceMesh]);
+  }, [isTexture, owner, sourceMesh]);
 
   const machine = machines.find(({ id }) => id === selection?.machineId);
   const nozzle = selection?.nozzleDiameter ?? "";
@@ -153,7 +157,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const slots = useMemo<TextureMappingSuggestions["slots"]>(() => currentSuggestions?.data?.slots
     ?? nominalColors.map((color, i) => ({ slot: i + 1, nominalColor: color, displayColor: color ?? [138, 138, 138] })),
   [currentSuggestions, nominalColors]);
-  const sourceReplaced = !sourceMesh || !meshData || meshData.vertices !== sourceMesh.vertices || meshData.faces !== sourceMesh.faces;
+  const sourceReplaced = !sourceMesh || !meshData || owner.tabId !== activeTabId || owner.epoch !== tabEpoch
+    || meshData.vertices !== sourceMesh.vertices || meshData.faces !== sourceMesh.faces;
   const textureReady = !!mappingPreview?.rows.length && !!currentSuggestions?.data
     && mappingPreview.rows.every(({ rgb }) => assigned.has(rgbHex(rgb)));
   const canExport = !exporting && !sourceReplaced && (format === "obj" || (!!validProfile && (!isTexture || textureReady)));
@@ -219,7 +224,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   };
 
   const doExport = async () => {
-    if (!canExport) return;
+    const { importBusy, saveBusy, isLoading, pendingImportPath, pendingCloseTabId } = useAppStore.getState();
+    if (!canExport || importBusy || saveBusy || isLoading || pendingImportPath || pendingCloseTabId != null) return;
     // Capture the confirmed revision and exact RGB mapping before the save dialog opens.
     const mappingRequest: TextureMappingRequest | undefined = format === "3mf" && selection && mappingPreview ? {
       revision: mappingPreview.revision,
@@ -233,6 +239,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       },
     } : undefined;
     setExportError(null);
+    useAppStore.setState({ saveBusy: true });
     setExporting(true);
     setProgress(0);
     try {
@@ -242,18 +249,14 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         defaultPath: `model.${ext}`,
       });
       if (!path) return;
+      if (!isCurrentTabOwnership(owner)) throw new Error(t("export.modelChanged"));
 
       if (mappingRequest) {
         // The native overwrite prompt covers this exact path.
-        await export3mf(path, mappingRequest.mapping.selection, mappingRequest);
+        await export3mf(path, mappingRequest.mapping.selection, false, mappingRequest);
       } else {
-        // Legacy exports trim extensions added by the native save dialog.
-        const normExt = `.${ext}`;
-        let base = path;
-        while (base.toLowerCase().endsWith(normExt)) base = base.slice(0, -normExt.length);
-        const outPath = `${base}${normExt}`;
-        if (format === "obj") await exportObj(outPath);
-        else if (selection) await export3mf(outPath, selection);
+        if (format === "obj") await exportObj(path);
+        else if (selection) await export3mf(path, selection);
       }
       if (format === "3mf" && selection) {
         setLastExportSelection(selection);
@@ -264,6 +267,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       setExportError(String(e));
       setStatusMessage(t("export.failure", String(e)));
     } finally {
+      useAppStore.setState({ saveBusy: false });
       setExporting(false);
     }
   };
@@ -341,6 +345,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
               </button>
             </div>
 
+            {showMapping && <p style={styles.note}>{t("export.textureScope")}</p>}
             {format === "obj" ? (
               <p style={styles.note}>{t("export.objNote")}</p>
             ) : (

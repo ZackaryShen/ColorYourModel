@@ -97,8 +97,7 @@ impl Package {
         let limit = limit.min(self.read_limit);
         if declared > limit {
             return Err(format!(
-                "package entry {name:?} declares {declared} bytes, above the {} byte read limit",
-                limit
+                "package entry {name:?} declares {declared} bytes, above the {limit} byte read limit"
             ));
         }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
+import { decodeMeshResponse } from "../utils/meshResponse";
 import type { MeshData } from "../types/mesh";
 import type { TexturePreview } from "../types/texture";
 import { log } from "../utils/logger";
@@ -46,6 +47,7 @@ export function useTextureImport() {
     if (startedJobId.current !== null && current.current?.phase !== "applying") {
       cancelJob(startedJobId.current);
     }
+    if (current.current) useAppStore.setState({ importBusy: false });
     current.current = null;
     startedJobId.current = null;
   }, []);
@@ -86,7 +88,10 @@ export function useTextureImport() {
   };
 
   const open = (path: string) => {
-    if (current.current || useAppStore.getState().isLoading) return;
+    const state = useAppStore.getState();
+    if (current.current || state.isLoading || state.importBusy || state.saveBusy ||
+        state.pendingImportPath || state.pendingCloseTabId != null) return;
+    useAppStore.setState({ importBusy: true });
     prepare(path, DEFAULT_COLOR_LIMIT, 0);
   };
 
@@ -103,9 +108,10 @@ export function useTextureImport() {
   };
 
   const cancel = () => {
-    if (current.current?.phase === "applying") return;
+    if (!current.current || current.current.phase === "applying") return;
     window.clearTimeout(timer.current);
     update(null);
+    useAppStore.setState({ importBusy: false });
     if (startedJobId.current !== null) {
       cancelJob(startedJobId.current);
       startedJobId.current = null;
@@ -118,13 +124,13 @@ export function useTextureImport() {
     const { jobId } = active;
     update({ ...active, phase: "applying" });
     try {
-      const data = await invoke<MeshData>("apply_texture", { jobId });
+      const data = decodeMeshResponse(await invoke<ArrayBuffer | MeshData>("apply_texture", { jobId }));
+      if (!data) throw new Error("Missing texture plate response");
       if (current.current?.jobId !== jobId) return;
-      const { setMeshData, markPaintDirty } = useAppStore.getState();
-      setMeshData(data);
-      markPaintDirty();
+      useAppStore.getState().setMeshData(data, true);
       startedJobId.current = null;
       update(null);
+      useAppStore.setState({ importBusy: false });
     } catch (error) {
       if (current.current?.jobId === jobId) {
         update({ ...active, phase: "apply-error", error: String(error) });

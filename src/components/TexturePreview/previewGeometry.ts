@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { OriginalTexturePreview } from "../../types/texture";
 
-export function createPreviewGeometry(vertices: number[], faces: number[]) {
+export function createPreviewGeometry(vertices: ArrayLike<number>, faces: ArrayLike<number>) {
   // Independent corners keep UV seams and distinct colors on adjacent faces.
   const positions = new Float32Array(faces.length * 3);
   for (let corner = 0; corner < faces.length; corner++) {
@@ -29,7 +29,7 @@ const LINEAR_FROM_BYTE = Float32Array.from({ length: 256 }, (_, byte) =>
   THREE.ColorManagement.toWorkingColorSpace(new THREE.Color(byte / 255, 0, 0), THREE.SRGBColorSpace).r,
 );
 
-export function writePreviewColors(geometry: THREE.BufferGeometry, faceColors: number[]) {
+export function writePreviewColors(geometry: THREE.BufferGeometry, faceColors: ArrayLike<number>) {
   const count = geometry.getAttribute("position").count;
   let colors = geometry.getAttribute("color");
   if (!colors) {

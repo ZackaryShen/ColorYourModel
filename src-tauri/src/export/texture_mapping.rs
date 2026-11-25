@@ -23,7 +23,7 @@ pub struct TextureColorAssignment {
     pub slot: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TextureSlotMapping {
     pub selection: ExportSelection,
@@ -595,29 +595,26 @@ mod tests {
             .map(|&row| mapping.assignments[usize::from(row)].slot)
             .collect();
         assert_eq!(exported.quantized.face_slots, preview_slots);
-        let project =
-            crate::engineering::encode_project_parts(&mesh, Some(&exported.mapping)).unwrap();
-        let texture_part = project
-            .iter()
-            .find(|(name, _)| *name == "Metadata/cym/texture_1.json")
-            .unwrap();
-        assert!(texture_part.1.len() < 2048);
-        let entries: Vec<_> = project
-            .iter()
-            .map(|(name, bytes)| (*name, bytes.as_slice()))
-            .collect();
         let dir = tempfile::tempdir().unwrap();
         let output = dir.path().join("blended.3mf");
-        crate::export::threemf::export_3mf_with_project(
-            &mesh,
+        crate::export::threemf::write_mapped_texture_3mf(
+            &crate::export::threemf::ProjectPlate {
+                name: "Blended".into(),
+                mesh: &mesh,
+            },
             &output,
-            None,
-            Some(&exported),
-            &entries,
+            &exported,
             &|_, _| {},
         )
         .unwrap();
         let mut archive = zip::ZipArchive::new(std::fs::File::open(&output).unwrap()).unwrap();
+        assert!(
+            archive
+                .by_name("Metadata/cym/texture_1.json")
+                .unwrap()
+                .size()
+                < 2048
+        );
         let mut xml = String::new();
         std::io::Read::read_to_string(&mut archive.by_name("3D/3dmodel.model").unwrap(), &mut xml)
             .unwrap();
@@ -630,8 +627,10 @@ mod tests {
             .collect();
         assert_eq!(paint.collect::<Vec<_>>(), expected_paint);
 
-        let (reopened, warning) = crate::engineering::open_project(&output, &|_, _| {}).unwrap();
-        assert_eq!(warning, None);
+        let reopened = crate::threemf::load_plate(&output, 0, &|_, _| {})
+            .unwrap()
+            .mesh;
+        assert!(!reopened.texture_state_dropped);
         assert_eq!(reopened.face_colors, original);
         let reopened_preview = preview(&reopened).unwrap();
         assert_eq!(

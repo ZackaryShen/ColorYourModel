@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SeedPanel } from "./SeedPanel";
+import { DialogShell } from "./DialogShell";
+import { useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { DEFAULT_EXPERIMENTAL_FEATURES } from "../experimentalFeatures";
 import type { SeedPoint } from "../types/mesh";
@@ -358,4 +360,24 @@ describe("SeedPanel experimental gates (Preferences)", () => {
     const rec = calls.find((c) => c.cmd === "recommend_seeds")!;
     expect(rec.args).toEqual({ count: 12, curvature: 1, concavity: 1 });
   });
+});
+
+it('cancelling another modal preserves the seed tool and placed seeds', () => {
+  const seeds = [{x:1,y:2,z:3,faceIndex:0}];
+  useAppStore.setState({activeTool:'seed', seedPoints:seeds});
+  function Scene() {
+    const [open,setOpen] = useState(true);
+    return <><SeedPanel/>{open && <DialogShell title="Exit?" body="Discard?" icon="!" onCancel={() => setOpen(false)}><button>Cancel</button></DialogShell>}</>;
+  }
+  render(<Scene/>);
+  fireEvent.keyDown(window, {key:'Escape'});
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(useAppStore.getState().activeTool).toBe('seed');
+  expect(useAppStore.getState().seedPoints).toEqual(seeds);
+});
+
+it('ordinary Escape outside a modal still leaves the seed tool', () => {
+  render(<SeedPanel/>);
+  fireEvent.keyDown(window, {key:'Escape'});
+  expect(useAppStore.getState().activeTool).toBe('view');
 });

@@ -1,3 +1,4 @@
+import { TabBar } from "./components/TabBar";
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Viewport } from "./components/Viewport/Viewport";
@@ -17,24 +18,30 @@ import { DropReplaceDialog } from "./components/DropReplaceDialog";
 import { UpdateDialog } from "./components/UpdateDialog/UpdateDialog";
 import { useAutoUpdateCheck } from "./hooks/useAutoUpdateCheck";
 import { useDropImport } from "./hooks/useDropImport";
-import { useImportModel } from "./hooks/useImportModel";
+import { useImportStl } from "./hooks/useImportStl";
 import { useTextureImport } from "./hooks/useTextureImport";
 import { TexturePreviewDialog } from "./components/TexturePreview/TexturePreviewDialog";
 import { useAppStore } from "./store/appStore";
+import { useT } from "./i18n";
 
 function App() {
+  const activeTabId = useAppStore(s => s.activeTabId);
   const theme = useAppStore((s) => s.theme);
   const language = useAppStore((s) => s.language);
   // GUI audit 2026-10-02 (B14): the brush controls do nothing without a mesh;
   // showing them on the empty state invited dead-slider fiddling.
   const hasMesh = useAppStore((s) => s.meshData !== null);
   const historyPanelOpen = useAppStore((s) => s.historyPanelOpen);
+  // Issue #21: drag a file onto any part of the window to import it.
+  // The drop shares the 📂 pipeline (importFromPath); a drop that would
+  // replace a loaded model first asks, like the exit confirm does.
   const textureImport = useTextureImport();
-  const { pickModel, importFromPath, isImportBusy } = useImportModel(textureImport);
-  const { dragOver, pendingReplacePath, confirmReplace, cancelReplace } =
-    useDropImport(importFromPath, isImportBusy);
+  const { importStl, importFromPath, pendingReplacePath, confirmReplace, cancelReplace } =
+    useImportStl(textureImport.open);
+  const { dragOver } = useDropImport(importFromPath);
   const [confirmExit, setConfirmExit] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
+  const t = useT();
 
   // Silent startup update check (dev builds and opted-out users never fire).
   useAutoUpdateCheck();
@@ -53,16 +60,14 @@ function App() {
     let unlisten: (() => void) | null = null;
     getCurrentWindow()
       .onCloseRequested(async (event) => {
-        // Applying changes the active backend mesh. Keep the window open
-        // until the renderer receives the same committed mesh.
         if (textureImport.isApplying()) {
           event.preventDefault();
           return;
         }
         if (textureImport.isOpen()) textureImport.cancel();
-        const { meshData, paintDirty } = useAppStore.getState();
+        const { meshData, paintDirty, tabs } = useAppStore.getState();
         // Nothing at stake -> fall through to the default close path.
-        if (!meshData || !paintDirty) return;
+        if (!meshData || !(paintDirty || tabs.some(tab => tab.dirty))) return;
         event.preventDefault();
         setConfirmExit(true);
       })
@@ -74,7 +79,7 @@ function App() {
       disposed = true;
       unlisten?.();
     };
-    // Texture callbacks only read stable refs and update through a stable setter.
+    // t is re-created each render; language is the only real dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language]);
 
@@ -82,13 +87,15 @@ function App() {
     <div style={styles.root}>
       {/* Top menu bar (File / View / Help) — conventional desktop entry
           points alongside the left tool Toolbar. */}
-      <MenuBar onOpenPreferences={() => setPrefsOpen(true)} onImport={pickModel} />
+      <MenuBar onOpenPreferences={() => setPrefsOpen(true)} onImport={importStl} />
+
+      <TabBar />
 
       {/* Main layout */}
       <div style={styles.main}>
         {/* Left toolbar */}
         <div style={styles.leftPanel}>
-          <Toolbar onImport={pickModel} />
+          <Toolbar onImport={importStl} />
         </div>
 
         {/* Center viewport */}
@@ -102,9 +109,9 @@ function App() {
 
         {/* Right panel */}
         <div style={styles.rightPanel}>
-          <SegmentsPanel />
+          <SegmentsPanel key={`segments-${activeTabId ?? "none"}`} />
           {hasMesh && <BrushSettings />}
-          <ColorPanel />
+          <ColorPanel key={`colors-${activeTabId ?? "none"}`} />
         </div>
       </div>
 
@@ -123,7 +130,7 @@ function App() {
           persisted via cym-prefs). */}
       {prefsOpen && <PreferencesDialog onClose={() => setPrefsOpen(false)} />}
 
-      {/* P0 2026-10-12: import failures (broken/unsupported STL or .cym)
+      {/* P0 2026-10-12: import failures (broken or unsupported STL / 3MF)
           surface as a modal instead of only a status-bar line. */}
       <ImportErrorDialog />
 
@@ -133,11 +140,9 @@ function App() {
       {pendingReplacePath && (
         <DropReplaceDialog onCancel={cancelReplace} onConfirm={confirmReplace} />
       )}
-
       {textureImport.session && (
         <TexturePreviewDialog
           session={textureImport.session}
-          hasModel={hasMesh}
           onApply={textureImport.apply}
           onCancel={textureImport.cancel}
           onColorLimit={textureImport.setColorLimit}
@@ -180,7 +185,8 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
   },
   rightPanel: {
-    width: 220,
+    width: 300,
+    flexShrink: 0,
     padding: 8,
     display: "flex",
     flexDirection: "column",

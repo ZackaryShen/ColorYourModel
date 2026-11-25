@@ -1,17 +1,10 @@
-use std::path::Path;
-
 use serde::{Deserialize, Serialize};
 
-use crate::export::project_state::{self, Fingerprint, PlateStateHeader, ProjectState};
+use crate::export::project_state::Fingerprint;
 use crate::export::texture_mapping::TextureSlotMapping;
-use crate::mesh::loader::ProgressFn;
 use crate::mesh::model::MeshModel;
-use crate::threemf::{self, opc::Package, EngineeringState};
+use crate::threemf::opc::Package;
 
-const HEADER_PART: &str = "Metadata/cym/project.json";
-const PLATE_PART: &str = "Metadata/cym/plate_1.bin";
-const HISTORY_PART: &str = "Metadata/cym/history_1.bin";
-const TEXTURE_PART: &str = "Metadata/cym/texture_1.json";
 const MAX_TEXTURE_STATE_BYTES: u64 = 64 * 1024;
 
 #[derive(Serialize, Deserialize)]
@@ -27,84 +20,55 @@ fn has_segments_by_default() -> bool {
     true
 }
 
-pub(crate) fn encode_project_parts(
+pub(crate) fn texture_part_name(plate: usize) -> String {
+    format!("Metadata/cym/texture_{}.json", plate + 1)
+}
+
+pub(crate) fn encode_texture_part(
     mesh: &MeshModel,
+    fingerprint: Fingerprint,
     mapping: Option<&TextureSlotMapping>,
-) -> Result<Vec<(&'static str, Vec<u8>)>, String> {
-    if mesh.face_colors.len() != mesh.faces.len() || mesh.segment_labels.len() != mesh.faces.len() {
-        return Err("Cannot save a project with incomplete per-face data".into());
-    }
-    let fingerprint = project_state::fingerprint_of(&mesh.vertices, &mesh.faces);
-    let header = ProjectState {
-        unit: mesh.unit.clone(),
-        active_plate: 1,
-        plates: vec![PlateStateHeader {
-            plater_id: 1,
-            name: "plate 1".into(),
-            object_ids: vec![1],
-            fingerprint,
-        }],
-    };
-    let texture_bytes = serde_json::to_vec(&TextureState {
+) -> Result<Vec<u8>, String> {
+    let bytes = serde_json::to_vec(&TextureState {
         format_version: 1,
         fingerprint,
         mapping: mapping.cloned(),
         has_segments: !mesh.segments.is_empty(),
     })
     .map_err(|error| format!("Could not save texture assignments: {error}"))?;
-    if texture_bytes.len() as u64 > MAX_TEXTURE_STATE_BYTES {
+    if bytes.len() as u64 > MAX_TEXTURE_STATE_BYTES {
         return Err("The texture assignments are too large for a project".into());
     }
-    Ok(vec![
-        (
-            HEADER_PART,
-            project_state::encode_project_json(&header).into_bytes(),
-        ),
-        (PLATE_PART, project_state::encode_plate_state(mesh)),
-        (HISTORY_PART, project_state::encode_history(&mesh.history)),
-        (TEXTURE_PART, texture_bytes),
-    ])
+    Ok(bytes)
 }
 
+/// Return whether to rebuild regions from the saved labels. A just-imported
+/// texture has only zero labels; it stays unsegmented across project reopen.
 pub(crate) fn restore_texture_state(
     package: &mut Package,
     plate_index: usize,
-    fingerprint: Fingerprint,
+    fingerprint: Option<Fingerprint>,
     mesh: &mut MeshModel,
 ) -> Result<bool, String> {
-    let part = format!("Metadata/cym/texture_{}.json", plate_index + 1);
+    let part = texture_part_name(plate_index);
     if !package.part_names().iter().any(|name| name == &part) {
         return Ok(true);
     }
+    let expected = fingerprint.ok_or("Texture state has no matching 3MF engineering plate")?;
     let bytes = package.read_at_most(&part, MAX_TEXTURE_STATE_BYTES)?;
     let saved: TextureState = serde_json::from_slice(&bytes)
         .map_err(|error| format!("Unreadable texture project state: {error}"))?;
-    if saved.format_version != 1 || saved.fingerprint != fingerprint {
+    if saved.format_version != 1 || saved.fingerprint != expected {
         return Err("Texture state version or geometry does not match this 3MF".into());
     }
     mesh.texture_painting = true;
+    // Texture stroke groups need the session's underpaint to repaint accurately.
+    mesh.paint_sources.clear();
     if let Some(mapping) = &saved.mapping {
         mapping.validate()?;
     }
     mesh.texture_slot_mapping = saved.mapping;
-    Ok(saved.has_segments)
-}
-
-pub(crate) fn open_project(
-    path: &Path,
-    progress: &ProgressFn,
-) -> Result<(MeshModel, Option<String>), String> {
-    let plate = threemf::read_single_plate(path, progress)?;
-    let warning = if plate.engineering_state == EngineeringState::Dropped {
-        Some("3mf-state")
-    } else if plate.texture_state_dropped {
-        Some("3mf-texture")
-    } else if plate.history_dropped {
-        Some("3mf-history")
-    } else {
-        None
-    };
-    Ok((plate.mesh, warning.map(String::from)))
+    Ok(saved.has_segments || mesh.segment_labels.iter().any(|&label| label != 0))
 }
 
 #[cfg(test)]
@@ -112,89 +76,52 @@ mod tests {
     use super::*;
     use crate::export::presets::ExportSelection;
     use crate::export::texture_mapping::{self, TextureColorAssignment, TextureExportSnapshot};
-    use crate::mesh::history::OpKind;
-    use crate::threemf::test_support::{mesh_object, model_xml, Fixture};
+    use std::path::Path;
 
     #[test]
-    fn texture_project_reopens_exact_face_colours_and_undo_without_glb() {
-        let mut mesh = MeshModel::new();
-        mesh.texture_painting = true;
-        mesh.vertices = vec![[0., 0., 0.], [20., 0., 0.], [0., 20., 0.]];
-        mesh.faces = vec![[0, 1, 2]];
-        let original = [201, 63, 25, 255];
-        let edited = [48, 91, 177, 255];
-        mesh.face_colors = vec![edited];
-        mesh.segment_labels = vec![0];
-        mesh.history
-            .record(OpKind::Paint, None, &[(0, original)], &[]);
-        let mapping = TextureSlotMapping {
-            selection: ExportSelection {
-                machine_id: "snapmaker_u1".into(),
-                nozzle_diameter: "0.4".into(),
-                process_name: "0.20 Standard @Snapmaker U1 (0.4 nozzle)".into(),
-                filament_names: vec!["Generic PLA".into()],
-                target_slicer: "snapmaker_orca".into(),
-            },
-            nominal_colors: vec![Some([48, 91, 177])],
-            assignments: vec![TextureColorAssignment {
-                rgb: [48, 91, 177],
-                slot: 1,
-            }],
-        };
-        let mut entries = encode_project_parts(&mesh, Some(&mapping)).unwrap();
-        entries.push((
-            "3D/3dmodel.model",
-            model_xml(
-                "millimeter",
-                &mesh_object(1, "Test", &mesh.vertices, &mesh.faces, &[]),
-                r#"<item objectid="1"/>"#,
-            ),
-        ));
-        let zip = Fixture::new(&entries);
-        let (mut opened, warning) = open_project(zip.path(), &|_, _| {}).unwrap();
-        assert_eq!(warning, None);
-        assert!(opened.texture_painting);
-        assert_eq!(opened.faces, mesh.faces);
-        assert!(
-            opened.segments.is_empty(),
-            "a pristine texture remains unsegmented"
-        );
-        assert_eq!(opened.face_colors, [edited]);
-        let reopened_mapping = opened.texture_slot_mapping.unwrap();
-        assert_eq!(reopened_mapping.selection.machine_id, "snapmaker_u1");
-        assert_eq!(reopened_mapping.nominal_colors, mapping.nominal_colors);
-        assert_eq!(reopened_mapping.assignments, mapping.assignments);
-        assert!(opened.history.can_undo());
-        opened
-            .history
-            .undo(&mut opened.face_colors, &mut opened.segment_labels);
-        assert_eq!(opened.face_colors, [original]);
-        assert!(opened.history.can_redo());
+    fn texture_state_cannot_attach_to_mismatching_geometry() {
+        use crate::export::project_state::fingerprint_of;
+        use crate::threemf::test_support::Fixture;
+        let mesh = MeshModel::new();
+        let saved = fingerprint_of(&[[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], &[[0, 1, 2]]);
+        let other = fingerprint_of(&[[0., 0., 0.], [2., 0., 0.], [0., 1., 0.]], &[[0, 1, 2]]);
+        let bytes = encode_texture_part(&mesh, saved, None).unwrap();
+        let file = Fixture::new(&[("Metadata/cym/texture_2.json", bytes)]);
+        let mut package = Package::open(file.path()).unwrap();
+        let mut plate = MeshModel::new();
+        plate.record_paint_sources(Some([255; 4]), &[(0, [127, 127, 127, 255])]);
+        assert!(restore_texture_state(&mut package, 1, Some(other), &mut plate).is_err());
+        assert!(!plate.texture_painting);
+        assert_eq!(plate.paint_sources.len(), 1);
+        assert!(restore_texture_state(&mut package, 0, Some(saved), &mut plate).unwrap());
+        assert!(!restore_texture_state(&mut package, 1, Some(saved), &mut plate).unwrap());
+        assert!(plate.texture_painting);
+        assert!(plate.paint_sources.is_empty());
     }
 
     #[test]
-    fn stale_texture_mapping_cannot_attach_to_different_geometry() {
-        let mut mesh = MeshModel::new();
-        mesh.texture_painting = true;
-        mesh.vertices = vec![[0., 0., 0.], [20., 0., 0.], [0., 20., 0.]];
-        mesh.faces = vec![[0, 1, 2]];
-        mesh.face_colors = vec![[48, 91, 177, 255]];
-        mesh.segment_labels = vec![0];
-        let mut entries = encode_project_parts(&mesh, None).unwrap();
-        mesh.vertices[1][0] = 40.;
-        entries.push((
-            "3D/3dmodel.model",
-            model_xml(
-                "millimeter",
-                &mesh_object(1, "Test", &mesh.vertices, &mesh.faces, &[]),
-                r#"<item objectid="1"/>"#,
-            ),
-        ));
-        let zip = Fixture::new(&entries);
-        let (opened, warning) = open_project(zip.path(), &|_, _| {}).unwrap();
-        assert!(warning.is_some());
-        assert!(!opened.texture_painting);
-        assert!(opened.texture_slot_mapping.is_none());
+    #[ignore = "requires a version-1 texture project from the single-plate writer"]
+    fn legacy_single_plate_texture_project_opens_in_multi_plate_reader() {
+        let path =
+            std::env::var_os("CYM_LEGACY_TEXTURE_PROJECT").expect("set CYM_LEGACY_TEXTURE_PROJECT");
+        let path = Path::new(&path);
+        let mut package = Package::open(path).unwrap();
+        let bytes = package.read(&texture_part_name(0)).unwrap();
+        let saved: TextureState = serde_json::from_slice(&bytes).unwrap();
+        let mapping = saved.mapping.expect("the fixture includes confirmed slots");
+        let (_, plate, _) = crate::threemf::open_active_plate(path, &|_, _| {}).unwrap();
+        assert_eq!(
+            plate.engineering_state,
+            crate::threemf::EngineeringState::Restored
+        );
+        assert!(!plate.mesh.texture_state_dropped);
+        assert!(plate.mesh.texture_painting);
+        assert_eq!(plate.mesh.texture_slot_mapping.as_ref(), Some(&mapping));
+        assert_eq!(
+            plate.mesh.faces.len(),
+            saved.fingerprint.face_count as usize
+        );
+        assert_eq!(!plate.mesh.segments.is_empty(), saved.has_segments);
     }
 
     #[test]
@@ -269,23 +196,21 @@ mod tests {
                 .collect(),
         };
         let snapshot = TextureExportSnapshot::build(&mesh, &preview.revision, &mapping).unwrap();
-        let parts = encode_project_parts(&mesh, Some(&snapshot.mapping)).unwrap();
-        let entries: Vec<_> = parts
-            .iter()
-            .map(|(name, bytes)| (*name, bytes.as_slice()))
-            .collect();
         let output = Path::new(&output);
-        crate::export::threemf::export_3mf_with_project(
-            &mesh,
+        crate::export::threemf::write_mapped_texture_3mf(
+            &crate::export::threemf::ProjectPlate {
+                name: "Acceptance plate".into(),
+                mesh: &mesh,
+            },
             output,
-            None,
-            Some(&snapshot),
-            &entries,
+            &snapshot,
             &|_, _| {},
         )
         .unwrap();
-        let (reopened, warning) = open_project(output, &|_, _| {}).unwrap();
-        assert_eq!(warning, None);
+        let reopened = crate::threemf::load_plate(output, 0, &|_, _| {})
+            .unwrap()
+            .mesh;
+        assert!(!reopened.texture_state_dropped);
         assert_eq!(reopened.face_colors, mesh.face_colors);
         assert_eq!(
             reopened.texture_slot_mapping.unwrap().assignments,

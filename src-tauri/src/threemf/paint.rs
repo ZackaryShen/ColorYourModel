@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn decodes_a_real_subdivided_value_bit_exactly() {
-        // Observed in a Snapmaker Orca 2.4.1 export; the
+        // Taken verbatim from ~/Downloads/梁圣.3mf (Snapmaker Orca 2.4.1); the
         // value occurs on five triangles of that file.
         let n = decode("000800303").expect("real value");
         assert_eq!((n.split, n.special_side), (3, 0));

@@ -10,7 +10,7 @@ export type Lang = "zh" | "en";
 // ─── Translation dictionaries ────────────────────────────────────
 const dict: Record<string, Record<Lang, string>> = {
   // Toolbar — buttons
-  "toolbar.import": { zh: "打开模型或工程", en: "Open model or project" },
+  "toolbar.import": { zh: "导入 STL / 3MF 文件", en: "Import STL / 3MF file" },
   "toolbar.export": { zh: "导出涂装模型为 3MF", en: "Export painted model as 3MF" },
   "toolbar.reSegment": { zh: "重新自动分区（阈值: 30°）", en: "Re-run auto segmentation (threshold: 30°)" },
   "toolbar.smartSegment": { zh: "智能分区（SDF 形态直径）", en: "Smart segment (SDF shape diameter)" },
@@ -24,19 +24,21 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolbar.importComplete": { zh: "导入完成", en: "Import complete" },
   "toolbar.importFailed": { zh: "导入失败", en: "Import failed" },
   "toolbar.startImport": { zh: "开始导入…", en: "Starting import…" },
+  // Status line after a multi-plate 3MF import: P0 shows plate 1 only.
+  "toolbar.importPlateOfTotal": {
+    zh: "当前第 {0} / {1} 盘，使用上方 Tab 切换",
+    en: "Plate {0} of {1}; switch plates using the tabs above",
+  },
 
   // Drag & drop import (issue #21)
-  "drop.hint": { zh: "松开以打开模型或工程", en: "Drop to open a model or project" },
+  "drop.hint": { zh: "松开以导入 STL / 3MF", en: "Drop STL / 3MF to import" },
   "drop.rejectMulti": { zh: "一次只能导入一个模型", en: "Only one model can be imported at a time" },
-  "drop.rejectExtension": { zh: "请选择 STL、GLB、3MF 或 .cym 文件", en: "Choose an STL, GLB, 3MF or .cym file" },
+  "drop.rejectExtension": { zh: "请选择 STL、GLB 或 3MF 文件", en: "Choose an STL, GLB or 3MF file" },
   "drop.importInProgress": { zh: "正在导入，请稍候…", en: "An import is already in progress…" },
-  "drop.replaceTitle": { zh: "替换当前模型？", en: "Replace current model?" },
-  "drop.replaceBody": { zh: "窗口中已有模型。导入新文件将丢弃当前模型及其未导出的涂装。", en: "A model is already loaded. Importing will discard it together with any unexported paint." },
+  "drop.replaceTitle": { zh: "替换当前工程？", en: "Replace current project?" },
+  "drop.replaceBody": { zh: "打开 3MF 将替换所有打印盘，并丢弃尚未保存的修改。", en: "A model is already loaded. Importing will discard it together with any unexported paint." },
   "drop.replaceConfirm": { zh: "导入并替换", en: "Import and replace" },
   "drop.replaceCancel": { zh: "取消", en: "Cancel" },
-  "project.openWarning.3mf-state": { zh: "模型已打开，未能恢复 CYM 工程数据。", en: "The model opened without its saved CYM project data." },
-  "project.openWarning.3mf-texture": { zh: "模型已打开，未能恢复已保存的耗材槽位分配。", en: "The model opened without its saved filament assignments." },
-  "project.openWarning.3mf-history": { zh: "模型已打开，未能恢复已保存的撤销记录。", en: "The model opened without its saved undo history." },
 
   // Toolbar — tool tooltips (differentiated descriptions)
   "tool.view": { zh: "🖐️ 查看/导航 — 左键旋转、右键平移、中键缩放；选工具后按住 Alt 也可旋转", en: "🖐️ View / Navigate — left rotate, right pan, middle zoom; hold Alt to rotate while a tool is active" },
@@ -208,6 +210,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "segments.reset": { zh: "重置", en: "Reset" },
   "segments.resetHint": { zh: "清除全部分区与上色，回到刚导入的未上色状态", en: "Clear all regions and paint, back to the freshly-loaded uncoloured state" },
   "segments.resetConfirm": { zh: "确定重置分区并清除所有上色吗？此操作不可撤销。", en: "Reset all regions and clear all paint? This cannot be undone." },
+  "segments.emptyLoaded": { zh: "暂无分区，可使用分区工具创建", en: "No regions yet. Use a segmentation tool to create them." },
   "segments.empty": { zh: "暂无分区，请先导入模型", en: "No segments yet. Import a model first." },
   "segments.renameHint": { zh: "双击重命名，Ctrl+点击多选", en: "Double-click to rename, Ctrl-click to multi-select" },
   "segments.defaultName": { zh: "分区 {0}", en: "Region {0}" },
@@ -253,7 +256,7 @@ const dict: Record<string, Record<Lang, string>> = {
 
   // Viewport — misc
   "view.loading": { zh: "加载中…", en: "Loading…" },
-  "view.emptyState": { zh: "导入 STL 文件开始涂装", en: "Import an STL file to get started" },
+  "view.emptyState": { zh: "导入 STL 或打开 3MF 开始涂装", en: "Import an STL file to get started" },
 
   // Viewport — lasso / segment-brush status details
   "lasso.selected": { zh: "套索：已选 {0} 个点", en: "Lasso: {0} points selected" },
@@ -269,8 +272,21 @@ const dict: Record<string, Record<Lang, string>> = {
   // "Left: Rotate (View) | …" string contradicted every non-view tool.
   // StatusBar now resolves its hint through utils/controlsHint.ts, the same
   // source as the viewport help bar (controls.viewHint / brushHint / editHint).
+  "tabs.loading": { zh: "正在读取盘", en: "Loading plate" },
   "status.ready": { zh: "就绪", en: "Ready" },
   "status.loaded": { zh: "已加载 {0} 个面", en: "Loaded {0} faces" },
+  // 3MF engineering state existed but could not be applied (fingerprint/version/
+  // decode mismatch): the user must know their saved labels/colours were not
+  // restored, and that a slicer may have rewritten the file.
+  "status.engineeringDropped": {
+    zh: "工程数据与几何不匹配，已按普通 3MF 导入",
+    en: "Engineering data does not match the geometry; imported as a plain 3MF",
+  },
+  // The engineering state restored, but its persisted undo history was rejected.
+  "status.historyDropped": {
+    zh: "部分或全部撤销历史未恢复，已保留可用步骤",
+    en: "Some or all undo history was not restored; available steps were kept",
+  },
 
   // Debug log viewer (iteration 59) + its status-bar toggle
   "debugLog.title": { zh: "🐞 调试日志（{0} 条）", en: "🐞 Debug log ({0} entries)" },
@@ -326,6 +342,35 @@ const dict: Record<string, Record<Lang, string>> = {
   "theme.light": { zh: "☀️ 浅色", en: "☀️ Light" },
 
   // Export dialog (preset library)
+  "project.openWarning.3mf-texture": { zh: "模型已打开，未能恢复已保存的耗材槽位分配。", en: "The model opened without its saved filament assignments." },
+  "export.modelChanged": { zh: "模型已更换。请重新打开导出对话框。", en: "The model was replaced. Reopen the export dialog." },
+  "export.texturePreview": { zh: "耗材分配预览", en: "Filament assignment preview" },
+  "export.texturePreviewError": { zh: "无法显示三维预览，仍可核对下方的颜色与槽位。", en: "The 3D preview is unavailable. You can check assignments in the colour table." },
+  "export.textureResetView": { zh: "重置视角", en: "Reset view" },
+  "export.textureMapping": { zh: "颜色对应到耗材槽", en: "Model colour assignments" },
+  "export.textureModelColour": { zh: "模型色", en: "Model colour" },
+  "export.textureGrouped": { zh: "已将 {0} 种模型色归并为 {1} 种导出颜色。", en: "Grouped {0} model colours into {1} export colours." },
+  "export.textureMerge": { zh: "请将 {0} 种颜色分配到 {1} 个耗材槽。部分颜色需要共用槽位。", en: "Assign {0} colours to {1} filament slots by sharing slots between colours." },
+  "export.textureSuggestionHint": { zh: "请为每种模型色指定耗材槽。", en: "Assign a filament slot to each model colour." },
+  "export.textureFaceCount": { zh: "{0} 个三角面", en: "{0} faces" },
+  "export.textureSlotFor": { zh: "{0} 对应的槽位", en: "Slot for {0}" },
+  "export.textureSlot": { zh: "槽位 {0}", en: "Slot {0}" },
+  "export.textureSlotUnknown": { zh: "槽位 {0}（颜色未知）", en: "Slot {0} (colour unknown)" },
+  "export.textureUnknown": { zh: "颜色未知", en: "Colour unknown" },
+  "export.textureUnassigned": { zh: "未分配", en: "Unassigned" },
+  "export.textureSuggest": { zh: "为未分配颜色填入建议", en: "Fill unassigned colours with suggestions" },
+  "export.textureAssignmentCount": { zh: "已分配 {0}/{1} 色", en: "{0}/{1} colours assigned" },
+  "export.textureNominalHint": { zh: "可为槽位设置实际耗材的颜色，用于预览和分配建议。", en: "Set the spool colours to use in the preview and suggestions." },
+  "export.textureNominalColour": { zh: "槽位 {0} 的耗材色", en: "Spool colour for slot {0}" },
+  "export.textureClearColour": { zh: "重置槽位 {0} 的耗材色", en: "Reset spool colour for slot {0}" },
+  "export.textureResetColour": { zh: "重置颜色", en: "Reset colour" },
+  "export.textureLoading": { zh: "正在加载耗材分配预览…", en: "Loading filament assignment preview…" },
+  "export.textureSuggestionsFailed": { zh: "耗材槽位预览加载失败：{0}", en: "Could not load the filament slot preview: {0}" },
+  "export.textureInvalidProfile": { zh: "当前机型和喷嘴缺少可用的工艺或耗材配置。", en: "This machine and nozzle need a compatible process and filament preset." },
+  "export.textureRetry": { zh: "重试", en: "Retry" },
+  "export.textureConfirm": { zh: "确认并导出", en: "Confirm and export" },
+  "menu.modelFileFilter": { zh: "STL / GLB / 3MF", en: "STL / GLB / 3MF" },
+  "export.textureScope": { zh: "仅导出当前纹理盘。使用「保存工程」保存所有盘及各盘的颜色分配。", en: "This exports the active texture plate. Save the project to keep all plates and their assignments." },
   "export.title": { zh: "导出模型", en: "Export Model" },
   "export.format": { zh: "格式", en: "Format" },
   "export.format3mf": { zh: "3MF（切片软件）", en: "3MF (slicer)" },
@@ -352,36 +397,9 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.successObj": { zh: "导出成功（含 .mtl 材质）：{0}", en: "Exported (with .mtl): {0}" },
   "export.failure": { zh: "导出失败：{0}", en: "Export failed: {0}" },
   "export.presetLoadFailed": { zh: "导出配置加载失败：{0}", en: "Failed to load export presets: {0}" },
-  "export.noPresets": { zh: "没有可用的导出配置。", en: "No export presets are available." },
-  "export.modelChanged": { zh: "模型已更换。请重新打开导出对话框。", en: "The model was replaced. Reopen the export dialog." },
   "export.needModel": { zh: "请先导入模型", en: "Import a model first" },
   "export.noModel": { zh: "尚未导入模型", en: "No model loaded" },
-  "export.noModelHint": { zh: "请先从「文件」菜单或左侧工具栏导入模型。", en: "Import a model from the File menu or the left toolbar first." },
-  "export.texturePreview": { zh: "耗材分配预览", en: "Filament assignment preview" },
-  "export.texturePreviewError": { zh: "无法显示三维预览，仍可核对下方的颜色与槽位。", en: "The 3D preview is unavailable. You can check assignments in the colour table." },
-  "export.textureResetView": { zh: "重置视角", en: "Reset view" },
-  "export.textureMapping": { zh: "颜色对应到耗材槽", en: "Model colour assignments" },
-  "export.textureModelColour": { zh: "模型色", en: "Model colour" },
-  "export.textureGrouped": { zh: "已将 {0} 种模型色归并为 {1} 种导出颜色。", en: "Grouped {0} model colours into {1} export colours." },
-  "export.textureMerge": { zh: "请将 {0} 种颜色分配到 {1} 个耗材槽。部分颜色需要共用槽位。", en: "Assign {0} colours to {1} filament slots by sharing slots between colours." },
-  "export.textureSuggestionHint": { zh: "请为每种模型色指定耗材槽。", en: "Assign a filament slot to each model colour." },
-  "export.textureFaceCount": { zh: "{0} 个三角面", en: "{0} faces" },
-  "export.textureSlotFor": { zh: "{0} 对应的槽位", en: "Slot for {0}" },
-  "export.textureSlot": { zh: "槽位 {0}", en: "Slot {0}" },
-  "export.textureSlotUnknown": { zh: "槽位 {0}（颜色未知）", en: "Slot {0} (colour unknown)" },
-  "export.textureUnknown": { zh: "颜色未知", en: "Colour unknown" },
-  "export.textureUnassigned": { zh: "未分配", en: "Unassigned" },
-  "export.textureSuggest": { zh: "为未分配颜色填入建议", en: "Fill unassigned colours with suggestions" },
-  "export.textureAssignmentCount": { zh: "已分配 {0}/{1} 色", en: "{0}/{1} colours assigned" },
-  "export.textureNominalHint": { zh: "可为槽位设置实际耗材的颜色，用于预览和分配建议。", en: "Set the spool colours to use in the preview and suggestions." },
-  "export.textureNominalColour": { zh: "槽位 {0} 的耗材色", en: "Spool colour for slot {0}" },
-  "export.textureClearColour": { zh: "重置槽位 {0} 的耗材色", en: "Reset spool colour for slot {0}" },
-  "export.textureResetColour": { zh: "重置颜色", en: "Reset colour" },
-  "export.textureLoading": { zh: "正在加载耗材分配预览…", en: "Loading filament assignment preview…" },
-  "export.textureSuggestionsFailed": { zh: "耗材槽位预览加载失败：{0}", en: "Could not load the filament slot preview: {0}" },
-  "export.textureInvalidProfile": { zh: "当前机型和喷嘴缺少可用的工艺或耗材配置。", en: "This machine and nozzle need a compatible process and filament preset." },
-  "export.textureRetry": { zh: "重试", en: "Retry" },
-  "export.textureConfirm": { zh: "确认并导出", en: "Confirm and export" },
+  "export.noModelHint": { zh: "导出需要先导入 STL 模型并完成涂装，请先从「文件 → 导入 STL…」或左侧工具栏导入。", en: "Exporting needs an imported (and painted) STL model first — use File → Import STL… or the left toolbar." },
 
   // Reset confirm dialog (issue #28)
   "reset.confirmTitle": { zh: "清空所有分区", en: "Clear all regions" },
@@ -450,8 +468,19 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.file": { zh: "文件", en: "File" },
   "menu.view": { zh: "视图", en: "View" },
   "menu.help": { zh: "帮助", en: "Help" },
-  "menu.import": { zh: "打开模型或工程…", en: "Open model or project…" },
-  "menu.modelFileFilter": { zh: "STL / GLB / 3MF / CYM", en: "STL / GLB / 3MF / CYM" },
+  "menu.import": { zh: "导入 STL / 3MF…", en: "Import STL / 3MF…" },
+  "menu.save": { zh: "保存 (⌘S)", en: "Save (⌘S)" },
+  "menu.saveAs": { zh: "另存为 3MF…", en: "Save As 3MF…" },
+  "status.multiPlateSaveBlocked": { zh: "当前只载入第一盘，无法覆盖多盘工程；请另存当前盘到新文件", en: "Only the first plate is loaded; use Save As to save this plate to a new file without overwriting the multi-plate project" },
+  "tabs.plates": { zh: "打印盘", en: "Print plates" },
+  "tabs.name": { zh: "盘名称", en: "Plate name" },
+  "tabs.close": { zh: "关闭盘", en: "Close plate" },
+  "tabs.closeTitle": { zh: "关闭未保存的盘？", en: "Close unsaved plate?" },
+  "tabs.closeBody": { zh: "此盘的修改尚未保存。关闭后将丢弃这些修改。", en: "This plate has unsaved changes. Closing it discards those changes." },
+  "tabs.discardClose": { zh: "丢弃并关闭", en: "Discard and close" },
+  "status.projectSaving": { zh: "正在保存工程…", en: "Saving project…" },
+  "status.projectSaved": { zh: "已保存", en: "Saved" },
+  "toolbar.saveProjectFailed": { zh: "保存失败", en: "Save failed" },
   "menu.export": { zh: "导出涂装模型…", en: "Export painted model…" },
   "menu.quit": { zh: "退出", en: "Quit" },
   "menu.resetView": { zh: "重置视角", en: "Reset view" },
@@ -483,6 +512,13 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.wiki": { zh: "文档总览（Wiki）", en: "Documentation (Wiki)" },
   "menu.userGuide": { zh: "用户手册", en: "User Guide" },
   "menu.examples": { zh: "示例画廊", en: "Example Gallery" },
+  "menu.feedback": { zh: "反馈问题…", en: "Report a problem…" },
+  "menu.feedbackGitHub": { zh: "在 GitHub 反馈问题…", en: "Report on GitHub…" },
+  "menu.feedbackButton": { zh: "反馈", en: "Feedback" },
+  "menu.feedbackGitHubButton": { zh: "GitHub 反馈", en: "GitHub feedback" },
+  "menu.feedbackWindow": { zh: "提交反馈", en: "Send feedback" },
+  "menu.feedbackOpenFailed": { zh: "无法打开反馈窗口，请重试", en: "Could not open the feedback window. Try again." },
+  "menu.feedbackFallbackFailed": { zh: "无法打开 GitHub 反馈网页，请重试", en: "Could not open the GitHub feedback page. Try again." },
   "menu.discussions": { zh: "GitHub 讨论区", en: "GitHub Discussions" },
   "menu.about": { zh: "关于 ColorYourModel", en: "About ColorYourModel" },
   "menu.checkUpdates": { zh: "检查更新…", en: "Check for updates…" },

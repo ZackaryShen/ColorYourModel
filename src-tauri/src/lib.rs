@@ -22,9 +22,14 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
+        .manage(commands::texture::TextureImportJobs::default())
         .manage(commands::update::UpdateState::new())
         .invoke_handler(tauri::generate_handler![
             commands::mesh::load_model,
+            commands::mesh::switch_tab,
+            commands::mesh::close_tab,
+            commands::mesh::rename_tab,
+            commands::mesh::project_tabs,
             commands::mesh::get_face_color,
             commands::texture::prepare_texture,
             commands::texture::apply_texture,
@@ -84,6 +89,7 @@ pub fn run() {
             commands::export::suggest_texture_mapping,
             commands::js_bridge::report_js_error,
             commands::js_bridge::report_app_ready,
+            commands::feedback::open_feedback_window,
             // Update module: GitHub Releases check / download / passive install.
             commands::update::check_update,
             commands::update::download_update,

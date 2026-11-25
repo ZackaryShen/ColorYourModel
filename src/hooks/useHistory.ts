@@ -1,3 +1,4 @@
+import { isCurrentTabResult } from "../utils/tabCommand";
 import { useCallback } from "react";
 import { useAppStore } from "../store/appStore";
 import { log } from "../utils/logger";
@@ -26,7 +27,7 @@ export function setHistoryApplier(fn: Applier | null) {
 }
 
 export function applyHistoryResult(r: HistoryResult | null) {
-  if (applier) applier(r);
+  if (applier && isCurrentTabResult(r)) applier(r);
 }
 
 export interface UndoRedoCommands {
@@ -64,7 +65,7 @@ export function useUndoRedo(cmds: UndoRedoCommands) {
 
   const refresh = useCallback(async () => {
     const s = await cmds.historyState();
-    if (s) useAppStore.getState().setHistoryFlags(s.canUndo, s.canRedo);
+    if (s && isCurrentTabResult(s)) useAppStore.getState().setHistoryFlags(s.canUndo, s.canRedo);
   }, [cmds.historyState]);
 
   return {

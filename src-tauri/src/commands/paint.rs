@@ -30,6 +30,16 @@ fn commit(
     updates: Vec<(u32, [u8; 4])>,
     source: Option<[u8; 4]>,
 ) -> PaintResult {
+    // A visible no-op can still change the coverage of a textured brush source.
+    let tracks_coverage = mesh.texture_painting && source.is_some();
+    let updates: Vec<_> = updates
+        .into_iter()
+        .filter(|(face, color)| {
+            mesh.face_colors
+                .get(*face as usize)
+                .is_some_and(|old| old != color || tracks_coverage)
+        })
+        .collect();
     mesh.apply_paint(stroke_id, &updates);
     mesh.record_paint_sources(source, &updates);
     let (updated_faces, updated_colors) = updates.into_iter().unzip();
@@ -68,27 +78,39 @@ pub fn brush_paint(
     falloff_mode: String,
     color: [u8; 4],
     stroke_id: Option<u64>,
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     log::info!(
         "[cmd:brush_paint] center_face={}, radius={:.2}, color={:?}",
-        center_face, radius, color
+        center_face,
+        radius,
+        color
     );
 
     // [DIAG-B] Log vertex indices for cross-check with frontend [DIAG-A]
     if (center_face as usize) < mesh.faces.len() {
         let f = &mesh.faces[center_face as usize];
-        log::info!("[DIAG-B] center_face={} verts=[{},{},{}] face_colors_len={}",
-            center_face, f[0], f[1], f[2], mesh.face_colors.len());
+        log::info!(
+            "[DIAG-B] center_face={} verts=[{},{},{}] face_colors_len={}",
+            center_face,
+            f[0],
+            f[1],
+            f[2],
+            mesh.face_colors.len()
+        );
     } else {
-        log::error!("[DIAG-B] center_face={} OUT OF RANGE (faces.len={})",
-            center_face, mesh.faces.len());
+        log::error!(
+            "[DIAG-B] center_face={} OUT OF RANGE (faces.len={})",
+            center_face,
+            mesh.faces.len()
+        );
     }
 
-    let hidden = hidden_snapshot(&state);
+    let hidden = hidden_snapshot(mesh);
     let hits = cull_hidden(mesh, brush_hit(mesh, center_face, radius), &hidden);
     let center = mesh.face_center(center_face);
 
@@ -101,7 +123,9 @@ pub fn brush_paint(
         })
         .collect();
 
-    Ok(commit_dabs(mesh, stroke_id, dabs, color))
+    let result = commit_dabs(mesh, stroke_id, dabs, color);
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
+    Ok(result)
 }
 
 #[tauri::command]
@@ -109,18 +133,23 @@ pub fn fill_paint(
     face_id: u32,
     color: [u8; 4],
     radius: f32,
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     log::info!(
         "[cmd:fill_paint] face_id={}, color={:?}, radius={:.2}",
-        face_id, color, radius
+        face_id,
+        color,
+        radius
     );
 
-    let hidden = hidden_snapshot(&state);
-    Ok(apply_fill(mesh, face_id, color, radius, &hidden))
+    let hidden = hidden_snapshot(mesh);
+    let result = apply_fill(mesh, face_id, color, radius, &hidden);
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
+    Ok(result)
 }
 
 /// Core of [`fill_paint`] without the Tauri wrapper.
@@ -162,12 +191,15 @@ pub fn apply_fill(
 pub fn fill_segment_paint(
     segment_id: u32,
     color: [u8; 4],
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    Ok(apply_fill_segment(mesh, segment_id, color))
+    let result = apply_fill_segment(mesh, segment_id, color);
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
+    Ok(result)
 }
 
 /// Core of [`fill_segment_paint`] without the Tauri wrapper.
@@ -194,18 +226,21 @@ pub fn spray_paint(
     color: [u8; 4],
     density: u32,
     stroke_id: Option<u64>,
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let hidden = hidden_snapshot(&state);
+    let hidden = hidden_snapshot(mesh);
     let dabs = cull_hidden_pairs(
         mesh,
         spray_hit(mesh, center_face, radius, strength, density),
         &hidden,
     );
-    Ok(commit_dabs(mesh, stroke_id, dabs, color))
+    let result = commit_dabs(mesh, stroke_id, dabs, color);
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
+    Ok(result)
 }
 
 #[tauri::command]
@@ -216,13 +251,16 @@ pub fn smart_brush_paint(
     falloff_mode: String,
     color: [u8; 4],
     stroke_id: Option<u64>,
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     let dabs = smart_brush_hit(mesh, center_face, radius, strength, &falloff_mode);
-    Ok(commit_dabs(mesh, stroke_id, dabs, color))
+    let result = commit_dabs(mesh, stroke_id, dabs, color);
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
+    Ok(result)
 }
 
 #[tauri::command]
@@ -230,12 +268,13 @@ pub fn erase_paint(
     center_face: u32,
     radius: f32,
     stroke_id: Option<u64>,
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let hidden = hidden_snapshot(&state);
+    let hidden = hidden_snapshot(mesh);
     let hits = cull_hidden(mesh, brush_hit(mesh, center_face, radius), &hidden);
     // Iteration 21: the eraser restores DEFAULT_FACE_COLOR, not literal white,
     // so erased faces match never-painted ones on both canvas themes.
@@ -244,7 +283,9 @@ pub fn erase_paint(
         .map(|fid| (fid, DEFAULT_FACE_COLOR))
         .collect();
 
-    Ok(commit(mesh, stroke_id, updates, None))
+    let result = commit(mesh, stroke_id, updates, None);
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
+    Ok(result)
 }
 
 /// Drop faces whose segment label is in `hidden` — the backend half of the
@@ -284,12 +325,8 @@ fn cull_hidden_pairs<T>(
 }
 
 /// Snapshot of the hidden label set (empty = nothing hidden).
-fn hidden_snapshot(state: &State<AppState>) -> std::collections::HashSet<u32> {
-    state
-        .hidden_labels
-        .lock()
-        .map(|g| g.clone())
-        .unwrap_or_default()
+fn hidden_snapshot(mesh: &crate::mesh::model::MeshModel) -> std::collections::HashSet<u32> {
+    mesh.hidden_labels.clone()
 }
 
 /// Core of `fill_segments_paint` (owner scenario on #29): paint EVERY face
@@ -326,9 +363,10 @@ pub fn apply_fill_segments(
 pub fn fill_segments_paint(
     labels: Vec<u32>,
     color: [u8; 4],
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
     let result = apply_fill_segments(mesh, &labels, color);
     log::info!(
@@ -336,6 +374,7 @@ pub fn fill_segments_paint(
         labels.len(),
         result.updated_faces.len()
     );
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
     Ok(result)
 }
 
@@ -363,16 +402,24 @@ pub struct PaintSourceGroup {
 /// lists these as "painted with <colour>" entries — the BRUSH colour, not the
 /// blended per-face result.
 #[tauri::command]
-pub fn paint_source_groups(
-    state: State<AppState>,
+pub async fn paint_source_groups(
+    tab_id: u64,
+    state: State<'_, AppState>,
 ) -> Result<Vec<PaintSourceGroup>, String> {
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
-    Ok(mesh
-        .paint_source_groups()
-        .into_iter()
-        .map(|(source, faces)| PaintSourceGroup { source, faces })
-        .collect())
+    let state = AppState {
+        workspace: std::sync::Arc::clone(&state.workspace),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let mesh_guard = state.lock_mesh(tab_id)?;
+        let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+        Ok(mesh
+            .paint_source_groups()
+            .into_iter()
+            .map(|(source, faces)| PaintSourceGroup { source, faces })
+            .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Replace every live face painted with `from` by `to` in ONE undo step
@@ -382,9 +429,10 @@ pub fn paint_source_groups(
 pub fn replace_paint_source(
     from: [u8; 4],
     to: [u8; 4],
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
     if from == to {
         return Ok(PaintResult {
@@ -396,7 +444,9 @@ pub fn replace_paint_source(
     // bridge — without it the backend flips to the new colour while the
     // canvas never does (acceptance round 4 feedback #2).
     let updates = mesh.replace_paint_source(from, to);
+    let changed = !updates.is_empty();
     let (updated_faces, updated_colors) = updates.into_iter().unzip();
+    mesh_guard.commit_if(changed);
     Ok(PaintResult {
         updated_faces,
         updated_colors,
@@ -410,11 +460,14 @@ pub fn replace_paint_source(
 pub fn replace_paint_source_shaped(
     from: [u8; 4],
     to: [u8; 4],
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<PaintResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
-    Ok(apply_replace_paint_source_shaped(mesh, from, to))
+    let result = apply_replace_paint_source_shaped(mesh, from, to);
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
+    Ok(result)
 }
 
 fn apply_replace_paint_source_shaped(
@@ -445,7 +498,11 @@ fn apply_replace_paint_source_shaped(
         // Channels close to the gray base cannot recover coverage reliably.
         let deltas = [0, 1, 2].map(|c| {
             let delta = from[c] as f32 - base[c] as f32;
-            if delta.abs() > 24.0 { delta } else { 0.0 }
+            if delta.abs() > 24.0 {
+                delta
+            } else {
+                0.0
+            }
         });
         let denominator: f32 = deltas.iter().map(|delta| delta * delta).sum();
         faces
@@ -474,9 +531,10 @@ fn apply_replace_paint_source_shaped(
 #[tauri::command]
 pub fn paint_source_faces(
     source: [u8; 4],
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<Vec<u32>, String> {
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
     Ok(mesh.paint_source_faces(source))
 }
@@ -485,19 +543,29 @@ pub fn paint_source_faces(
 /// #23). The command is a thin DTO map over `MeshModel::used_colors` — the
 /// counting logic and its tests live in the mesh layer.
 #[tauri::command]
-pub fn used_colors(state: State<AppState>) -> Result<Vec<UsedColorDto>, String> {
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
-    Ok(mesh
-        .used_colors()
-        .into_iter()
-        .map(|e| UsedColorDto {
-            is_default: is_unpainted_colour(mesh, e.color),
-            color: e.color,
-            faces: e.faces,
-            regions: e.regions,
-        })
-        .collect())
+pub async fn used_colors(
+    tab_id: u64,
+    state: State<'_, AppState>,
+) -> Result<Vec<UsedColorDto>, String> {
+    let state = AppState {
+        workspace: std::sync::Arc::clone(&state.workspace),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let mesh_guard = state.lock_mesh(tab_id)?;
+        let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+        Ok(mesh
+            .used_colors()
+            .into_iter()
+            .map(|e| UsedColorDto {
+                is_default: is_unpainted_colour(mesh, e.color),
+                color: e.color,
+                faces: e.faces,
+                regions: e.regions,
+            })
+            .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn is_unpainted_colour(mesh: &crate::mesh::model::MeshModel, rgba: [u8; 4]) -> bool {
@@ -511,10 +579,15 @@ fn is_unpainted_colour(mesh: &crate::mesh::model::MeshModel, rgba: [u8; 4]) -> b
 /// replaces the whole set on every call (empty = nothing hidden). Explicit
 /// list-based actions (multi-select fill, colour replace) ignore it.
 #[tauri::command]
-pub fn set_hidden_labels(labels: Vec<u32>, state: State<AppState>) -> Result<(), String> {
-    let mut hidden = state.hidden_labels.lock().map_err(|e| e.to_string())?;
-    *hidden = labels.into_iter().collect();
-    log::info!("[cmd:set_hidden_labels] count={}", hidden.len());
+pub fn set_hidden_labels(
+    labels: Vec<u32>,
+    tab_id: u64,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let mut ws = state.workspace.lock().map_err(|e| e.to_string())?;
+    let index = ws.validate_active(tab_id)?;
+    let mesh = ws.tabs[index].mesh.as_mut().ok_or("No mesh loaded")?;
+    mesh.hidden_labels = labels.into_iter().collect();
     Ok(())
 }
 
@@ -596,6 +669,7 @@ pub fn apply_replace_face_color(
 pub fn replace_face_color(
     from: [u8; 4],
     to: [u8; 4],
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<ReplaceColorResult, String> {
     if from == to {
@@ -606,7 +680,7 @@ pub fn replace_face_color(
             regions: 0,
         });
     }
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
     if is_unpainted_colour(mesh, from) {
         return Err(
@@ -620,13 +694,14 @@ pub fn replace_face_color(
         result.faces,
         result.regions
     );
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
     Ok(result)
 }
 
 #[tauri::command]
-pub fn pick_color(face_id: u32, state: State<AppState>) -> Result<[u8; 4], String> {
+pub fn pick_color(face_id: u32, tab_id: u64, state: State<AppState>) -> Result<[u8; 4], String> {
     log::debug!("[cmd:pick_color] face_id={}", face_id);
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
     if (face_id as usize) < mesh.face_colors.len() {
         Ok(mesh.face_colors[face_id as usize])
@@ -693,7 +768,8 @@ mod shaped_repaint_tests {
         assert_eq!(before, [[191, 63, 63, 255]]);
         let repaint = apply_replace_paint_source_shaped(&mut mesh, red, blue);
         assert_eq!(repaint.updated_colors, [[63, 63, 191, 255]]);
-        mesh.history.undo(&mut mesh.face_colors, &mut mesh.segment_labels);
+        mesh.history
+            .undo(&mut mesh.face_colors, &mut mesh.segment_labels);
         assert_eq!(mesh.face_colors, before);
     }
 
@@ -702,7 +778,11 @@ mod shaped_repaint_tests {
         let mut mesh = textured_face(BLACK);
         dab(&mut mesh, WHITE, 0.5);
         let depths = mesh.history.undo_depth();
-        dab(&mut mesh, [0, 255, 0, 255], falloff_strength(0.75, 1.0, "step"));
+        dab(
+            &mut mesh,
+            [0, 255, 0, 255],
+            falloff_strength(0.75, 1.0, "step"),
+        );
         assert_eq!(mesh.history.undo_depth(), depths);
         assert_eq!(mesh.paint_source_faces(WHITE), [0]);
         let repaint = apply_replace_paint_source_shaped(&mut mesh, WHITE, BLACK);
@@ -817,7 +897,11 @@ mod fill_tests {
             "filling C with the same red must not touch a single face of A"
         );
         assert_eq!(colors_of(&m, &[2, 3]), vec![RED; 2]);
-        assert_eq!(m.segment_labels, vec![1, 1, 2, 2], "labels are the region truth");
+        assert_eq!(
+            m.segment_labels,
+            vec![1, 1, 2, 2],
+            "labels are the region truth"
+        );
     }
 
     /// The Shift+click flood route (radius == 0) is label-constrained: it must
@@ -831,7 +915,11 @@ mod fill_tests {
         }
 
         let result = apply_fill(&mut m, 0, [10, 200, 10, 255], 0.0, &HashSet::new());
-        assert_eq!(result.updated_faces, vec![0, 1], "flood stays inside label 1");
+        assert_eq!(
+            result.updated_faces,
+            vec![0, 1],
+            "flood stays inside label 1"
+        );
         assert_eq!(colors_of(&m, &[2, 3]), vec![RED; 2]);
     }
 }
@@ -887,7 +975,11 @@ mod cull_hidden_tests {
         let mut hidden = HashSet::new();
         hidden.insert(2u32);
 
-        let updates = vec![(0u32, [9, 9, 9, 255]), (2, [8, 8, 8, 255]), (3, [7, 7, 7, 255])];
+        let updates = vec![
+            (0u32, [9, 9, 9, 255]),
+            (2, [8, 8, 8, 255]),
+            (3, [7, 7, 7, 255]),
+        ];
         let out = cull_hidden_pairs(&m, updates, &hidden);
         assert_eq!(out, vec![(0u32, [9, 9, 9, 255])]);
     }
@@ -929,10 +1021,18 @@ mod fill_segments_tests {
         // N regions, ONE undo step.
         assert_eq!(m.history.undo_depth(), 1);
         {
-            let crate::mesh::model::MeshModel { history, face_colors, segment_labels, .. } = &mut m;
+            let crate::mesh::model::MeshModel {
+                history,
+                face_colors,
+                segment_labels,
+                ..
+            } = &mut m;
             history.jump_to(0, face_colors, segment_labels);
         }
-        assert!(m.face_colors.iter().all(|&c| c == crate::mesh::model::DEFAULT_FACE_COLOR));
+        assert!(m
+            .face_colors
+            .iter()
+            .all(|&c| c == crate::mesh::model::DEFAULT_FACE_COLOR));
     }
 
     #[test]
@@ -953,7 +1053,11 @@ mod fill_segments_tests {
 
         assert_eq!(empty.updated_faces.len(), 0);
         assert_eq!(absent.updated_faces.len(), 0);
-        assert_eq!(m.history.undo_depth(), 0, "no-op must not create an undo step");
+        assert_eq!(
+            m.history.undo_depth(),
+            0,
+            "no-op must not create an undo step"
+        );
     }
 }
 
@@ -1008,7 +1112,12 @@ mod replace_colour_tests {
         // One Ctrl+Z (jump back to pristine) restores every face exactly —
         // the split field borrow mirrors how commands/history.rs drives it.
         {
-            let crate::mesh::model::MeshModel { history, face_colors, segment_labels, .. } = &mut m;
+            let crate::mesh::model::MeshModel {
+                history,
+                face_colors,
+                segment_labels,
+                ..
+            } = &mut m;
             history.jump_to(0, face_colors, segment_labels);
         }
         assert_eq!(m.face_colors[0], RED, "undo restores the original colour");
@@ -1048,7 +1157,10 @@ mod replace_colour_tests {
 
         apply_replace_face_color(&mut m, RED, GREEN);
 
-        assert_eq!(m.segment_labels, labels_before, "replace is a paint edit, not a segmentation edit");
+        assert_eq!(
+            m.segment_labels, labels_before,
+            "replace is a paint edit, not a segmentation edit"
+        );
     }
 
     #[test]

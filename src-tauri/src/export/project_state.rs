@@ -152,12 +152,16 @@ pub fn fingerprint_of(vertices: &[[f32; 3]], faces: &[[u32; 3]]) -> Fingerprint 
 // ---------------------------------------------------------------------------
 
 /// One plate's row in `project.json`.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Deserialize)]
 pub struct PlateStateHeader {
     pub plater_id: u32,
     pub name: String,
     pub object_ids: Vec<u32>,
     pub fingerprint: Fingerprint,
+    #[serde(default)]
+    pub history_truncated: bool,
+    #[serde(default)]
+    pub placement_offset: [f32; 3],
 }
 
 /// The parsed project header.
@@ -165,9 +169,12 @@ pub struct PlateStateHeader {
 /// `unit` is what the 3MF declared at write time. It is persisted because a
 /// project may legitimately be opened by a build whose current unit setting
 /// differs; the reader keeps the file's units rather than its own.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ProjectState {
     pub active_plate: u32,
+    /// This writer accounted for provenance, even on plates with no brush strokes.
+    #[serde(default)]
+    pub paint_sources_complete: bool,
     pub plates: Vec<PlateStateHeader>,
     #[serde(default = "default_unit")]
     pub unit: String,
@@ -183,6 +190,7 @@ struct ProjectFileJson<'a> {
     app: &'static str,
     unit: &'a str,
     active_plate: u32,
+    paint_sources_complete: bool,
     plates: &'a [PlateStateHeader],
 }
 
@@ -193,6 +201,7 @@ pub fn encode_project_json(state: &ProjectState) -> String {
         app: PROJECT_APP,
         unit: &state.unit,
         active_plate: state.active_plate,
+        paint_sources_complete: state.paint_sources_complete,
         plates: &state.plates,
     };
     // No maps with non-string keys, no non-finite floats: this cannot fail.
@@ -218,7 +227,17 @@ pub fn decode_project_json(text: &str) -> Result<ProjectState, String> {
             "project.json: unsupported major format_version {version} (this build reads {CYM_FORMAT_VERSION})"
         ));
     }
-    serde_json::from_value(value).map_err(|e| format!("project.json: {e}"))
+    let state: ProjectState =
+        serde_json::from_value(value).map_err(|e| format!("project.json: {e}"))?;
+    if state.plates.iter().any(|plate| {
+        plate
+            .placement_offset
+            .iter()
+            .any(|coordinate| !coordinate.is_finite())
+    }) {
+        return Err("project.json: non-finite placement offset".into());
+    }
+    Ok(state)
 }
 
 // ---------------------------------------------------------------------------
@@ -392,6 +411,43 @@ pub fn decode_plate_state(bytes: &[u8], face_count: usize) -> Result<PlateState,
     })
 }
 
+/// Optional sidecar for the brush colour and its blended result per face.
+const PAINT_SOURCE_MAGIC: &[u8; 8] = b"CYMPS1\x01\0";
+pub type PaintSources = HashMap<u32, ([u8; 4], [u8; 4])>;
+
+pub fn encode_paint_sources(mesh: &MeshModel) -> Vec<u8> {
+    let mut entries: Vec<_> = mesh.paint_sources.iter().collect();
+    entries.sort_unstable_by_key(|(&face, _)| face);
+    let mut bytes = Vec::with_capacity(8 + entries.len() * 12);
+    bytes.extend_from_slice(PAINT_SOURCE_MAGIC);
+    for (&face, (source, painted)) in entries {
+        bytes.extend_from_slice(&face.to_le_bytes());
+        bytes.extend_from_slice(source);
+        bytes.extend_from_slice(painted);
+    }
+    bytes
+}
+
+pub fn decode_paint_sources(bytes: &[u8], face_count: usize) -> Result<PaintSources, String> {
+    let body = bytes
+        .strip_prefix(PAINT_SOURCE_MAGIC)
+        .ok_or("paint sources: invalid header")?;
+    if body.len() % 12 != 0 || body.len() / 12 > face_count {
+        return Err("paint sources: invalid record count".into());
+    }
+    let mut cursor = Cursor::new(body);
+    let mut sources = HashMap::with_capacity(body.len() / 12);
+    while cursor.remaining() != 0 {
+        let face = cursor.u32()?;
+        let source = cursor.take(4)?.try_into().unwrap();
+        let painted = cursor.take(4)?.try_into().unwrap();
+        if face as usize >= face_count || sources.insert(face, (source, painted)).is_some() {
+            return Err("paint sources: invalid or duplicate face".into());
+        }
+    }
+    Ok(sources)
+}
+
 // ---------------------------------------------------------------------------
 // history_<i>.bin
 // ---------------------------------------------------------------------------
@@ -407,7 +463,12 @@ const HISTORY_HEADER_BYTES: usize = 4 + 4;
 
 /// Serialise `history_<i>.bin` under [`MAX_PERSISTED_HISTORY_BYTES`].
 pub fn encode_history(history: &History) -> Vec<u8> {
-    encode_history_with_budget(history, MAX_PERSISTED_HISTORY_BYTES)
+    encode_history_report(history).0
+}
+
+/// Return the encoded history and whether some earlier history was lost.
+pub fn encode_history_report(history: &History) -> (Vec<u8>, bool) {
+    encode_history_with_budget_report(history, MAX_PERSISTED_HISTORY_BYTES)
 }
 
 /// Byte length of one entry exactly as [`write_entry`] emits it.
@@ -448,7 +509,12 @@ fn write_entry(out: &mut Vec<u8>, entry: &RawEntry) {
 /// newest undo entry does not fit, no entry at all is written. The container
 /// itself is always valid (the two count fields), even when the budget is
 /// smaller than those eight bytes.
+#[cfg(test)]
 fn encode_history_with_budget(history: &History, budget: usize) -> Vec<u8> {
+    encode_history_with_budget_report(history, budget).0
+}
+
+fn encode_history_with_budget_report(history: &History, budget: usize) -> (Vec<u8>, bool) {
     let (undo, redo) = history.to_raw();
     let mut remaining = budget.saturating_sub(HISTORY_HEADER_BYTES);
 
@@ -470,7 +536,7 @@ fn encode_history_with_budget(history: &History, budget: usize) -> Vec<u8> {
     // empty the redo branch is still a legitimate state; it is budgeted
     // below.)
     if !undo.is_empty() && kept_undo == 0 {
-        return empty_history_container();
+        return (empty_history_container(), true);
     }
 
     let mut kept_redo = 0usize;
@@ -494,7 +560,9 @@ fn encode_history_with_budget(history: &History, budget: usize) -> Vec<u8> {
     for entry in &redo[redo.len() - kept_redo..] {
         write_entry(&mut out, entry);
     }
-    out
+    let truncated =
+        history.persisted_truncated() || kept_undo < undo.len() || kept_redo < redo.len();
+    (out, truncated)
 }
 
 /// A valid container with neither stack populated.
@@ -938,8 +1006,11 @@ mod tests {
     fn project_header_round_trips_unit_plates_and_fingerprints() {
         let state = ProjectState {
             active_plate: 2,
+            paint_sources_complete: true,
             plates: vec![
                 PlateStateHeader {
+                    history_truncated: false,
+                    placement_offset: [0.0; 3],
                     plater_id: 1,
                     name: "左盘".to_string(),
                     object_ids: vec![3, 9],
@@ -950,6 +1021,8 @@ mod tests {
                     },
                 },
                 PlateStateHeader {
+                    history_truncated: false,
+                    placement_offset: [0.0; 3],
                     plater_id: 2,
                     name: "plate 2".to_string(),
                     object_ids: vec![],
@@ -1126,6 +1199,19 @@ mod tests {
     }
 
     #[test]
+    fn history_truncation_report_distinguishes_complete_trimmed_and_previously_trimmed_stacks() {
+        let mut history = History::new();
+        assert!(!encode_history_with_budget_report(&history, 100).1);
+        history.record(OpKind::Paint, None, &[(0, [0, 0, 0, 255])], &[]);
+        assert!(!encode_history_with_budget_report(&history, 100).1);
+        assert!(encode_history_with_budget_report(&history, 8).1);
+        history.set_persisted_truncated(true);
+        assert!(encode_history_with_budget_report(&history, 100).1);
+        history.clear();
+        assert!(!encode_history_with_budget_report(&history, 100).1);
+    }
+
+    #[test]
     fn history_over_the_byte_budget_drops_the_oldest_entries() {
         let mut colors = vec![[0u8, 0, 0, 255]; 4];
         let mut labels = vec![0u32; 4];
@@ -1143,7 +1229,8 @@ mod tests {
         // One entry is 1(kind) + 1(flag) + 8(stroke) + 4 + 8 + 4 = 26 bytes.
         // 60 = 8-byte container header + the two newest entries; the oldest
         // does not fit and must be dropped.
-        let bytes = encode_history_with_budget(&history, 60);
+        let (bytes, truncated) = encode_history_with_budget_report(&history, 60);
+        assert!(truncated);
         assert!(bytes.len() <= 60, "budget must bound the written bytes");
         let mut restored = decode_history(&bytes, 4)
             .expect("budget-trimmed history is still well formed")

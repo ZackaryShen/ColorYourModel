@@ -1,10 +1,11 @@
-# Frontend + Rust unit tests on every push to main and all PRs.
-# Docs freshness is covered separately by docs-check.yml.
+# Frontend + Rust unit tests on every push to main and all PRs, on both
+# Linux and Windows. Docs freshness is covered separately by docs-check.yml.
 #
-# Both `tsc --noEmit` and `vitest run` are hard gates. The previous
-# continue-on-error on vitest existed only for 3 SeedPanel selector
-# failures that were fixed in 0.1.2 (see CHANGELOG), so the tolerance is
-# gone and a red suite now blocks the PR.
+# Both `tsc --noEmit` and `vitest run` are hard gates, and both frontend and
+# Rust jobs run on Linux and Windows. The 3 pre-existing SeedPanel selector
+# failures were fixed in 0.1.2 (see CHANGELOG), so the old continue-on-error
+# tolerance is gone; Windows coverage matters because the auto-update module
+# only executes there.
 
 name: CI
 
@@ -18,7 +19,11 @@ permissions:
 
 jobs:
   frontend:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,13 +31,21 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Verify version single-source (tauri.conf.json)
+        run: node tools/bump-version.mjs --check
       - name: Type check (gate)
         run: npx tsc --noEmit
       - name: Unit tests (gate)
         run: npx vitest run
+      - name: Feedback service tests
+        run: node --test feedback-worker/worker.test.mjs
 
   rust:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,6 +57,7 @@ jobs:
         with:
           workspaces: src-tauri
       - name: Install Tauri system dependencies (ubuntu 24.04)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \

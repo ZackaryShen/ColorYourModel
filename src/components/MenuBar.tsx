@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore } from "../store/appStore";
 import { useUpdateStore } from "../store/updateStore";
+import { useProjectSave } from "../hooks/useProjectSave";
 import { useT } from "../i18n";
 import { log } from "../utils/logger";
 import { ExportDialog } from "./ExportDialog/ExportDialog";
@@ -18,6 +20,26 @@ const MANUAL_URL: Record<"zh" | "en", string> = {
 const EXAMPLES_URL = `${SITE_URL}/docs/cases/examples.html`;
 const REPO_URL = "https://github.com/ZackaryShen/ColorYourModel";
 const DISCUSSIONS_URL = `${REPO_URL}/discussions`;
+const NEW_ISSUE_URL = `${REPO_URL}/issues/new/choose`;
+const FEEDBACK_URL = "https://coloryourmodel-feedback.zackaryshen.workers.dev";
+
+function feedbackFormUrl(language: "zh" | "en", theme: "light" | "dark") {
+  const endpoint = (import.meta.env.VITE_FEEDBACK_URL ?? FEEDBACK_URL).trim();
+  if (!endpoint) return;
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return;
+  }
+  const local = import.meta.env.DEV && url.protocol === "http:" &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+  if ((!local && url.protocol !== "https:") || url.username || url.password) return;
+  url.searchParams.set("lang", language);
+  url.searchParams.set("version", __APP_VERSION__);
+  url.searchParams.set("theme", theme);
+  return url.href;
+}
 
 type MenuId = "file" | "view" | "help";
 
@@ -32,14 +54,14 @@ export function MenuBar({
   onOpenPreferences,
   onImport,
 }: {
-  onImport: () => Promise<void>;
   onOpenPreferences?: () => void;
+  onImport: () => Promise<void>;
 }) {
   const t = useT();
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const isLoading = useAppStore((s) => s.isLoading);
+  const { saveProject, saveProjectAs } = useProjectSave();
 
   const language = useAppStore((s) => s.language);
   const setLanguage = useAppStore((s) => s.setLanguage);
@@ -54,6 +76,7 @@ export function MenuBar({
   const hasMesh = useAppStore((s) => s.meshData !== null);
 
   const barRef = useRef<HTMLDivElement>(null);
+  const feedbackOpening = useRef(false);
 
   // Close on outside-click and Esc — the standard dismiss affordances for a
   // menu bar (inside clicks are stopPropagation'd by the dropdowns).
@@ -75,12 +98,53 @@ export function MenuBar({
     };
   }, [openMenu]);
 
+  // Cmd/Ctrl+S writes the current 3MF back to the file it was opened from
+  // (Shift = Save As). Refs keep the once-registered listener current without
+  // resubscribing on every render; text fields keep their own save behaviour.
+  const saveRef = useRef({ saveProject, saveProjectAs });
+  saveRef.current = { saveProject, saveProjectAs };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "s") return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
+        return;
+      }
+      e.preventDefault();
+      if (e.shiftKey) void saveRef.current.saveProjectAs();
+      else void saveRef.current.saveProject();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const act = (fn: () => void) => () => {
     setOpenMenu(null);
     fn();
   };
-  const openExternal = (url: string) => {
-    openUrl(url).catch((e) => log.error("MenuBar", "openUrl failed", { url, error: String(e) }));
+  const openExternal = (url: string, failureMessage?: string) => {
+    openUrl(url).catch((e) => {
+      log.error("MenuBar", "openUrl failed", { url, error: String(e) });
+      if (failureMessage) useAppStore.getState().setStatusMessage(failureMessage);
+    });
+  };
+  const feedbackUrl = feedbackFormUrl(language, theme);
+  const openFeedback = async () => {
+    if (!feedbackUrl) {
+      openExternal(NEW_ISSUE_URL, t("menu.feedbackFallbackFailed"));
+      return;
+    }
+    if (feedbackOpening.current) return;
+    feedbackOpening.current = true;
+    try {
+      await invoke("open_feedback_window", { url: feedbackUrl, title: t("menu.feedbackWindow") });
+    } catch (error) {
+      log.error("MenuBar", "open feedback window failed", { error: String(error) });
+      useAppStore.getState().setStatusMessage(t("menu.feedbackOpenFailed"));
+    } finally {
+      feedbackOpening.current = false;
+    }
   };
 
   const menus: {
@@ -95,7 +159,22 @@ export function MenuBar({
       id: "file",
       label: t("menu.file"),
       items: [
-        { kind: "item", label: t("menu.import"), disabled: isLoading, onClick: () => void onImport() },
+        { kind: "item", label: t("menu.import"), onClick: () => onImport() },
+        {
+          kind: "item",
+          label: t("menu.save"),
+          disabled: !hasMesh,
+          hint: hasMesh ? undefined : t("export.needModel"),
+          onClick: () => void saveProject(),
+        },
+        {
+          kind: "item",
+          label: t("menu.saveAs"),
+          disabled: !hasMesh,
+          hint: hasMesh ? undefined : t("export.needModel"),
+          onClick: () => void saveProjectAs(),
+        },
+        { kind: "sep" },
         {
           kind: "item",
           label: t("menu.export"),
@@ -162,6 +241,11 @@ export function MenuBar({
         // The updater's own busy-mutex ignores clicks while a download runs.
         { kind: "item", label: t("menu.checkUpdates"), onClick: () => useUpdateStore.getState().startManualCheck() },
         { kind: "sep" },
+        {
+          kind: "item",
+          label: t(feedbackUrl ? "menu.feedback" : "menu.feedbackGitHub"),
+          onClick: openFeedback,
+        },
         { kind: "item", label: t("menu.discussions"), onClick: () => openExternal(DISCUSSIONS_URL) },
         { kind: "sep" },
         { kind: "item", label: t("menu.about"), onClick: () => setAboutOpen(true) },
@@ -213,6 +297,16 @@ export function MenuBar({
           )}
         </div>
       ))}
+      <button
+        type="button"
+        className="cym-btn"
+        style={styles.feedback}
+        onClick={act(openFeedback)}
+        title={t(feedbackUrl ? "menu.feedbackWindow" : "menu.feedbackGitHub")}
+      >
+        <span aria-hidden="true">💬</span>
+        {t(feedbackUrl ? "menu.feedbackButton" : "menu.feedbackGitHubButton")}
+      </button>
 
       {exportDialogOpen && <ExportDialog onClose={() => setExportDialogOpen(false)} />}
       {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
@@ -312,6 +406,20 @@ const styles: Record<string, React.CSSProperties> = {
   topActive: {
     background: "var(--bg-active, #3a5a7a)",
     color: "var(--text-1, #eeeeee)",
+  },
+  feedback: {
+    marginInlineStart: "auto",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "3px 8px",
+    border: "1px solid var(--border, #555)",
+    borderRadius: 4,
+    background: "var(--bg-panel, #2d2d2d)",
+    color: "var(--text-1, #eee)",
+    fontSize: 12,
+    whiteSpace: "nowrap",
+    cursor: "pointer",
   },
   dropdown: {
     position: "absolute",

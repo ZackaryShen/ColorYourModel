@@ -6,32 +6,25 @@ import { planFileDrop } from "../utils/stlDrop";
 import { log } from "../utils/logger";
 
 /**
- * Native drag-and-drop model import (issue #21).
+ * Drag-and-drop STL, GLB and 3MF import (issue #21).
  *
  * With the default `dragDropEnabled: true` the webview intercepts OS
  * drag-drop on Windows, so HTML5 dragover/drop handlers never fire — the
  * events must come from `getCurrentWebview().onDragDropEvent()`. The decision
  * itself lives in the pure `planFileDrop`; this hook only owns the Tauri
- * wiring: overlay visibility, the replace confirmation state, and routing
+ * wiring: overlay visibility and routing
  * accepted drops into the SHARED import pipeline (`importFromPath`), so the
  * 📂 button and a drop can never drift apart.
  */
-export function useDropImport(
-  importFromPath: (path: string) => Promise<void>,
-  isImportBusy: () => boolean,
-) {
+export function useDropImport(importFromPath: (path: string, confirmLoaded?: boolean) => Promise<void>) {
   const t = useT();
   const [dragOver, setDragOver] = useState(false);
-  const [pendingReplacePath, setPendingReplacePath] = useState<string | null>(null);
 
   // Live refs so the once-registered listener always reads the latest closure
   // without resubscribing on every render (same pattern as handleFacePickedRef
   // in Viewport — `t` is re-created each render, language is not).
   const importFromPathRef = useRef(importFromPath);
   importFromPathRef.current = importFromPath;
-  const isImportBusyRef = useRef(isImportBusy);
-  isImportBusyRef.current = isImportBusy;
-  const pendingReplaceRef = useRef<string | null>(null);
   const tRef = useRef(t);
   tRef.current = t;
 
@@ -42,7 +35,7 @@ export function useDropImport(
       .onDragDropEvent((event) => {
         const payload = event.payload;
         if (payload.type === "enter") {
-          if (!isImportBusyRef.current() && pendingReplaceRef.current === null) setDragOver(true);
+          setDragOver(true);
           return;
         }
         // "over" fires continuously while hovering; the overlay just stays.
@@ -57,7 +50,8 @@ export function useDropImport(
         // An import in flight owns the screen (progress bar); a drop during
         // it has no sensible target. Rejected, but never silently — issue #21
         // requires a message for every swallowed drop.
-        if (isImportBusyRef.current() || pendingReplaceRef.current !== null) {
+        const state = useAppStore.getState();
+        if (state.isLoading || state.importBusy || state.saveBusy || state.pendingImportPath || state.pendingCloseTabId != null) {
           setStatusMessage(tRef.current("drop.importInProgress"));
           return;
         }
@@ -70,8 +64,7 @@ export function useDropImport(
         if (decision.action === "import") {
           void importFromPathRef.current(decision.path);
         } else if (decision.action === "confirm-replace") {
-          pendingReplaceRef.current = decision.path;
-          setPendingReplacePath(decision.path);
+          void importFromPathRef.current(decision.path, true);
         } else if (decision.reason === "multi") {
           setStatusMessage(tRef.current("drop.rejectMulti"));
         } else {
@@ -88,16 +81,5 @@ export function useDropImport(
     };
   }, []);
 
-  const confirmReplace = () => {
-    const path = pendingReplaceRef.current;
-    cancelReplace();
-    if (path) void importFromPathRef.current(path);
-  };
-
-  const cancelReplace = () => {
-    pendingReplaceRef.current = null;
-    setPendingReplacePath(null);
-  };
-
-  return { dragOver, pendingReplacePath, confirmReplace, cancelReplace };
+  return { dragOver };
 }

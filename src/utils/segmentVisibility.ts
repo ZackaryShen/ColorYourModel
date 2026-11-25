@@ -53,7 +53,7 @@ export interface RayHitLike {
 export function filterVisibleHits<T extends RayHitLike>(
   hits: T[],
   hidden: Set<number>,
-  labels: number[] | undefined
+  labels: ArrayLike<number> | undefined
 ): T[] {
   return hits.filter((h) => {
     if (h.faceIndex == null) return true;
@@ -67,7 +67,7 @@ export function filterVisibleHits<T extends RayHitLike>(
 export function firstVisibleHit<T extends RayHitLike>(
   hits: T[],
   hidden: Set<number>,
-  labels: number[] | undefined
+  labels: ArrayLike<number> | undefined
 ): T | null {
   return filterVisibleHits(hits, hidden, labels)[0] ?? null;
 }
