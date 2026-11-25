@@ -46,6 +46,18 @@ it("asks before a picker import discards unsaved work and cancellation preserves
   expect(useAppStore.getState().paintDirty).toBe(true);
 });
 
+it("routes picker and dropped GLBs to preview without offering to replace the project", async () => {
+  const preview = vi.fn();
+  vi.mocked(open).mockResolvedValue("/texture.glb");
+  const { result } = renderHook(() => useImportStl(preview));
+  await act(async () => { await result.current.importStl(); });
+  await act(async () => { await result.current.importFromPath("/dropped.GLB", true); });
+  expect(preview.mock.calls).toEqual([["/texture.glb"], ["/dropped.GLB"]]);
+  expect(invoke).not.toHaveBeenCalled();
+  expect(useAppStore.getState().pendingImportPath).toBeNull();
+  expect(useAppStore.getState().projectPath).toBe("/old.3mf");
+});
+
 it("confirmation imports once without asking again across hook instances", async () => {
   const first = renderHook(() => useImportStl());
   const second = renderHook(() => useImportStl());

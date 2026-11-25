@@ -9,7 +9,7 @@ import type { MeshData } from "../types/mesh";
 /** The import report fields that decide the status-line message. */
 export type ImportStatusFields = Pick<
   MeshData,
-  "plateIndex" | "plateCount" | "engineeringState" | "historyDropped"
+  "plateIndex" | "plateCount" | "engineeringState" | "historyDropped" | "importWarning"
 >;
 
 /**
@@ -25,6 +25,7 @@ export function importStatusMessage(
   const warnings: string[] = [];
   if (data.engineeringState === "dropped") warnings.push(t("status.engineeringDropped"));
   else if (data.historyDropped) warnings.push(t("status.historyDropped"));
+  if (data.importWarning === "3mf-texture") warnings.push(t("project.openWarning.3mf-texture"));
   // The DTO fields are additive; absent means a single-plate source (STL or an
   // older payload).
   const plateIndex = data.plateIndex ?? 1;
@@ -43,7 +44,7 @@ export function importStatusMessage(
  * drag-drop import (issue #21) both land here, so progress reporting and
  * error handling can never drift between the two entry points.
  */
-export function useImportStl() {
+export function useImportStl(openTexture?: (path: string) => void) {
   const t = useT();
   const { loadModel } = useTauriCommand();
   const setLoading = useAppStore((s) => s.setLoading);
@@ -96,6 +97,10 @@ export function useImportStl() {
 
   const importFromPath = async (selected: string, confirmLoaded = false) => {
     if (blocked()) return;
+    if (/\.glb$/i.test(selected) && openTexture) {
+      openTexture(selected);
+      return;
+    }
     const state = useAppStore.getState();
     if (/\.3mf$/i.test(selected) && state.meshData && (state.paintDirty || state.tabs.some(tab => tab.dirty) || confirmLoaded)) {
       useAppStore.setState({ pendingImportPath: selected });
@@ -122,7 +127,7 @@ export function useImportStl() {
         multiple: false,
         // Picker and drop routing accept the same formats.
         filters: [
-          { name: "3MF Project / STL Model", extensions: [...DROPPABLE_EXTENSIONS] },
+          { name: t("menu.modelFileFilter"), extensions: [...DROPPABLE_EXTENSIONS] },
         ],
       });
     } catch (e) {

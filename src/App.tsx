@@ -19,6 +19,8 @@ import { UpdateDialog } from "./components/UpdateDialog/UpdateDialog";
 import { useAutoUpdateCheck } from "./hooks/useAutoUpdateCheck";
 import { useDropImport } from "./hooks/useDropImport";
 import { useImportStl } from "./hooks/useImportStl";
+import { useTextureImport } from "./hooks/useTextureImport";
+import { TexturePreviewDialog } from "./components/TexturePreview/TexturePreviewDialog";
 import { useAppStore } from "./store/appStore";
 import { useT } from "./i18n";
 
@@ -30,10 +32,12 @@ function App() {
   // showing them on the empty state invited dead-slider fiddling.
   const hasMesh = useAppStore((s) => s.meshData !== null);
   const historyPanelOpen = useAppStore((s) => s.historyPanelOpen);
-  // Issue #21: drag an STL/.cym onto ANY part of the window to import it.
+  // Issue #21: drag a file onto any part of the window to import it.
   // The drop shares the 📂 pipeline (importFromPath); a drop that would
   // replace a loaded model first asks, like the exit confirm does.
-  const { importFromPath, pendingReplacePath, confirmReplace, cancelReplace } = useImportStl();
+  const textureImport = useTextureImport();
+  const { importStl, importFromPath, pendingReplacePath, confirmReplace, cancelReplace } =
+    useImportStl(textureImport.open);
   const { dragOver } = useDropImport(importFromPath);
   const [confirmExit, setConfirmExit] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -56,6 +60,11 @@ function App() {
     let unlisten: (() => void) | null = null;
     getCurrentWindow()
       .onCloseRequested(async (event) => {
+        if (textureImport.isApplying()) {
+          event.preventDefault();
+          return;
+        }
+        if (textureImport.isOpen()) textureImport.cancel();
         const { meshData, paintDirty, tabs } = useAppStore.getState();
         // Nothing at stake -> fall through to the default close path.
         if (!meshData || !(paintDirty || tabs.some(tab => tab.dirty))) return;
@@ -78,7 +87,7 @@ function App() {
     <div style={styles.root}>
       {/* Top menu bar (File / View / Help) — conventional desktop entry
           points alongside the left tool Toolbar. */}
-      <MenuBar onOpenPreferences={() => setPrefsOpen(true)} />
+      <MenuBar onOpenPreferences={() => setPrefsOpen(true)} onImport={importStl} />
 
       <TabBar />
 
@@ -86,7 +95,7 @@ function App() {
       <div style={styles.main}>
         {/* Left toolbar */}
         <div style={styles.leftPanel}>
-          <Toolbar />
+          <Toolbar onImport={importStl} />
         </div>
 
         {/* Center viewport */}
@@ -121,7 +130,7 @@ function App() {
           persisted via cym-prefs). */}
       {prefsOpen && <PreferencesDialog onClose={() => setPrefsOpen(false)} />}
 
-      {/* P0 2026-10-12: import failures (broken/unsupported STL or .cym)
+      {/* P0 2026-10-12: import failures (broken or unsupported STL / 3MF)
           surface as a modal instead of only a status-bar line. */}
       <ImportErrorDialog />
 
@@ -130,6 +139,15 @@ function App() {
       {dragOver && <DropOverlay />}
       {pendingReplacePath && (
         <DropReplaceDialog onCancel={cancelReplace} onConfirm={confirmReplace} />
+      )}
+      {textureImport.session && (
+        <TexturePreviewDialog
+          session={textureImport.session}
+          onApply={textureImport.apply}
+          onCancel={textureImport.cancel}
+          onColorLimit={textureImport.setColorLimit}
+          onRetry={textureImport.retry}
+        />
       )}
 
       {/* Update module: renders nothing while phase === "idle"; owns its own

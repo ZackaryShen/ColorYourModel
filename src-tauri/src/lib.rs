@@ -1,4 +1,5 @@
 mod commands;
+mod engineering;
 mod export;
 mod mesh;
 mod paint;
@@ -21,6 +22,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
+        .manage(commands::texture::TextureImportJobs::default())
         .manage(commands::update::UpdateState::new())
         .invoke_handler(tauri::generate_handler![
             commands::mesh::load_model,
@@ -29,6 +31,9 @@ pub fn run() {
             commands::mesh::rename_tab,
             commands::mesh::project_tabs,
             commands::mesh::get_face_color,
+            commands::texture::prepare_texture,
+            commands::texture::apply_texture,
+            commands::texture::cancel_texture,
             commands::segment::auto_segment,
             commands::segment::auto_segment_smart,
             commands::segment::auto_segment_v2,
@@ -80,6 +85,8 @@ pub fn run() {
             commands::export::export_obj_command,
             commands::export::list_export_presets,
             commands::export::export_palette_preview,
+            commands::export::texture_mapping_preview,
+            commands::export::suggest_texture_mapping,
             commands::js_bridge::report_js_error,
             commands::js_bridge::report_app_ready,
             commands::feedback::open_feedback_window,

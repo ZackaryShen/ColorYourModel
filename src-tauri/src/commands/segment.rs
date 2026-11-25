@@ -3,7 +3,7 @@ use tauri::{Emitter, State};
 
 use crate::commands::mesh::AppState;
 use crate::mesh::loader::ProgressFn;
-use crate::mesh::model::{MeshModel, Segment, DEFAULT_FACE_COLOR};
+use crate::mesh::model::{MeshModel, Segment};
 use crate::segment::cross_section::{
     detect_cross_section_features as backend_detect_cross_section_features, CrossSectionRegion,
 };
@@ -541,7 +541,7 @@ pub(crate) fn reset_mesh_state(mesh: &mut MeshModel) {
     mesh.segments.clear();
     mesh.segment_names.clear();
     mesh.next_manual_label = MANUAL_SEGMENT_OFFSET;
-    mesh.face_colors = vec![DEFAULT_FACE_COLOR; n];
+    mesh.init_default_colors();
     mesh.history.clear();
 }
 
@@ -1100,7 +1100,7 @@ pub async fn fuse_segmentation(
 #[cfg(test)]
 mod reset_tests {
     use super::*;
-    use crate::mesh::model::MeshModel;
+    use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR};
 
     fn tiny_mesh() -> MeshModel {
         let mut m = MeshModel::new();

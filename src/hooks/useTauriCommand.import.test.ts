@@ -88,6 +88,35 @@ it('remembers the actual complete-project export path for subsequent Save', asyn
   expect(useAppStore.getState().projectPath).toBe('/tmp/B.3mf');
 });
 
+it("keeps the workspace save path and unrelated dirty plates after exporting a mapped texture plate", async () => {
+  vi.mocked(invoke).mockClear();
+  const active = { id: 1, name: "Texture", faceCount: 1, dirty: false };
+  const other = { id: 2, name: "STL", faceCount: 1, dirty: true };
+  useAppStore.setState({
+    meshData: { ...model, texturePainting: true },
+    activeTabId: 1, tabEpoch: 1, projectPath: "/tmp/Project.3mf",
+    importBusy: false, saveBusy: false, paintDirty: false, tabs: [active, other],
+  });
+  vi.mocked(invoke).mockImplementation(async (command) => {
+    if (command === "export_3mf_command") return "Exported to /tmp/Print.3mf";
+    if (command === "project_tabs") return [{ ...active, dirty: true }, other];
+    throw new Error(`Unexpected command: ${command}`);
+  });
+  const selection = {
+    machineId: "snapmaker_u1", nozzleDiameter: "0.4", processName: "Standard",
+    filamentNames: ["PLA"], targetSlicer: "snapmaker_orca",
+  };
+  const texture = { revision: "confirmed", mapping: { selection, nominalColors: [], assignments: [] } };
+  const { result } = renderHook(() => useTauriCommand());
+  await act(() => result.current.export3mf("/tmp/Print.3mf", selection, false, texture));
+  expect(invoke).toHaveBeenCalledWith("export_3mf_command", {
+    path: "/tmp/Print.3mf", selection, preserveSource: false, texture, tabId: 1,
+  });
+  expect(useAppStore.getState()).toMatchObject({
+    projectPath: "/tmp/Project.3mf", paintDirty: true, tabs: [{ ...active, dirty: true }, other],
+  });
+});
+
 it('a successful reset clears undo and redo availability and refreshes the timeline', async () => {
   useAppStore.setState({activeTabId:1,tabEpoch:1,importBusy:false,saveBusy:false,meshData:model,canUndo:true,canRedo:true});
   const previousVersion = useAppStore.getState().historyVersion;

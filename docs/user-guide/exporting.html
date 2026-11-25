@@ -294,9 +294,9 @@ Internals: <a href="../technical/export-pipeline.html">Technical: Export Pipelin
 <p>Use <strong>File → Save</strong> (Cmd/Ctrl+S) or the disk button to save your CYM project. For an external 3MF or STL, the first save asks where to write a new 3MF. After that, Save updates the CYM file directly. Choose <strong>Save As 3MF</strong> to save a copy. Project files retain exact paint colors, brush color groups, regions and available undo/redo history. Use <strong>Export</strong> to choose printer and filament settings for slicing.</p>
 <p>Saving retains the imported project&#39;s printer, process and material settings. Colours used by explicit process material references remain in the palette even when no painted face uses them. If source settings cannot be interpreted safely, saving reports an error and preserves the previous file; use <strong>Export</strong> to choose new settings explicitly. Source materials with identical RGB colours and explicit material references currently require this explicit export path.</p>
 <p>Use the plate tabs above the viewport to switch plates. Double-click a tab to rename it, or use its × button to close it; closing a dirty plate asks before discarding its edits. Each plate retains its own regions, hidden regions and undo/redo history. An STL import adds a plate. Opening a 3MF replaces the whole project and asks first if any plate has unsaved edits. Closing the final plate clears the project and its save destination.</p>
-<p>A successful 3MF export becomes the current project file: the next <strong>Save</strong> writes that destination.</p>
+<p>A successful whole-project 3MF export becomes the current project file. The next <strong>Save</strong> writes to that destination.</p>
 <p>Save and Export use the exact path confirmed in the file dialog, preserving filename case and repeated suffixes without redirecting to another filename.</p>
-<p><strong>Save and 3MF export include every open plate</strong>, with one shared material palette and printer/process selection. The active plate, plate names, exact engineering colours and histories are restored when reopening the file. Clean inactive plates can be reloaded from their source on demand; edited plates remain in memory in this release. A failed source load preserves the current plate and its edits.</p>
+<p><strong>Save and whole-project 3MF export include every open plate</strong>, with one shared material palette and printer/process selection. The active plate, plate names, exact engineering colours and histories are restored when reopening the file. Clean inactive plates can be reloaded from their source on demand. Edited plates remain in memory in this release. A failed source load preserves the current plate and its edits.</p>
 <p>A cancelled replacement or failed import keeps the current model and edits. Imports ask before replacing unsaved work. A complete new file is written before replacing an existing project, so an interrupted save preserves the previous version.</p>
 <h2 id="export-3mf-recommended">Export 3MF (recommended)</h2>
 <p>The 3MF carries per-region colours <strong>plus machine/process/filament metadata</strong>, so the slicer shows a fully configured multi-material job.</p>
@@ -317,6 +317,10 @@ Internals: <a href="../technical/export-pipeline.html">Technical: Export Pipelin
 </pre>
 <p><strong>Verified end-to-end (2026-08-27)</strong>: a real model exported from CYM imported into Snapmaker Orca (U1) with correct multi-filament colours and the embedded process preset (<code>0.20 Standard @Snapmaker U1 (0.4 nozzle)</code>) — see the <a href="../cases/01-3mf-end-to-end.html">verification case</a>.</p>
 <p><strong>Saving oversized models:</strong> Save / Save As preserves your editing work even when a model exceeds the selected printer&#39;s bed. Geometry and printer settings are retained. The explicit 3MF print-export command still checks bed fit; choose a suitable printer before preparing the printable file.</p>
+<h3 id="models-converted-from-textures">Models converted from textures</h3>
+<p>On the active texture plate, select the printer and assign the model colours to its physical filament slots. Several model colours may share a slot. Above 16 edited colours, the preview groups them into a palette of up to 16 rows for confirmation.</p>
+<p>Mapped print export writes the active plate as a separate 3MF with its confirmed slot assignments. Use <strong>Save</strong> or <strong>Save As 3MF</strong> to preserve the entire workspace, including each plate&#39;s exact editable colours and confirmed texture mapping. You can reopen either file without the source GLB.</p>
+<p>For a workspace containing textured plates, switch to the texture plate you want to print and export it with its confirmed slots. Ordinary whole-project print export uses a shared automatic palette.</p>
 <h2 id="export-obj">Export OBJ</h2>
 <p>Exports <code>.obj</code> plus a sibling <code>.mtl</code>: per-face colours become <code>usemtl</code> material groups, quantized to at most 256 colours. No machine/process pickers needed — colour is written directly. Use OBJ for tools that don&#39;t read 3MF (DCC software, viewers).</p>
 <h2 id="which-one-when">Which one when?</h2>
@@ -342,7 +346,7 @@ Internals: <a href="../technical/export-pipeline.html">Technical: Export Pipelin
 </tbody></table>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#save-a-3mf-project">Save a 3MF project</a></li><li class="toc-h2"><a href="#export-3mf-recommended">Export 3MF (recommended)</a></li><li class="toc-h2"><a href="#export-obj">Export OBJ</a></li><li class="toc-h2"><a href="#which-one-when">Which one when?</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#save-a-3mf-project">Save a 3MF project</a></li><li class="toc-h2"><a href="#export-3mf-recommended">Export 3MF (recommended)</a></li><li class="toc-h3"><a href="#models-converted-from-textures">Models converted from textures</a></li><li class="toc-h2"><a href="#export-obj">Export OBJ</a></li><li class="toc-h2"><a href="#which-one-when">Which one when?</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

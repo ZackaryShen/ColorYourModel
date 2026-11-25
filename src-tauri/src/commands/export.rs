@@ -1,5 +1,6 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use serde::Deserialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::mesh::AppState;
@@ -9,7 +10,13 @@ use crate::export::paint_color::MAX_EXTRUDER_SLOT;
 use crate::export::presets::{summary, ExportSelection, MachineSummary};
 use crate::export::quantize::{bounded_color_histogram, quantize_histogram};
 use crate::export::source_presets::SourcePresets;
-use crate::export::threemf::{write_project_3mf, ProjectPlate, ProjectWritePurpose};
+use crate::export::texture_mapping::{
+    preview, suggestions, NominalColorPredictor, Rgb, TextureExportSnapshot, TextureMappingPreview,
+    TextureMappingSuggestions, TextureSlotMapping,
+};
+use crate::export::threemf::{
+    write_mapped_texture_3mf, write_project_3mf, ProjectPlate, ProjectWritePurpose,
+};
 
 /// The printer / process / filament catalogue the export dialog renders.
 ///
@@ -32,6 +39,30 @@ pub fn export_palette_preview(tab_id: u64, state: State<AppState>) -> Result<Vec
     let mut ws = state.workspace.lock().map_err(|e| e.to_string())?;
     ws.validate_active(tab_id)?;
     workspace_palette_preview(&mut ws, &mut |_| {})
+}
+
+#[tauri::command]
+pub fn texture_mapping_preview(
+    tab_id: u64,
+    state: State<AppState>,
+) -> Result<TextureMappingPreview, String> {
+    let mesh = state.lock_mesh(tab_id)?;
+    preview(mesh.as_ref().ok_or("No mesh loaded")?)
+}
+
+#[tauri::command]
+pub fn suggest_texture_mapping(
+    selection: ExportSelection,
+    nominal_colors: Vec<Option<Rgb>>,
+    colors: Vec<Rgb>,
+) -> Result<TextureMappingSuggestions, String> {
+    suggestions(&selection, &nominal_colors, &colors, &NominalColorPredictor)
+}
+
+#[derive(Deserialize)]
+pub struct TextureMappingRequest {
+    revision: String,
+    mapping: TextureSlotMapping,
 }
 
 fn workspace_palette_preview(
@@ -115,6 +146,14 @@ fn save_workspace(
             }
         }
         ws.ensure_all_resident()?;
+        if !preserve_source
+            && ws
+                .tabs
+                .iter()
+                .any(|tab| tab.mesh.as_ref().is_some_and(|mesh| mesh.texture_painting))
+        {
+            return Err("Export each texture plate individually to confirm its filament slots. Use Save Project to save all plates together.".into());
+        }
         let active = ws.index(ws.active.ok_or("No plate is open")?)?;
         let source = if preserve_source {
             ws.source_presets
@@ -169,6 +208,60 @@ fn save_workspace(
     result
 }
 
+fn print_texture_plate(
+    ws: &mut Workspace,
+    tab_id: u64,
+    path: &Path,
+    texture: &TextureMappingRequest,
+    progress: &dyn Fn(f32, &str),
+) -> Result<(), String> {
+    let active = ws.validate_active(tab_id)?;
+    if !path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("3mf"))
+    {
+        return Err("Choose a .3mf filename for the texture plate".into());
+    }
+    let destination = path.canonicalize().ok();
+    let protected = |source: &Path| {
+        source == path
+            || destination.as_ref().is_some_and(|destination| {
+                source
+                    .canonicalize()
+                    .is_ok_and(|source| &source == destination)
+            })
+    };
+    if ws.project_path.as_deref().is_some_and(protected)
+        || ws
+            .tabs
+            .iter()
+            .filter_map(|tab| tab.source.as_ref())
+            .any(|source| protected(&source.path))
+    {
+        return Err("Choose a separate destination for the active plate's print export".into());
+    }
+
+    let tab = &mut ws.tabs[active];
+    let mesh = tab.mesh.as_mut().ok_or("No mesh loaded")?;
+    let snapshot = TextureExportSnapshot::build(mesh, &texture.revision, &texture.mapping)?;
+    write_mapped_texture_3mf(
+        &ProjectPlate {
+            name: tab.name.clone(),
+            mesh,
+        },
+        path,
+        &snapshot,
+        progress,
+    )?;
+    if mesh.texture_slot_mapping.as_ref() != Some(&snapshot.mapping) || mesh.texture_state_dropped {
+        mesh.texture_slot_mapping = Some(snapshot.mapping);
+        mesh.texture_state_dropped = false;
+        tab.dirty = true;
+    }
+    Ok(())
+}
+
 /// Export the loaded mesh as a `.3mf`.
 ///
 /// `selection` is optional. `None` keeps the original behaviour — a synthetic
@@ -181,6 +274,7 @@ pub async fn export_3mf_command(
     path: String,
     selection: Option<ExportSelection>,
     preserve_source: Option<bool>,
+    texture: Option<TextureMappingRequest>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
@@ -189,13 +283,23 @@ pub async fn export_3mf_command(
     let output_path = confirmed_output_path(&path)?;
     let progress = export_progress(&app);
     progress(0.05, "3mf:start");
-    save_workspace(
-        &mut workspace,
-        &output_path,
-        selection.as_ref(),
-        preserve_source.unwrap_or(false),
-        &progress,
-    )?;
+    let preserve_source = preserve_source.unwrap_or(false);
+    if let Some(texture) = texture.as_ref() {
+        if preserve_source {
+            return Err(
+                "Save the workspace separately from the mapped texture plate export".into(),
+            );
+        }
+        print_texture_plate(&mut workspace, tab_id, &output_path, texture, &progress)?;
+    } else {
+        save_workspace(
+            &mut workspace,
+            &output_path,
+            selection.as_ref(),
+            preserve_source,
+            &progress,
+        )?;
+    }
     progress(0.97, "3mf:verify");
 
     // Adversarial hardening: do NOT trust zip.finish()'s Ok. Confirm the file
@@ -251,6 +355,130 @@ pub async fn export_obj_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn textured_mesh(color: [u8; 4], slot: u8) -> crate::mesh::model::MeshModel {
+        use crate::export::texture_mapping::TextureColorAssignment;
+        let mut mesh = crate::mesh::model::MeshModel::new();
+        mesh.vertices = vec![[30.0, 30.0, 0.0], [40.0, 30.0, 0.0], [30.0, 40.0, 0.0]];
+        mesh.faces = vec![[0, 1, 2]];
+        mesh.face_colors = vec![[11, 12, 13, 255]];
+        mesh.segment_labels = vec![0];
+        mesh.texture_painting = true;
+        mesh.apply_paint(None, &[(0, color)]);
+        mesh.texture_slot_mapping = Some(TextureSlotMapping {
+            selection: ExportSelection {
+                machine_id: "snapmaker_u1".into(),
+                nozzle_diameter: "0.4".into(),
+                process_name: "0.20 Standard @Snapmaker U1 (0.4 nozzle)".into(),
+                filament_names: vec!["Generic PLA".into(); 4],
+                target_slicer: "snapmaker_orca".into(),
+            },
+            nominal_colors: vec![Some([5, 6, 7]), None, None, Some([50, 60, 70])],
+            assignments: vec![TextureColorAssignment {
+                rgb: [color[0], color[1], color[2]],
+                slot,
+            }],
+        });
+        mesh
+    }
+
+    #[test]
+    fn mapped_print_keeps_the_workspace_and_accepts_only_its_active_plate() {
+        let dir = tempfile::tempdir().unwrap();
+        let saved = dir.path().join("whole.3mf");
+        let printed = dir.path().join("active.3mf");
+        let mut workspace = Workspace::new();
+        let first = workspace
+            .append(textured_mesh([70, 80, 90, 255], 2), "one".into())
+            .unwrap();
+        let second = workspace
+            .append(textured_mesh([40, 50, 60, 255], 3), "two".into())
+            .unwrap();
+        save_workspace(&mut workspace, &saved, None, true, &|_, _| {}).unwrap();
+        assert!(workspace.tabs[0].mesh.is_none());
+        let original_archive = std::fs::read(&saved).unwrap();
+        let mesh = workspace.tabs[1].mesh.as_ref().unwrap();
+        let mut mapping = mesh.texture_slot_mapping.as_ref().unwrap().clone();
+        mapping.assignments[0].slot = 4;
+        let request = TextureMappingRequest {
+            revision: preview(mesh).unwrap().revision,
+            mapping,
+        };
+        assert!(
+            print_texture_plate(&mut workspace, first, &printed, &request, &|_, _| {}).is_err()
+        );
+        assert!(print_texture_plate(&mut workspace, second, &saved, &request, &|_, _| {}).is_err());
+        assert!(save_workspace(&mut workspace, &printed, None, false, &|_, _| {}).is_err());
+        assert!(!printed.exists());
+        print_texture_plate(&mut workspace, second, &printed, &request, &|_, _| {}).unwrap();
+        assert_eq!(
+            workspace.project_path.as_deref(),
+            Some(saved.canonicalize().unwrap().as_path())
+        );
+        assert_eq!(std::fs::read(&saved).unwrap(), original_archive);
+        assert_eq!(
+            workspace
+                .infos()
+                .iter()
+                .map(|tab| tab.dirty)
+                .collect::<Vec<_>>(),
+            [false, true]
+        );
+        let output = crate::threemf::read_project(&printed, &|_, _| {}).unwrap();
+        assert_eq!(output.plates.len(), 1);
+        let mesh = &output.plates[0].mesh;
+        assert_eq!(mesh.face_colors, [[40, 50, 60, 255]]);
+        assert_eq!(
+            mesh.texture_slot_mapping.as_ref().unwrap().assignments[0].slot,
+            4
+        );
+
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&printed).unwrap()).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_reader(zip.by_name("Metadata/project_settings.config").unwrap())
+                .unwrap();
+        assert_eq!(settings["filament_colour"][3], "#323C46");
+        let mut model = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("3D/3dmodel.model").unwrap(), &mut model)
+            .unwrap();
+        assert!(model.contains("paint_color=\"1C\""));
+    }
+
+    #[test]
+    fn saved_texture_mappings_and_history_are_isolated_across_lazy_plate_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let saved = dir.path().join("textured-plates.3mf");
+        let mut workspace = Workspace::new();
+        let colors = [[70, 80, 90, 255], [40, 50, 60, 255]];
+        workspace
+            .append(textured_mesh(colors[0], 2), "one".into())
+            .unwrap();
+        workspace
+            .append(textured_mesh(colors[1], 4), "two".into())
+            .unwrap();
+        save_workspace(&mut workspace, &saved, None, true, &|_, _| {}).unwrap();
+
+        let mut reopened = Workspace::new();
+        reopened.open_project(&saved, &|_, _| {}).unwrap();
+        assert!(reopened.tabs[0].mesh.is_none());
+        for (index, expected_slot) in [2, 4].into_iter().enumerate() {
+            let tab = reopened.tabs[index].id;
+            reopened.switch(tab).unwrap();
+            let mesh = reopened.tabs[index].mesh.as_mut().unwrap();
+            assert!(mesh.texture_painting);
+            assert!(!mesh.texture_state_dropped);
+            assert!(mesh.segments.is_empty());
+            assert_eq!(mesh.face_colors, [colors[index]]);
+            assert_eq!(
+                mesh.texture_slot_mapping.as_ref().unwrap().assignments[0].slot,
+                expected_slot
+            );
+            mesh.history
+                .undo(&mut mesh.face_colors, &mut mesh.segment_labels)
+                .unwrap();
+            assert_eq!(mesh.face_colors, [[11, 12, 13, 255]]);
+        }
+    }
 
     #[test]
     fn confirmed_filenames_are_preserved_including_repeated_suffixes_and_case() {

@@ -292,7 +292,7 @@ pre.mermaid.mermaid-offline::after {
 <h2 id="what-you-need">What you need</h2>
 <ul>
 <li><a href="https://nodejs.org/">Node.js</a> ≥ 18 (frontend toolchain)</li>
-<li><a href="https://www.rust-lang.org/tools/install">Rust</a> ≥ 1.70 + Cargo (backend)</li>
+<li><a href="https://www.rust-lang.org/tools/install">Rust</a> stable + Cargo (backend)</li>
 <li><a href="https://v2.tauri.app/start/prerequisites/">Tauri 2 system prerequisites</a> — on Windows this is mainly WebView2</li>
 </ul>
 <h2 id="build--run">Build &amp; run</h2>
@@ -319,6 +319,9 @@ npm run tauri dev      # first run compiles the Rust backend (~2-3 min)
     D --&gt; E[&quot;Export 3MF / OBJ&quot;]
     E --&gt; F[&quot;Slice &amp; print&quot;]
 </pre>
+<h2 id="convert-an-embedded-glb-texture">Convert an embedded GLB texture</h2>
+<p>Open one static GLB from the file menu or drag it onto CYM. It needs UVs and one embedded opaque PNG or JPEG base-color texture. Inspect the original texture and converted faces side by side, in a single view, or using the comparison slider. The 1–16 color limit controls the editable model palette. Confirm to add the converted model as a new plate, then use the existing painting tools.</p>
+<p>The preview follows the application theme. Existing plates and the workspace save destination are preserved while previewing and importing the GLB.</p>
 <h2 id="verification--tests">Verification &amp; tests</h2>
 <pre><code class="language-bash">npx tsc --noEmit               # TypeScript
 npx vitest run                 # frontend unit tests
@@ -355,7 +358,7 @@ RUST_LOG=debug npm run tauri dev
 </tbody></table>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#what-you-need">What you need</a></li><li class="toc-h2"><a href="#build--run">Build &amp; run</a></li><li class="toc-h2"><a href="#your-first-colour-job">Your first colour job</a></li><li class="toc-h2"><a href="#verification--tests">Verification &amp; tests</a></li><li class="toc-h2"><a href="#debug-logging">Debug logging</a></li><li class="toc-h2"><a href="#troubleshooting">Troubleshooting</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#what-you-need">What you need</a></li><li class="toc-h2"><a href="#build--run">Build &amp; run</a></li><li class="toc-h2"><a href="#your-first-colour-job">Your first colour job</a></li><li class="toc-h2"><a href="#convert-an-embedded-glb-texture">Convert an embedded GLB texture</a></li><li class="toc-h2"><a href="#verification--tests">Verification &amp; tests</a></li><li class="toc-h2"><a href="#debug-logging">Debug logging</a></li><li class="toc-h2"><a href="#troubleshooting">Troubleshooting</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CYM 纹理转涂色 · UI 原型</title>
+<style>
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--background,#eef2f6);color:var(--foreground,#132238);font:14px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+body:has(.prototype[data-theme="dark"]){background:var(--background,#10151e)}
+button,input,select{font:inherit}
+button,select{cursor:pointer}
+button:disabled{cursor:default;opacity:.48}
+button:focus-visible,input:focus-visible,select:focus-visible,canvas:focus-visible{outline:3px solid #579fef;outline-offset:2px}
+.prototype{max-width:1240px;margin:auto;padding:18px;--ink:#172742;--quiet:#4f637a;--line:#dce5ee;--white:#fff;--soft:#f5f8fc;--blue:#1f61ba;--deep:#16498c;--light:#ebf3ff;--stage:#eaf0f7;color:var(--ink);color-scheme:light}
+.prototype[data-theme="dark"]{
+  color-scheme:dark;
+  --ink:#e6edf6;--quiet:#adbbce;--line:#374459;--white:#1b2330;--soft:#212c3b;
+  --blue:#296ac5;--deep:#225bae;--light:#2a3e58;--stage:#36465b;
+  --dark-accent:#a9d0ff;--dark-control:#263246;--dark-hover:#33445e;
+}
+.window{background:var(--white);border:1px solid var(--line);border-radius:17px;overflow:hidden;box-shadow:0 24px 64px -36px #102d5d6b}
+.top{height:58px;background:#172942;display:flex;align-items:center;gap:12px;padding:0 22px;color:#fff}
+.mark{width:29px;height:29px;display:grid;place-items:center;border-radius:8px;font-weight:800;font-size:15px;background:#d5eaff;color:#173b65}
+.brand{font-weight:690;letter-spacing:.02em}
+.top small{margin-left:auto;color:#c1cfdf;font-size:12px}
+.theme-choice{flex:none}
+.top select{background:#223856;color:#f0f6ff;border-color:#527092;padding:4px 5px;font-size:12px}
+.steps{display:flex;gap:26px;align-items:center;padding:0 22px;border-bottom:1px solid var(--line);min-height:53px}
+.step{display:flex;gap:8px;align-items:center;align-self:stretch;border:0;border-bottom:3px solid transparent;background:none;color:#53667f;padding:8px 0 5px;font-weight:570}
+.step[aria-current="step"]{border-bottom-color:#3279ce;color:#174e99}
+.step:disabled{opacity:.6}
+.step .dot{background:#edf2f8;color:#4a6383;border-radius:50%;width:23px;height:23px;display:grid;place-items:center;font:700 11px/1 ui-monospace,monospace}
+.step[aria-current="step"] .dot{color:#fff;background:var(--blue)}
+.page{padding:23px 22px}
+.heading{display:flex;gap:14px;justify-content:space-between;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap}
+h1,h2,h3,p{margin:0}
+h1{font-size:clamp(23px,2.6vw,31px);font-weight:720;line-height:1.23;letter-spacing:-.045em}
+h2{font-size:16px;line-height:1.3;letter-spacing:-.02em}
+h3{font-size:13px}
+.muted{color:var(--quiet)}
+.file{margin-top:5px;color:var(--quiet);display:flex;gap:10px;align-items:center;font-size:13px}
+.file code, .count{font-family:ui-monospace,monospace}
+.filetype{font-size:10px;font-weight:750;letter-spacing:.07em;color:#365877;border:1px solid #cddbeb;border-radius:5px;padding:1px 5px}
+.body{display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:15px;align-items:start}
+.assets{min-width:0}
+.view{background:var(--stage);border:1px solid #d6e1ed;border-radius:13px;overflow:hidden;position:relative}
+.splitframe{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.pane{min-inline-size:0;position:relative;min-height:350px;background:radial-gradient(ellipse at 50% 32%,#fcfeff 1%,#eef4fa 53%,#e1eaf4 100%);overflow:hidden}
+.pane canvas{display:block;width:100%;height:350px;touch-action:pan-y;cursor:grab}
+.pane canvas:active{cursor:grabbing}
+.pane-label{position:absolute;z-index:1;top:12px;left:12px;border-radius:6px;border:1px solid #d7e3f0;padding:4px 8px;font-size:12px;font-weight:680;background:#f8fbffed;color:#25476c;pointer-events:none}
+.pane-label.primary-label{background:#23486e;border-color:#23486e;color:#fff}
+.viewtools{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;flex-wrap:wrap}
+.group{display:flex;align-items:center;background:#edf2f8;border:1px solid #dce6f1;border-radius:9px;padding:3px;gap:2px}
+.group button{border:0;background:transparent;color:#4c5d73;border-radius:6px;padding:4px 7px;font-size:12px;white-space:nowrap}
+.group button[aria-pressed="true"]{background:#fff;color:#144f9b;font-weight:650;box-shadow:0 1px 2px #1b36531c}
+.textbtn{border:0;background:transparent;padding:4px;color:#3d617e;font-size:12px}
+.textbtn:hover{text-decoration:underline}
+.panel{border:1px solid var(--line);padding:16px;border-radius:12px;min-width:0}
+.panel h2{margin-bottom:13px}
+.fieldline{display:flex;justify-content:space-between;align-items:center;gap:12px;font-weight:650}
+.fieldline output{color:var(--deep);padding:2px 7px;background:#edf5ff;border-radius:5px;min-width:28px;text-align:center}
+input[type="range"]{width:100%;height:22px;margin:8px 0 0;accent-color:#2568c9}
+.ticks{display:flex;justify-content:space-between;font:11px/1.35 ui-monospace,monospace;color:#62758b}
+.rule{height:1px;background:#e4eaf1;margin:15px 0}
+.swatches{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;margin:9px 0 13px}
+.swatch{width:100%;aspect-ratio:1;border:1px solid #14284826;border-radius:5px;display:block}
+.metrics{margin:9px 0 0;padding:0;display:grid;gap:6px;color:#53667e;font-size:12px}
+.metric{display:flex;justify-content:space-between;gap:8px}
+.metric dd{margin:0;color:#263f5d;font-variant-numeric:tabular-nums}
+.actions{border-top:1px solid var(--line);padding:13px 22px;background:#f9fbfd;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.actions .buttons{display:flex;gap:8px;margin-left:auto}
+.button{font-weight:650;background:#fff;color:#263c59;border:1px solid #cfdbe8;border-radius:8px;padding:8px 13px;white-space:nowrap}
+.button:hover:enabled{background:#edf3fa}
+.button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.button.primary:hover:enabled{background:var(--deep)}
+select{max-width:100%;color:#253d59;background:#fff;border:1px solid #cedbea;border-radius:7px;padding:6px}
+.demo{display:flex;gap:8px;align-items:center;font-size:12px;color:#526680}
+.demo select{padding:5px 9px}
+.splitframe[data-mode="single"],.splitframe[data-mode="overlay"]{display:block;position:relative}
+.splitframe[data-mode="overlay"] .view:last-child{position:absolute;inset:0;clip-path:inset(0 0 0 var(--wipe,50%))}
+.splitframe[data-mode="overlay"] .view:last-child .pane-label{left:auto;right:12px}
+.wipe{display:flex;align-items:center;gap:10px;margin:8px 0 0;color:var(--quiet);font-size:12px}
+.wipe input{margin:0;max-width:250px}
+.preview-status{position:relative;background:var(--soft);border:1px solid var(--line);border-radius:12px;min-height:352px;display:grid;place-content:center;text-align:center;padding:20px}
+.preview-status strong{font-size:17px;margin-bottom:6px}
+.preview-status p{max-width:340px;color:#556982}
+.loadbar{height:5px;background:#dbe7f6;border-radius:5px;overflow:hidden;margin:14px auto 0;width:min(85%,170px)}
+.loadbar::before{content:"";display:block;width:62%;height:100%;background:#366ec5;border-radius:5px}
+.exportbar{display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-bottom:13px}
+.exportbar label{font-size:12px;font-weight:650}
+.exportbar select{width:100%;display:block;margin-top:3px}
+.notice{padding:8px 10px;border:1px solid #ead7a9;background:#fff8e8;color:#704c05;border-radius:7px;margin:9px 0;font-size:12px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{text-align:left;padding:6px 3px;border-bottom:1px solid #e4eaf2}
+th{color:#4d637e;font-weight:640}
+td select{width:100%;padding:4px 3px}
+.colorname{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.slot-field{display:flex;align-items:center;gap:6px}
+.chip{height:14px;width:14px;border-radius:4px;border:1px solid #14284826;display:inline-block;flex:none}
+.exportlayout{grid-template-columns:minmax(0,1fr) minmax(290px,348px)}
+.map-scroll{max-height:233px;overflow:auto}
+.map-scroll thead{position:sticky;top:0;background:#fff;z-index:1}
+.inlinelabel{font-size:12px;color:#315c88;background:#ecf4ff;display:inline-block;border-radius:5px;padding:4px 7px;margin:9px 0 0}
+dialog{border:1px solid var(--line);color:var(--ink);background:#fff;border-radius:14px;max-width:min(415px,92vw);padding:21px;box-shadow:0 18px 55px #15274053}
+dialog::backdrop{background:#14284172}
+dialog p{margin:9px 0 18px;color:var(--quiet)}
+dialog form{display:flex;gap:8px;justify-content:flex-end}
+[data-theme="dark"] .top{background:#141d2b;border-bottom:1px solid var(--line)}
+[data-theme="dark"] .window{box-shadow:0 24px 64px -36px #000c}
+[data-theme="dark"] :is(.step,.demo,.metrics,.ticks,.preview-status p,th,.group button){color:var(--quiet)}
+[data-theme="dark"] :is(.step[aria-current="step"],.textbtn,.filetype,.fieldline output,.inlinelabel,.group button[aria-pressed="true"]){color:var(--dark-accent)}
+[data-theme="dark"] :is(.step .dot,.group){background:var(--soft);color:var(--quiet)}
+[data-theme="dark"] .step[aria-current="step"] .dot{background:var(--blue);color:#fff}
+[data-theme="dark"] .step[aria-current="step"]{border-bottom-color:#6eadff}
+[data-theme="dark"] :is(.filetype,.view,.pane-label,.group,.button:not(.primary),select){border-color:#4b5c73}
+[data-theme="dark"] .pane{background:radial-gradient(ellipse at 50% 32%,#5e7085 1%,#45576d 54%,#334358 100%)}
+[data-theme="dark"] .pane-label{background:#223249f5;color:#edf5ff}
+[data-theme="dark"] .pane-label.primary-label{background:#25538a;border-color:#547dae}
+[data-theme="dark"] :is(.fieldline output,.group button[aria-pressed="true"],.inlinelabel){background:var(--light)}
+[data-theme="dark"] input[type="range"]{accent-color:#78b1ff}
+[data-theme="dark"] :is(.rule,.loadbar){background:var(--line)}
+[data-theme="dark"] .loadbar::before{background:#76aefa}
+[data-theme="dark"] :is(.swatch,.chip){border-color:#e6f0ff48}
+[data-theme="dark"] .actions{background:#18212f}
+[data-theme="dark"] :is(.metric dd,.button:not(.primary),select){color:var(--ink)}
+[data-theme="dark"] :is(.button:not(.primary),select){background:var(--dark-control)}
+[data-theme="dark"] .button:not(.primary):hover:enabled{background:var(--dark-hover)}
+[data-theme="dark"] .notice{border-color:#79643c;background:#3b3121;color:#ffe2a3}
+[data-theme="dark"] :is(th,td){border-bottom-color:var(--line)}
+[data-theme="dark"] :is(.map-scroll thead,dialog){background:var(--white)}
+[data-theme="dark"] dialog::backdrop{background:#050910ba}
+@media(max-width:750px){
+.prototype{padding:9px}.top,.steps,.actions{padding-inline:13px}.steps{gap:14px}.page{padding:16px 12px}
+.body,.exportlayout{grid-template-columns:1fr}.pane,.pane canvas{min-height:0;height:285px}.preview-status{min-height:285px}.map-scroll{max-height:220px}
+}
+@media(max-width:410px){
+.step{font-size:12px;gap:4px}.step .dot{width:19px;height:19px}.steps{gap:10px}
+.pane,.pane canvas{height:235px}.pane-label{left:6px;top:6px;padding:3px 5px;font-size:11px}
+.top{gap:8px}.top small{font-size:10px}.top select{font-size:11px}
+}
+</style>
+</head>
+<body>
+<main class="prototype">
+<div class="window" aria-label="ColorYourModel 纹理转涂色交互原型">
+<header class="top"><span class="mark" aria-hidden="true">C</span><span class="brand">ColorYourModel</span><small>UI / UX 交互稿</small><div class="theme-choice"><select id="theme" aria-label="外观"><option value="auto">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div></header>
+<nav class="steps" aria-label="操作步骤">
+<button class="step" data-step="import" aria-current="step"><span class="dot">1</span>导入预览</button>
+<button class="step" data-step="edit" disabled><span class="dot">2</span>编辑模型</button>
+<button class="step" data-step="export" disabled><span class="dot">3</span>耗材与导出</button>
+</nav>
+<section id="import" class="page">
+<header class="heading"><div><h1>纹理转涂色</h1><p class="file"><span class="filetype">GLB</span><code>tide-vase.glb</code></p></div></header>
+<div class="body">
+<div class="assets">
+<div id="previews" class="splitframe" data-mode="split">
+<div class="view" id="original"><div class="pane"><span class="pane-label">原始贴图</span><canvas data-kind="original" tabindex="0" aria-label="原始贴图，可拖动旋转"></canvas></div></div>
+<div class="view" id="converted"><div class="pane"><span class="pane-label primary-label">转换结果</span><canvas data-kind="baked" tabindex="0" aria-label="转换结果，可拖动旋转"></canvas></div></div>
+</div>
+<div class="preview-status" id="preview-status" hidden role="status"><strong id="state-title"></strong><p id="state-copy"></p><div class="loadbar" id="loadbar" hidden></div></div>
+<div class="viewtools" id="viewtools">
+<div class="group" aria-label="对比方式"><button data-mode="split" aria-pressed="true">并排</button><button data-mode="single" aria-pressed="false">单窗</button><button data-mode="overlay" aria-pressed="false">滑条</button></div>
+<div class="group" id="single-picker" hidden aria-label="预览内容"><button data-single="original" aria-pressed="false">原始贴图</button><button data-single="converted" aria-pressed="true">转换结果</button></div>
+<button class="textbtn" data-reset>重置视角</button>
+</div>
+<label class="wipe" id="wipe" hidden>对比分界 <input id="divider" type="range" min="0" max="100" value="50"></label>
+</div>
+<aside class="panel" aria-label="转换设置">
+<h2>转换设置</h2>
+<label for="colors" class="fieldline">色板上限 <output id="color-count" for="colors">8</output></label>
+<input id="colors" type="range" min="1" max="16" value="8">
+<div class="ticks"><span>1</span><span>8</span><span>16</span></div>
+<div class="rule"></div>
+<h3 id="palette-title">结果色板 · 8 色</h3>
+<div id="palette" class="swatches" aria-labelledby="palette-title"></div>
+<dl class="metrics">
+<div class="metric"><dt>原网格</dt><dd>4,320 面</dd></div>
+<div class="metric"><dt>转换后</dt><dd id="faces">69,120 面</dd></div>
+</dl>
+</aside>
+</div>
+</section>
+<section id="edit" class="page" hidden>
+<header class="heading"><div><h1>编辑模型</h1><p class="file"><span class="filetype">GLB</span><code>tide-vase.glb</code></p></div><span class="inlinelabel">未保存</span></header>
+<div class="body">
+<div class="assets"><div class="view"><div class="pane"><canvas data-kind="edit" tabindex="0" aria-label="应用后的模型，可拖动旋转"></canvas></div></div><div class="viewtools"><button class="textbtn" data-reset>重置视角</button></div></div>
+<aside class="panel"><h2>涂色</h2><h3 id="edit-palette-title">模型色板</h3><div id="edit-palette" class="swatches" aria-labelledby="edit-palette-title"></div><dl class="metrics"><div class="metric"><dt>模型面数</dt><dd>69,120 面</dd></div><div class="metric"><dt>已用颜色</dt><dd id="edit-colors"></dd></div></dl></aside>
+</div>
+</section>
+<section id="export" class="page" hidden>
+<header class="heading"><div><h1>耗材与导出</h1><p class="file"><span class="filetype">3MF</span><code>tide-vase.3mf</code></p></div></header>
+<div class="body exportlayout">
+<div class="assets"><div class="view"><div class="pane"><span class="pane-label primary-label">耗材分配预览</span><canvas data-kind="export" tabindex="0" aria-label="耗材分配预览，可拖动旋转"></canvas></div></div><div class="viewtools"><button class="textbtn" data-reset>重置视角</button><span class="muted" id="map-progress" role="status"></span></div></div>
+<aside class="panel">
+<h2>颜色对应到耗材槽</h2>
+<div class="exportbar">
+<label>格式<select aria-label="导出格式"><option>3MF</option></select></label>
+<label>目标机型<select id="machine"><option value="4">Snapmaker U1 · 4 槽</option><option value="16">测试配置 · 16 槽</option></select></label>
+</div>
+<p class="notice" id="merge-notice"></p>
+<div class="map-scroll"><table aria-label="颜色对应到耗材槽"><thead><tr><th scope="col">模型色</th><th scope="col">耗材槽</th></tr></thead><tbody id="map"></tbody></table></div>
+<button class="textbtn" id="suggest">为未分配颜色填入建议</button>
+</aside>
+</div>
+</section>
+<footer class="actions">
+<label class="demo">演示状态 <select id="scenario"><option value="ready">转换完成</option><option value="loading">正在转换</option><option value="uv">缺少 UV</option><option value="budget">超过面数预算</option></select></label>
+<div class="buttons"><button class="button" id="back">取消</button><button class="button primary" id="next">确认应用</button></div>
+</footer>
+</div>
+<dialog id="dialog" aria-labelledby="dialog-title" aria-describedby="dialog-copy"><h2 id="dialog-title"></h2><p id="dialog-copy"></p><form method="dialog"><button class="button primary">完成</button></form></dialog>
+</main>
+<script>
+/* Throwaway UI prototype: split, single and wipe variants; all data is simulated. */
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => [...document.querySelectorAll(selector)];
+const main = $(".prototype");
+const systemTheme = matchMedia("(prefers-color-scheme: dark)");
+const state = { step: "import", applied: false, colors: 8, appliedColors: 8, scenario: "ready", mode: "split", single: "converted", angle: -.42, map: [] };
+const samples = ["#eae1cb","#17384c","#37738a","#d16b44","#81a8a3","#be9b69","#a44233","#ec9f61","#bbd0c5","#1b576a","#20344c","#f2b994","#5a9ea9","#87534e","#6492a6","#d5c8ad"];
+const spoolColors = ["#eae1cb","#17384c","#d16b44","#6e9e96", ...samples.slice(4)];
+const colorNames = ["象牙白","深海蓝","雾蓝","陶橙","灰青","沙褐","赤陶","浅橙","浅海绿","海松蓝","墨蓝","蜜桃","淡青","赭红","雨蓝","亚麻"];
+const states = {
+  loading:["正在转换纹理","正在细分网格和采样颜色。",true],
+  uv:["模型缺少 UV 坐标","请为模型添加 UV 后重新导入。",false],
+  budget:["转换超过面数预算","请在建模软件中简化网格，再重新导入。",false]
+};
+
+function palette(n) {
+  if (n === 1) return ["#858f83"];
+  return samples.slice(0,n);
+}
+function renderSwatches(id,n) {
+  $(id).replaceChildren(...palette(n).map((color,i) => {
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = color;
+    swatch.title = n === 1 ? "合成色" : colorNames[i];
+    swatch.setAttribute("aria-label", swatch.title);
+    return swatch;
+  }));
+}
+function showDialog(title, message) {
+  $("#dialog-title").textContent = title;
+  $("#dialog-copy").textContent = message;
+  $("#dialog").showModal();
+}
+
+function updateTheme() {
+  const selected = $("#theme").value;
+  main.dataset.theme = selected === "auto" ? (systemTheme.matches ? "dark" : "light") : selected;
+  requestAnimationFrame(draw);
+}
+$("#theme").addEventListener("change",updateTheme);
+systemTheme.addEventListener("change",updateTheme);
+
+function renderMapping() {
+  const slots = Number($("#machine").value);
+  const sources = palette(state.appliedColors);
+  const rows = sources.map((rgb,index) => {
+    const row = document.createElement("tr");
+    const from = document.createElement("td");
+    const name = state.appliedColors === 1 ? "合成色" : colorNames[index];
+    from.className = "colorname";
+    const swatch = document.createElement("span");
+    swatch.className = "chip";
+    swatch.style.background = rgb;
+    from.append(swatch,name);
+    const to = document.createElement("td");
+    const slotField = document.createElement("div");
+    slotField.className = "slot-field";
+    const assigned = document.createElement("span");
+    assigned.className = "chip";
+    assigned.hidden = state.map[index] == null;
+    assigned.style.background = spoolColors[state.map[index]] ?? "";
+    const picker = document.createElement("select");
+    picker.setAttribute("aria-label", name + "的耗材槽");
+    picker.append(new Option("请选择",""));
+    for (let i = 0; i < slots; i++) picker.append(new Option("槽 " + (i+1),String(i)));
+    picker.value = state.map[index] ?? "";
+    picker.addEventListener("change", () => {
+      state.map[index] = picker.value === "" ? null : Number(picker.value);
+      assigned.hidden = state.map[index] == null;
+      assigned.style.background = spoolColors[state.map[index]] ?? "";
+      renderMappingStatus();
+      draw();
+    });
+    slotField.append(assigned,picker);
+    to.append(slotField);
+    row.append(from,to);
+    return row;
+  });
+  $("#map").replaceChildren(...rows);
+  $("#merge-notice").textContent = sources.length > slots
+    ? `${sources.length} 个模型色，${slots} 个耗材槽。可将多个模型色分配到同一槽。`
+    : "槽位建议基于耗材标称色，可手动调整。";
+  renderMappingStatus();
+}
+function renderMappingStatus() {
+  const remaining = palette(state.appliedColors).filter((_,i) => state.map[i] == null).length;
+  $("#map-progress").textContent = remaining ? `待分配 ${remaining} 色` : "已为全部模型色分配槽位";
+  $("#next").disabled = remaining !== 0;
+}
+function render() {
+  for (const section of $$(".page")) section.hidden = section.id !== state.step;
+  for (const button of $$(".step")) {
+    button.disabled = button.dataset.step !== "import" && !state.applied;
+    if (button.dataset.step === state.step) button.setAttribute("aria-current","step");
+    else button.removeAttribute("aria-current");
+  }
+  $(".demo").hidden = state.step !== "import";
+  $("#back").textContent = state.step === "import" ? "取消" : state.step === "edit" ? "重新导入" : "返回编辑";
+  $("#next").textContent = state.step === "import" ? (state.applied ? "应用并替换模型" : "确认应用") : state.step === "edit" ? "导出 3MF" : "确认并导出";
+  $("#next").disabled = false;
+  if (state.step === "import") renderImport();
+  if (state.step === "edit") {
+    $("#edit-colors").textContent = `${state.appliedColors} 色`;
+    renderSwatches("#edit-palette",state.appliedColors);
+  }
+  if (state.step === "export") renderMapping();
+  requestAnimationFrame(draw);
+}
+function renderImport() {
+  const ready = state.scenario === "ready";
+  $("#previews").hidden = !ready;
+  $("#viewtools").hidden = !ready;
+  $("#preview-status").hidden = ready;
+  $("#colors").disabled = !ready;
+  $("#next").disabled = !ready;
+  $("#color-count").textContent = state.colors;
+  $("#palette-title").textContent = ready ? `结果色板 · ${state.colors} 色` : "结果色板";
+  $("#palette").hidden = !ready;
+  $("#faces").textContent = ready ? "69,120 面" : "—";
+  if (ready) renderSwatches("#palette",state.colors);
+  else {
+    const [title,message,loading] = states[state.scenario];
+    $("#state-title").textContent = title;
+    $("#state-copy").textContent = message;
+    $("#loadbar").hidden = !loading;
+  }
+  $("#previews").dataset.mode = state.mode;
+  $("#single-picker").hidden = state.mode !== "single";
+  $("#wipe").hidden = !ready || state.mode !== "overlay";
+  $("#original").hidden = state.mode === "single" && state.single !== "original";
+  $("#converted").hidden = state.mode === "single" && state.single !== "converted";
+  for (const button of $$("button[data-mode]")) button.setAttribute("aria-pressed",button.dataset.mode === state.mode);
+  for (const button of $$("button[data-single]")) button.setAttribute("aria-pressed",button.dataset.single === state.single);
+}
+for (const button of $$(".step")) button.onclick = () => {state.step = button.dataset.step; render();};
+for (const button of $$("button[data-mode]")) button.onclick = () => {
+  state.mode = button.dataset.mode;
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set("variant",state.mode);
+    history.replaceState(null,"",url);
+  } catch {}
+  render();
+};
+const variant = new URL(location.href).searchParams.get("variant");
+if (["split","single","overlay"].includes(variant)) state.mode = variant;
+for (const button of $$("button[data-single]")) button.onclick = () => {state.single = button.dataset.single; render();};
+$("#divider").oninput = (event) => $("#previews").style.setProperty("--wipe",event.target.value+"%");
+$("#scenario").onchange = (event) => {state.scenario = event.target.value; render();};
+$("#colors").oninput = (event) => {state.colors = Number(event.target.value); renderImport(); draw();};
+$("#next").onclick = () => {
+  if (state.step === "import") {
+    state.applied = true;
+    state.appliedColors = state.colors;
+    state.map = [];
+    state.step = "edit";
+  } else if (state.step === "edit") {
+    state.step = "export";
+  } else {
+    showDialog("导出交互已完成","已确认全部颜色的耗材槽位。交互稿仅模拟导出。");
+    return;
+  }
+  render();
+};
+$("#back").onclick = () => {
+  if (state.step === "export") state.step = "edit";
+  else if (state.step === "edit" || !state.applied) {
+    state.scenario = "ready";
+    $("#scenario").value = "ready";
+    if (state.step === "edit") state.step = "import";
+    else showDialog("已取消导入","当前模型及已有编辑保持原样。");
+  } else {
+    state.step = "edit";
+    state.scenario = "ready";
+    $("#scenario").value = "ready";
+  }
+  render();
+};
+$("#machine").onchange = () => {state.map = []; render();};
+$("#suggest").onclick = () => {
+  const slots = Number($("#machine").value);
+  state.map = palette(state.appliedColors).map((rgb,index) => state.map[index] ?? nearest(rgb,spoolColors.slice(0,slots)));
+  render();
+};
+for (const button of $$("[data-reset]")) button.onclick = () => {state.angle = -.42; draw();};
+
+function rgb(hex) {
+  return [1,3,5].map(i => parseInt(hex.slice(i,i+2),16));
+}
+function tint(color,factor) {
+  return "rgb(" + color.map(c => Math.max(0,Math.min(255,Math.round(c*factor)))).join(",") + ")";
+}
+function nearest(hex,colors) {
+  const sample = rgb(hex);
+  let best = 0;
+  let distance = Infinity;
+  colors.forEach((value,index) => {
+    const next = rgb(value).reduce((sum,n,i) => sum+(n-sample[i])**2,0);
+    if (next < distance) {distance = next; best = index;}
+  });
+  return best;
+}
+const rings = [[-1.37,.55],[-1.30,.67],[-1.17,.77],[-.97,.89],[-.70,1.04],[-.39,1.12],[-.04,1.13],[.28,1.07],[.56,.94],[.78,.75],[.97,.58],[1.12,.51],[1.28,.56],[1.35,.63],[1.43,.60]];
+function meshPoint(i,angle) {
+  const [y,r] = rings[i];
+  const radius = r*(1+.015*Math.sin(8*angle));
+  return [radius*Math.sin(angle),y,radius*Math.cos(angle)];
+}
+function tex(v,a) {
+  const u = ((a / (2*Math.PI) + .5) % 1 + 1) % 1;
+  const horizon = .45 + .065*Math.sin(2*a+.15) + .027*Math.cos(3*a);
+  const wave = (shift) => .085*Math.sin(a*2.3+shift) + .029*Math.cos(5*a+shift);
+  const rounded = ((u-.44)*2.7)**2 + ((v-.71)*1.23)**2;
+  if(v>.91) return "#1b3848";
+  if(v<.12) return v<.045 ? "#213746" : "#37738a";
+  if(rounded < .013) return rounded < .0101 ? "#d16b44" : "#ec9f61";
+  if(v>horizon+.16+wave(2)) return v>.80 ? "#eae1cb" : "#f2dfc5";
+  if(v>horizon+.095+wave(2)) return "#ddb98f";
+  if(v>horizon+wave(.9)*.7) return "#b78264";
+  if(v>horizon-.051+wave(.4)) return "#cbd3bc";
+  if(v>horizon-.12+wave(.2)) return "#81a8a3";
+  if(v>horizon-.18+wave(1.2)) return "#37738a";
+  if(v>horizon-.29+wave(.7)) return "#214e62";
+  return "#17384c";
+}
+const segments = 88;
+const surfaces = [];
+for (let k=0;k<rings.length-1;k++) {
+  const steps = 5;
+  for(let q=0;q<steps;q++) for(let j=0;j<segments;j++) {
+    const a = 2*Math.PI*j/segments;
+    const b = 2*Math.PI*(j+1)/segments;
+    const m = (a+b)/2;
+    const point = (angle,t) => {
+      const p = meshPoint(k,angle);
+      const n = meshPoint(k+1,angle);
+      return p.map((v,index) => v+(n[index]-v)*t);
+    };
+    const corners = [point(a,q/steps),point(b,q/steps),point(b,(q+1)/steps),point(a,(q+1)/steps)];
+    const v = (corners[0][1]+corners[2][1]+2.74)/5.60;
+    const [y0,r0] = rings[k];
+    const [y1,r1] = rings[k+1];
+    surfaces.push({corners,m,dy:(r0-r1)/(y1-y0),color:tex(v,m)});
+  }
+}
+function paintCanvas(canvas,colors) {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (!w || !h) return;
+  const dpr = Math.min(window.devicePixelRatio||1,2);
+  if (canvas.width !== Math.round(w*dpr) || canvas.height !== Math.round(h*dpr)) {
+    canvas.width=Math.round(w*dpr); canvas.height=Math.round(h*dpr);
+  }
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  const scale=Math.min(w*.30,h*.305);
+  const cx=w/2,cy=h*.484;
+  const elevation=.24;
+  const cs=Math.cos(state.angle),ss=Math.sin(state.angle);
+  const project=([x,y,z]) => {
+    const rx = x*cs+z*ss;
+    const rz = z*cs-x*ss;
+    return [cx+rx*scale,cy-(y*Math.cos(elevation)-rz*Math.sin(elevation))*scale,rz*Math.cos(elevation)+y*Math.sin(elevation)];
+  };
+  const ground = cy+1.34*scale;
+  const shadow = ctx.createRadialGradient(cx,ground,1,cx,ground,scale*1.5);
+  const dark = main.dataset.theme === "dark";
+  shadow.addColorStop(0,dark ? "#09121c94" : "#28496f54");
+  shadow.addColorStop(1,dark ? "#09121c00" : "#28496f00");
+  ctx.save();
+  ctx.translate(cx,ground);ctx.scale(1,.21);ctx.translate(-cx,-ground);
+  ctx.fillStyle=shadow;ctx.fillRect(cx-scale*1.5,ground-scale*1.5,scale*3,scale*3);
+  ctx.restore();
+  ctx.strokeStyle=dark ? "#d9e8ff39" : "#93abc230";
+  ctx.lineWidth=1;
+  for(let i=-2;i<=2;i++) {
+    ctx.beginPath();ctx.moveTo(cx+i*scale*.27,ground-11);ctx.lineTo(cx+i*scale*.49,ground+22);ctx.stroke();
+  }
+  const kind=canvas.dataset.kind;
+  const nearestByColor = new Map();
+  const drawFaces = surfaces.map(face => {
+    const angle = face.m+state.angle;
+    const normalZ = Math.cos(angle)*Math.cos(elevation)+face.dy*Math.sin(elevation);
+    if(normalZ<-.10) return null;
+    const points=face.corners.map(project);
+    const light = Math.max(.61,Math.min(1.14,.84+ .22*normalZ - .17*Math.sin(angle) + .10*face.dy));
+    let base = face.color;
+    if(kind!=="original") {
+      if(!nearestByColor.has(base)) nearestByColor.set(base,nearest(base,colors));
+      const index = nearestByColor.get(base);
+      base = kind === "export" && state.map[index] != null ? spoolColors[state.map[index]] : colors[index];
+    }
+    return {points,depth:points.reduce((s,p)=>s+p[2],0),fill:tint(rgb(base),light)};
+  }).filter(Boolean).sort((a,b)=>a.depth-b.depth);
+  const opening = project([0,1.44,0]);
+  ctx.beginPath();ctx.ellipse(opening[0],opening[1],scale*.59,scale*.153,0,0,2*Math.PI);
+  ctx.fillStyle="#172e3b";ctx.fill();
+  ctx.lineWidth=.65;
+  for(const {points,fill} of drawFaces) {
+    ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);
+    for(const point of points.slice(1)) ctx.lineTo(point[0],point[1]);
+    ctx.closePath();ctx.fillStyle=fill;ctx.strokeStyle=fill;ctx.fill();ctx.stroke();
+  }
+  ctx.beginPath();ctx.ellipse(opening[0],opening[1],scale*.582,scale*.144,0,0,2*Math.PI);
+  ctx.lineWidth=Math.max(1,scale*.018);ctx.strokeStyle="#788b96";ctx.stroke();
+}
+function draw() {
+  for(const canvas of $$("canvas")) {
+    if (canvas.offsetParent === null) continue;
+    const n = canvas.dataset.kind === "baked" ? state.colors : state.appliedColors;
+    paintCanvas(canvas,palette(n));
+  }
+}
+for (const canvas of $$("canvas")) {
+  let start;
+  canvas.onpointerdown = (event) => {
+    start={x:event.clientX,angle:state.angle};
+    canvas.setPointerCapture(event.pointerId);
+  };
+  canvas.onpointermove = (event) => {
+    if (!start) return;
+    state.angle=start.angle+(event.clientX-start.x)*.013;
+    draw();
+  };
+  canvas.onpointerup = canvas.onpointercancel = () => {start=undefined;};
+  canvas.onkeydown = (event) => {
+    if(!["ArrowLeft","ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    state.angle += event.key === "ArrowLeft" ? -.15 : .15;
+    draw();
+  };
+}
+new ResizeObserver(draw).observe(main);
+updateTheme();
+render();
+</script>
+</body>
+</html>

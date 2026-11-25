@@ -3,7 +3,7 @@ import { useAppStore } from '../store/appStore';
 
 type TabOwnership = { tabId: number | null; epoch: number };
 const owners = new WeakMap<object, TabOwnership>();
-const reads = new Set(['history_state', 'history_entries', 'get_face_color', 'used_colors', 'paint_source_groups', 'paint_source_faces', 'export_palette_preview', 'set_hidden_labels']);
+const reads = new Set(['history_state', 'history_entries', 'get_face_color', 'used_colors', 'paint_source_groups', 'paint_source_faces', 'export_palette_preview', 'texture_mapping_preview', 'set_hidden_labels']);
 
 export function captureTabOwnership(): TabOwnership {
   const state = useAppStore.getState();

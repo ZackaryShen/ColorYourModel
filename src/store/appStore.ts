@@ -171,7 +171,7 @@ interface AppStore {
   segmentStageKind: AlgorithmKind | null;
 
   // Actions
-  setMeshData: (data: MeshData) => void;
+  setMeshData: (data: MeshData, preserveProjectPath?: boolean) => void;
   setProjectPath: (path: string | null) => void;
   updateSegmentLabels: (labels: number[], segments: Segment[], faceColors?: number[]) => void;
   /** Write back the colors a paint command just produced into the CANONICAL
@@ -578,7 +578,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   segmentStage: "",
   segmentStageKind: null,
 
-  setMeshData: (data) =>
+  setMeshData: (data, preserveProjectPath = false) =>
     set((previous) => ({
       meshData: data,
       tabs: (data.tabs ?? []).map(tab => ({ ...tab, dirty: tab.dirty || previous.tabs.find(old => old.id === tab.id)?.dirty || (tab.id === previous.activeTabId && previous.paintDirty) })),
@@ -586,9 +586,9 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       tabEpoch: previous.tabEpoch + 1,
       tabViews: Object.fromEntries((data.tabs ?? []).map(tab => [tab.id, tab.id === previous.activeTabId ? [...previous.hiddenSegments] : previous.tabViews[tab.id] ?? []])),
       isLoaded: true,
-      projectPath: null,
-      canUndo: false,
-      canRedo: false,
+      projectPath: preserveProjectPath ? previous.projectPath : null,
+      canUndo: data.canUndo ?? false,
+      canRedo: data.canRedo ?? false,
       paintDirty: Boolean(data.tabs?.find(tab => tab.id === data.tabId)?.dirty || previous.tabs.find(tab => tab.id === data.tabId)?.dirty || (data.tabId != null && data.tabId === previous.activeTabId && previous.paintDirty)),
       selectedSegment: null,
       hoveredSegment: null,

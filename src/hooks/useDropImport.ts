@@ -6,7 +6,7 @@ import { planFileDrop } from "../utils/stlDrop";
 import { log } from "../utils/logger";
 
 /**
- * Drag-and-drop STL/3MF import (issue #21).
+ * Drag-and-drop STL, GLB and 3MF import (issue #21).
  *
  * With the default `dragDropEnabled: true` the webview intercepts OS
  * drag-drop on Windows, so HTML5 dragover/drop handlers never fire — the
@@ -51,7 +51,7 @@ export function useDropImport(importFromPath: (path: string, confirmLoaded?: boo
         // it has no sensible target. Rejected, but never silently — issue #21
         // requires a message for every swallowed drop.
         const state = useAppStore.getState();
-        if (state.isLoading || state.importBusy || state.pendingImportPath) {
+        if (state.isLoading || state.importBusy || state.saveBusy || state.pendingImportPath || state.pendingCloseTabId != null) {
           setStatusMessage(tRef.current("drop.importInProgress"));
           return;
         }

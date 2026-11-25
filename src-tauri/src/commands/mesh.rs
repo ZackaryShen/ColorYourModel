@@ -1,3 +1,4 @@
+use super::texture::TextureImportJobs;
 use super::workspace::{MeshGuard, TabInfo, Workspace};
 use crate::mesh::loader::load_stl;
 use crate::mesh::model::MeshDataDto;
@@ -27,7 +28,7 @@ fn import_progress(app: tauri::AppHandle) -> impl Fn(f32, &str) {
     }
 }
 
-fn mesh_response(mut dto: MeshDataDto) -> Result<Response, String> {
+pub(super) fn mesh_response(mut dto: MeshDataDto) -> Result<Response, String> {
     // Five little-endian lengths, then aligned numeric buffers and JSON metadata.
     // Keeping the large arrays binary avoids printing/parsing millions of numbers.
     let vertices = std::mem::take(&mut dto.vertices);
@@ -71,8 +72,10 @@ pub async fn load_model(
     path: String,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    jobs: State<'_, TextureImportJobs>,
 ) -> Result<Response, String> {
     let workspace = Arc::clone(&state.workspace);
+    let jobs = Arc::clone(jobs.inner());
     tauri::async_runtime::spawn_blocking(move || {
         let path = PathBuf::from(path);
         let progress = import_progress(app);
@@ -86,12 +89,16 @@ pub async fn load_model(
                 let mesh = load_stl(&path, &progress)?;
                 let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("plate");
                 let mut ws = workspace.lock().map_err(|e| e.to_string())?;
+                let mut jobs = jobs.lock().map_err(|e| e.to_string())?;
                 ws.append(mesh, name.to_owned())?;
+                jobs.invalidate();
                 ws.dto()?
             }
             "3mf" => {
                 let mut ws = workspace.lock().map_err(|e| e.to_string())?;
+                let mut jobs = jobs.lock().map_err(|e| e.to_string())?;
                 ws.open_project(&path, &progress)?;
+                jobs.invalidate();
                 ws.dto()?
             }
             _ => return Err(format!("Unsupported file format: {ext}")),

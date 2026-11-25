@@ -38,6 +38,10 @@ export interface MeshData {
   /** True when a persisted undo history part existed but could not be decoded
    *  (the model opens with an empty stack). A missing part stays false. */
   historyDropped?: boolean;
+  texturePainting?: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  importWarning?: "3mf-texture";
 }
 
 export interface PaintResult {

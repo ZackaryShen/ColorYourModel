@@ -1,221 +1,270 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { invokeTab } from "../../utils/tabCommand";
+import { captureTabOwnership, invokeTab, isCurrentTabOwnership } from "../../utils/tabCommand";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useT } from "../../i18n";
 import { useAppStore } from "../../store/appStore";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
-import {
+import type {
   ExportSelection,
-  FilamentSummary,
   MachineSummary,
+  Rgb,
+  TextureMappingPreview,
+  TextureMappingRequest,
+  TextureMappingSuggestions,
 } from "../../types/export";
 import { log } from "../../utils/logger";
+import {
+  fromHex,
+  rgbHex,
+  TextureMappingTable,
+  TextureMappingViewport,
+} from "./TextureMappingPanel";
 
-/**
- * Modal "pick the machine / nozzle / process / filament" dialog shown before
- * the 3MF save dialog. Lets the user tell the slicer what hardware the file
- * was painted for, instead of re-picking it by hand after every export.
- *
- * Data comes from the backend preset library (`list_export_presets`) and the
- * actual quantised palette of the loaded mesh (`export_palette_preview`), so
- * the dialog never drifts from what the writer will produce.
- */
+const DEFAULT_TARGET = "snapmaker_orca";
+
+function selectProfile(
+  machine: MachineSummary,
+  nozzleDiameter: string,
+  slotCount: number,
+  saved?: ExportSelection,
+): ExportSelection {
+  const processes = machine.processes.filter((process) => process.nozzles.includes(nozzleDiameter));
+  const filaments = machine.filaments.filter((filament) => filament.nozzles.includes(nozzleDiameter));
+  return {
+    machineId: machine.id,
+    nozzleDiameter,
+    processName: processes.find(({ name }) => name === saved?.processName)?.name ?? processes[0]?.name ?? "",
+    filamentNames: Array.from({ length: slotCount }, (_, i) =>
+      filaments.find(({ name }) => name === saved?.filamentNames[i])?.name ?? filaments[0]?.name ?? ""),
+    targetSlicer: saved && machine.targetSlicers.includes(saved.targetSlicer)
+      ? saved.targetSlicer
+      : machine.targetSlicers.find((target) => target === DEFAULT_TARGET) ?? machine.targetSlicers[0] ?? "",
+  };
+}
+
 export function ExportDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { export3mf, exportObj } = useTauriCommand();
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const lastSelection = useAppStore((s) => s.lastExportSelection);
   const setLastExportSelection = useAppStore((s) => s.setLastExportSelection);
-
-  // 3MF carries colours through a slicer profile; OBJ writes RGB directly and
-  // needs none of the machine / process / filament pickers.
+  const theme = useAppStore((s) => s.theme);
+  const setTheme = useAppStore((s) => s.setTheme);
+  const meshData = useAppStore((s) => s.meshData);
+  const activeTabId = useAppStore((s) => s.activeTabId);
+  const tabEpoch = useAppStore((s) => s.tabEpoch);
+  const [owner] = useState(captureTabOwnership);
+  const [sourceMesh] = useState(meshData);
+  const isTexture = sourceMesh?.texturePainting === true;
   const [format, setFormat] = useState<"3mf" | "obj">("3mf");
   const [progress, setProgress] = useState(0);
-
   const [machines, setMachines] = useState<MachineSummary[]>([]);
   const [palette, setPalette] = useState<string[]>([]);
-  const [machineId, setMachineId] = useState("");
-  const [nozzle, setNozzle] = useState("");
-  const [processName, setProcessName] = useState("");
-  const [filamentNames, setFilamentNames] = useState<string[]>([]);
-  const [targetSlicer, setTargetSlicer] = useState("snapmaker_orca");
+  const [selection, setSelection] = useState<ExportSelection | null>(null);
   const [exporting, setExporting] = useState(false);
-
-  // Multi-select for batch filament assignment: tick the slots you want to
-  // repaint, then apply one filament to all of them at once.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<Set<number>>(new Set());
   const [bulkFilament, setBulkFilament] = useState("");
 
-  const toggleSlot = (i: number) => {
-    setSelectedSlots((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
-  };
+  const [mappingPreview, setMappingPreview] = useState<TextureMappingPreview | null>(null);
+  const [assigned, setAssigned] = useState<ReadonlyMap<string, number>>(new Map());
+  const [nominalColors, setNominalColors] = useState<(Rgb | null)[]>([]);
+  const [suggestions, setSuggestions] = useState<{
+    selection: ExportSelection;
+    nominalColors: (Rgb | null)[];
+    data?: TextureMappingSuggestions;
+    error?: string;
+  } | null>(null);
+  const [suggestionAttempt, setSuggestionAttempt] = useState(0);
 
-  // Live progress from the backend's `export-progress` events. Mounted once so
-  // the listener survives the whole export; the command runs off the webview
-  // thread, so these arrive in real time instead of being batched at the end.
+  // Export progress is delivered while the native writer is running.
   useEffect(() => {
-    const unlisten = listen<{ progress: number; stage: string }>(
-      "export-progress",
-      (e) => {
-        setProgress(e.payload.progress);
-      }
-    );
-    return () => {
-      unlisten.then((fn) => fn());
-    };
+    const unlisten = listen<{ progress: number; stage: string }>("export-progress", (e) => {
+      setProgress(e.payload.progress);
+    });
+    return () => { void unlisten.then((fn) => fn()); };
   }, []);
 
   useEffect(() => {
+    if (!sourceMesh) return;
     let cancelled = false;
-    (async () => {
-      try {
-        const [ms, pal] = await Promise.all([
-          invoke<MachineSummary[]>("list_export_presets"),
-          invokeTab<string[]>("export_palette_preview"),
-        ]);
-        if (cancelled) return;
-        setMachines(ms);
-        setPalette(pal.length ? pal : ["#8A8A8A"]);
-        if (ms.length > 0) {
-          // Prefer the persisted selection when it still matches a known
-          // machine; otherwise fall back to the first machine's defaults.
-          const persisted = lastSelection;
-          const known = persisted
-            ? ms.find((m) => m.id === persisted.machineId)
-            : undefined;
-          setMachineId(known ? known.id : ms[0].id);
-          setTargetSlicer(
-            known && persisted && persisted.targetSlicer
-              ? persisted.targetSlicer
-              : ms[0].targetSlicers.includes("snapmaker_orca")
-                ? "snapmaker_orca"
-                : ms[0].targetSlicers[0] ?? "orcaslicer"
-          );
-        }
-      } catch (e) {
-        log.error("ExportDialog", "failed to load presets", { error: String(e) });
-        setStatusMessage(t("export.presetLoadFailed", String(e)));
+    const persisted = useAppStore.getState().lastExportSelection;
+    const loadPreview = isTexture
+      ? invokeTab<TextureMappingPreview>("texture_mapping_preview", {}, owner.tabId)
+      : invokeTab<string[]>("export_palette_preview", {}, owner.tabId);
+
+    void Promise.all([invoke<MachineSummary[]>("list_export_presets"), loadPreview]).then(([presets, preview]) => {
+      if (cancelled) return;
+      setMachines(presets);
+      const accepted = Array.isArray(preview) ? null : preview.accepted;
+      const preferred = accepted?.selection ?? persisted ?? undefined;
+      const machine = presets.find(({ id }) => id === preferred?.machineId) ?? presets[0];
+      if (!machine) {
+        setLoadError("");
+        return;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [setStatusMessage]); // eslint-disable-line react-hooks/exhaustive-deps
+      const saved = preferred?.machineId === machine.id ? preferred : undefined;
+      const nozzle = machine.nozzles.find((n) => n === saved?.nozzleDiameter) ?? machine.nozzles[0] ?? "";
+      const slotCount = Array.isArray(preview) ? preview.length || 1 : machine.slotsByNozzle[nozzle] ?? 0;
+      setSelection(selectProfile(machine, nozzle, slotCount, saved));
+      if (Array.isArray(preview)) {
+        setPalette(preview.length ? preview : ["#8A8A8A"]);
+        return;
+      }
+      setMappingPreview(preview);
+      const matching = accepted?.selection.machineId === machine.id ? accepted : null;
+      setNominalColors(Array.from({ length: slotCount }, (_, i) => matching?.nominalColors[i] ?? null));
+      setAssigned(new Map(matching?.assignments
+        .filter(({ slot }) => slot >= 1 && slot <= slotCount)
+        .map(({ rgb, slot }) => [rgbHex(rgb), slot])));
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      log.error("ExportDialog", "failed to load export settings", { error: String(error) });
+      setLoadError(String(error));
+    });
+    return () => { cancelled = true; };
+  }, [isTexture, owner, sourceMesh]);
 
-  const machine = useMemo(
-    () => machines.find((m) => m.id === machineId) ?? null,
-    [machines, machineId]
-  );
+  const machine = machines.find(({ id }) => id === selection?.machineId);
+  const nozzle = selection?.nozzleDiameter ?? "";
+  const processes = machine?.processes.filter((process) => process.nozzles.includes(nozzle)) ?? [];
+  const filaments = machine?.filaments.filter((filament) => filament.nozzles.includes(nozzle)) ?? [];
+  const slotCount = isTexture ? machine?.slotsByNozzle[nozzle] ?? 0 : palette.length;
+  const validProfile = !!selection?.processName
+    && slotCount > 0
+    && (!isTexture || (!!selection.targetSlicer && selection.filamentNames.every(Boolean)));
 
-  const nozzles = machine?.nozzles ?? [];
-
-  // Restore a supported nozzle; dependent choices are validated below.
   useEffect(() => {
-    const persisted = lastSelection;
-    const matches = persisted && persisted.machineId === machineId;
-    setNozzle(matches && nozzles.includes(persisted.nozzleDiameter)
-      ? persisted.nozzleDiameter : (nozzles[0] ?? ""));
-  }, [machineId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!mappingPreview || !selection || !validProfile) return;
+    let cancelled = false;
+    void invoke<TextureMappingSuggestions>("suggest_texture_mapping", {
+      selection,
+      nominalColors,
+      colors: mappingPreview.rows.map(({ rgb }) => rgb),
+    }).then((data) => {
+      if (!cancelled) setSuggestions({ selection, nominalColors, data });
+    }).catch((error: unknown) => {
+      if (!cancelled) setSuggestions({ selection, nominalColors, error: String(error) });
+    });
+    return () => { cancelled = true; };
+  }, [mappingPreview, selection, nominalColors, validProfile, suggestionAttempt]);
 
-  const processes = useMemo(
-    () => (machine?.processes ?? []).filter((p) => p.nozzles.includes(nozzle)),
-    [machine, nozzle]
-  );
+  // A delayed response belongs to the spool settings that produced it.
+  const currentSuggestions = suggestions?.selection === selection && suggestions.nominalColors === nominalColors
+    ? suggestions : null;
+  const slots = useMemo<TextureMappingSuggestions["slots"]>(() => currentSuggestions?.data?.slots
+    ?? nominalColors.map((color, i) => ({ slot: i + 1, nominalColor: color, displayColor: color ?? [138, 138, 138] })),
+  [currentSuggestions, nominalColors]);
+  const sourceReplaced = !sourceMesh || !meshData || owner.tabId !== activeTabId || owner.epoch !== tabEpoch
+    || meshData.vertices !== sourceMesh.vertices || meshData.faces !== sourceMesh.faces;
+  const textureReady = !!mappingPreview?.rows.length && !!currentSuggestions?.data
+    && mappingPreview.rows.every(({ rgb }) => assigned.has(rgbHex(rgb)));
+  const canExport = !exporting && !sourceReplaced && (format === "obj" || (!!validProfile && (!isTexture || textureReady)));
 
-  const filaments = useMemo(
-    () =>
-      (machine?.filaments ?? []).filter((f) => f.nozzles.includes(nozzle)),
-    [machine, nozzle]
-  );
+  const chooseProfile = (next: MachineSummary, nextNozzle: string) => {
+    if (next.id === selection?.machineId && nextNozzle === nozzle) return;
+    const count = isTexture ? next.slotsByNozzle[nextNozzle] ?? 0 : palette.length;
+    const sameMachine = next.id === selection?.machineId;
+    setSelection(selectProfile(next, nextNozzle, count, sameMachine ? selection : undefined));
+    setSelectedSlots(new Set());
+    setBulkFilament("");
+    if (isTexture) {
+      setNominalColors((previous) => Array.from({ length: count }, (_, i) => sameMachine ? previous[i] ?? null : null));
+      setAssigned((previous) => new Map(sameMachine ? [...previous].filter(([, slot]) => slot <= count) : []));
+    }
+  };
 
-  // The filament the bulk control will apply; falls back to the first available
-  // one so "one-click switch" always has a target.
-  const bulkTarget = filaments.some(f => f.name === bulkFilament)
-    ? bulkFilament : (filaments[0]?.name ?? "");
+  const setFilament = (slotIndex: number, name: string) => {
+    setSelection((previous) => previous && {
+      ...previous,
+      filamentNames: previous.filamentNames.map((filament, i) => i === slotIndex ? name : filament),
+    });
+  };
+
+  const bulkTarget = filaments.find(({ name }) => name === bulkFilament)?.name ?? filaments[0]?.name ?? "";
   const applyBulk = () => {
     if (!bulkTarget) return;
-    setFilamentNames((prev) => {
-      const next = [...prev];
-      // No slot ticked → apply to every slot (true one-click switch).
-      const targets =
-        selectedSlots.size > 0
-          ? selectedSlots
-          : new Set(palette.map((_c, i) => i));
-      targets.forEach((i) => {
-        if (i < next.length) next[i] = bulkTarget;
-      });
+    setSelection((previous) => previous && {
+      ...previous,
+      filamentNames: previous.filamentNames.map((name, i) => !selectedSlots.size || selectedSlots.has(i) ? bulkTarget : name),
+    });
+  };
+
+  const toggleSlot = (index: number) => {
+    setSelectedSlots((previous) => {
+      const next = new Set(previous);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
       return next;
     });
   };
 
-  // Preserve valid choices, including the saved non-default process.
-  useEffect(() => {
-    const persisted = lastSelection?.machineId === machineId && lastSelection.nozzleDiameter === nozzle
-      ? lastSelection : null;
-    setProcessName(previous => processes.some(p => p.name === previous) ? previous
-      : processes.some(p => p.name === persisted?.processName) ? persisted!.processName
-      : (processes[0]?.name ?? ""));
-  }, [machineId, nozzle, processes, lastSelection]);
+  const assignSlot = (rgb: Rgb, slot: number) => {
+    setAssigned((previous) => {
+      const next = new Map(previous);
+      if (slot === 0) next.delete(rgbHex(rgb));
+      else if (slot >= 1 && slot <= slotCount) next.set(rgbHex(rgb), slot);
+      return next;
+    });
+  };
 
-  // Every displayed material must also be valid in the submitted selection.
-  useEffect(() => {
-    const persisted = lastSelection?.machineId === machineId && lastSelection.nozzleDiameter === nozzle
-      ? lastSelection.filamentNames : [];
-    setFilamentNames(previous => palette.map((_colour, i) => {
-      const saved = persisted[Math.min(i, persisted.length - 1)];
-      if (filaments.some(f => f.name === previous[i])) return previous[i];
-      if (filaments.some(f => f.name === saved)) return saved;
-      return filaments[0]?.name ?? "";
-    }));
-  }, [machineId, nozzle, palette.length, filaments, lastSelection]);
+  const suggestedAssignments = currentSuggestions?.data?.assignments;
+  const applySuggestions = () => {
+    if (!suggestedAssignments) return;
+    setAssigned((previous) => {
+      const next = new Map(previous);
+      for (const { rgb, slot } of suggestedAssignments) {
+        const key = rgbHex(rgb);
+        if (!next.has(key)) next.set(key, slot);
+      }
+      return next;
+    });
+  };
 
   const doExport = async () => {
-    const state = useAppStore.getState();
-    if (state.importBusy || state.saveBusy || state.isLoading || state.pendingImportPath || state.pendingCloseTabId != null) return;
-    if (format === "3mf" && (!machine || !processName)) return;
-    const selection: ExportSelection = {
-      machineId,
-      nozzleDiameter: nozzle,
-      processName,
-      filamentNames,
-      targetSlicer,
-    };
+    const { importBusy, saveBusy, isLoading, pendingImportPath, pendingCloseTabId } = useAppStore.getState();
+    if (!canExport || importBusy || saveBusy || isLoading || pendingImportPath || pendingCloseTabId != null) return;
+    // Capture the confirmed revision and exact RGB mapping before the save dialog opens.
+    const mappingRequest: TextureMappingRequest | undefined = format === "3mf" && selection && mappingPreview ? {
+      revision: mappingPreview.revision,
+      mapping: {
+        selection,
+        nominalColors,
+        assignments: mappingPreview.rows.flatMap(({ rgb }) => {
+          const slot = assigned.get(rgbHex(rgb));
+          return slot === undefined ? [] : [{ rgb, slot }];
+        }),
+      },
+    } : undefined;
+    setExportError(null);
     useAppStore.setState({ saveBusy: true });
     setExporting(true);
     setProgress(0);
     try {
-      const ext = format === "obj" ? "obj" : "3mf";
+      const ext = format;
       const path = await save({
-        filters: [{ name: format === "obj" ? "OBJ" : "3MF", extensions: [ext] }],
+        filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
         defaultPath: `model.${ext}`,
       });
-      if (!path) return; // user cancelled the save dialog
+      if (!path) return;
+      if (!isCurrentTabOwnership(owner)) throw new Error(t("export.modelChanged"));
 
-      // The native dialog confirmed this exact destination, including its name.
-      const outPath = path;
-
-      if (format === "obj") {
-        await exportObj(outPath);
+      if (mappingRequest) {
+        // The native overwrite prompt covers this exact path.
+        await export3mf(path, mappingRequest.mapping.selection, false, mappingRequest);
       } else {
-        await export3mf(outPath, selection);
-        setLastExportSelection({
-          machineId,
-          nozzleDiameter: nozzle,
-          processName,
-          filamentNames,
-          targetSlicer,
-        });
+        if (format === "obj") await exportObj(path);
+        else if (selection) await export3mf(path, selection);
+      }
+      if (format === "3mf" && selection) {
+        setLastExportSelection(selection);
       }
       onClose();
     } catch (e) {
       log.error("ExportDialog", "export failed", { error: String(e) });
+      setExportError(String(e));
       setStatusMessage(t("export.failure", String(e)));
     } finally {
       useAppStore.setState({ saveBusy: false });
@@ -227,8 +276,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   // disable their export entries, but this guard makes the empty state
   // explicit for any path that still opens the dialog (e.g. a model unloaded
   // while the dialog was already queued) instead of showing empty pickers.
-  const meshData = useAppStore((s) => s.meshData);
-  if (!meshData) {
+  if (!sourceMesh) {
     return (
       <div style={styles.overlay} onClick={onClose}>
         <div
@@ -251,200 +299,260 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
     );
   }
 
+  const showMapping = format === "3mf" && isTexture;
+
   return (
-    <div style={styles.overlay} onClick={onClose}>
+    <div style={styles.overlay} onClick={() => { if (!exporting) onClose(); }}>
       <div
-        style={styles.dialog}
+        style={{ ...styles.dialog, ...(showMapping ? styles.textureDialog : {}) }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        aria-label={t("export.title")}
       >
-        <div style={styles.header}>{t("export.title")}</div>
-
-        {/* Scrollable body: the 16-slot list alone overshoots the 85vh dialog
-            on the default window, which buried the footer's Export button
-            below the fold (GUI audit 2026-10-02, B6). Header, progress and
-            footer stay pinned outside this wrapper. */}
-        <div style={styles.body}>
-        {/* Format toggle — 3MF needs a slicer profile; OBJ writes colour
-            directly and hides the machine / process / filament pickers. */}
-        <label style={styles.label}>{t("export.format")}</label>
-        <div style={styles.row}>
-          <button
-            className="cym-btn"
-            style={{
-              ...styles.fmtBtn,
-              ...(format === "3mf" ? styles.fmtActive : {}),
-            }}
-            onClick={() => setFormat("3mf")}
-          >
-            {t("export.format3mf")}
-          </button>
-          <button
-            className="cym-btn"
-            style={{
-              ...styles.fmtBtn,
-              ...(format === "obj" ? styles.fmtActive : {}),
-            }}
-            onClick={() => setFormat("obj")}
-          >
-            {t("export.formatObj")}
-          </button>
+        <div style={styles.header}>
+          {t("export.title")}
+          {showMapping && (
+            <button
+              className="cym-btn texture-export-action"
+              style={styles.themeButton}
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {t(theme === "dark" ? "menu.themeToLight" : "menu.themeToDark")}
+            </button>
+          )}
         </div>
 
-        {format === "3mf" ? (
-          <>
-            {/* Machine */}
-            <label style={styles.label}>{t("export.machine")}</label>
-            <select
-              style={styles.select}
-              value={machineId}
-              onChange={(e) => setMachineId(e.target.value)}
-            >
-              {machines.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.vendor} — {m.name}
-                </option>
-              ))}
-            </select>
-
-            {/* Nozzle */}
-            {nozzles.length > 1 && (
-              <>
-                <label style={styles.label}>{t("export.nozzle")}</label>
-                <div style={styles.row}>
-                  {nozzles.map((n) => (
-                    <button
-                      key={n}
-                      className="cym-btn"
-                      style={{
-                        ...styles.nozzleBtn,
-                        ...(n === nozzle ? styles.nozzleActive : {}),
-                      }}
-                      onClick={() => setNozzle(n)}
-                    >
-                      {n}mm
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Process */}
-            <label style={styles.label}>{t("export.process")}</label>
-            <select
-              style={styles.select}
-              value={processName}
-              onChange={(e) => setProcessName(e.target.value)}
-              disabled={processes.length === 0}
-            >
-              {processes.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name}
-                  {p.layerHeight ? ` (${p.layerHeight}mm)` : ""}
-                </option>
-              ))}
-            </select>
-
-            {/* Filament per slot */}
-            <label style={styles.label}>
-              {t("export.filament")} ({palette.length}{t("export.slots")})
-            </label>
-
-            {/* Batch: pick one filament, apply it to every ticked slot at once
-                (or to all slots when none is ticked = one-click switch). */}
-            <div style={styles.bulkRow}>
+        <div style={styles.body}>
+          <fieldset className="export-dialog-fields" disabled={exporting}>
+            <div style={styles.label}>{t("export.format")}</div>
+            <div style={styles.row}>
               <button
                 className="cym-btn"
-                style={styles.bulkBtn}
-                onClick={() =>
-                  setSelectedSlots(
-                    selectedSlots.size === palette.length
-                      ? new Set()
-                      : new Set(palette.map((_c, i) => i))
-                  )
-                }
+                style={{ ...styles.fmtBtn, ...(format === "3mf" ? styles.fmtActive : {}) }}
+                aria-pressed={format === "3mf"}
+                onClick={() => { setFormat("3mf"); setExportError(null); }}
               >
-                {selectedSlots.size === palette.length
-                  ? t("export.deselectAll")
-                  : t("export.selectAll")}
+                {t("export.format3mf")}
               </button>
-              <select
-                style={{ ...styles.select, flex: 1 }}
-                value={bulkTarget}
-                onChange={(e) => setBulkFilament(e.target.value)}
-              >
-                {filaments.map((f) => (
-                  <option key={f.name} value={f.name}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
               <button
                 className="cym-btn"
-                style={{ ...styles.bulkBtn, ...styles.bulkApply }}
-                onClick={applyBulk}
+                style={{ ...styles.fmtBtn, ...(format === "obj" ? styles.fmtActive : {}) }}
+                aria-pressed={format === "obj"}
+                onClick={() => { setFormat("obj"); setExportError(null); }}
               >
-                    {selectedSlots.size > 0
-                  ? t("export.applyToSelected", selectedSlots.size)
-                  : t("export.applyToAll")}
+                {t("export.formatObj")}
               </button>
             </div>
 
-            {palette.map((colour, i) => {
-              const slotFilament = filamentNames[i] ?? filaments[0]?.name ?? "";
-              const checked = selectedSlots.has(i);
-              return (
-                <div key={i} style={styles.slotRow}>
-                  <input
-                    type="checkbox"
-                    style={styles.slotCheck}
-                    checked={checked}
-                    onChange={() => toggleSlot(i)}
-                    aria-label={t("export.slotSelect", i + 1)}
-                  />
-                  <span
-                    style={{ ...styles.swatch, background: colour }}
-                    title={colour}
-                  />
-                  <select
-                    style={styles.select}
-                    value={slotFilament}
-                    onChange={(e) => {
-                      setFilamentNames((prev) => {
-                        const next = [...prev];
-                        next[i] = e.target.value;
-                        return next;
-                      });
-                    }}
-                  >
-                    {filaments.map((f) => (
-                      <option key={f.name} value={f.name}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              );
-            })}
+            {showMapping && <p style={styles.note}>{t("export.textureScope")}</p>}
+            {format === "obj" ? (
+              <p style={styles.note}>{t("export.objNote")}</p>
+            ) : (
+              <div className={showMapping ? "texture-export-layout" : undefined}>
+                {showMapping && mappingPreview && (
+                  <TextureMappingViewport mesh={sourceMesh} preview={mappingPreview} assigned={assigned} slots={slots} />
+                )}
+                <div className={showMapping ? "texture-export-settings" : undefined}>
+                  <label style={styles.label}>
+                    {t("export.machine")}
+                    <select
+                      style={styles.select}
+                      value={machine?.id ?? ""}
+                      disabled={!machines.length}
+                      onChange={(e) => {
+                        const next = machines.find(({ id }) => id === e.target.value);
+                        if (next) chooseProfile(next, next.nozzles[0] ?? "");
+                      }}
+                    >
+                      {machines.map((m) => <option key={m.id} value={m.id}>{m.vendor} — {m.name}</option>)}
+                    </select>
+                  </label>
 
-            {/* Target slicer */}
-            <label style={styles.label}>{t("export.target")}</label>
-            <select
-              style={styles.select}
-              value={targetSlicer}
-              onChange={(e) => setTargetSlicer(e.target.value)}
-            >
-              <option value="snapmaker_orca">{t("export.targetSnapmaker")}</option>
-              <option value="orcaslicer">{t("export.targetOrca")}</option>
-            </select>
-          </>
-        ) : (
-          <div style={styles.note}>{t("export.objNote")}</div>
-        )}
+                  {machine && machine.nozzles.length > 1 && (
+                    <>
+                      <div style={styles.label}>{t("export.nozzle")}</div>
+                      <div style={styles.row}>
+                        {machine.nozzles.map((n) => (
+                          <button
+                            key={n}
+                            className="cym-btn"
+                            style={{ ...styles.nozzleBtn, ...(n === nozzle ? styles.nozzleActive : {}) }}
+                            aria-pressed={n === nozzle}
+                            onClick={() => chooseProfile(machine, n)}
+                          >
+                            {n}mm
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  <label style={styles.label}>
+                    {t("export.process")}
+                    <select
+                      style={styles.select}
+                      value={selection?.processName ?? ""}
+                      onChange={(e) => selection && setSelection({ ...selection, processName: e.target.value })}
+                      disabled={!processes.length}
+                    >
+                      {processes.map((process) => (
+                        <option key={process.name} value={process.name}>
+                          {process.name}{process.layerHeight ? ` (${process.layerHeight}mm)` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {showMapping ? (
+                    <>
+                      {mappingPreview && (
+                        <TextureMappingTable
+                          preview={mappingPreview}
+                          slots={slots}
+                          assigned={assigned}
+                          onAssign={assignSlot}
+                          onSuggest={applySuggestions}
+                          canSuggest={suggestedAssignments?.some(({ rgb }) => !assigned.has(rgbHex(rgb))) ?? false}
+                        />
+                      )}
+                      {slotCount > 0 && (
+                        <details className="texture-export-spools">
+                          <summary>{t("export.filament")} ({slotCount}{t("export.slots")})</summary>
+                          <p>{t("export.textureNominalHint")}</p>
+                          {slots.map(({ slot, nominalColor, displayColor }, i) => (
+                            <div key={slot} className="texture-export-spool">
+                              <label>
+                                {t("export.textureSlot", slot)}
+                                <select
+                                  style={styles.select}
+                                  value={selection?.filamentNames[i] ?? ""}
+                                  onChange={(e) => setFilament(i, e.target.value)}
+                                >
+                                  {filaments.map(({ name }) => <option key={name} value={name}>{name}</option>)}
+                                </select>
+                              </label>
+                              <label className="texture-export-nominal-colour" title={t("export.textureNominalColour", slot)}>
+                                <input
+                                  type="color"
+                                  aria-label={t("export.textureNominalColour", slot)}
+                                  value={rgbHex(displayColor)}
+                                  onChange={(e) => {
+                                    const rgb = fromHex(e.target.value);
+                                    setNominalColors((previous) => previous.map((color, j) => i === j ? rgb : color));
+                                  }}
+                                />
+                                {nominalColor ? rgbHex(nominalColor) : t("export.textureUnknown")}
+                              </label>
+                              {nominalColors[i] && (
+                                <button
+                                  className="cym-btn texture-export-action"
+                                  aria-label={t("export.textureClearColour", slot)}
+                                  onClick={() => setNominalColors((previous) => previous.map((color, j) => i === j ? null : color))}
+                                >
+                                  {t("export.textureResetColour")}
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </details>
+                      )}
+                      {loadError === null && (!mappingPreview || (validProfile && !currentSuggestions)) && (
+                        <p role="status" className="texture-export-feedback">{t("export.textureLoading")}</p>
+                      )}
+                      {currentSuggestions?.error && (
+                        <div className="texture-export-feedback" role="alert">
+                          {t("export.textureSuggestionsFailed", currentSuggestions.error)}
+                          <button className="cym-btn texture-export-action" onClick={() => {
+                            setSuggestions(null);
+                            setSuggestionAttempt((attempt) => attempt + 1);
+                          }}>
+                            {t("export.textureRetry")}
+                          </button>
+                        </div>
+                      )}
+                      {mappingPreview && !validProfile && (
+                        <p role="alert" className="texture-export-feedback">{t("export.textureInvalidProfile")}</p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div style={styles.label}>{t("export.filament")} ({palette.length}{t("export.slots")})</div>
+                      <div style={styles.bulkRow}>
+                        <button
+                          className="cym-btn"
+                          style={styles.bulkBtn}
+                          onClick={() => setSelectedSlots(selectedSlots.size === palette.length
+                            ? new Set() : new Set(palette.map((_, i) => i)))}
+                        >
+                          {selectedSlots.size === palette.length ? t("export.deselectAll") : t("export.selectAll")}
+                        </button>
+                        <select
+                          style={{ ...styles.select, flex: 1 }}
+                          aria-label={t("export.filament")}
+                          value={bulkTarget}
+                          onChange={(e) => setBulkFilament(e.target.value)}
+                        >
+                          {filaments.map(({ name }) => <option key={name} value={name}>{name}</option>)}
+                        </select>
+                        <button className="cym-btn" style={{ ...styles.bulkBtn, ...styles.bulkApply }} onClick={applyBulk}>
+                          {selectedSlots.size > 0 ? t("export.applyToSelected", selectedSlots.size) : t("export.applyToAll")}
+                        </button>
+                      </div>
+                      {palette.map((colour, i) => (
+                        <div key={i} style={styles.slotRow}>
+                          <input
+                            type="checkbox"
+                            style={styles.slotCheck}
+                            checked={selectedSlots.has(i)}
+                            onChange={() => toggleSlot(i)}
+                            aria-label={t("export.slotSelect", i + 1)}
+                          />
+                          <span style={{ ...styles.swatch, background: colour }} title={colour} />
+                          <select
+                            style={styles.select}
+                            aria-label={t("export.textureSlot", i + 1)}
+                            value={selection?.filamentNames[i] ?? ""}
+                            onChange={(e) => setFilament(i, e.target.value)}
+                          >
+                            {filaments.map(({ name }) => <option key={name} value={name}>{name}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  <label style={styles.label}>
+                    {t("export.target")}
+                    <select
+                      style={styles.select}
+                      value={selection?.targetSlicer ?? ""}
+                      onChange={(e) => selection && setSelection({ ...selection, targetSlicer: e.target.value })}
+                    >
+                      {(!isTexture || machine?.targetSlicers.includes("snapmaker_orca")) && (
+                        <option value="snapmaker_orca">{t("export.targetSnapmaker")}</option>
+                      )}
+                      {(!isTexture || machine?.targetSlicers.includes("orcaslicer")) && (
+                        <option value="orcaslicer">{t("export.targetOrca")}</option>
+                      )}
+                    </select>
+                  </label>
+                </div>
+              </div>
+            )}
+          </fieldset>
         </div>
 
-        {/* Progress + footer are pinned: visible at every scroll position. */}
+        {format === "3mf" && loadError !== null && (
+          <p role="alert" className="texture-export-feedback export-dialog-error">
+            {loadError ? t("export.presetLoadFailed", loadError) : t("export.noPresets")}
+          </p>
+        )}
+        {(exportError || sourceReplaced) && (
+          <p role="alert" className="texture-export-feedback export-dialog-error">
+            {sourceReplaced ? t("export.modelChanged") : t("export.failure", exportError ?? "")}
+          </p>
+        )}
         {exporting && (
           <div style={styles.progressWrap}>
             <div style={{ ...styles.progressBar, width: `${Math.round(progress * 100)}%` }} />
@@ -460,9 +568,9 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
             className="cym-btn"
             style={{ ...styles.btn, ...styles.btnPrimary }}
             onClick={doExport}
-            disabled={exporting || (format === "3mf" && (!machine || !processName))}
+            disabled={!canExport}
           >
-            {exporting ? t("export.exporting") : t("export.confirm")}
+            {t(exporting ? "export.exporting" : showMapping ? "export.textureConfirm" : "export.confirm")}
           </button>
         </div>
       </div>
@@ -474,7 +582,7 @@ const styles: Record<string, React.CSSProperties> = {
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.55)",
+    background: "var(--overlay-bg, rgba(0,0,0,0.55))",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -482,6 +590,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   dialog: {
     width: 460,
+    maxWidth: "calc(100vw - 56px)",
     maxHeight: "85vh",
     // Flex column + scrollable body (styles.body): header/progress/footer stay
     // pinned while only the settings list scrolls. The dialog itself no longer
@@ -495,14 +604,24 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--text-1, #eee)",
     fontFamily: 'inherit',
   },
+  textureDialog: {
+    width: 920,
+  },
   body: {
     overflowY: "auto",
     minHeight: 0,
   },
   header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
     fontSize: 15,
     fontWeight: 600,
     marginBottom: 12,
+  },
+  themeButton: {
+    marginTop: 0,
   },
   label: {
     display: "block",
@@ -512,6 +631,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   select: {
     width: "100%",
+    boxSizing: "border-box",
     padding: "6px 8px",
     background: "var(--bg-elevated, #3a3a3a)",
     color: "var(--text-1, #eee)",
@@ -534,7 +654,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
   },
   nozzleActive: {
-    borderColor: "var(--accent, #4a9eff)",
+    border: "1px solid var(--accent, #4a9eff)",
     background: "var(--bg-active, #3a5a7a)",
   },
   fmtBtn: {
@@ -548,7 +668,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
   },
   fmtActive: {
-    borderColor: "var(--accent, #4a9eff)",
+    border: "1px solid var(--accent, #4a9eff)",
     background: "var(--bg-active, #3a5a7a)",
   },
   note: {
@@ -608,7 +728,7 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap" as const,
   },
   bulkApply: {
-    borderColor: "var(--accent, #4a9eff)",
+    border: "1px solid var(--accent, #4a9eff)",
     background: "var(--bg-active, #3a5a7a)",
   },
   slotCheck: {

@@ -85,15 +85,19 @@ impl Package {
     /// limit (and an entry that inflates past its declared size is an error
     /// rather than an unbounded allocation).
     pub fn read(&mut self, name: &str) -> Result<Vec<u8>, String> {
+        self.read_at_most(name, self.read_limit)
+    }
+
+    pub(crate) fn read_at_most(&mut self, name: &str, limit: u64) -> Result<Vec<u8>, String> {
         let mut entry = self
             .archive
             .by_name(name)
             .map_err(|e| format!("package entry {name:?}: {e}"))?;
         let declared = entry.size();
-        if declared > self.read_limit {
+        let limit = limit.min(self.read_limit);
+        if declared > limit {
             return Err(format!(
-                "package entry {name:?} declares {declared} bytes, above the {} byte read limit",
-                self.read_limit
+                "package entry {name:?} declares {declared} bytes, above the {limit} byte read limit"
             ));
         }
 

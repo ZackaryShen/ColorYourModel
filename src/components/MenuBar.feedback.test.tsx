@@ -19,7 +19,7 @@ it("opens the feedback form with the UI language, theme, and installed version",
   vi.stubEnv("VITE_FEEDBACK_URL", "https://feedback.example.com/");
   vi.stubGlobal("__APP_VERSION__", "0.2.0");
   useAppStore.setState({ language: "zh", theme: "dark", meshData: null });
-  render(<MenuBar />);
+  render(<MenuBar onImport={vi.fn()} />);
 
   fireEvent.click(screen.getByRole("button", { name: "帮助" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "反馈问题…" }));
@@ -34,7 +34,7 @@ it("opens the feedback form with the UI language, theme, and installed version",
 it("keeps a clearly labeled GitHub feedback link when the form is not configured", () => {
   vi.stubEnv("VITE_FEEDBACK_URL", "");
   useAppStore.setState({ language: "en", meshData: null });
-  render(<MenuBar />);
+  render(<MenuBar onImport={vi.fn()} />);
 
   fireEvent.click(screen.getByRole("button", { name: "Help" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Report on GitHub…" }));
@@ -46,7 +46,7 @@ it("opens the official form from the always-visible button without a model loade
   vi.stubEnv("VITE_FEEDBACK_URL", undefined);
   vi.stubGlobal("__APP_VERSION__", "0.2.0");
   useAppStore.setState({ language: "en", theme: "light", meshData: null });
-  render(<MenuBar />);
+  render(<MenuBar onImport={vi.fn()} />);
 
   fireEvent.click(screen.getByRole("button", { name: "Feedback", exact: true }));
 
@@ -62,7 +62,7 @@ it("shows when the app could not open its feedback window", async () => {
   vi.stubGlobal("__APP_VERSION__", "0.2.0");
   vi.mocked(invoke).mockRejectedValueOnce(new Error("Feedback window unavailable"));
   useAppStore.setState({ language: "zh", statusMessage: "status.ready" });
-  render(<MenuBar />);
+  render(<MenuBar onImport={vi.fn()} />);
 
   fireEvent.click(screen.getByRole("button", { name: "反馈", exact: true }));
 

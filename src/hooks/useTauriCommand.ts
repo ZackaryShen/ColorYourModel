@@ -3,8 +3,8 @@ import { invoke as rawInvoke } from "@tauri-apps/api/core";
 import { invokeTab, carryTabResult, isCurrentTabResult } from "../utils/tabCommand";
 import { useT, translateError } from "../i18n";
 import { useAppStore } from "../store/appStore";
-import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, HistoryEntriesResult, UsedColorEntry, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion , PaintResult } from "../types/mesh";
-import type { ExportSelection } from "../types/export";
+import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, HistoryEntriesResult, UsedColorEntry, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion , PaintResult, TabInfo } from "../types/mesh";
+import type { ExportSelection, TextureMappingRequest } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
 
@@ -260,7 +260,7 @@ export function useTauriCommand() {
    * in lib.rs as a stable legacy entry point but is no longer wired to the UI.
    */
 
-  const export3mf = async (path: string, selection?: ExportSelection, preserveSource = false) => {
+  const export3mf = async (path: string, selection?: ExportSelection, preserveSource = false, texture?: TextureMappingRequest) => {
     log.info("useTauriCommand", `export3mf("${path}")`, { selection });
     try {
       setStatusMessage(t("export.exporting"));
@@ -268,10 +268,26 @@ export function useTauriCommand() {
         path,
         selection: selection ?? null,
         preserveSource,
+        ...(texture ? { texture } : {}),
       });
       log.info("useTauriCommand", "export3mf complete", { msg });
-      setProjectPath(msg.startsWith("Exported to ") ? msg.slice(12) : path);
-      markPaintExported();
+      if (texture) {
+        // Only the texture assignment changed in the workspace. Its printed
+        // 3MF does not become the save destination for all open plates.
+        const tabs = await rawInvoke<TabInfo[]>("project_tabs").catch(() => null);
+        if (owned()) {
+          useAppStore.setState((current) => {
+            const dirty = tabs?.find(tab => tab.id === tabId)?.dirty ?? true;
+            return {
+              tabs: dirty ? current.tabs.map(tab => tab.id === tabId ? { ...tab, dirty: true } : tab) : current.tabs,
+              paintDirty: current.paintDirty || dirty,
+            };
+          });
+        }
+      } else {
+        setProjectPath(msg.startsWith("Exported to ") ? msg.slice(12) : path);
+        markPaintExported();
+      }
       setStatusMessage(t("export.complete"));
       setToast(t("export.success", msg.replace(/^Exported to /, "")));
       return msg;

@@ -27,6 +27,7 @@ use super::quantize::{
     bounded_color_histogram, map_colors_to_palette, quantize_face_colors, quantize_histogram,
     Quantized,
 };
+use super::texture_mapping::TextureExportSnapshot;
 use crate::mesh::model::MeshModel;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
 use quick_xml::Writer;
@@ -144,27 +145,74 @@ pub fn write_project_3mf(
     purpose: ProjectWritePurpose,
     progress: &dyn Fn(f32, &str),
 ) -> Result<ProjectExportReport, String> {
+    write_project(
+        plates,
+        active_index,
+        output_path,
+        selection,
+        source,
+        purpose,
+        None,
+        progress,
+    )
+}
+
+pub(crate) fn write_mapped_texture_3mf(
+    plate: &ProjectPlate<'_>,
+    output_path: &Path,
+    texture: &TextureExportSnapshot,
+    progress: &dyn Fn(f32, &str),
+) -> Result<ProjectExportReport, String> {
+    write_project(
+        std::slice::from_ref(plate),
+        0,
+        output_path,
+        None,
+        None,
+        ProjectWritePurpose::PrintExport,
+        Some(texture),
+        progress,
+    )
+}
+
+fn write_project(
+    plates: &[ProjectPlate<'_>],
+    active_index: usize,
+    output_path: &Path,
+    selection: Option<&ExportSelection>,
+    source: Option<&super::source_presets::SourcePresets>,
+    purpose: ProjectWritePurpose,
+    texture: Option<&TextureExportSnapshot>,
+    progress: &dyn Fn(f32, &str),
+) -> Result<ProjectExportReport, String> {
     if plates.is_empty() || active_index >= plates.len() {
         return Err("Project has no valid active plate".into());
     }
-    let colors = project_colors(plates)?;
-    let quantized = if let Some(source) = source {
-        source.quantize(&colors, colors.len())?
+    let quantized_project;
+    let resolved_project;
+    let (quantized, resolved) = if let Some(texture) = texture {
+        (&texture.quantized, Some(&texture.resolved))
     } else {
-        quantize_project(plates, &colors)
-    };
-    let resolved = if source.is_some() {
-        None
-    } else {
-        selection
-            .map(|s| s.resolve(quantized.palette.len()))
-            .transpose()
-            .map_err(|e| format!("export selection: {e}"))?
+        let colors = project_colors(plates)?;
+        quantized_project = if let Some(source) = source {
+            source.quantize(&colors, colors.len())?
+        } else {
+            quantize_project(plates, &colors)
+        };
+        resolved_project = if source.is_some() {
+            None
+        } else {
+            selection
+                .map(|s| s.resolve(quantized_project.palette.len()))
+                .transpose()
+                .map_err(|e| format!("export selection: {e}"))?
+        };
+        (&quantized_project, resolved_project.as_ref())
     };
     let mut entries = vec![
         (
             PROJECT_CONFIG_PATH.to_string(),
-            build_project_settings_config(&quantized.palette, resolved.as_ref()).into_bytes(),
+            build_project_settings_config(&quantized.palette, resolved).into_bytes(),
         ),
         (
             "[Content_Types].xml".to_string(),
@@ -172,7 +220,7 @@ pub fn write_project_3mf(
         ),
         ("_rels/.rels".to_string(), build_rels().into_bytes()),
     ];
-    match &resolved {
+    match resolved {
         // Selected path: the machine + process presets are embedded so Orca's
         // dropdown can show the full vendor name ("Snapmaker U1 (0.4 nozzle)")
         // even when the vendor profile is not installed. Filament presets are
@@ -262,11 +310,12 @@ pub fn write_project_3mf(
         }
         let (history, history_truncated) =
             project_state::encode_history_report(&plate.mesh.history);
+        let fingerprint = project_state::fingerprint_of(&world, &plate.mesh.faces);
         headers.push(project_state::PlateStateHeader {
             plater_id: i as u32 + 1,
             name: plate.name.clone(),
             object_ids: vec![i as u32 + 1],
-            fingerprint: project_state::fingerprint_of(&world, &plate.mesh.faces),
+            fingerprint,
             history_truncated,
             placement_offset: placement,
         });
@@ -276,10 +325,19 @@ pub fn write_project_3mf(
             project_state::encode_plate_state(plate.mesh),
         ));
         entries.push((format!("Metadata/cym/history_{}.bin", i + 1), history));
-        if !plate.mesh.paint_sources.is_empty() {
+        if !plate.mesh.texture_painting && !plate.mesh.paint_sources.is_empty() {
             entries.push((
                 format!("Metadata/cym/paint_sources_{}.bin", i + 1),
                 project_state::encode_paint_sources(plate.mesh),
+            ));
+        }
+        if plate.mesh.texture_painting {
+            let mapping = texture
+                .map(|snapshot| &snapshot.mapping)
+                .or(plate.mesh.texture_slot_mapping.as_ref());
+            entries.push((
+                crate::engineering::texture_part_name(i),
+                crate::engineering::encode_texture_part(plate.mesh, fingerprint, mapping)?,
             ));
         }
     }

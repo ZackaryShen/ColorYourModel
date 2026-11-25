@@ -2,6 +2,7 @@ use petgraph::graph::UnGraph;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+use crate::mesh::face_colors::mix_color;
 use crate::mesh::history::{History, OpKind};
 
 /// Bounding box for a mesh
@@ -83,6 +84,12 @@ pub const MAX_SEGMENT_NAME_CHARS: usize = 64;
 /// (verified by grep over the whole backend, iteration 21).
 pub const DEFAULT_FACE_COLOR: [u8; 4] = [138, 138, 138, 255];
 
+#[derive(Clone, Copy)]
+struct TexturePaintBlend {
+    base: [u8; 4],
+    coverage: f32,
+}
+
 /// Main mesh data structure holding geometry, colors, segmentation, and spatial indices
 pub struct MeshModel {
     pub hidden_labels: std::collections::HashSet<u32>,
@@ -97,6 +104,10 @@ pub struct MeshModel {
 
     // Per-face RGBA colors
     pub face_colors: Vec<[u8; 4]>,
+    /// Texture projects keep source face colours and a separate print mapping.
+    pub texture_painting: bool,
+    pub texture_state_dropped: bool,
+    pub texture_slot_mapping: Option<crate::export::texture_mapping::TextureSlotMapping>,
 
     // Segmentation
     pub segment_labels: Vec<u32>,
@@ -110,6 +121,8 @@ pub struct MeshModel {
     /// equals `painted` — so undo / overwrite / replace automatically retire
     /// stale entries instead of needing explicit invalidation.
     pub paint_sources: HashMap<u32, ([u8; 4], [u8; 4])>,
+    /// Live texture dabs keep the actual underpaint and coverage for recolouring.
+    texture_paint_blends: HashMap<u32, TexturePaintBlend>,
 
     /// User-supplied region names, keyed by segment label.
     ///
@@ -244,6 +257,14 @@ pub struct MeshDataDto {
     /// part at all) is not a loss and stays `false`.
     #[serde(default)]
     pub history_dropped: bool,
+    #[serde(default)]
+    pub texture_painting: bool,
+    #[serde(default)]
+    pub can_undo: bool,
+    #[serde(default)]
+    pub can_redo: bool,
+    #[serde(default)]
+    pub import_warning: Option<String>,
 }
 
 /// serde default for the additive plate fields: a payload written before they
@@ -264,7 +285,11 @@ impl MeshModel {
             faces: Vec::new(),
             normals: Vec::new(),
             face_colors: Vec::new(),
+            texture_painting: false,
+            texture_state_dropped: false,
+            texture_slot_mapping: None,
             paint_sources: HashMap::new(),
+            texture_paint_blends: HashMap::new(),
             segment_labels: Vec::new(),
             segments: HashMap::new(),
             segment_names: HashMap::new(),
@@ -588,6 +613,10 @@ impl MeshModel {
     /// Initialize every face to `DEFAULT_FACE_COLOR` (neutral mid grey).
     pub fn init_default_colors(&mut self) {
         self.face_colors = vec![DEFAULT_FACE_COLOR; self.faces.len()];
+        if self.texture_painting {
+            self.paint_sources.clear();
+            self.texture_paint_blends.clear();
+        }
     }
 
     /// Rebuild `self.segments` (segment metadata) from current per-face labels.
@@ -861,6 +890,39 @@ impl MeshModel {
         }
     }
 
+    /// Capture texture underpaint before making the dab visible in `face_colors`.
+    pub(crate) fn record_texture_dabs(
+        &mut self,
+        source: [u8; 4],
+        dabs: impl IntoIterator<Item = (u32, f32)>,
+    ) {
+        if !self.texture_painting {
+            return;
+        }
+        for (face, strength) in dabs {
+            let current = self.face_colors[face as usize];
+            let strength = strength.clamp(0.0, 1.0);
+            let mut blend = TexturePaintBlend {
+                base: current,
+                coverage: strength,
+            };
+            if self.paint_sources.get(&face) == Some(&(source, current)) {
+                if let Some(previous) = self.texture_paint_blends.get(&face) {
+                    // Another pass replaces this fraction of the uncovered underpaint.
+                    blend.base = previous.base;
+                    blend.coverage = previous.coverage + (1.0 - previous.coverage) * strength;
+                }
+            }
+            self.texture_paint_blends.insert(face, blend);
+        }
+    }
+
+    pub(crate) fn recolour_texture_dab(&self, face: u32, target: [u8; 4]) -> [u8; 4] {
+        self.texture_paint_blends
+            .get(&face)
+            .map_or(target, |blend| mix_color(&blend.base, &target, blend.coverage))
+    }
+
     /// Record paint provenance for a committed batch (issue #29 governance):
     /// `Some(source)` = the user's brush colour for those faces; `None` =
     /// the faces left the tracked set (erased, or flattened to a plain colour
@@ -873,6 +935,9 @@ impl MeshModel {
                 }
                 None => {
                     self.paint_sources.remove(&face);
+                    if self.texture_painting {
+                        self.texture_paint_blends.remove(&face);
+                    }
                 }
             }
         }
@@ -911,10 +976,9 @@ impl MeshModel {
             return Vec::new();
         }
         let updates: Vec<(u32, [u8; 4])> = faces.iter().map(|&f| (f, to)).collect();
+        self.record_texture_dabs(to, faces.iter().map(|&face| (face, 1.0)));
         self.apply_paint(None, &updates);
-        for &(face, painted) in &updates {
-            self.paint_sources.insert(face, (to, painted));
-        }
+        self.record_paint_sources(Some(to), &updates);
         updates
     }
 
@@ -984,6 +1048,10 @@ impl MeshModel {
             // these in for that branch.
             engineering_state: None,
             history_dropped: false,
+            texture_painting: self.texture_painting,
+            can_undo: self.history.can_undo(),
+            can_redo: self.history.can_redo(),
+            import_warning: self.texture_state_dropped.then(|| "3mf-texture".into()),
         }
     }
 

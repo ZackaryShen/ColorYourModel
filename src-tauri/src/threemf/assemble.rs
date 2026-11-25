@@ -22,6 +22,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::model::{RawMesh, Scene, Transform};
 use super::plates::{ModelSettings, PlateGroup};
+use super::GeometryBudget;
 
 /// One plate's geometry, with `paint[i]` and `base_slots[i]` belonging to
 /// `faces[i]`.
@@ -39,9 +40,10 @@ pub struct AssembledMesh {
 }
 
 /// Bounds traversal borrows source geometry; no inactive editable mesh is allocated.
-pub fn item_bounds(
+pub(super) fn item_bounds(
     scene: &Scene,
     item_index: usize,
+    budget: &mut AssemblyBudget,
 ) -> Result<Option<([f32; 3], [f32; 3])>, String> {
     let item = scene
         .build
@@ -49,7 +51,15 @@ pub fn item_bounds(
         .ok_or("Build item is outside the scene")?;
     let part = build_part_key(scene, item.object_id)?;
     let mut pieces = Vec::new();
-    collect_pieces(scene, part, item.object_id, item.transform, 0, &mut pieces)?;
+    collect_pieces(
+        scene,
+        part,
+        item.object_id,
+        item.transform,
+        0,
+        &mut pieces,
+        budget,
+    )?;
     let mut low = [f32::INFINITY; 3];
     let mut high = [f32::NEG_INFINITY; 3];
     let mut any = false;
@@ -66,14 +76,26 @@ pub fn item_bounds(
     Ok(any.then_some((low, high)))
 }
 
-pub fn item_face_count(scene: &Scene, item_index: usize) -> Result<u32, String> {
+pub(super) fn item_face_count(
+    scene: &Scene,
+    item_index: usize,
+    budget: &mut AssemblyBudget,
+) -> Result<u32, String> {
     let item = scene
         .build
         .get(item_index)
         .ok_or("Build item is outside the scene")?;
     let part = build_part_key(scene, item.object_id)?;
     let mut pieces = Vec::new();
-    collect_pieces(scene, part, item.object_id, item.transform, 0, &mut pieces)?;
+    collect_pieces(
+        scene,
+        part,
+        item.object_id,
+        item.transform,
+        0,
+        &mut pieces,
+        budget,
+    )?;
     let count: usize = pieces
         .iter()
         .map(|piece| {
@@ -107,6 +129,37 @@ struct Piece<'a> {
     object_id: u32,
 }
 
+pub(super) struct AssemblyBudget {
+    geometry: GeometryBudget,
+    visits: usize,
+    paint_bytes: usize,
+}
+
+impl AssemblyBudget {
+    pub(super) fn new(faces: usize) -> Self {
+        Self::from_geometry(GeometryBudget::new(faces))
+    }
+
+    fn from_geometry(geometry: GeometryBudget) -> Self {
+        Self {
+            geometry,
+            visits: super::MAX_EDITOR_FACES,
+            paint_bytes: geometry.faces * 4,
+        }
+    }
+
+    fn claim_mesh(&mut self, mesh: &RawMesh) -> Result<(), String> {
+        self.geometry.claim(mesh.vertices.len(), mesh.faces.len())?;
+        for paint in mesh.paint.iter().flatten() {
+            self.paint_bytes = self
+                .paint_bytes
+                .checked_sub(paint.len())
+                .ok_or("3MF exceeds the cumulative encoded paint budget")?;
+        }
+        Ok(())
+    }
+}
+
 /// Assemble the build items of one plate into a single mesh.
 ///
 /// `settings` supplies each build object's base extruder: a plate may mix
@@ -115,15 +168,31 @@ struct Piece<'a> {
 ///
 /// A plate with no build items yields an empty mesh. An error carries the
 /// offending object or build index, so a failed import can name what is broken.
-pub fn assemble(
+pub(super) fn assemble(
     scene: &Scene,
     group: &PlateGroup,
     settings: &ModelSettings,
 ) -> Result<AssembledMesh, String> {
+    assemble_with_budget(
+        scene,
+        group,
+        settings,
+        GeometryBudget::new(super::MAX_EDITOR_FACES),
+    )
+}
+
+fn assemble_with_budget(
+    scene: &Scene,
+    group: &PlateGroup,
+    settings: &ModelSettings,
+    geometry: GeometryBudget,
+) -> Result<AssembledMesh, String> {
     if group.item_indices.is_empty() {
         return Ok(AssembledMesh::default());
     }
+    let mut budget = AssemblyBudget::from_geometry(geometry);
     if let Some((mesh, object_id)) = single_verbatim_mesh(scene, group) {
+        budget.claim_mesh(mesh)?;
         let base = object_base(settings, object_id);
         return Ok(AssembledMesh {
             vertices: mesh.vertices.clone(),
@@ -135,7 +204,7 @@ pub fn assemble(
             base_slots: vec![base; mesh.faces.len()],
         });
     }
-    bake_and_merge(scene, group, settings)
+    bake_and_merge(scene, group, settings, &mut budget)
 }
 
 /// The `model_settings` `extruder` of a build object, 1-based (zero means default).
@@ -193,6 +262,7 @@ fn bake_and_merge(
     scene: &Scene,
     group: &PlateGroup,
     settings: &ModelSettings,
+    budget: &mut AssemblyBudget,
 ) -> Result<AssembledMesh, String> {
     let mut out = AssembledMesh::default();
     let mut vertex_map: HashMap<[u32; 3], u32> = HashMap::new();
@@ -207,7 +277,15 @@ fn bake_and_merge(
         let part = build_part_key(scene, item.object_id)?;
         let base = object_base(settings, item.object_id);
         let mut pieces = Vec::new();
-        collect_pieces(scene, part, item.object_id, item.transform, 0, &mut pieces)?;
+        collect_pieces(
+            scene,
+            part,
+            item.object_id,
+            item.transform,
+            0,
+            &mut pieces,
+            budget,
+        )?;
         if pieces.is_empty() {
             return Err(format!(
                 "object {} resolves to no geometry in any component",
@@ -234,12 +312,17 @@ fn collect_pieces<'a>(
     transform: Transform,
     depth: usize,
     pieces: &mut Vec<Piece<'a>>,
+    budget: &mut AssemblyBudget,
 ) -> Result<(), String> {
     if depth > MAX_DEPTH {
         return Err(format!(
             "object {object_id} exceeds the {MAX_DEPTH}-level component nesting limit"
         ));
     }
+    budget.visits = budget
+        .visits
+        .checked_sub(1)
+        .ok_or("3MF exceeds the component traversal budget")?;
     let objects = scene.parts.get(part).ok_or_else(|| {
         format!("object {object_id} names model part {part:?}, which the package does not contain")
     })?;
@@ -248,6 +331,7 @@ fn collect_pieces<'a>(
         .ok_or_else(|| format!("model part {part:?} has no object {object_id}"))?;
 
     if let Some(mesh) = &object.mesh {
+        budget.claim_mesh(mesh)?;
         pieces.push(Piece {
             mesh,
             transform,
@@ -264,6 +348,7 @@ fn collect_pieces<'a>(
             transform.compose(component.transform),
             depth + 1,
             pieces,
+            budget,
         )?;
     }
     Ok(())
@@ -411,6 +496,7 @@ mod tests {
     use super::*;
     use crate::threemf::model::{BuildItem, Component, SceneObject};
     use crate::threemf::plates::ObjectMeta;
+    use crate::threemf::MAX_EDITOR_FACES;
 
     const MAIN: &str = "3D/3dmodel.model";
     const PART: &str = "3D/Objects/part_1.model";
@@ -418,7 +504,12 @@ mod tests {
     /// The pre-existing tests exercise geometry only; a default config has no
     /// extruder metadata, so every face's base slot is `None`.
     fn assemble(scene: &Scene, group: &PlateGroup) -> Result<AssembledMesh, String> {
-        super::assemble(scene, group, &ModelSettings::default())
+        super::assemble_with_budget(
+            scene,
+            group,
+            &ModelSettings::default(),
+            GeometryBudget::new(MAX_EDITOR_FACES),
+        )
     }
 
     fn settings_with(extruders: &[(u32, u8)]) -> ModelSettings {
@@ -835,8 +926,9 @@ mod tests {
         );
         let settings = settings_with(&[(1, 0), (2, 2), (9, 1)]);
 
-        let assembled =
-            super::assemble(&scene, &group(&[0, 1]), &settings).expect("two objects merge");
+        let limit = GeometryBudget::new(MAX_EDITOR_FACES);
+        let assembled = super::assemble_with_budget(&scene, &group(&[0, 1]), &settings, limit)
+            .expect("two objects merge");
 
         assert_eq!(assembled.faces, vec![[0, 1, 2], [3, 4, 5]]);
         assert_eq!(
@@ -850,8 +942,8 @@ mod tests {
             &[(MAIN, vec![object(1, Some(triangle()), vec![])])],
             vec![item(1, Transform::identity())],
         );
-        let assembled =
-            super::assemble(&single, &group(&[0]), &settings).expect("one object is verbatim");
+        let assembled = super::assemble_with_budget(&single, &group(&[0]), &settings, limit)
+            .expect("one object is verbatim");
         assert_eq!(assembled.base_slots, vec![Some(0)]);
 
         // An object with no settings entry has no base; the reader falls back
@@ -860,8 +952,8 @@ mod tests {
             &[(MAIN, vec![object(7, Some(triangle()), vec![])])],
             vec![item(7, Transform::identity())],
         );
-        let assembled =
-            super::assemble(&missing, &group(&[0]), &settings).expect("object without settings");
+        let assembled = super::assemble_with_budget(&missing, &group(&[0]), &settings, limit)
+            .expect("object without settings");
         assert_eq!(assembled.base_slots, vec![None]);
     }
 
@@ -872,6 +964,24 @@ mod tests {
         let assembled = assemble(&scene, &group(&[])).expect("an empty plate assembles");
 
         assert_eq!(assembled, AssembledMesh::default());
+    }
+
+    #[test]
+    fn layout_checks_share_a_budget_across_repeated_build_items() {
+        let scene = make_scene(
+            &[(MAIN, vec![object(1, Some(triangle()), vec![])])],
+            vec![
+                item(1, Transform::identity()),
+                item(1, translated(2., 0., 0.)),
+            ],
+        );
+        let mut budget = AssemblyBudget::new(1);
+        assert!(item_bounds(&scene, 0, &mut budget).unwrap().is_some());
+        assert!(item_bounds(&scene, 1, &mut budget).is_err());
+
+        let mut budget = AssemblyBudget::new(1);
+        assert_eq!(item_face_count(&scene, 0, &mut budget).unwrap(), 1);
+        assert!(item_face_count(&scene, 1, &mut budget).is_err());
     }
 
     #[test]

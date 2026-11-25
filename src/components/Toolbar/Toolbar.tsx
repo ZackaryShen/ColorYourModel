@@ -4,7 +4,6 @@ import { useAppStore } from "../../store/appStore";
 import { PaintTool } from "../../types/mesh";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo } from "../../hooks/useHistory";
-import { useImportStl } from "../../hooks/useImportStl";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 import { useProjectSave } from "../../hooks/useProjectSave";
@@ -22,7 +21,7 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.Seed, icon: "🌱", i18nKey: "tool.seed" },
 ];
 
-export function Toolbar() {
+export function Toolbar({ onImport }: { onImport: () => Promise<void> }) {
   const t = useT();
   const activeTool = useAppStore((s) => s.activeTool);
   const setActiveTool = useAppStore((s) => s.setActiveTool);
@@ -41,9 +40,9 @@ export function Toolbar() {
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
   const historyPanelOpen = useAppStore((s) => s.historyPanelOpen);
   const setHistoryPanelOpen = useAppStore((s) => s.setHistoryPanelOpen);
-  const { importStl: handleImport } = useImportStl();
   const { saveProject } = useProjectSave();
   const saveBusy = useAppStore((s) => s.saveBusy);
+  const importBusy = useAppStore((s) => s.importBusy);
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {
     const unlistenImport = listen<{ progress: number; stage: string }>(
@@ -68,18 +67,15 @@ export function Toolbar() {
     };
   }, [setImportProgress, setSegmentProgress, setLoadingKind]);
 
-  // handleImport comes from the shared useImportStl hook (also used by the
-  // File menu): file picker → import progress → loadModel → status messages.
-
   return (
     <div style={styles.container}>
       <div style={styles.section}>
-        <button onClick={handleImport} disabled={isLoading} className="cym-btn" style={styles.button} title={t("toolbar.import")}>
+        <button onClick={onImport} disabled={isLoading || importBusy || saveBusy} className="cym-btn" style={styles.button} title={t("toolbar.import")}>
           {isLoading ? "..." : "📂"}
         </button>
         <button
           onClick={() => void saveProject()}
-          disabled={!isLoaded || isLoading || saveBusy}
+          disabled={!isLoaded || isLoading || importBusy || saveBusy}
           className="cym-btn"
           style={styles.button}
           title={t("menu.save")}

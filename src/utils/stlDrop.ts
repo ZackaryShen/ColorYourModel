@@ -8,10 +8,8 @@
  * unexported painting (same stake as the exit confirm, issue #7).
  */
 
-/** Extensions the import pipeline understands: .stl imports a model, .3mf
- *  opens a full project (its plates) — the same pair the 📂 dialog filter
- *  offers. */
-export const DROPPABLE_EXTENSIONS = ["stl", "3mf"] as const;
+/** STL and GLB add plates. A 3MF opens its complete project. */
+export const DROPPABLE_EXTENSIONS = ["stl", "glb", "3mf"] as const;
 
 export type StlDropDecision =
   | { action: "import"; path: string }
@@ -57,5 +55,5 @@ export function planFileDrop(paths: string[], hasModel: boolean): StlDropDecisio
   if (!hasDroppableExtension(path)) {
     return { action: "reject", reason: "extension" };
   }
-  return hasModel ? { action: "confirm-replace", path } : { action: "import", path };
+  return hasModel && !/\.glb$/i.test(path) ? { action: "confirm-replace", path } : { action: "import", path };
 }

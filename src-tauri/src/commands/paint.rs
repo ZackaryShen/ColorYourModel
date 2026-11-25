@@ -30,12 +30,14 @@ fn commit(
     updates: Vec<(u32, [u8; 4])>,
     source: Option<[u8; 4]>,
 ) -> PaintResult {
+    // A visible no-op can still change the coverage of a textured brush source.
+    let tracks_coverage = mesh.texture_painting && source.is_some();
     let updates: Vec<_> = updates
         .into_iter()
         .filter(|(face, color)| {
             mesh.face_colors
                 .get(*face as usize)
-                .is_some_and(|old| old != color)
+                .is_some_and(|old| old != color || tracks_coverage)
         })
         .collect();
     mesh.apply_paint(stroke_id, &updates);
@@ -45,6 +47,27 @@ fn commit(
         updated_faces,
         updated_colors,
     }
+}
+
+fn commit_dabs(
+    mesh: &mut crate::mesh::model::MeshModel,
+    stroke_id: Option<u64>,
+    mut dabs: Vec<(u32, f32)>,
+    color: [u8; 4],
+) -> PaintResult {
+    if mesh.texture_painting {
+        // The outer half of a step brush can hit faces with zero coverage.
+        dabs.retain(|&(_, strength)| strength.is_finite() && strength > 0.0);
+    }
+    let updates = dabs
+        .iter()
+        .map(|&(face, strength)| {
+            let painted = mix_color(&mesh.face_colors[face as usize], &color, strength);
+            (face, painted)
+        })
+        .collect();
+    mesh.record_texture_dabs(color, dabs);
+    commit(mesh, stroke_id, updates, Some(color))
 }
 
 #[tauri::command]
@@ -91,19 +114,16 @@ pub fn brush_paint(
     let hits = cull_hidden(mesh, brush_hit(mesh, center_face, radius), &hidden);
     let center = mesh.face_center(center_face);
 
-    // Colours are computed against the *current* buffer and written only after
-    // the whole batch is handed to `commit`, so a face blended twice inside one
-    // call cannot see a half-applied state.
-    let updates: Vec<(u32, [u8; 4])> = hits
+    let dabs = hits
         .into_iter()
         .map(|fid| {
             let d = distance(&center, &mesh.face_center(fid));
             let s = falloff_strength(d, radius, &falloff_mode) * strength;
-            (fid, mix_color(&mesh.face_colors[fid as usize], &color, s))
+            (fid, s)
         })
         .collect();
 
-    let result = commit(mesh, stroke_id, updates, Some(color));
+    let result = commit_dabs(mesh, stroke_id, dabs, color);
     mesh_guard.commit_if(!result.updated_faces.is_empty());
     Ok(result)
 }
@@ -213,12 +233,12 @@ pub fn spray_paint(
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     let hidden = hidden_snapshot(mesh);
-    let updates = cull_hidden_pairs(
+    let dabs = cull_hidden_pairs(
         mesh,
-        spray_hit(mesh, center_face, radius, strength, &color, density),
+        spray_hit(mesh, center_face, radius, strength, density),
         &hidden,
     );
-    let result = commit(mesh, stroke_id, updates, Some(color));
+    let result = commit_dabs(mesh, stroke_id, dabs, color);
     mesh_guard.commit_if(!result.updated_faces.is_empty());
     Ok(result)
 }
@@ -237,8 +257,8 @@ pub fn smart_brush_paint(
     let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
-    let updates = smart_brush_hit(mesh, center_face, radius, strength, &falloff_mode, &color);
-    let result = commit(mesh, stroke_id, updates, Some(color));
+    let dabs = smart_brush_hit(mesh, center_face, radius, strength, &falloff_mode);
+    let result = commit_dabs(mesh, stroke_id, dabs, color);
     mesh_guard.commit_if(!result.updated_faces.is_empty());
     Ok(result)
 }
@@ -433,12 +453,9 @@ pub fn replace_paint_source(
     })
 }
 
-/// SHAPE-PRESERVING repaint (governance acceptance round 7, feedback #2):
-/// a stroke is not a flat fill — the falloff wrote a different blended colour
-/// per face. Recover each face's original strength by inverting
-/// `painted = base * (1-s) + from * s` against the never-painted base, then
-/// re-mix the NEW colour at that same strength, so the repainted stroke keeps
-/// its natural gradient instead of reading as a flat fill.
+/// Repaint with the original per-face coverage to preserve the stroke gradient.
+/// Texture projects track actual underpaint. STL keeps the legacy gray-base
+/// strength estimate.
 #[tauri::command]
 pub fn replace_paint_source_shaped(
     from: [u8; 4],
@@ -448,61 +465,65 @@ pub fn replace_paint_source_shaped(
 ) -> Result<PaintResult, String> {
     let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let result = apply_replace_paint_source_shaped(mesh, from, to);
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
+    Ok(result)
+}
+
+fn apply_replace_paint_source_shaped(
+    mesh: &mut crate::mesh::model::MeshModel,
+    from: [u8; 4],
+    to: [u8; 4],
+) -> PaintResult {
     if from == to {
-        return Ok(PaintResult {
+        return PaintResult {
             updated_faces: Vec::new(),
             updated_colors: Vec::new(),
-        });
+        };
     }
-    let base = crate::mesh::model::DEFAULT_FACE_COLOR;
     let faces: Vec<u32> = mesh.paint_source_faces(from);
     if faces.is_empty() {
-        return Ok(PaintResult {
+        return PaintResult {
             updated_faces: Vec::new(),
             updated_colors: Vec::new(),
-        });
-    }
-    // Per-channel denominator |from - base|: channels where the source sat
-    // too close to the base cannot recover s reliably and are skipped.
-    let mut num = 0.0f32;
-    let mut den = 0.0f32;
-    for c in 0..3 {
-        let d = from[c] as f32 - base[c] as f32;
-        if d.abs() > 24.0 {
-            den += d * d;
-        }
-    }
-    let mut updates: Vec<(u32, [u8; 4])> = Vec::with_capacity(faces.len());
-    for &f in &faces {
-        let painted = mesh.paint_sources.get(&f).map(|p| p.1).unwrap_or(from);
-        if den > f32::EPSILON {
-            for c in 0..3 {
-                let d = from[c] as f32 - base[c] as f32;
-                if d.abs() > 24.0 {
-                    num += (painted[c] as f32 - base[c] as f32) * d;
-                }
-            }
-        }
-        let s = if den > f32::EPSILON {
-            (num / den).clamp(0.0, 1.0)
-        } else {
-            1.0
         };
-        let new_c = mix_color(&base, &to, s);
-        updates.push((f, new_c));
-        num = 0.0;
     }
-    mesh.apply_paint(None, &updates);
-    for &(face, painted) in &updates {
-        mesh.paint_sources.insert(face, (to, painted));
-    }
-    let changed = !updates.is_empty();
-    let (updated_faces, updated_colors) = updates.into_iter().unzip();
-    mesh_guard.commit_if(changed);
-    Ok(PaintResult {
-        updated_faces,
-        updated_colors,
-    })
+    let updates = if mesh.texture_painting {
+        faces
+            .into_iter()
+            .map(|face| (face, mesh.recolour_texture_dab(face, to)))
+            .collect()
+    } else {
+        let base = DEFAULT_FACE_COLOR;
+        // Channels close to the gray base cannot recover coverage reliably.
+        let deltas = [0, 1, 2].map(|c| {
+            let delta = from[c] as f32 - base[c] as f32;
+            if delta.abs() > 24.0 {
+                delta
+            } else {
+                0.0
+            }
+        });
+        let denominator: f32 = deltas.iter().map(|delta| delta * delta).sum();
+        faces
+            .into_iter()
+            .map(|face| {
+                let painted = mesh.face_colors[face as usize];
+                let coverage = if denominator > f32::EPSILON {
+                    let numerator: f32 = deltas
+                        .iter()
+                        .enumerate()
+                        .map(|(c, delta)| (painted[c] as f32 - base[c] as f32) * delta)
+                        .sum();
+                    (numerator / denominator).clamp(0.0, 1.0)
+                } else {
+                    1.0
+                };
+                (face, mix_color(&base, &to, coverage))
+            })
+            .collect()
+    };
+    commit(mesh, None, updates, Some(to))
 }
 
 /// Live faces painted with `source` — hover-highlight payload for the
@@ -536,11 +557,7 @@ pub async fn used_colors(
             .used_colors()
             .into_iter()
             .map(|e| UsedColorDto {
-                // Colour-equality only: a user who deliberately paints the exact
-                // default grey gets the dashed "default" swatch. Distinguishing
-                // painted-grey from never-painted would need per-face provenance
-                // the colour buffer does not carry — accepted limitation.
-                is_default: e.color == DEFAULT_FACE_COLOR,
+                is_default: is_unpainted_colour(mesh, e.color),
                 color: e.color,
                 faces: e.faces,
                 regions: e.regions,
@@ -549,6 +566,11 @@ pub async fn used_colors(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+fn is_unpainted_colour(mesh: &crate::mesh::model::MeshModel, rgba: [u8; 4]) -> bool {
+    // A baked texture can deliberately contain the exact STL placeholder gray.
+    rgba == DEFAULT_FACE_COLOR && !mesh.texture_painting
 }
 
 /// Sync the hidden-region view state from the frontend (#24/#29). The set
@@ -609,7 +631,7 @@ pub fn apply_replace_face_color(
     from: [u8; 4],
     to: [u8; 4],
 ) -> ReplaceColorResult {
-    if from == to || from == DEFAULT_FACE_COLOR {
+    if from == to || is_unpainted_colour(mesh, from) {
         // Same no-op/refusal contract as the command wrapper (tests exercise
         // the core directly); see `replace_face_color` for the rationale.
         return ReplaceColorResult {
@@ -658,14 +680,14 @@ pub fn replace_face_color(
             regions: 0,
         });
     }
-    if from == DEFAULT_FACE_COLOR {
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    if is_unpainted_colour(mesh, from) {
         return Err(
             "replace from the unpainted default grey is refused: it would repaint every untouched face"
                 .to_string(),
         );
     }
-    let mut mesh_guard = state.lock_mesh(tab_id)?;
-    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
     let result = apply_replace_face_color(mesh, from, to);
     log::info!(
         "[cmd:replace_face_color] faces={} regions={}",
@@ -685,6 +707,130 @@ pub fn pick_color(face_id: u32, tab_id: u64, state: State<AppState>) -> Result<[
         Ok(mesh.face_colors[face_id as usize])
     } else {
         Err("Face ID out of range".to_string())
+    }
+}
+
+#[cfg(test)]
+mod shaped_repaint_tests {
+    use super::*;
+    use crate::mesh::model::MeshModel;
+
+    const BLACK: [u8; 4] = [0, 0, 0, 255];
+    const WHITE: [u8; 4] = [255; 4];
+
+    fn textured_face(base: [u8; 4]) -> MeshModel {
+        let mut mesh = MeshModel::new();
+        mesh.texture_painting = true;
+        mesh.vertices = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        mesh.faces = vec![[0, 1, 2]];
+        mesh.face_colors = vec![base];
+        mesh.segment_labels = vec![0];
+        mesh.compute_normals();
+        mesh.build_kdtree();
+        mesh
+    }
+
+    fn dab(mesh: &mut MeshModel, color: [u8; 4], strength: f32) {
+        commit_dabs(mesh, None, vec![(0, strength)], color);
+    }
+
+    #[test]
+    fn texture_repaint_uses_the_black_face_under_the_white_brush() {
+        let mut mesh = textured_face(BLACK);
+        dab(&mut mesh, WHITE, 0.5);
+        assert_eq!(mesh.face_colors, [[127, 127, 127, 255]]);
+        let repaint = apply_replace_paint_source_shaped(&mut mesh, WHITE, BLACK);
+        assert_eq!(repaint.updated_colors, [BLACK]);
+        assert_eq!(mesh.face_colors, [BLACK]);
+    }
+
+    #[test]
+    fn texture_repaint_preserves_two_passes_over_the_same_colour() {
+        let mut mesh = textured_face(WHITE);
+        dab(&mut mesh, WHITE, 0.5);
+        dab(&mut mesh, WHITE, 0.5);
+        assert_eq!(mesh.face_colors, [WHITE]);
+
+        let repaint = apply_replace_paint_source_shaped(&mut mesh, WHITE, BLACK);
+        assert_eq!(repaint.updated_colors, [[63, 63, 63, 255]]);
+        let repaint_again = apply_replace_paint_source_shaped(&mut mesh, BLACK, [120, 40, 0, 255]);
+        assert_eq!(repaint_again.updated_colors, [[153, 93, 63, 255]]);
+    }
+
+    #[test]
+    fn different_source_blends_over_the_latest_paint_and_is_undoable() {
+        let mut mesh = textured_face(BLACK);
+        let red = [255, 0, 0, 255];
+        let blue = [0, 0, 255, 255];
+        dab(&mut mesh, WHITE, 0.5);
+        dab(&mut mesh, red, 0.5);
+        let before = mesh.face_colors.clone();
+        assert_eq!(before, [[191, 63, 63, 255]]);
+        let repaint = apply_replace_paint_source_shaped(&mut mesh, red, blue);
+        assert_eq!(repaint.updated_colors, [[63, 63, 191, 255]]);
+        mesh.history
+            .undo(&mut mesh.face_colors, &mut mesh.segment_labels);
+        assert_eq!(mesh.face_colors, before);
+    }
+
+    #[test]
+    fn zero_strength_step_dab_does_not_steal_the_texture_paint_source() {
+        let mut mesh = textured_face(BLACK);
+        dab(&mut mesh, WHITE, 0.5);
+        let depths = mesh.history.undo_depth();
+        dab(
+            &mut mesh,
+            [0, 255, 0, 255],
+            falloff_strength(0.75, 1.0, "step"),
+        );
+        assert_eq!(mesh.history.undo_depth(), depths);
+        assert_eq!(mesh.paint_source_faces(WHITE), [0]);
+        let repaint = apply_replace_paint_source_shaped(&mut mesh, WHITE, BLACK);
+        assert_eq!(repaint.updated_colors, [BLACK]);
+    }
+
+    #[test]
+    fn spray_and_smart_brush_provide_coverage_of_same_colour_dabs() {
+        let mut spray = textured_face(WHITE);
+        let dabs = spray_hit(&spray, 0, 1.0, 0.5, 1);
+        let [(_, strength)] = dabs.as_slice() else {
+            panic!("one face in the spray")
+        };
+        let expected = mix_color(&WHITE, &BLACK, *strength);
+        commit_dabs(&mut spray, None, dabs, WHITE);
+        assert_eq!(
+            apply_replace_paint_source_shaped(&mut spray, WHITE, BLACK).updated_colors,
+            [expected]
+        );
+
+        let mut smart = textured_face(WHITE);
+        let dabs = smart_brush_hit(&smart, 0, 1.0, 1.0, "step");
+        assert_eq!(dabs, [(0, 1.0)]);
+        commit_dabs(&mut smart, None, dabs, WHITE);
+        assert_eq!(
+            apply_replace_paint_source_shaped(&mut smart, WHITE, BLACK).updated_colors,
+            [BLACK]
+        );
+    }
+
+    #[test]
+    fn clearing_texture_paint_retires_a_live_neutral_gray_dab() {
+        let mut mesh = textured_face(BLACK);
+        dab(&mut mesh, DEFAULT_FACE_COLOR, 1.0);
+        assert_eq!(mesh.paint_source_faces(DEFAULT_FACE_COLOR), [0]);
+        super::super::segment::reset_mesh_state(&mut mesh);
+        assert_eq!(mesh.face_colors, [DEFAULT_FACE_COLOR]);
+        assert!(mesh.paint_source_faces(DEFAULT_FACE_COLOR).is_empty());
+    }
+
+    #[test]
+    fn stl_stroke_repaint_keeps_the_gray_base_estimate() {
+        let mut mesh = textured_face(DEFAULT_FACE_COLOR);
+        mesh.texture_painting = false;
+        dab(&mut mesh, WHITE, 0.5);
+        assert_eq!(mesh.face_colors, [[196, 196, 196, 255]]);
+        let repaint = apply_replace_paint_source_shaped(&mut mesh, WHITE, BLACK);
+        assert_eq!(repaint.updated_colors, [[69, 69, 69, 255]]);
     }
 }
 
@@ -991,6 +1137,17 @@ mod replace_colour_tests {
         assert_eq!(result.regions, 0);
         // A no-op must not create an undo step the user has to step over.
         assert_eq!(m.history.undo_depth(), 0);
+    }
+
+    #[test]
+    fn baked_neutral_grey_is_a_real_model_colour() {
+        let mut model = replace_mesh();
+        model.texture_painting = true;
+        assert_eq!(
+            apply_replace_face_color(&mut model, DEFAULT_FACE_COLOR, GREEN).updated_faces,
+            vec![1, 3],
+        );
+        assert_eq!(model.history.undo_depth(), 1);
     }
 
     #[test]

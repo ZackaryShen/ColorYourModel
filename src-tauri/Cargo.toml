@@ -27,9 +27,13 @@ nalgebra = "0.33"
 kiddo = "4"
 
 # File parsing
+base64 = "0.22"
+gltf = { version = "1.4", default-features = false, features = ["extensions", "utils"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 stl_io = "0.7"
 quick-xml = "0.36"
 zip = "2"
+tempfile = "3"
 
 # Algorithms
 petgraph = "0.6"

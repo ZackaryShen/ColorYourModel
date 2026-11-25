@@ -42,6 +42,38 @@ const ENGINEERING_DIR: &str = "Metadata/cym";
 /// Engineering header: format version, unit, and one fingerprint per plate.
 const ENGINEERING_HEADER_PART: &str = "Metadata/cym/project.json";
 
+// Bound one editable plate's reconstructed geometry, including paint splits.
+const MAX_EDITOR_FACES: usize = 1_500_000;
+
+#[derive(Clone, Copy)]
+struct GeometryBudget {
+    vertices: usize,
+    faces: usize,
+}
+
+impl GeometryBudget {
+    const fn new(faces: usize) -> Self {
+        Self {
+            vertices: faces * 3,
+            faces,
+        }
+    }
+
+    fn check(&self, vertices: usize, faces: usize) -> Result<(), String> {
+        if vertices > self.vertices || faces > self.faces {
+            return Err("3MF exceeds the cumulative vertex or triangle budget".into());
+        }
+        Ok(())
+    }
+
+    fn claim(&mut self, vertices: usize, faces: usize) -> Result<(), String> {
+        self.check(vertices, faces)?;
+        self.vertices -= vertices;
+        self.faces -= faces;
+        Ok(())
+    }
+}
+
 /// What happened to the optional engineering state (`Metadata/cym/*`) of a
 /// plate.
 ///
@@ -264,6 +296,7 @@ impl ProjectReader {
     }
 
     fn index(&self) -> Result<ProjectIndex, String> {
+        let mut assembly = assemble::AssemblyBudget::new(MAX_EDITOR_FACES * 2);
         let plates: Vec<_> = self
             .groups
             .iter()
@@ -279,7 +312,8 @@ impl ProjectReader {
                     .unwrap_or_else(|| plate_name(&self.settings, &self.scene, group, plater_id));
                 let face_count = group.item_indices.iter().try_fold(0u32, |total, &item| {
                     total
-                        .checked_add(assemble::item_face_count(&self.scene, item)?)
+                        .checked_add(assemble::item_face_count(&self.scene, item, &mut assembly)?)
+                        .filter(|&count| count as usize <= MAX_EDITOR_FACES)
                         .ok_or_else(|| "Plate exceeds supported face count".to_string())
                 })?;
                 Ok(PlateRef {
@@ -345,12 +379,13 @@ fn group_scene(
     for group in &mut groups {
         group.item_indices.clear();
     }
+    let mut assembly = assemble::AssemblyBudget::new(MAX_EDITOR_FACES * 2);
     for item in 0..scene.build.len() {
         let hint = hints
             .iter()
             .position(|g| g.item_indices.contains(&item))
             .unwrap_or(0);
-        let target = if let Some((lo, hi)) = assemble::item_bounds(scene, item)? {
+        let target = if let Some((lo, hi)) = assemble::item_bounds(scene, item, &mut assembly)? {
             let center = [(lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5];
             groups
                 .iter()
@@ -403,7 +438,11 @@ fn import_plate(
 
     let assembled = assemble::assemble(context.scene, group, context.settings)
         .map_err(|error| format!("plate {plater_id}: {error}"))?;
-    let trees = decode_paint(&assembled.paint);
+    let budget = GeometryBudget::new(MAX_EDITOR_FACES);
+    let (trees, face_count) = decode_paint(&assembled.paint, budget.faces)?;
+    // Each split adds at most one vertex per additional triangle.
+    let vertex_bound = assembled.vertices.len() + (face_count - assembled.faces.len());
+    budget.check(vertex_bound, face_count)?;
     let expanded = subdivide::expand(&assembled.vertices, &assembled.faces, &trees);
 
     // The fingerprint domain is the world coordinates **as written into the
@@ -460,6 +499,29 @@ fn import_plate(
         &mut mesh,
     );
 
+    let texture_ordinal = engineering_header
+        .and_then(|header| {
+            header
+                .plates
+                .iter()
+                .position(|plate| plate.plater_id == plater_id)
+        })
+        .unwrap_or(index);
+    let texture_fingerprint = fingerprint.filter(|_| restore.state == EngineeringState::Restored);
+    let rebuild_segments = match crate::engineering::restore_texture_state(
+        package,
+        texture_ordinal,
+        texture_fingerprint,
+        &mut mesh,
+    ) {
+        Ok(rebuild) => rebuild,
+        Err(error) => {
+            mesh.texture_state_dropped = true;
+            log::warn!("3mf: texture settings for plate {plater_id} could not restore ({error})");
+            true
+        }
+    };
+
     if restore.state == EngineeringState::Restored {
         if let Some(saved) = engineering_header.and_then(|header| {
             header
@@ -487,7 +549,9 @@ fn import_plate(
     // Derived state, in the same order every other loader uses.
     mesh.compute_normals();
     mesh.compute_bbox();
-    mesh.rebuild_segments();
+    if rebuild_segments {
+        mesh.rebuild_segments();
+    }
     mesh.build_kdtree();
     mesh.build_vertex_kdtree();
     mesh.build_adjacency();
@@ -528,24 +592,31 @@ fn labels_from_colors(colors: &[[u8; 4]]) -> Vec<u32> {
 
 /// Decode every `paint_color` tree, degrading one malformed value to "no
 /// paint" instead of failing the import.
-fn decode_paint(paint: &[Option<String>]) -> Vec<Option<PaintNode>> {
-    paint
-        .iter()
-        .enumerate()
-        .map(|(index, value)| {
-            let hex = value.as_deref()?;
+fn decode_paint(
+    paint: &[Option<String>],
+    max_faces: usize,
+) -> Result<(Vec<Option<PaintNode>>, usize), String> {
+    let mut trees = Vec::with_capacity(paint.len());
+    let mut faces = 0;
+    for (index, value) in paint.iter().enumerate() {
+        let tree = if let Some(hex) = value.as_deref() {
             match paint::decode(hex) {
                 Ok(node) => Some(node),
                 Err(error) => {
-                    log::warn!(
-                        "3mf: face {index} has an undecodable paint_color; \
-                         rendering it unpainted: {error}"
-                    );
+                    log::warn!("3mf: face {index} has an undecodable paint_color; rendering it unpainted: {error}");
                     None
                 }
             }
-        })
-        .collect()
+        } else {
+            None
+        };
+        faces += tree.as_ref().map_or(1, paint::leaf_count);
+        if faces > max_faces {
+            return Err("3MF paint exceeds the expanded triangle budget".into());
+        }
+        trees.push(tree);
+    }
+    Ok((trees, faces))
 }
 
 /// Resolve one colour per expanded face.
@@ -997,6 +1068,59 @@ mod tests {
     }
 
     #[test]
+    fn paint_expansion_is_counted_across_all_base_faces() {
+        let paint = [Some("841".into()), Some("841".into())];
+        assert_eq!(decode_paint(&paint, 4).unwrap().1, 4);
+        let error = decode_paint(&paint, 3).unwrap_err();
+        assert!(error.contains("expanded triangle budget"), "{error}");
+    }
+
+    #[test]
+    fn corrupt_texture_metadata_warns_without_discarding_saved_face_colors() {
+        let object = mesh_object(
+            1,
+            "Textured",
+            TRIANGLE_VERTICES,
+            TRIANGLE_FACE,
+            &[Some("4")],
+        );
+        let mut entries = one_object(&object);
+        let mut mesh = MeshModel::new();
+        mesh.vertices = TRIANGLE_VERTICES.to_vec();
+        mesh.faces = TRIANGLE_FACE.to_vec();
+        mesh.face_colors = vec![[55, 66, 77, 255]];
+        mesh.segment_labels = vec![0];
+        let state = project_state::ProjectState {
+            unit: "millimeter".into(),
+            active_plate: 1,
+            paint_sources_complete: true,
+            plates: vec![project_state::PlateStateHeader {
+                plater_id: 1,
+                name: "Textured".into(),
+                object_ids: vec![1],
+                fingerprint: project_state::fingerprint_of(&mesh.vertices, &mesh.faces),
+                history_truncated: false,
+                placement_offset: [0.0; 3],
+            }],
+        };
+        entries.push((
+            "Metadata/cym/project.json",
+            project_state::encode_project_json(&state).into_bytes(),
+        ));
+        entries.push((
+            "Metadata/cym/plate_1.bin",
+            project_state::encode_plate_state(&mesh),
+        ));
+        entries.push(("Metadata/cym/texture_1.json", b"bad JSON".to_vec()));
+        let imported = read(entries);
+        let plate = &imported.plates[0];
+        assert_eq!(plate.engineering_state, EngineeringState::Restored);
+        assert_eq!(plate.mesh.face_colors, mesh.face_colors);
+        assert!(plate.mesh.texture_state_dropped);
+        assert!(plate.mesh.texture_slot_mapping.is_none());
+    }
+
+    #[test]
     fn imports_geometry_and_paint_from_a_synthetic_3mf() {
         let object = mesh_object(1, "Part", QUAD_VERTICES, QUAD_FACES, &[Some("1C"), None]);
         let mut entries = one_object(&object);
@@ -1059,7 +1183,9 @@ mod tests {
             [0, 176, 240, 255],
         ] {
             assert!(
-                groups.iter().any(|(source, count)| *source == color && *count > 500),
+                groups
+                    .iter()
+                    .any(|(source, count)| *source == color && *count > 500),
                 "{groups:?}"
             );
         }
@@ -1069,7 +1195,10 @@ mod tests {
         let encoded = package.read("Metadata/cym/plate_1.bin").unwrap();
         let snapshot = project_state::decode_plate_state(&encoded, plate.mesh.faces.len()).unwrap();
         assert_eq!(plate.mesh.face_colors, snapshot.face_colors);
-        eprintln!("Legacy file: drawing groups {groups:?}, {} used colours", used.len());
+        eprintln!(
+            "Legacy file: drawing groups {groups:?}, {} used colours",
+            used.len()
+        );
     }
 
     #[test]

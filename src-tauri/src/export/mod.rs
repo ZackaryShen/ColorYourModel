@@ -6,3 +6,4 @@ pub mod project_state;
 pub mod quantize;
 pub mod source_presets;
 pub mod threemf;
+pub mod texture_mapping;

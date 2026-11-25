@@ -54,6 +54,12 @@ describe("planFileDrop", () => {
     expect(planFileDrop(["C:\\m\\a.cym"], false)).toEqual({ action: "reject", reason: "extension" });
   });
 
+  it("opens a GLB preview when another plate is already open", () => {
+    expect(planFileDrop(["file:///tmp/New%20Texture.GLB"], true)).toEqual({
+      action: "import", path: "/tmp/New Texture.GLB",
+    });
+  });
+
   it("treats an empty drop as a multi-file rejection (never imports)", () => {
     expect(planFileDrop([], false)).toEqual({ action: "reject", reason: "multi" });
   });

@@ -281,4 +281,3 @@ mod tests {
         assert!((total - 0.5).abs() < 1e-6);
     }
 }
-
