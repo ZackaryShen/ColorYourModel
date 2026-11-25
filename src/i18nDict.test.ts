@@ -66,7 +66,7 @@ describe("i18nDict", () => {
       "工程数据与几何不匹配，已按普通 3MF 导入"
     );
     expect(translate("status.historyDropped", "zh")).toBe(
-      "撤销历史未能载入，已从空历史开始"
+      "部分或全部撤销历史未恢复，已保留可用步骤"
     );
   });
 });

@@ -236,6 +236,7 @@ pub struct History {
     bytes: usize,
     max_depth: usize,
     byte_budget: usize,
+    persisted_truncated: bool,
 }
 
 /// One row of the history panel (issue #22): a read-only projection of an
@@ -279,7 +280,16 @@ impl History {
             bytes: 0,
             max_depth,
             byte_budget,
+            persisted_truncated: false,
         }
+    }
+
+    pub fn persisted_truncated(&self) -> bool {
+        self.persisted_truncated
+    }
+
+    pub fn set_persisted_truncated(&mut self, truncated: bool) {
+        self.persisted_truncated = truncated;
     }
 
     pub fn can_undo(&self) -> bool {
@@ -383,6 +393,10 @@ impl History {
         self.max_depth
     }
 
+    pub(crate) fn applied_entries(&self) -> impl DoubleEndedIterator<Item = &HistoryEntry> {
+        self.undo.iter()
+    }
+
     /// Project both stacks into owned payloads, for the project file.
     ///
     /// `.0` is the undo stack oldest→newest; `.1` is the redo stack with its
@@ -434,6 +448,7 @@ impl History {
         self.open_stroke = None;
         self.open_faces.clear();
         self.bytes = 0;
+        self.persisted_truncated = false;
     }
 
     /// Record the pre-operation state of the faces an operation is about to
@@ -540,11 +555,7 @@ impl History {
 
     /// Revert the most recent operation. Returns `None` when there is nothing
     /// to undo.
-    pub fn undo(
-        &mut self,
-        colors: &mut [[u8; 4]],
-        labels: &mut [u32],
-    ) -> Option<HistoryOutcome> {
+    pub fn undo(&mut self, colors: &mut [[u8; 4]], labels: &mut [u32]) -> Option<HistoryOutcome> {
         let mut entry = self.undo.pop_back()?;
         let outcome = Self::apply(&mut entry, colors, labels);
         self.redo.push(entry);
@@ -557,11 +568,7 @@ impl History {
 
     /// Re-apply the most recently undone operation. Returns `None` when there
     /// is nothing to redo.
-    pub fn redo(
-        &mut self,
-        colors: &mut [[u8; 4]],
-        labels: &mut [u32],
-    ) -> Option<HistoryOutcome> {
+    pub fn redo(&mut self, colors: &mut [[u8; 4]], labels: &mut [u32]) -> Option<HistoryOutcome> {
         let mut entry = self.redo.pop()?;
         let outcome = Self::apply(&mut entry, colors, labels);
         self.undo.push_back(entry);
@@ -605,7 +612,9 @@ impl History {
     /// is still worth one level of undo, and dropping it would leave the user
     /// with no way back from the most destructive action available.
     fn evict(&mut self) {
-        while self.undo.len() > 1 && (self.undo.len() > self.max_depth || self.bytes > self.byte_budget) {
+        while self.undo.len() > 1
+            && (self.undo.len() > self.max_depth || self.bytes > self.byte_budget)
+        {
             if let Some(dropped) = self.undo.pop_front() {
                 self.bytes = self.bytes.saturating_sub(dropped.bytes());
             }
@@ -667,9 +676,16 @@ mod tests {
         h.record(OpKind::Paint, None, &[(1, colors[1])], &[]);
         colors[1] = [5, 5, 5, 255];
 
-        assert!(!h.can_redo(), "redo branch must not survive a new operation");
+        assert!(
+            !h.can_redo(),
+            "redo branch must not survive a new operation"
+        );
         assert!(h.redo(&mut colors, &mut labels).is_none());
-        assert_eq!(colors[1], [5, 5, 5, 255], "redo must not overwrite new paint");
+        assert_eq!(
+            colors[1],
+            [5, 5, 5, 255],
+            "redo must not overwrite new paint"
+        );
     }
 
     /// A drag paints the same face repeatedly. Undo must return it to the
@@ -751,7 +767,12 @@ mod tests {
         let mut h = History::with_limits(3, DEFAULT_BYTE_BUDGET);
 
         for i in 0..5u32 {
-            h.record(OpKind::Paint, Some(i as u64), &[(i, colors[i as usize])], &[]);
+            h.record(
+                OpKind::Paint,
+                Some(i as u64),
+                &[(i, colors[i as usize])],
+                &[],
+            );
             colors[i as usize] = [1, 0, 0, 255];
         }
         assert_eq!(h.undo_depth(), 3);
@@ -764,7 +785,12 @@ mod tests {
         let mut h = History::with_limits(DEFAULT_MAX_DEPTH, 1);
 
         for i in 0..4u32 {
-            h.record(OpKind::Paint, Some(i as u64), &[(i, colors[i as usize])], &[]);
+            h.record(
+                OpKind::Paint,
+                Some(i as u64),
+                &[(i, colors[i as usize])],
+                &[],
+            );
             colors[i as usize] = [1, 0, 0, 255];
         }
         assert_eq!(h.undo_depth(), 1);
@@ -784,7 +810,11 @@ mod tests {
         assert!(after_record > 0);
 
         h.undo(&mut colors, &mut labels).unwrap();
-        assert_eq!(h.bytes(), after_record, "moving to redo must not change the total");
+        assert_eq!(
+            h.bytes(),
+            after_record,
+            "moving to redo must not change the total"
+        );
 
         h.clear();
         assert_eq!(h.bytes(), 0);
@@ -795,7 +825,10 @@ mod tests {
         let mut h = History::new();
         h.record(OpKind::Paint, Some(1), &[], &[]);
         h.record(OpKind::Merge, None, &[], &[]);
-        assert!(!h.can_undo(), "an operation that touched nothing is not an operation");
+        assert!(
+            !h.can_undo(),
+            "an operation that touched nothing is not an operation"
+        );
     }
 
     /// A merge re-labels faces without repainting them. `record` used to bail
@@ -865,8 +898,15 @@ mod tests {
         h.undo(&mut live_colors, &mut live_labels).unwrap();
         let colors_after_undo = live_colors.clone();
         let labels_after_undo = live_labels.clone();
-        assert_eq!(labels_after_undo, vec![0, 0, 0], "the merge is undone again");
-        assert_eq!(colors_after_undo, colors_after_all, "a merge never repaints");
+        assert_eq!(
+            labels_after_undo,
+            vec![0, 0, 0],
+            "the merge is undone again"
+        );
+        assert_eq!(
+            colors_after_undo, colors_after_all,
+            "a merge never repaints"
+        );
 
         let (undo, redo) = h.to_raw();
         assert_eq!(undo.len(), 2);
@@ -898,7 +938,11 @@ mod tests {
         for step in 0..2 {
             let live = h.undo(&mut live_colors, &mut live_labels);
             let reloaded = restored.undo(&mut restored_colors, &mut restored_labels);
-            assert_eq!(live.is_some(), reloaded.is_some(), "undo {step} availability");
+            assert_eq!(
+                live.is_some(),
+                reloaded.is_some(),
+                "undo {step} availability"
+            );
             assert_eq!(live_colors, restored_colors, "undo {step} colours");
             assert_eq!(live_labels, restored_labels, "undo {step} labels");
         }
@@ -920,7 +964,11 @@ mod tests {
         for step in 0..3 {
             let live = h.redo(&mut live_colors, &mut live_labels);
             let reloaded = redo_only.redo(&mut redo_colors, &mut redo_labels);
-            assert_eq!(live.is_some(), reloaded.is_some(), "redo {step} availability");
+            assert_eq!(
+                live.is_some(),
+                reloaded.is_some(),
+                "redo {step} availability"
+            );
             assert_eq!(live_colors, redo_colors, "redo {step} colours");
             assert_eq!(live_labels, redo_labels, "redo {step} labels");
         }
@@ -991,7 +1039,8 @@ mod tests {
         colors[0] = [9, 9, 9, 255];
         restored.undo(&mut colors, &mut labels).unwrap();
         assert_eq!(
-            colors[0], [1, 0, 0, 255],
+            colors[0],
+            [1, 0, 0, 255],
             "the open-face dedup must not leak either"
         );
     }
@@ -1021,7 +1070,11 @@ mod tests {
             );
         }
 
-        assert_eq!(OpKind::from_u8(5), None, "kind 5 预留给模型变换，本版本不可加载");
+        assert_eq!(
+            OpKind::from_u8(5),
+            None,
+            "kind 5 预留给模型变换，本版本不可加载"
+        );
         for b in 6..=u8::MAX {
             assert_eq!(OpKind::from_u8(b), None, "byte {b} is not a known op kind");
         }

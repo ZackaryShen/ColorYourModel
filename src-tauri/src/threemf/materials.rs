@@ -17,8 +17,8 @@
 //! - Slot `k` beyond the palette end clamps to the last colour instead of
 //!   panicking; short arrays occur in hand-edited files.
 //! - A mesh with no `paint_color` at all has no per-face slots. An object's
-//!   `extruder` metadata (0-based, from `model_settings.config`) then colours
-//!   every face: extruder `e` is slot `e + 1`, i.e. palette index `e`.
+//!   `extruder` metadata (1-based, from `model_settings.config`) then colours
+//!   every face: extruder `e` is slot `e`, i.e. palette index `e - 1`.
 //!
 //! A palette is engineering-level, not plate-level: one file has one
 //! `filament_colour` array.
@@ -87,8 +87,7 @@ pub fn resolve(
 /// `slots` is parallel to the faces. An empty `slots` means the mesh carries no
 /// `paint_color` at all (not "a mesh with zero faces" — that is
 /// `face_count == 0`), and every face then takes the object's base colour:
-/// `object_base` is the `model_settings` extruder (0-based), so extruder `e`
-/// is palette index `e`, clamped to the last colour. Without `object_base`,
+/// `object_base` is a normalized zero-based palette index. Without `object_base`,
 /// the unpainted fallback (palette index 0) applies. A `slots` slice shorter
 /// than `face_count` treats the remaining faces as unpainted; nothing panics.
 pub fn resolve_with_base(

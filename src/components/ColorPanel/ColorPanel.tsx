@@ -1,3 +1,5 @@
+import { listenViewportKeydown } from "../../utils/viewportKeyboard";
+import { isCurrentTabResult } from "../../utils/tabCommand";
 import { useEffect, useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { AMS_PALETTE, type UsedColorEntry } from "../../types/mesh";
@@ -66,14 +68,14 @@ export function ColorPanel() {
       setRepaintTo(null);
       e.stopImmediatePropagation();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return listenViewportKeydown(onKey);
   }, [selectedSource]);
 
   const applyRepaint = async () => {
     if (!selectedSource || !repaintTo) return;
     setRepainting(true);
     const result = await replacePaintSource(selectedSource, repaintTo);
+      if (!isCurrentTabResult(result)) return;
     setRepainting(false);
     setPaintSourceHoverFaces(null);
     if (!result || result.updatedFaces.length === 0) {
@@ -106,6 +108,7 @@ export function ColorPanel() {
       return;
     }
     const faces = await paintSourceFaces(source);
+      if (!isCurrentTabResult(faces)) return;
     setPaintSourceHoverFaces(faces);
   };
   // Issue #29 acceptance #6: the replace section starts collapsed and Esc
@@ -119,8 +122,7 @@ export function ColorPanel() {
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
       setReplaceOpen(false);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return listenViewportKeydown(onKey);
   }, [replaceOpen]);
 
   useEffect(() => {

@@ -1,3 +1,4 @@
+import { captureTabOwnership, isCurrentTabOwnership, isCurrentTabResult } from "../utils/tabCommand";
 import { useCallback, useEffect, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { useT } from "../i18n";
@@ -34,7 +35,8 @@ export function HistoryPanel() {
   const historyVersion = useAppStore((s) => s.historyVersion);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const { historyEntries, historyJump } = useTauriCommand();
-  const [data, setData] = useState<HistoryEntriesResult | null>(null);
+  const [snapshot, setSnapshot] = useState<{ data: HistoryEntriesResult; owner: ReturnType<typeof captureTabOwnership> } | null>(null);
+  const data = snapshot && isCurrentTabOwnership(snapshot.owner) ? snapshot.data : null;
   const [jumping, setJumping] = useState(false);
 
   // Refetch whenever the timeline may have moved (version bump) or a model
@@ -42,8 +44,9 @@ export function HistoryPanel() {
   // timeline itself). Identified deps only: the wrappers change identity
   // every render by design.
   const fetchEntries = useCallback(async () => {
+    const owner = captureTabOwnership();
     const res = await historyEntries();
-    if (res) setData(res);
+    if (res && isCurrentTabOwnership(owner) && isCurrentTabResult(res)) setSnapshot({ data: res, owner });
   }, [historyEntries]);
 
   useEffect(() => {
@@ -52,17 +55,18 @@ export function HistoryPanel() {
   }, [historyVersion, meshData]);
 
   const onJump = async (depth: number) => {
-    if (jumping || depth === (data?.current ?? 0)) return;
+    if (!data || !snapshot || jumping || depth === data.current) return;
+    const owner = snapshot.owner;
     setJumping(true);
     try {
       const result = await historyJump(depth);
-      if (result) {
+      if (result && isCurrentTabOwnership(owner) && isCurrentTabResult(result)) {
         applyHistoryResult(result); // flag update bumps historyVersion → refetch
         setStatusMessage(t("history.jumped", depth));
       }
     } catch (e) {
       log.error("HistoryPanel", "jump failed", { depth, error: String(e) });
-      setStatusMessage(`${t("history.jumpFailed")}: ${e}`);
+      if (isCurrentTabOwnership(owner)) setStatusMessage(`${t("history.jumpFailed")}: ${e}`);
     } finally {
       setJumping(false);
     }
@@ -80,6 +84,7 @@ export function HistoryPanel() {
           </span>
         )}
       </div>
+      {meshData?.historyDropped && <p role="status" style={{ margin: "6px 10px", fontSize: 12, color: "var(--text-2)" }}>{t("status.historyDropped")}</p>}
       <div style={styles.list}>
         {rows.map((row) => (
           <button
@@ -91,7 +96,7 @@ export function HistoryPanel() {
               ...(row.isRedo ? styles.rowRedo : {}),
             }}
             onClick={() => void onJump(row.depth)}
-            disabled={row.isCurrent || jumping}
+            disabled={!data || row.isCurrent || jumping}
             title={row.isRedo ? t("history.redoHint") : t("history.undoHint")}
             role="option"
             aria-selected={row.isCurrent}

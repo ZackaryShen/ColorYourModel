@@ -84,3 +84,11 @@ describe("normalizeDroppedPath", () => {
     expect(normalizeDroppedPath("/tmp/100%broken.3mf")).toBe("/tmp/100%broken.3mf");
   });
 });
+
+it("preserves percent escapes and leading spaces in native filenames", () => {
+  expect(normalizeDroppedPath("/tmp/part%20literal.3mf")).toBe("/tmp/part%20literal.3mf");
+  expect(normalizeDroppedPath(" /tmp/name.3mf")).toBe(" /tmp/name.3mf");
+});
+it("accepts localhost file URLs as absolute local paths", () => {
+  expect(normalizeDroppedPath("file://localhost/tmp/a%20b.3mf")).toBe("/tmp/a b.3mf");
+});

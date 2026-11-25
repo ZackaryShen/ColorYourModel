@@ -32,6 +32,7 @@ export interface PaintJob {
 
 export interface SerialPaintQueue<Job> {
   enqueue(job: Job): void;
+  cancel(): void;
 }
 
 /** Create the drain-serially, latest-wins queue. `fn` is the backend call;
@@ -43,6 +44,7 @@ export function createSerialPaintQueue<Job>(
   let pending: Job | null = null;
   let draining = false;
   return {
+    cancel() { pending = null; },
     enqueue(job: Job) {
       pending = job; // busy → drop intermediate (covered by radius)
       if (draining) return;

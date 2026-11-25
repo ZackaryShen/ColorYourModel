@@ -1,5 +1,6 @@
+import { isCurrentTabResult } from "../../utils/tabCommand";
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeTab as invoke } from "../../utils/tabCommand";
 import { useAppStore } from "../../store/appStore";
 import { AMS_PALETTE, type UsedColorEntry } from "../../types/mesh";
 import { useT } from "../../i18n";
@@ -69,6 +70,7 @@ export function ReplaceColourSection({ used }: { used: UsedColorEntry[] }) {
         faces: number;
         regions: number;
       }>("replace_face_color", { from, to });
+      if (!isCurrentTabResult(result)) return;
       // The backend mirrored the guards (defence in depth): a 0-face result
       // means mirror drift or a no-op — nothing to hand to the GPU bridge,
       // and no fake "已替换 0 面" success.

@@ -31,11 +31,66 @@ pub struct AssembledMesh {
     pub faces: Vec<[u32; 3]>,
     /// Raw `paint_color` values, parallel to `faces` in traversal order.
     pub paint: Vec<Option<String>>,
-    /// The object's `model_settings` `extruder` (0-based palette index) for
+    /// The object's `model_settings` `extruder` (1-based filament slot) for
     /// each face, parallel to `faces`. It is the face's base colour when its
     /// `paint_color` is absent (or state 0). `None` means the object declares
     /// no extruder and the reader falls back to the slicer's slot 1.
     pub base_slots: Vec<Option<u8>>,
+}
+
+/// Bounds traversal borrows source geometry; no inactive editable mesh is allocated.
+pub fn item_bounds(
+    scene: &Scene,
+    item_index: usize,
+) -> Result<Option<([f32; 3], [f32; 3])>, String> {
+    let item = scene
+        .build
+        .get(item_index)
+        .ok_or("Build item is outside the scene")?;
+    let part = build_part_key(scene, item.object_id)?;
+    let mut pieces = Vec::new();
+    collect_pieces(scene, part, item.object_id, item.transform, 0, &mut pieces)?;
+    let mut low = [f32::INFINITY; 3];
+    let mut high = [f32::NEG_INFINITY; 3];
+    let mut any = false;
+    for piece in pieces {
+        for &vertex in &piece.mesh.vertices {
+            let world = piece.transform.apply(vertex);
+            for axis in 0..3 {
+                low[axis] = low[axis].min(world[axis]);
+                high[axis] = high[axis].max(world[axis]);
+            }
+            any = true;
+        }
+    }
+    Ok(any.then_some((low, high)))
+}
+
+pub fn item_face_count(scene: &Scene, item_index: usize) -> Result<u32, String> {
+    let item = scene
+        .build
+        .get(item_index)
+        .ok_or("Build item is outside the scene")?;
+    let part = build_part_key(scene, item.object_id)?;
+    let mut pieces = Vec::new();
+    collect_pieces(scene, part, item.object_id, item.transform, 0, &mut pieces)?;
+    let count: usize = pieces
+        .iter()
+        .map(|piece| {
+            piece
+                .mesh
+                .paint
+                .iter()
+                .map(|raw| {
+                    raw.as_deref()
+                        .and_then(|raw| super::paint::decode(raw).ok())
+                        .map(|tree| super::paint::leaf_count(&tree))
+                        .unwrap_or(1)
+                })
+                .sum::<usize>()
+        })
+        .sum();
+    u32::try_from(count).map_err(|_| "Plate exceeds supported face count".into())
 }
 
 /// Component nesting followed before assembly gives up. Real Orca/Bambu
@@ -83,7 +138,7 @@ pub fn assemble(
     bake_and_merge(scene, group, settings)
 }
 
-/// The `model_settings` `extruder` of a build object, 0-based.
+/// The `model_settings` `extruder` of a build object, 1-based (zero means default).
 ///
 /// The lookup is by the **build item's** object id — the id the plate lists
 /// and `model_settings.config` keys — because `plates.rs` does not parse
@@ -152,14 +207,7 @@ fn bake_and_merge(
         let part = build_part_key(scene, item.object_id)?;
         let base = object_base(settings, item.object_id);
         let mut pieces = Vec::new();
-        collect_pieces(
-            scene,
-            part,
-            item.object_id,
-            item.transform,
-            0,
-            &mut pieces,
-        )?;
+        collect_pieces(scene, part, item.object_id, item.transform, 0, &mut pieces)?;
         if pieces.is_empty() {
             return Err(format!(
                 "object {} resolves to no geometry in any component",
@@ -232,11 +280,7 @@ fn append_piece(
     let mut indices = Vec::with_capacity(piece.mesh.vertices.len());
     for vertex in &piece.mesh.vertices {
         let baked = piece.transform.apply(*vertex);
-        let key = [
-            baked[0].to_bits(),
-            baked[1].to_bits(),
-            baked[2].to_bits(),
-        ];
+        let key = [baked[0].to_bits(), baked[1].to_bits(), baked[2].to_bits()];
         let index = match vertex_map.get(&key) {
             Some(&index) => index,
             None => {
@@ -594,12 +638,13 @@ mod tests {
             vec![component(1, Some(PART), translated(0.0, 5.0, 0.0))],
         );
         let scene = make_scene(
-            &[(MAIN, vec![main]), (PART, vec![object(1, Some(triangle()), vec![])])],
+            &[
+                (MAIN, vec![main]),
+                (PART, vec![object(1, Some(triangle()), vec![])]),
+            ],
             vec![item(
                 2,
-                Transform([
-                    2.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 10.0, 0.0, 0.0,
-                ]),
+                Transform([2.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 10.0, 0.0, 0.0]),
             )],
         );
 
@@ -637,24 +682,38 @@ mod tests {
                 vec![object(
                     2,
                     None,
-                    vec![component(1, Some("3D/Objects/gone.model"), Transform::identity())],
+                    vec![component(
+                        1,
+                        Some("3D/Objects/gone.model"),
+                        Transform::identity(),
+                    )],
                 )],
             )],
             vec![item(2, Transform::identity())],
         );
         let err = assemble(&scene, &group(&[0])).expect_err("missing part is not degradable");
-        assert!(err.contains("gone.model"), "error must name the part: {err}");
+        assert!(
+            err.contains("gone.model"),
+            "error must name the part: {err}"
+        );
 
         // A component id that the named part does not hold.
         let scene = make_scene(
             &[(
                 MAIN,
-                vec![object(2, None, vec![component(9, None, Transform::identity())])],
+                vec![object(
+                    2,
+                    None,
+                    vec![component(9, None, Transform::identity())],
+                )],
             )],
             vec![item(2, Transform::identity())],
         );
         let err = assemble(&scene, &group(&[0])).expect_err("missing component object is an error");
-        assert!(err.contains('9'), "error must name the component object: {err}");
+        assert!(
+            err.contains('9'),
+            "error must name the component object: {err}"
+        );
     }
 
     #[test]
@@ -698,7 +757,10 @@ mod tests {
         let scene = make_scene(
             &[(
                 MAIN,
-                vec![object(7, Some(bad.clone()), vec![]), object(8, Some(triangle()), vec![])],
+                vec![
+                    object(7, Some(bad.clone()), vec![]),
+                    object(8, Some(triangle()), vec![]),
+                ],
             )],
             vec![
                 item(7, translated(1.0, 0.0, 0.0)),

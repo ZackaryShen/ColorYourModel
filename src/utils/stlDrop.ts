@@ -27,9 +27,10 @@ export type StlDropDecision =
  * has to know about the difference.
  */
 export function normalizeDroppedPath(raw: string): string {
-  let path = raw.trim();
-  if (path.toLowerCase().startsWith("file://")) {
-    path = path.slice("file://".length);
+  if (!/^file:\/\//i.test(raw)) return raw;
+  let path = raw.slice("file://".length);
+  {
+    if (/^localhost\//i.test(path)) path = path.slice("localhost".length);
     // file:///C:/x -> /C:/x on Windows; drop the extra leading slash.
     if (/^\/[A-Za-z]:[\\/]/.test(path)) path = path.slice(1);
   }

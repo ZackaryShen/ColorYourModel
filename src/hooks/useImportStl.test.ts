@@ -6,15 +6,24 @@ const t = (key: string, ...args: (string | number)[]): string =>
   translate(key, "en", ...args);
 
 describe("importStatusMessage", () => {
-  it("surfaces a dropped engineering state over the multi-plate notice", () => {
+  it("keeps the multi-plate limitation visible alongside a dropped engineering state", () => {
     expect(
       importStatusMessage(
         { engineeringState: "dropped", plateIndex: 1, plateCount: 3 },
         t
       )
     ).toBe(
-      "Engineering data does not match the geometry; imported as a plain 3MF"
+      "Engineering data does not match the geometry; imported as a plain 3MF · Plate 1 of 3; switch plates using the tabs above"
     );
+  });
+
+  it("keeps the multi-plate limitation visible alongside a dropped history", () => {
+    const message = importStatusMessage(
+      { engineeringState: "restored", historyDropped: true, plateIndex: 1, plateCount: 2 },
+      t
+    );
+    expect(message).toContain("undo history was not restored");
+    expect(message).toContain("Plate 1 of 2");
   });
 
   it("surfaces a dropped undo history when the engineering state restored", () => {
@@ -23,7 +32,7 @@ describe("importStatusMessage", () => {
         { engineeringState: "restored", historyDropped: true },
         t
       )
-    ).toBe("Undo history could not be loaded; starting with an empty history");
+    ).toBe("Some or all undo history was not restored; available steps were kept");
   });
 
   it("keeps the engineering drop notice ahead of the history notice", () => {
@@ -43,7 +52,7 @@ describe("importStatusMessage", () => {
         { engineeringState: "absent", plateIndex: 1, plateCount: 2 },
         t
       )
-    ).toBe("Imported plate 1 of 2 (multi-plate paging comes later)");
+    ).toBe("Plate 1 of 2; switch plates using the tabs above");
   });
 
   it("keeps the plain import message for STL, single-plate and restored files", () => {

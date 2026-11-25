@@ -11,7 +11,8 @@
 //! missing referenced part — are errors.
 
 pub mod assemble;
-pub mod materials;
+pub mod legacy_paint;
+mod materials;
 pub mod model;
 pub mod opc;
 pub mod paint;
@@ -102,63 +103,280 @@ pub struct ImportedProject {
 /// model XML, a referenced part/object that does not resolve). Engineering
 /// state, `model_settings.config` and `project_settings.config` are optional:
 /// each failure is logged and the plate falls back to plain geometry + colours.
-pub fn read_project(path: &Path, progress: &dyn Fn(f32, &str)) -> Result<ImportedProject, String> {
-    progress(0.02, "3mf:open");
-    let mut package = Package::open(path)?;
+#[derive(Clone)]
+pub struct PlateRef {
+    pub face_count: u32,
+    pub plater_id: u32,
+    pub name: String,
+}
 
-    progress(0.10, "3mf:model");
-    let scene = model::read_scene(&mut package)?;
+pub struct ProjectIndex {
+    pub plates: Vec<PlateRef>,
+    pub active_index: usize,
+}
 
-    progress(0.25, "3mf:plates");
-    let settings = read_settings(&mut package);
-    let groups = plates::group(&scene.build, &settings);
+/// Read scene metadata without constructing any plate's editable mesh.
+pub fn load_plates(path: &Path) -> Result<ProjectIndex, String> {
+    ProjectReader::open(path, &|_, _| {})?.index()
+}
 
-    // Read each optional metadata part once, not once per plate. Whether the
-    // header part *exists* is tracked separately from whether it parsed: a
-    // rejected part must surface as "dropped", never as "plain file".
-    let engineering_header_present = package
-        .part_names()
-        .iter()
-        .any(|part| part == ENGINEERING_HEADER_PART);
-    let engineering_header = read_engineering_header(&mut package);
-    let project_settings = read_optional(&mut package, PROJECT_SETTINGS_PART);
-    let palette = project_settings.as_deref().and_then(read_palette);
-    let (bed_width, bed_depth) = project_settings
-        .as_deref()
-        .map(bed_size)
-        .unwrap_or((0.0, 0.0));
+pub fn load_plate(
+    path: &Path,
+    index: usize,
+    progress: &dyn Fn(f32, &str),
+) -> Result<ImportedPlate, String> {
+    let mut reader = ProjectReader::open(path, progress)?;
+    let plate = reader.load(index, progress)?;
+    progress(1.0, "3mf:done");
+    Ok(plate)
+}
 
-    let context = PlateContext {
-        scene: &scene,
-        settings: &settings,
-        palette: palette.as_ref(),
-        bed_width,
-        bed_depth,
-        plate_count: groups.len(),
-    };
+pub fn open_active_plate(
+    path: &Path,
+    progress: &dyn Fn(f32, &str),
+) -> Result<(ProjectIndex, ImportedPlate, Option<ProjectLayout>), String> {
+    let stamp = ProjectLayout::stamp(path);
+    let mut reader = ProjectReader::open(path, progress)?;
+    let index = reader.index()?;
+    let active = reader.load(index.active_index, progress)?;
+    let layout = stamp.map(|stamp| ProjectLayout {
+        path: path.to_path_buf(),
+        stamp,
+        groups: reader.groups,
+    });
+    progress(1.0, "3mf:done");
+    Ok((index, active, layout))
+}
 
-    let total = groups.len().max(1);
-    let mut imported = Vec::with_capacity(groups.len());
-    for (index, group) in groups.iter().enumerate() {
-        progress(
-            0.30 + 0.60 * (index as f32 / total as f32),
-            &format!("3mf:plate {}/{}", index + 1, total),
-        );
-        imported.push(import_plate(
-            &mut package,
-            &context,
-            engineering_header.as_ref(),
-            engineering_header_present,
-            index,
-            group,
-        )?);
+/// Retain plate membership, but no mesh data, for on-demand source loads.
+pub struct ProjectLayout {
+    path: std::path::PathBuf,
+    stamp: (std::time::SystemTime, u64),
+    groups: Vec<PlateGroup>,
+}
+
+impl ProjectLayout {
+    fn stamp(path: &Path) -> Option<(std::time::SystemTime, u64)> {
+        let metadata = path.metadata().ok()?;
+        Some((metadata.modified().ok()?, metadata.len()))
     }
 
+    pub fn applies_to(&self, path: &Path) -> bool {
+        self.path == path && Self::stamp(path) == Some(self.stamp)
+    }
+
+    pub fn load(
+        &self,
+        path: &Path,
+        index: usize,
+        progress: &dyn Fn(f32, &str),
+    ) -> Result<ImportedPlate, String> {
+        let mut group = self
+            .groups
+            .get(index)
+            .ok_or("Requested plate is outside the project")?
+            .clone();
+        progress(0.02, "3mf:open");
+        let mut package = Package::open(path)?;
+        progress(0.10, "3mf:model");
+        let scene = model::read_selected_scene(&mut package, &group.item_indices)?;
+        group.item_indices = (0..scene.build.len()).collect();
+        let settings = read_settings(&mut package);
+        let config = read_optional(&mut package, PROJECT_SETTINGS_PART);
+        let palette = config.as_deref().and_then(read_palette);
+        let (bed_width, bed_depth) = config.as_deref().map(bed_size).unwrap_or_default();
+        let context = PlateContext {
+            scene: &scene,
+            settings: &settings,
+            palette: palette.as_ref(),
+            bed_width,
+            bed_depth,
+            plate_count: self.groups.len(),
+        };
+        let header_present = part_exists(&package, ENGINEERING_HEADER_PART);
+        let header = read_engineering_header(&mut package);
+        progress(
+            0.30,
+            &format!("3mf:plate {}/{}", index + 1, self.groups.len()),
+        );
+        let plate = import_plate(
+            &mut package,
+            &context,
+            header.as_ref(),
+            header_present,
+            index,
+            &group,
+        )?;
+        progress(1.0, "3mf:done");
+        Ok(plate)
+    }
+}
+
+pub fn read_project(path: &Path, progress: &dyn Fn(f32, &str)) -> Result<ImportedProject, String> {
+    let mut reader = ProjectReader::open(path, progress)?;
+    let plates = (0..reader.groups.len())
+        .map(|index| reader.load(index, progress))
+        .collect::<Result<Vec<_>, _>>()?;
     progress(1.0, "3mf:done");
     Ok(ImportedProject {
-        unit: scene.unit,
-        plates: imported,
+        unit: reader.scene.unit,
+        plates,
     })
+}
+
+struct ProjectReader {
+    package: Package,
+    scene: Scene,
+    settings: ModelSettings,
+    groups: Vec<PlateGroup>,
+    palette: Option<Palette>,
+    bed_width: f32,
+    bed_depth: f32,
+    header: Option<project_state::ProjectState>,
+    header_present: bool,
+}
+
+impl ProjectReader {
+    fn open(path: &Path, progress: &dyn Fn(f32, &str)) -> Result<Self, String> {
+        progress(0.02, "3mf:open");
+        let mut package = Package::open(path)?;
+        progress(0.10, "3mf:model");
+        let scene = model::read_scene(&mut package)?;
+        progress(0.25, "3mf:plates");
+        let settings = read_settings(&mut package);
+        let config = read_optional(&mut package, PROJECT_SETTINGS_PART);
+        let (bed_width, bed_depth) = config.as_deref().map(bed_size).unwrap_or_default();
+        let palette = config.as_deref().and_then(read_palette);
+        let groups = group_scene(&scene, &settings, bed_width, bed_depth)?;
+        let header_present = part_exists(&package, ENGINEERING_HEADER_PART);
+        let header = read_engineering_header(&mut package);
+        Ok(Self {
+            package,
+            scene,
+            settings,
+            groups,
+            palette,
+            bed_width,
+            bed_depth,
+            header,
+            header_present,
+        })
+    }
+
+    fn index(&self) -> Result<ProjectIndex, String> {
+        let plates: Vec<_> = self
+            .groups
+            .iter()
+            .enumerate()
+            .map(|(index, group)| {
+                let plater_id = group.plater_id.unwrap_or(index as u32 + 1);
+                let name = self
+                    .header
+                    .as_ref()
+                    .and_then(|h| h.plates.iter().find(|p| p.plater_id == plater_id))
+                    .map(|p| p.name.clone())
+                    .filter(|n| !n.trim().is_empty())
+                    .unwrap_or_else(|| plate_name(&self.settings, &self.scene, group, plater_id));
+                let face_count = group.item_indices.iter().try_fold(0u32, |total, &item| {
+                    total
+                        .checked_add(assemble::item_face_count(&self.scene, item)?)
+                        .ok_or_else(|| "Plate exceeds supported face count".to_string())
+                })?;
+                Ok(PlateRef {
+                    plater_id,
+                    name,
+                    face_count,
+                })
+            })
+            .collect::<Result<_, String>>()?;
+        let active_index = self
+            .header
+            .as_ref()
+            .and_then(|h| plates.iter().position(|p| p.plater_id == h.active_plate))
+            .unwrap_or(0);
+        Ok(ProjectIndex {
+            plates,
+            active_index,
+        })
+    }
+
+    fn load(
+        &mut self,
+        index: usize,
+        progress: &dyn Fn(f32, &str),
+    ) -> Result<ImportedPlate, String> {
+        let total = self.groups.len();
+        let group = self
+            .groups
+            .get(index)
+            .ok_or("Requested plate is outside the project")?;
+        progress(0.30, &format!("3mf:plate {}/{}", index + 1, total));
+        let context = PlateContext {
+            scene: &self.scene,
+            settings: &self.settings,
+            palette: self.palette.as_ref(),
+            bed_width: self.bed_width,
+            bed_depth: self.bed_depth,
+            plate_count: total,
+        };
+        import_plate(
+            &mut self.package,
+            &context,
+            self.header.as_ref(),
+            self.header_present,
+            index,
+            group,
+        )
+    }
+}
+
+/// Printed world positions win over stale slicer instance metadata.
+fn group_scene(
+    scene: &Scene,
+    settings: &ModelSettings,
+    width: f32,
+    depth: f32,
+) -> Result<Vec<PlateGroup>, String> {
+    let mut groups = plates::group(&scene.build, settings);
+    if groups.len() < 2 || width <= 0.0 || depth <= 0.0 {
+        return Ok(groups);
+    }
+    let hints = groups.clone();
+    for group in &mut groups {
+        group.item_indices.clear();
+    }
+    for item in 0..scene.build.len() {
+        let hint = hints
+            .iter()
+            .position(|g| g.item_indices.contains(&item))
+            .unwrap_or(0);
+        let target = if let Some((lo, hi)) = assemble::item_bounds(scene, item)? {
+            let center = [(lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5];
+            groups
+                .iter()
+                .enumerate()
+                .position(|(i, g)| {
+                    let origin = plate_origin(
+                        g.plater_id.unwrap_or(i as u32 + 1),
+                        groups.len(),
+                        width,
+                        depth,
+                    );
+                    center[0] >= origin[0]
+                        && center[0] <= origin[0] + width
+                        && center[1] >= origin[1]
+                        && center[1] <= origin[1] + depth
+                })
+                .unwrap_or(hint)
+        } else {
+            hint
+        };
+        if target != hint {
+            log::warn!("3mf: build item {item} plate membership contradicts printed position; using plate {}",target+1);
+        }
+        groups[target].item_indices.push(item);
+    }
+    Ok(groups)
 }
 
 /// Everything about the file that is shared by all of its plates.
@@ -193,7 +411,9 @@ fn import_plate(
     // vertices it emits (also world space); hashing the plate-local form here
     // would break on a non-zero origin because `fl(fl(world - origin) + origin)`
     // is not `world` at 264 mm (f32 ulp there dwarfs the `{:.6}` grid).
-    let fingerprint = project_state::fingerprint_of(&expanded.vertices, &expanded.faces);
+    let fingerprint = engineering_header
+        .is_some()
+        .then(|| project_state::fingerprint_of(&expanded.vertices, &expanded.faces));
 
     // Plate-local coordinates for the tab: the writer re-adds this origin.
     let origin = plate_origin(
@@ -235,9 +455,25 @@ fn import_plate(
         engineering_header,
         engineering_header_present,
         index,
+        plater_id,
         fingerprint,
         &mut mesh,
     );
+
+    if restore.state == EngineeringState::Restored {
+        if let Some(saved) = engineering_header.and_then(|header| {
+            header
+                .plates
+                .iter()
+                .find(|plate| plate.plater_id == plater_id)
+        }) {
+            for vertex in &mut mesh.vertices {
+                for axis in 0..3 {
+                    vertex[axis] -= saved.placement_offset[axis];
+                }
+            }
+        }
+    }
 
     // A file with colours but no engineering state has no region labels of its
     // own. Importing it with one giant region (`labels = 0`) makes every fill
@@ -258,7 +494,11 @@ fn import_plate(
 
     Ok(ImportedPlate {
         plater_id,
-        name: plate_name(context.settings, context.scene, group, plater_id),
+        name: engineering_header
+            .and_then(|header| header.plates.iter().find(|p| p.plater_id == plater_id))
+            .map(|p| p.name.clone())
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or_else(|| plate_name(context.settings, context.scene, group, plater_id)),
         mesh,
         engineering_state: restore.state,
         history_dropped: restore.history_dropped,
@@ -312,7 +552,7 @@ fn decode_paint(paint: &[Option<String>]) -> Vec<Option<PaintNode>> {
 ///
 /// A face with a `paint_color` slot uses that 1-based slot. A face without one
 /// — no attribute at all, or a tree leaf in state 0 — uses the base slot its
-/// object declared through `model_settings` `extruder` (0-based), falling back
+/// object declared through `model_settings` `extruder` (1-based), falling back
 /// to the slicer's unpainted slot 1. Bases travel per face because one plate
 /// can mix objects on different filaments.
 fn resolve_face_colors(
@@ -345,8 +585,10 @@ fn resolve_face_colors(
         for &slot in expanded.slots.iter().skip(cursor).take(count) {
             colors.push(match slot {
                 0 => match base {
-                    Some(base) => palette_colour(palette, usize::from(base)),
-                    None => palette_colour(palette, 0),
+                    Some(base) if base > 0 && usize::from(base) <= palette.0.len() => {
+                        palette_colour(palette, usize::from(base) - 1)
+                    }
+                    _ => palette_colour(palette, 0),
                 },
                 slot => palette_colour(palette, usize::from(slot) - 1),
             });
@@ -355,10 +597,12 @@ fn resolve_face_colors(
     }
     if colors.len() != expanded.faces.len() {
         return (0..expanded.faces.len())
-            .map(|index| match expanded.slots.get(index).copied().unwrap_or(0) {
-                0 => palette_colour(palette, 0),
-                slot => palette_colour(palette, usize::from(slot) - 1),
-            })
+            .map(
+                |index| match expanded.slots.get(index).copied().unwrap_or(0) {
+                    0 => palette_colour(palette, 0),
+                    slot => palette_colour(palette, usize::from(slot) - 1),
+                },
+            )
             .collect();
     }
     colors
@@ -406,7 +650,12 @@ fn plate_name(
 /// Cells are laid out row-major on a grid wide enough for `plate_count`, with
 /// 20% spacing between beds. A single-plate file — and any file without a
 /// usable `printable_area` — has the identity origin.
-fn plate_origin(plater_id: u32, plate_count: usize, bed_width: f32, bed_depth: f32) -> [f32; 3] {
+pub(crate) fn plate_origin(
+    plater_id: u32,
+    plate_count: usize,
+    bed_width: f32,
+    bed_depth: f32,
+) -> [f32; 3] {
     if plate_count <= 1 || (bed_width <= 0.0 && bed_depth <= 0.0) {
         return [0.0; 3];
     }
@@ -489,7 +738,8 @@ fn try_restore(
     project: Option<&project_state::ProjectState>,
     header_part_present: bool,
     plate_index: usize,
-    fingerprint: project_state::Fingerprint,
+    plater_id: u32,
+    fingerprint: Option<project_state::Fingerprint>,
     mesh: &mut MeshModel,
 ) -> RestoreOutcome {
     let Some(project) = project else {
@@ -506,9 +756,9 @@ fn try_restore(
     };
     let Some((header_index, header)) = project
         .plates
-        .get(plate_index)
-        .map(|header| (plate_index, header))
-        .or_else(|| project.plates.first().map(|header| (0, header)))
+        .iter()
+        .enumerate()
+        .find(|(_, header)| header.plater_id == plater_id)
     else {
         // `read_engineering_header` rejects an empty plate list, so this is
         // only reachable for a hand-built `ProjectState`.
@@ -520,15 +770,8 @@ fn try_restore(
     // The caller hashes the subdivided, millimetre geometry **before** the
     // plate-origin shift: that is the world-coordinate domain the writer
     // hashes, and the only domain that survives a non-zero origin.
-    if fingerprint != header.fingerprint {
-        log::warn!(
-            "3mf: engineering state belongs to different geometry \
-             (stored {} vertices / {} faces, imported {} / {}); using plain import",
-            header.fingerprint.vertex_count,
-            header.fingerprint.face_count,
-            fingerprint.vertex_count,
-            fingerprint.face_count,
-        );
+    if fingerprint != Some(header.fingerprint) {
+        log::warn!("3mf: engineering state belongs to different geometry; using plain import",);
         return RestoreOutcome::dropped(part_exists(package, &history_part));
     }
 
@@ -550,11 +793,19 @@ fn try_restore(
     mesh.segment_names = state.segment_names;
     mesh.next_manual_label = state.next_manual_label;
 
+    let paint_sources_part = format!("{ENGINEERING_DIR}/paint_sources_{}.bin", header_index + 1);
+    if let Some(bytes) = read_optional(package, &paint_sources_part) {
+        match project_state::decode_paint_sources(&bytes, mesh.faces.len()) {
+            Ok(sources) => mesh.paint_sources = sources,
+            Err(error) => log::warn!("3mf: {paint_sources_part} ignored ({error})"),
+        }
+    }
+
     // History is optional on its own: a missing part means "open with an empty
     // stack", never "reject the file". A part that exists but cannot decode is
     // a real loss, so the DTO reports it instead of silently emptying the
     // stack.
-    let mut history_dropped = false;
+    let mut history_dropped = header.history_truncated;
     if let Some(history_bytes) = read_optional(package, &history_part) {
         match project_state::decode_history(&history_bytes, mesh.faces.len()) {
             Ok(Some(history)) => mesh.history = history,
@@ -567,6 +818,12 @@ fn try_restore(
                 history_dropped = true;
             }
         }
+    } else if part_exists(package, &history_part) {
+        history_dropped = true;
+    }
+    mesh.history.set_persisted_truncated(history_dropped);
+    if !project.paint_sources_complete {
+        legacy_paint::recover_missing(mesh);
     }
 
     // The high-water mark must never let the next allocation reuse a live
@@ -648,7 +905,7 @@ fn read_palette(bytes: &[u8]) -> Option<Palette> {
 /// The bed footprint from `printable_area`'s maximum x and y, or `(0, 0)` when
 /// the file has no usable area. Both the array form (`["0x0", ...]`) and the
 /// comma-separated string form written by machine presets are accepted.
-fn bed_size(bytes: &[u8]) -> (f32, f32) {
+pub(crate) fn bed_size(bytes: &[u8]) -> (f32, f32) {
     let Ok(text) = std::str::from_utf8(bytes) else {
         return (0.0, 0.0);
     };
@@ -788,6 +1045,54 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires the real edited panda CYM 3MF"]
+    fn panda_legacy_brushes_recover_as_drawing_colours() {
+        let path = std::env::var("CYM_LEGACY_PAINT_3MF").expect("CYM_LEGACY_PAINT_3MF");
+        let plate = load_plate(Path::new(&path), 0, &|_, _| {}).unwrap();
+        assert_eq!(plate.engineering_state, EngineeringState::Restored);
+        let groups = plate.mesh.paint_source_groups();
+        assert_eq!(groups.len(), 4, "{groups:?}");
+        for color in [
+            [255, 0, 0, 255],
+            [0, 176, 80, 255],
+            [112, 48, 160, 255],
+            [0, 176, 240, 255],
+        ] {
+            assert!(
+                groups.iter().any(|(source, count)| *source == color && *count > 500),
+                "{groups:?}"
+            );
+        }
+        let used = plate.mesh.used_colors();
+        assert!(used.len() <= 10, "{used:?}");
+        let mut package = Package::open(Path::new(&path)).unwrap();
+        let encoded = package.read("Metadata/cym/plate_1.bin").unwrap();
+        let snapshot = project_state::decode_plate_state(&encoded, plate.mesh.faces.len()).unwrap();
+        assert_eq!(plate.mesh.face_colors, snapshot.face_colors);
+        eprintln!("Legacy file: drawing groups {groups:?}, {} used colours", used.len());
+    }
+
+    #[test]
+    fn slicer_extruder_three_is_white_in_a_four_slot_project() {
+        let object = mesh_object(1, "Body", QUAD_VERTICES, QUAD_FACES, &[None, Some("1C")]);
+        let mut entries = one_object(&object);
+        entries.push((
+            "Metadata/project_settings.config",
+            br##"{"filament_colour":["#212721","#BA0C2F","#FFFFFF","#00FFFF"]}"##.to_vec(),
+        ));
+        entries.push((
+            "Metadata/model_settings.config",
+            br#"<config><object id="1"><metadata key="extruder" value="3"/></object></config>"#
+                .to_vec(),
+        ));
+        let p = read(entries);
+        assert_eq!(
+            p.plates[0].mesh.face_colors,
+            vec![[255, 255, 255, 255], [0, 255, 255, 255]]
+        );
+    }
+
+    #[test]
     fn without_engineering_parts_each_inherited_colour_becomes_its_own_region() {
         let object = mesh_object(1, "Part", QUAD_VERTICES, QUAD_FACES, &[Some("1C"), None]);
         let mut entries = one_object(&object);
@@ -813,7 +1118,13 @@ mod tests {
 
     #[test]
     fn a_single_inherited_colour_still_yields_the_single_region() {
-        let object = mesh_object(1, "Part", QUAD_VERTICES, QUAD_FACES, &[Some("1C"), Some("1C")]);
+        let object = mesh_object(
+            1,
+            "Part",
+            QUAD_VERTICES,
+            QUAD_FACES,
+            &[Some("1C"), Some("1C")],
+        );
         let mut entries = one_object(&object);
         entries.push((
             "Metadata/project_settings.config",
@@ -849,8 +1160,11 @@ mod tests {
 
         let header = ProjectState {
             active_plate: 1,
+            paint_sources_complete: false,
             unit: "millimeter".to_string(),
             plates: vec![PlateStateHeader {
+                history_truncated: false,
+                placement_offset: [0.0; 3],
                 plater_id: 1,
                 name: "Part".to_string(),
                 object_ids: vec![1],
@@ -912,8 +1226,11 @@ mod tests {
 
         let header = ProjectState {
             active_plate: 1,
+            paint_sources_complete: false,
             unit: "millimeter".to_string(),
             plates: vec![PlateStateHeader {
+                history_truncated: false,
+                placement_offset: [0.0; 3],
                 plater_id: 1,
                 name: "Part".to_string(),
                 object_ids: vec![1],
@@ -971,8 +1288,11 @@ mod tests {
 
         let header = ProjectState {
             active_plate: 1,
+            paint_sources_complete: false,
             unit: "millimeter".to_string(),
             plates: vec![PlateStateHeader {
+                history_truncated: false,
+                placement_offset: [0.0; 3],
                 plater_id: 1,
                 name: "Part".to_string(),
                 object_ids: vec![1],
@@ -1067,8 +1387,11 @@ mod tests {
 
         let header = ProjectState {
             active_plate: 1,
+            paint_sources_complete: false,
             unit: "millimeter".to_string(),
             plates: vec![PlateStateHeader {
+                history_truncated: false,
+                placement_offset: [0.0; 3],
                 plater_id: 1,
                 name: "Part".to_string(),
                 object_ids: vec![1],
@@ -1105,6 +1428,68 @@ mod tests {
         let plate = &project.plates[0];
         assert_eq!(plate.engineering_state, EngineeringState::Restored);
         assert!(!plate.history_dropped);
+
+        let mut entries = base_entries();
+        let header_entry = entries
+            .iter_mut()
+            .find(|(name, _)| *name == ENGINEERING_HEADER_PART)
+            .unwrap();
+        let mut json: serde_json::Value = serde_json::from_slice(&header_entry.1).unwrap();
+        json["plates"][0]["history_truncated"] = true.into();
+        header_entry.1 = serde_json::to_vec(&json).unwrap();
+        entries.push((
+            "Metadata/cym/history_1.bin",
+            encode_history(&stored.history),
+        ));
+        let project = read(entries);
+        assert!(
+            project.plates[0].history_dropped,
+            "persisted truncation must be reported"
+        );
+        assert!(
+            project.plates[0].mesh.history.can_undo(),
+            "remaining history still restores"
+        );
+    }
+
+    #[test]
+    fn a_history_part_that_exceeds_the_package_read_limit_is_reported() {
+        let mut mesh = MeshModel::new();
+        mesh.vertices = QUAD_VERTICES.to_vec();
+        mesh.faces = QUAD_FACES.to_vec();
+        let fingerprint = fingerprint_of(&mesh.vertices, &mesh.faces);
+        let header = ProjectState {
+            active_plate: 1,
+            paint_sources_complete: false,
+            unit: "millimeter".into(),
+            plates: vec![PlateStateHeader {
+                history_truncated: false,
+                placement_offset: [0.0; 3],
+                plater_id: 1,
+                name: "Part".into(),
+                object_ids: vec![1],
+                fingerprint,
+            }],
+        };
+        let fixture = Fixture::new(&[
+            ("Metadata/cym/plate_1.bin", encode_plate_state(&mesh)),
+            ("Metadata/cym/history_1.bin", vec![0; 2048]),
+        ]);
+        let mut package = Package::open_with_limit(fixture.path(), 1024).unwrap();
+        let report = try_restore(
+            &mut package,
+            Some(&header),
+            true,
+            0,
+            1,
+            Some(fingerprint),
+            &mut mesh,
+        );
+        assert_eq!(report.state, EngineeringState::Restored);
+        assert!(
+            report.history_dropped,
+            "an existing unreadable history is a loss"
+        );
     }
 
     #[test]
@@ -1202,8 +1587,8 @@ mod tests {
         assert_eq!(plate.name, "Body");
         assert_eq!(plate.plater_id, 1);
         assert_eq!(plate.engineering_state, EngineeringState::Absent);
-        // `extruder` is 0-based, so extruder 1 is palette index 1.
-        assert_eq!(plate.mesh.face_colors, vec![colour(1)]);
+        // Slot 1 is palette index 0.
+        assert_eq!(plate.mesh.face_colors, vec![colour(0)]);
     }
 
     #[test]
@@ -1239,15 +1624,21 @@ mod tests {
         let project = read(entries);
         let plate = &project.plates[0];
         assert_eq!(plate.mesh.faces.len(), 2);
-        // Extruder 0 -> palette index 0, extruder 2 -> palette index 2.
-        assert_eq!(plate.mesh.face_colors, vec![colour(0), colour(2)]);
+        // Extruder 0 uses the default slot; slot 2 is palette index 1.
+        assert_eq!(plate.mesh.face_colors, vec![colour(0), colour(1)]);
     }
 
     #[test]
     fn an_unpainted_object_keeps_its_own_base_beside_a_painted_object() {
         // Object A is painted (slot 4 -> palette index 3); object B has no
         // paint at all and must use its own extruder (2), not slot 1.
-        let object_a = mesh_object(1, "Painted", TRIANGLE_VERTICES, TRIANGLE_FACE, &[Some("1C")]);
+        let object_a = mesh_object(
+            1,
+            "Painted",
+            TRIANGLE_VERTICES,
+            TRIANGLE_FACE,
+            &[Some("1C")],
+        );
         let mut b_vertices = TRIANGLE_VERTICES.to_vec();
         for vertex in &mut b_vertices {
             vertex[0] += 10.0;
@@ -1278,7 +1669,7 @@ mod tests {
         assert_eq!(plate.mesh.faces.len(), 2);
         assert_eq!(
             plate.mesh.face_colors,
-            vec![colour(3), colour(2)],
+            vec![colour(3), colour(1)],
             "the painted face follows paint_color; the plain face follows its own extruder"
         );
     }
@@ -1315,8 +1706,11 @@ mod tests {
             stored.next_manual_label = stored_next;
             let header = ProjectState {
                 active_plate: 1,
+                paint_sources_complete: false,
                 unit: "millimeter".to_string(),
                 plates: vec![PlateStateHeader {
+                    history_truncated: false,
+                    placement_offset: [0.0; 3],
                     plater_id: 1,
                     name: "Part".to_string(),
                     object_ids: vec![1],
@@ -1399,15 +1793,20 @@ mod tests {
 
         let header = ProjectState {
             active_plate: 1,
+            paint_sources_complete: false,
             unit: "millimeter".to_string(),
             plates: vec![
                 PlateStateHeader {
+                    history_truncated: false,
+                    placement_offset: [0.0; 3],
                     plater_id: 1,
                     name: "Front".to_string(),
                     object_ids: vec![1],
                     fingerprint: fingerprint_of(TRIANGLE_VERTICES, TRIANGLE_FACE),
                 },
                 PlateStateHeader {
+                    history_truncated: false,
+                    placement_offset: [0.0; 3],
                     plater_id: 2,
                     name: "Back".to_string(),
                     object_ids: vec![2],
@@ -1495,5 +1894,69 @@ mod tests {
         assert_eq!(p.plates[0].mesh.vertices.len(), 652_451);
         assert_eq!(p.plates[0].engineering_state, EngineeringState::Absent);
         assert!(!p.plates[0].history_dropped);
+    }
+    #[test]
+    fn printed_positions_override_stale_plate_membership() {
+        let object1 = mesh_object(1, "Right", TRIANGLE_VERTICES, TRIANGLE_FACE, &[Some("4")]);
+        let object2 = mesh_object(2, "Left", TRIANGLE_VERTICES, TRIANGLE_FACE, &[Some("8")]);
+        let project = read(vec![
+            (
+                "3D/3dmodel.model",
+                model_part(
+                    &(object1 + &object2),
+                    r#"<item objectid="1" transform="1 0 0 0 1 0 0 0 1 140 20 0"/><item objectid="2" transform="1 0 0 0 1 0 0 0 1 20 20 0"/>"#,
+                ),
+            ),
+            (
+                "Metadata/model_settings.config",
+                model_settings("", &(plate(1, "Left", &[1]) + &plate(2, "Right", &[2]))),
+            ),
+            (
+                "Metadata/project_settings.config",
+                project_settings(PALETTE, Some((100.0, 100.0))),
+            ),
+        ]);
+        assert_eq!(project.plates[0].mesh.face_colors, vec![colour(1)]);
+        assert_eq!(project.plates[1].mesh.face_colors, vec![colour(0)]);
+        assert_eq!(project.plates[0].mesh.vertices[0][0], 20.0);
+        assert!((project.plates[1].mesh.vertices[0][0] - 20.0).abs() <= 4.0 * f32::EPSILON * 140.0);
+    }
+    #[test]
+    fn wrong_plate_identity_never_falls_back_to_the_first_engineering_header() {
+        let object = mesh_object(1, "Part", TRIANGLE_VERTICES, TRIANGLE_FACE, &[None]);
+        let mut mesh = MeshModel::new();
+        mesh.vertices = TRIANGLE_VERTICES.to_vec();
+        mesh.faces = TRIANGLE_FACE.to_vec();
+        mesh.init_default_colors();
+        mesh.segment_labels = vec![123];
+        let header = ProjectState {
+            active_plate: 9,
+            paint_sources_complete: false,
+            unit: "millimeter".into(),
+            plates: vec![PlateStateHeader {
+                plater_id: 9,
+                name: "Wrong plate".into(),
+                object_ids: vec![1],
+                fingerprint: fingerprint_of(&mesh.vertices, &mesh.faces),
+                history_truncated: false,
+                placement_offset: [0.0; 3],
+            }],
+        };
+        let project = read(vec![
+            (
+                "3D/3dmodel.model",
+                model_part(&object, r#"<item objectid="1"/>"#),
+            ),
+            (
+                "Metadata/cym/project.json",
+                encode_project_json(&header).into_bytes(),
+            ),
+            ("Metadata/cym/plate_1.bin", encode_plate_state(&mesh)),
+        ]);
+        assert_eq!(
+            project.plates[0].engineering_state,
+            EngineeringState::Dropped
+        );
+        assert_ne!(project.plates[0].mesh.segment_labels, vec![123]);
     }
 }

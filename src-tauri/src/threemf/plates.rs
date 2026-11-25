@@ -227,10 +227,7 @@ impl ConfigParser {
     /// Close the innermost element and record whatever it contributed.
     fn finish(&mut self) {
         match self.scopes.pop() {
-            Some(Scope::Object {
-                id: Some(id),
-                meta,
-            }) => {
+            Some(Scope::Object { id: Some(id), meta }) => {
                 // First appearance wins: a duplicated object block cannot
                 // silently replace the metadata the plate listing refers to.
                 self.objects.entry(id).or_insert(meta);
@@ -247,7 +244,9 @@ impl ConfigParser {
                     object_ids,
                 });
             }
-            Some(Scope::ModelInstance { object_id: Some(id) }) => {
+            Some(Scope::ModelInstance {
+                object_id: Some(id),
+            }) => {
                 if let Some(Scope::Plate { object_ids, .. }) = self
                     .scopes
                     .iter_mut()
@@ -450,7 +449,10 @@ mod tests {
           <plate><metadata key="plater_id" value="9"/></plate>
         </config>"#;
         let s = parse(xml).unwrap();
-        assert_eq!(s.plates[0].plater_id, 1, "first plate defaults to ordinal 1");
+        assert_eq!(
+            s.plates[0].plater_id, 1,
+            "first plate defaults to ordinal 1"
+        );
         assert_eq!(s.plates[0].name, "");
         assert_eq!(s.plates[0].object_ids, vec![5]);
         assert_eq!(s.plates[1].plater_id, 9);

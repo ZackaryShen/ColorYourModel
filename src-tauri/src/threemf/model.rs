@@ -172,8 +172,49 @@ pub fn read_scene(pkg: &mut Package) -> Result<Scene, String> {
         parts.insert(name, parsed.objects);
     }
 
+    Ok(Scene { unit, parts, build })
+}
+
+/// Parse only the parts reachable from the requested build items.
+pub fn read_selected_scene(pkg: &mut Package, indices: &[usize]) -> Result<Scene, String> {
+    let main = pkg.model_part();
+    let parsed = parse_part(&pkg.read(&main)?, &main)?;
+    let build = indices
+        .iter()
+        .map(|&i| {
+            parsed
+                .build
+                .get(i)
+                .cloned()
+                .ok_or("Build item no longer exists")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut queue: VecDeque<_> = build
+        .iter()
+        .map(|item| (main.clone(), item.object_id))
+        .collect();
+    let mut visited = HashSet::new();
+    let mut parts = HashMap::from([(main, parsed.objects)]);
+    while let Some((part, id)) = queue.pop_front() {
+        if !visited.insert((part.clone(), id)) {
+            continue;
+        }
+        if !parts.contains_key(&part) {
+            let parsed = parse_part(&pkg.read(&part)?, &part)?;
+            parts.insert(part.clone(), parsed.objects);
+        }
+        let object = parts[&part]
+            .get(&id)
+            .ok_or_else(|| format!("model part {part:?} has no object {id}"))?;
+        queue.extend(object.components.iter().map(|child| {
+            (
+                child.path.clone().unwrap_or_else(|| part.clone()),
+                child.object_id,
+            )
+        }));
+    }
     Ok(Scene {
-        unit,
+        unit: parsed.unit,
         parts,
         build,
     })
@@ -625,6 +666,31 @@ mod tests {
     use std::io::Write;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn a_selected_plate_reads_only_its_world_positioned_components() {
+        let main = r#"<model xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">
+          <resources>
+            <object id="1"><components><component objectid="5" p:path="/3D/Objects/ok.model"/></components></object>
+            <object id="2"><components><component objectid="6" p:path="/3D/Objects/bad.model"/></components></object>
+          </resources>
+          <build><item objectid="1" transform="1 0 0 0 1 0 0 0 1 250 0 0"/><item objectid="2"/></build>
+        </model>"#;
+        let child = r#"<model><resources><object id="5"><mesh><vertices>
+          <vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/>
+          </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object></resources></model>"#;
+        let fixture = Fixture::new(&[
+            ("3D/3dmodel.model", main),
+            ("3D/Objects/ok.model", child),
+            ("3D/Objects/bad.model", "not XML"),
+        ]);
+        let mut package = Package::open(fixture.path()).unwrap();
+        let selected = read_selected_scene(&mut package, &[0]).unwrap();
+        assert_eq!(selected.build[0].transform.0[9], 250.0);
+        assert!(selected.parts.contains_key("3D/Objects/ok.model"));
+        assert!(!selected.parts.contains_key("3D/Objects/bad.model"));
+        assert!(read_selected_scene(&mut package, &[1]).is_err());
+    }
 
     /// Temporary synthetic 3MF package, removed when the fixture is dropped.
     struct Fixture {

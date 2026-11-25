@@ -26,8 +26,8 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolbar.startImport": { zh: "开始导入…", en: "Starting import…" },
   // Status line after a multi-plate 3MF import: P0 shows plate 1 only.
   "toolbar.importPlateOfTotal": {
-    zh: "导入第 {0} / {1} 盘（多盘分页在后续版本）",
-    en: "Imported plate {0} of {1} (multi-plate paging comes later)",
+    zh: "当前第 {0} / {1} 盘，使用上方 Tab 切换",
+    en: "Plate {0} of {1}; switch plates using the tabs above",
   },
 
   // Drag & drop import (issue #21)
@@ -35,8 +35,8 @@ const dict: Record<string, Record<Lang, string>> = {
   "drop.rejectMulti": { zh: "一次只能导入一个模型", en: "Only one model can be imported at a time" },
   "drop.rejectExtension": { zh: "只支持 STL 模型或 3MF 工程文件", en: "Only STL models or 3MF project files are supported" },
   "drop.importInProgress": { zh: "正在导入，请稍候…", en: "An import is already in progress…" },
-  "drop.replaceTitle": { zh: "替换当前模型？", en: "Replace current model?" },
-  "drop.replaceBody": { zh: "窗口中已有模型。导入新文件将丢弃当前模型及其未导出的涂装。", en: "A model is already loaded. Importing will discard it together with any unexported paint." },
+  "drop.replaceTitle": { zh: "替换当前工程？", en: "Replace current project?" },
+  "drop.replaceBody": { zh: "打开 3MF 将替换所有打印盘，并丢弃尚未保存的修改。", en: "A model is already loaded. Importing will discard it together with any unexported paint." },
   "drop.replaceConfirm": { zh: "导入并替换", en: "Import and replace" },
   "drop.replaceCancel": { zh: "取消", en: "Cancel" },
 
@@ -210,6 +210,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "segments.reset": { zh: "重置", en: "Reset" },
   "segments.resetHint": { zh: "清除全部分区与上色，回到刚导入的未上色状态", en: "Clear all regions and paint, back to the freshly-loaded uncoloured state" },
   "segments.resetConfirm": { zh: "确定重置分区并清除所有上色吗？此操作不可撤销。", en: "Reset all regions and clear all paint? This cannot be undone." },
+  "segments.emptyLoaded": { zh: "暂无分区，可使用分区工具创建", en: "No regions yet. Use a segmentation tool to create them." },
   "segments.empty": { zh: "暂无分区，请先导入模型", en: "No segments yet. Import a model first." },
   "segments.renameHint": { zh: "双击重命名，Ctrl+点击多选", en: "Double-click to rename, Ctrl-click to multi-select" },
   "segments.defaultName": { zh: "分区 {0}", en: "Region {0}" },
@@ -255,7 +256,7 @@ const dict: Record<string, Record<Lang, string>> = {
 
   // Viewport — misc
   "view.loading": { zh: "加载中…", en: "Loading…" },
-  "view.emptyState": { zh: "导入 STL 文件开始涂装", en: "Import an STL file to get started" },
+  "view.emptyState": { zh: "导入 STL 或打开 3MF 开始涂装", en: "Import an STL file to get started" },
 
   // Viewport — lasso / segment-brush status details
   "lasso.selected": { zh: "套索：已选 {0} 个点", en: "Lasso: {0} points selected" },
@@ -271,6 +272,7 @@ const dict: Record<string, Record<Lang, string>> = {
   // "Left: Rotate (View) | …" string contradicted every non-view tool.
   // StatusBar now resolves its hint through utils/controlsHint.ts, the same
   // source as the viewport help bar (controls.viewHint / brushHint / editHint).
+  "tabs.loading": { zh: "正在读取盘", en: "Loading plate" },
   "status.ready": { zh: "就绪", en: "Ready" },
   "status.loaded": { zh: "已加载 {0} 个面", en: "Loaded {0} faces" },
   // 3MF engineering state existed but could not be applied (fingerprint/version/
@@ -282,8 +284,8 @@ const dict: Record<string, Record<Lang, string>> = {
   },
   // The engineering state restored, but its persisted undo history was rejected.
   "status.historyDropped": {
-    zh: "撤销历史未能载入，已从空历史开始",
-    en: "Undo history could not be loaded; starting with an empty history",
+    zh: "部分或全部撤销历史未恢复，已保留可用步骤",
+    en: "Some or all undo history was not restored; available steps were kept",
   },
 
   // Debug log viewer (iteration 59) + its status-bar toggle
@@ -440,6 +442,14 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.import": { zh: "导入 STL / 3MF…", en: "Import STL / 3MF…" },
   "menu.save": { zh: "保存 (⌘S)", en: "Save (⌘S)" },
   "menu.saveAs": { zh: "另存为 3MF…", en: "Save As 3MF…" },
+  "status.multiPlateSaveBlocked": { zh: "当前只载入第一盘，无法覆盖多盘工程；请另存当前盘到新文件", en: "Only the first plate is loaded; use Save As to save this plate to a new file without overwriting the multi-plate project" },
+  "tabs.plates": { zh: "打印盘", en: "Print plates" },
+  "tabs.name": { zh: "盘名称", en: "Plate name" },
+  "tabs.close": { zh: "关闭盘", en: "Close plate" },
+  "tabs.closeTitle": { zh: "关闭未保存的盘？", en: "Close unsaved plate?" },
+  "tabs.closeBody": { zh: "此盘的修改尚未保存。关闭后将丢弃这些修改。", en: "This plate has unsaved changes. Closing it discards those changes." },
+  "tabs.discardClose": { zh: "丢弃并关闭", en: "Discard and close" },
+  "status.projectSaving": { zh: "正在保存工程…", en: "Saving project…" },
   "status.projectSaved": { zh: "已保存", en: "Saved" },
   "toolbar.saveProjectFailed": { zh: "保存失败", en: "Save failed" },
   "menu.export": { zh: "导出涂装模型…", en: "Export painted model…" },

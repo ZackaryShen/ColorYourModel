@@ -1,3 +1,5 @@
+import { listenViewportKeydown } from "../utils/viewportKeyboard";
+import { isCurrentTabResult } from "../utils/tabCommand";
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { PaintTool, SeedPoint } from "../types/mesh";
@@ -163,8 +165,7 @@ export function SeedPanel() {
         setActiveTool(PaintTool.View);
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return listenViewportKeydown(onKey);
   }, [setActiveTool, resetPhase]);
 
   const [barrierDeg, setBarrierDeg] = useState(45);
@@ -492,6 +493,7 @@ export function SeedPanel() {
     });
     try {
       const seeds = await recommendSeeds(suggestCount, effCurv, effConc);
+      if (!isCurrentTabResult(seeds)) return;
       log.info("SeedPanel", "onRecommend received", { count: seeds.length });
       setSuggestedSeeds(seeds);
     } catch {
@@ -514,6 +516,7 @@ export function SeedPanel() {
     const minFaces = Math.max(2, Math.floor(faceCount / 500));
     try {
       const regions = await detectPlanarRegions(15, 1 / 30, minFaces);
+      if (!isCurrentTabResult(regions)) return;
       log.info("SeedPanel", "onDetectPlanar received", { regions: regions.length });
       setPlanarRegions(regions);
       setSuggestedSeeds(regions.map((r) => r.seed));
@@ -539,6 +542,7 @@ export function SeedPanel() {
     const minFaces = Math.max(2, Math.floor(faceCount / 500));
     try {
       const regions = await detectMultiViewRegions(12, 20, minFaces, 1);
+      if (!isCurrentTabResult(regions)) return;
       log.info("SeedPanel", "onDetectMultiView received", { regions: regions.length });
       setMultiviewRegions(regions);
       setSuggestedSeeds(regions.map((r) => r.seed));
@@ -561,6 +565,7 @@ export function SeedPanel() {
     log.info("SeedPanel", "onDetectCrossSection click");
     try {
       const regions = await detectCrossSectionRegions(24, 0.5);
+      if (!isCurrentTabResult(regions)) return;
       log.info("SeedPanel", "onDetectCrossSection received", { regions: regions.length });
       setCrossSectionRegions(regions);
     } catch {
@@ -610,6 +615,7 @@ export function SeedPanel() {
     }
     try {
       const regions = await detectEyeRegions(roiFaces);
+      if (!isCurrentTabResult(regions)) return;
       log.info("SeedPanel", "onDetectEye received", { regions: regions.length });
       setEyeRegions(regions);
     } catch {
@@ -626,6 +632,7 @@ export function SeedPanel() {
     log.info("SeedPanel", "onDetectEyeAuto click");
     try {
       const regions = await detectEyeRegionsAuto();
+      if (!isCurrentTabResult(regions)) return;
       log.info("SeedPanel", "onDetectEyeAuto received", { regions: regions.length });
       // REFUTE: do NOT stack eye-region seeds on top of a large suggestion set
       // (e.g. 125 MultiView seeds). `seed_grow` is a global geodesic Voronoi;
@@ -676,6 +683,7 @@ export function SeedPanel() {
       // in fuse.rs — not from this number. Kept at 2 per the "C" plan so a lone
       // planar/multiview vote (weight 1) still never cuts on its own.
       const result = await fuseSegmentation(2, 0, dihedralDeg, eyeSets);
+      if (!isCurrentTabResult(result)) return;
       log.info("SeedPanel", "onFuse done", {
         segments: result.segments.length,
         eyeChannels: eyeSets.length,
@@ -837,6 +845,7 @@ export function SeedPanel() {
     );
     try {
       const result = await seedGrow(seeds, barrierDeg, optimizer);
+      if (!isCurrentTabResult(result)) return;
       log.info("SeedPanel", "onGrow done", {
         segments: result.segments.length,
         movedFaces: result.segmentLabels.length,

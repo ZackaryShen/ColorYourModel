@@ -96,3 +96,14 @@ describe("createSerialPaintQueue", () => {
     expect(delivered).toEqual([0, 2]);
   });
 });
+
+it('cancels unsent work and can resume after a StrictMode effect reset', async () => {
+  let finish!: () => void;
+  const seen: number[] = [];
+  const queue = createSerialPaintQueue<number>(async job => { seen.push(job); if (job === 1) await new Promise<void>(r => { finish = r; }); });
+  queue.enqueue(1); queue.enqueue(2);
+  queue.cancel(); finish();
+  await Promise.resolve(); await Promise.resolve();
+  queue.enqueue(3);
+  expect(seen).toEqual([1, 3]);
+});

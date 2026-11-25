@@ -15,28 +15,22 @@ export type ImportStatusFields = Pick<
 /**
  * Status-line text after an import.
  *
- * Precedence matters: a dropped engineering state (saved labels/colours were
- * rejected, often because a slicer rewrote the file) is the most important
- * thing the user must know, then a dropped undo history, then the normal
- * multi-plate notice. STL and single-plate 3MF keep "import complete".
+ * Keep state-loss warnings and the partial multi-plate import notice together:
+ * either limitation can affect whether saving the opened model is safe.
  */
 export function importStatusMessage(
   data: ImportStatusFields,
   t: (key: string, ...args: (string | number)[]) => string
 ): string {
-  if (data.engineeringState === "dropped") {
-    return t("status.engineeringDropped");
-  }
-  if (data.historyDropped) {
-    return t("status.historyDropped");
-  }
+  const warnings: string[] = [];
+  if (data.engineeringState === "dropped") warnings.push(t("status.engineeringDropped"));
+  else if (data.historyDropped) warnings.push(t("status.historyDropped"));
   // The DTO fields are additive; absent means a single-plate source (STL or an
   // older payload).
   const plateIndex = data.plateIndex ?? 1;
   const plateCount = data.plateCount ?? 1;
-  return plateCount > 1
-    ? t("toolbar.importPlateOfTotal", plateIndex, plateCount)
-    : t("toolbar.importComplete");
+  if (plateCount > 1) warnings.push(t("toolbar.importPlateOfTotal", plateIndex, plateCount));
+  return warnings.length > 0 ? warnings.join(" · ") : t("toolbar.importComplete");
 }
 
 /**
@@ -56,45 +50,88 @@ export function useImportStl() {
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setImportError = useAppStore((s) => s.setImportError);
-  const setProjectPath = useAppStore((s) => s.setProjectPath);
 
-  const importFromPath = async (selected: string) => {
+  const pendingReplacePath = useAppStore((s) => s.pendingImportPath);
+  const blocked = () => {
+    const state = useAppStore.getState();
+    if (!state.isLoading && !state.importBusy && !state.saveBusy && !state.pendingImportPath && state.pendingCloseTabId == null) return false;
+    setStatusMessage(t("drop.importInProgress"));
+    return true;
+  };
+
+  const performImport = async (selected: string) => {
+    if (blocked()) return;
+    useAppStore.setState({ importBusy: true });
     log.info("importStl", `Importing: ${selected}`);
+    useAppStore.setState({loadingKind: "import", importProgress: 0, importStage: t("toolbar.startImport")});
     setLoading(true);
-    setImportProgress(0, t("toolbar.startImport"));
 
     try {
       const data = await loadModel(selected);
-      setProjectPath(/\.3mf$/i.test(selected) ? selected : null);
+      if (/\.3mf$/i.test(selected)) {
+        const restored = data.engineeringState === "restored";
+        useAppStore.setState({
+          projectPath: restored ? selected : null,
+          importSourcePath: restored ? null : selected,
+          lastExportSelection: null,
+        });
+      }
       // No automatic segmentation on import (removed 2026-08-29): the fuse flow
       // (SeedPanel → 融合生成) builds its own vote channels and wipes existing
       // labels, so per-import compute was dead work. Region generation starts
       // explicitly from the Seed panel.
       setImportProgress(1, t("toolbar.importComplete"));
       setStatusMessage(importStatusMessage(data, t));
-      setLoading(false);
     } catch (e) {
       log.error("importStl", "Import failed", { error: String(e) });
       // P0 2026-10-12: a status-bar line alone let a broken/unsupported file
       // pass almost unnoticed — surface a modal as well (raw backend string).
       setImportError(String(e));
       setStatusMessage(`${t("toolbar.importFailed")}: ${e}`);
+    } finally {
       setLoading(false);
+      useAppStore.setState({ importBusy: false });
     }
   };
 
+  const importFromPath = async (selected: string, confirmLoaded = false) => {
+    if (blocked()) return;
+    const state = useAppStore.getState();
+    if (/\.3mf$/i.test(selected) && state.meshData && (state.paintDirty || state.tabs.some(tab => tab.dirty) || confirmLoaded)) {
+      useAppStore.setState({ pendingImportPath: selected });
+      return;
+    }
+    await performImport(selected);
+  };
+
+  const cancelReplace = () => useAppStore.setState({ pendingImportPath: null });
+  const confirmReplace = async () => {
+    const path = useAppStore.getState().pendingImportPath;
+    if (!path) return;
+    cancelReplace();
+    await performImport(path);
+  };
+
   const importStl = async () => {
+    if (blocked()) return;
+    useAppStore.setState({ importBusy: true });
     log.info("importStl", "Import action triggered");
-    const selected = await open({
-      multiple: false,
-      // The entry point is format-aware — .3mf opens a full 3MF project (P0
-      // loads its first plate), .stl imports a fresh model. The filter and the
-      // drop gate (planFileDrop) share one extension list so the two entry
-      // points can never drift apart.
-      filters: [
-        { name: "3MF Project / STL Model", extensions: [...DROPPABLE_EXTENSIONS] },
-      ],
-    });
+    let selected: string | null;
+    try {
+      selected = await open({
+        multiple: false,
+        // Picker and drop routing accept the same formats.
+        filters: [
+          { name: "3MF Project / STL Model", extensions: [...DROPPABLE_EXTENSIONS] },
+        ],
+      });
+    } catch (e) {
+      setImportError(String(e));
+      setStatusMessage(`${t("toolbar.importFailed")}: ${e}`);
+      return;
+    } finally {
+      useAppStore.setState({ importBusy: false });
+    }
     if (!selected) {
       log.debug("importStl", "File dialog cancelled");
       return;
@@ -103,5 +140,5 @@ export function useImportStl() {
     await importFromPath(selected);
   };
 
-  return { importStl, importFromPath };
+  return { importStl, importFromPath, pendingReplacePath, confirmReplace, cancelReplace };
 }
