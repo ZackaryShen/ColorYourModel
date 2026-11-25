@@ -18,6 +18,10 @@ export interface MeshData {
   bbox: BoundingBox;
   faceCount: number;
   segments: Segment[];
+  texturePainting?: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  importWarning?: string | null;
 }
 
 export interface PaintResult {

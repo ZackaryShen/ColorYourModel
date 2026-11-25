@@ -6,7 +6,7 @@ import { planFileDrop } from "../utils/stlDrop";
 import { log } from "../utils/logger";
 
 /**
- * Drag-and-drop STL/.cym import (issue #21).
+ * Native drag-and-drop model import (issue #21).
  *
  * With the default `dragDropEnabled: true` the webview intercepts OS
  * drag-drop on Windows, so HTML5 dragover/drop handlers never fire — the
@@ -16,7 +16,10 @@ import { log } from "../utils/logger";
  * accepted drops into the SHARED import pipeline (`importFromPath`), so the
  * 📂 button and a drop can never drift apart.
  */
-export function useDropImport(importFromPath: (path: string) => Promise<void>) {
+export function useDropImport(
+  importFromPath: (path: string) => Promise<void>,
+  isImportBusy: () => boolean,
+) {
   const t = useT();
   const [dragOver, setDragOver] = useState(false);
   const [pendingReplacePath, setPendingReplacePath] = useState<string | null>(null);
@@ -26,6 +29,9 @@ export function useDropImport(importFromPath: (path: string) => Promise<void>) {
   // in Viewport — `t` is re-created each render, language is not).
   const importFromPathRef = useRef(importFromPath);
   importFromPathRef.current = importFromPath;
+  const isImportBusyRef = useRef(isImportBusy);
+  isImportBusyRef.current = isImportBusy;
+  const pendingReplaceRef = useRef<string | null>(null);
   const tRef = useRef(t);
   tRef.current = t;
 
@@ -36,7 +42,7 @@ export function useDropImport(importFromPath: (path: string) => Promise<void>) {
       .onDragDropEvent((event) => {
         const payload = event.payload;
         if (payload.type === "enter") {
-          setDragOver(true);
+          if (!isImportBusyRef.current() && pendingReplaceRef.current === null) setDragOver(true);
           return;
         }
         // "over" fires continuously while hovering; the overlay just stays.
@@ -51,7 +57,7 @@ export function useDropImport(importFromPath: (path: string) => Promise<void>) {
         // An import in flight owns the screen (progress bar); a drop during
         // it has no sensible target. Rejected, but never silently — issue #21
         // requires a message for every swallowed drop.
-        if (useAppStore.getState().isLoading) {
+        if (isImportBusyRef.current() || pendingReplaceRef.current !== null) {
           setStatusMessage(tRef.current("drop.importInProgress"));
           return;
         }
@@ -64,6 +70,7 @@ export function useDropImport(importFromPath: (path: string) => Promise<void>) {
         if (decision.action === "import") {
           void importFromPathRef.current(decision.path);
         } else if (decision.action === "confirm-replace") {
+          pendingReplaceRef.current = decision.path;
           setPendingReplacePath(decision.path);
         } else if (decision.reason === "multi") {
           setStatusMessage(tRef.current("drop.rejectMulti"));
@@ -82,12 +89,15 @@ export function useDropImport(importFromPath: (path: string) => Promise<void>) {
   }, []);
 
   const confirmReplace = () => {
-    const path = pendingReplacePath;
-    setPendingReplacePath(null);
+    const path = pendingReplaceRef.current;
+    cancelReplace();
     if (path) void importFromPathRef.current(path);
   };
 
-  const cancelReplace = () => setPendingReplacePath(null);
+  const cancelReplace = () => {
+    pendingReplaceRef.current = null;
+    setPendingReplacePath(null);
+  };
 
   return { dragOver, pendingReplacePath, confirmReplace, cancelReplace };
 }

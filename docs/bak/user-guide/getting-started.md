@@ -5,7 +5,7 @@
 ## What you need
 
 - [Node.js](https://nodejs.org/) ≥ 18 (frontend toolchain)
-- [Rust](https://www.rust-lang.org/tools/install) ≥ 1.70 + Cargo (backend)
+- [Rust](https://www.rust-lang.org/tools/install) stable + Cargo (backend)
 - [Tauri 2 system prerequisites](https://v2.tauri.app/start/prerequisites/) — on Windows this is mainly WebView2
 
 ## Build & run
@@ -38,6 +38,12 @@ flowchart LR
     D --> E["Export 3MF / OBJ"]
     E --> F["Slice & print"]
 ```
+
+## Convert an embedded GLB texture
+
+Open one static GLB from the file menu or drag it onto CYM. It needs UVs and one embedded opaque PNG or JPEG base-color texture. Inspect the original texture and converted faces side by side, in a single view, or using the comparison slider. The 1–16 color limit controls the editable model palette. Confirm to apply the converted model, then use the existing painting tools.
+
+The preview follows the application theme. Canceling or encountering an unsupported file leaves the current model and its edits in place.
 
 ## Verification & tests
 

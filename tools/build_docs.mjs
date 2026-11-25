@@ -415,8 +415,8 @@ copyFileSync(join(ROOT, "assets", "icon.png"), join(DOCS, "icon.png"));
 // Prune generated html whose markdown source is gone (renames/deletions) so
 // the archive never drifts into stale pages. Strictly bounded: ROOT_ARCHIVES
 // are legacy root twins the generator no longer emits — prune them if found
-// (the Vite entry index.html must never be touched); under docs/ every html
-// file is generator-owned.
+// (the Vite entry index.html must never be touched). Hand-authored design
+// prototypes have their own directory under docs/superpowers.
 const generated = new Set(pages);
 const ROOT_ARCHIVES = new Set(["README.html", "README.zh-CN.html", "CHANGELOG.html", "CONTRIBUTING.html"]);
 for (const entry of readdirSync(ROOT)) {
@@ -429,6 +429,7 @@ const walkHtml = (dir) => {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
+      if (full === join(DOCS, "superpowers", "prototypes")) continue;
       walkHtml(full);
     } else if (entry.endsWith(".html")) {
       const rel = relative(ROOT, full).split(sep).join("/");

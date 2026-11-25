@@ -294,6 +294,7 @@ interface AppStore {
   setImportProgress: (progress: number, stage: string) => void;
   setLanguage: (lang: Lang) => void;
   markPaintExported: () => void;
+  markPaintDirty: () => void;
   setLastPaintDebug: (s: string | null) => void;
   setHoverProbe: (s: string | null) => void;
   setLastExportSelection: (s: PersistedExportSelection | null) => void;
@@ -556,8 +557,8 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
     set(() => ({
       meshData: data,
       isLoaded: true,
-      canUndo: false,
-      canRedo: false,
+      canUndo: data.canUndo ?? false,
+      canRedo: data.canRedo ?? false,
       paintDirty: false,
       // Fresh model → a pending merge multi-select is stale by construction
       // (its labels belonged to the previous mesh). 0.1.1 clears load-time
@@ -818,6 +819,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setImportError: (message) => set({ importError: message }),
   setLanguage: (lang) => set({ language: lang }),
   markPaintExported: () => set({ paintDirty: false }),
+  markPaintDirty: () => set({ paintDirty: true }),
   setLastPaintDebug: (s) => set({ lastPaintDebug: s }),
   setHoverProbe: (s) => set({ hoverProbe: s }),
   setLastExportSelection: (s) => set({ lastExportSelection: s }),

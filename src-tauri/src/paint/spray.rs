@@ -1,23 +1,17 @@
-use crate::mesh::face_colors::mix_color;
 use crate::mesh::kdtree::distance;
 use crate::mesh::model::MeshModel;
 use crate::paint::brush::brush_hit;
 
 /// Spray paint: randomly sample `density` faces within radius, each with random intensity.
 /// Unlike brush (deterministic falloff), spray simulates a paint-can scatter pattern.
-/// Returns list of (face_id, new_color) pairs.
-///
-/// This is a PURE SELECTOR: it computes the target colours but never writes them.
-/// The command layer feeds the result into `MeshModel::apply_paint` so that every
-/// colour mutation passes through the single history-recording funnel.
+/// Returns the selected faces and their individual dab strengths.
 pub fn spray_hit(
     mesh: &MeshModel,
     center_face: u32,
     radius: f32,
     strength: f32,
-    color: &[u8; 4],
     density: u32,
-) -> Vec<(u32, [u8; 4])> {
+) -> Vec<(u32, f32)> {
     let hits = brush_hit(mesh, center_face, radius);
     if hits.is_empty() {
         return Vec::new();
@@ -50,8 +44,7 @@ pub fn spray_hit(
         let jitter = 0.3 + 0.7 * ((rng_state >> 33) as f32 / (u32::MAX as f32));
         let s = base_falloff * jitter * strength;
 
-        let new_color = mix_color(&mesh.face_colors[fid as usize], color, s);
-        results.push((fid, new_color));
+        results.push((fid, s));
     }
 
     results

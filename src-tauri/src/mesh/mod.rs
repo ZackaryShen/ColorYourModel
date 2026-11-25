@@ -8,3 +8,4 @@ pub mod kdtree;
 pub mod loader;
 /// Core mesh data model
 pub mod model;
+pub mod texture;

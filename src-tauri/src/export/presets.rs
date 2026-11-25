@@ -234,10 +234,8 @@ impl ExportSelection {
 pub fn library() -> &'static [MachinePreset] {
     static LIB: OnceLock<Vec<MachinePreset>> = OnceLock::new();
     LIB.get_or_init(|| {
-        vec![
-            serde_json::from_str(SNAPMAKER_U1)
-                .expect("resources/presets/snapmaker_u1.json is malformed"),
-        ]
+        vec![serde_json::from_str(SNAPMAKER_U1)
+            .expect("resources/presets/snapmaker_u1.json is malformed")]
     })
 }
 
@@ -255,6 +253,7 @@ pub struct MachineSummary {
     pub vendor: String,
     pub name: String,
     pub nozzles: Vec<String>,
+    pub slots_by_nozzle: std::collections::BTreeMap<String, usize>,
     pub target_slicers: Vec<String>,
     pub processes: Vec<ProcessSummary>,
     pub filaments: Vec<FilamentSummary>,
@@ -284,7 +283,22 @@ pub fn summary() -> Vec<MachineSummary> {
             id: m.id.clone(),
             vendor: m.vendor.clone(),
             name: m.name.clone(),
-            nozzles: m.variants.iter().map(|v| v.nozzle_diameter.clone()).collect(),
+            nozzles: m
+                .variants
+                .iter()
+                .map(|v| v.nozzle_diameter.clone())
+                .collect(),
+            slots_by_nozzle: m
+                .variants
+                .iter()
+                .map(|variant| {
+                    let nozzle = &variant.nozzle_diameter;
+                    let slots = m
+                        .extruder_count(nozzle)
+                        .min(usize::from(super::paint_color::MAX_EXTRUDER_SLOT));
+                    (nozzle.clone(), slots)
+                })
+                .collect(),
             target_slicers: m.model_ids.keys().cloned().collect(),
             processes: m
                 .processes
@@ -380,7 +394,12 @@ mod tests {
         for p in &u1().processes {
             assert!(!p.nozzles.is_empty(), "{} lists no nozzle", p.name);
             for n in &p.nozzles {
-                assert!(known.contains(&n.as_str()), "{} -> unknown nozzle {}", p.name, n);
+                assert!(
+                    known.contains(&n.as_str()),
+                    "{} -> unknown nozzle {}",
+                    p.name,
+                    n
+                );
             }
         }
         for f in &u1().filaments {
@@ -452,6 +471,9 @@ mod tests {
         let s = summary();
         let json = serde_json::to_string(&s).unwrap();
         assert!(!json.contains("printable_area"));
-        assert!(json.len() < SNAPMAKER_U1.len() / 4, "summary must be far smaller");
+        assert!(
+            json.len() < SNAPMAKER_U1.len() / 4,
+            "summary must be far smaller"
+        );
     }
 }

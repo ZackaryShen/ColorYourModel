@@ -1,8 +1,10 @@
 mod commands;
+mod engineering;
 mod export;
 mod mesh;
 mod paint;
 mod segment;
+mod threemf;
 
 use commands::mesh::AppState;
 
@@ -24,6 +26,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::mesh::load_model,
             commands::mesh::get_face_color,
+            commands::texture::prepare_texture,
+            commands::texture::apply_texture,
+            commands::texture::cancel_texture,
             commands::segment::auto_segment,
             commands::segment::auto_segment_smart,
             commands::segment::auto_segment_v2,
@@ -75,6 +80,8 @@ pub fn run() {
             commands::export::export_obj_command,
             commands::export::list_export_presets,
             commands::export::export_palette_preview,
+            commands::export::texture_mapping_preview,
+            commands::export::suggest_texture_mapping,
             commands::js_bridge::report_js_error,
             commands::js_bridge::report_app_ready,
             // Update module: GitHub Releases check / download / passive install.

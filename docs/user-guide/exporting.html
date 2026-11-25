@@ -308,6 +308,9 @@ Internals: <a href="../technical/export-pipeline.html">Technical: Export Pipelin
     V --&gt; SL[&quot;Snapmaker Orca shows&lt;br/&gt;Snapmaker U1 (0.4 nozzle)&lt;br/&gt;+ multi-filament colours&quot;]
 </pre>
 <p><strong>Verified end-to-end (2026-08-27)</strong>: a real model exported from CYM imported into Snapmaker Orca (U1) with correct multi-filament colours and the embedded process preset (<code>0.20 Standard @Snapmaker U1 (0.4 nozzle)</code>) — see the <a href="../cases/01-3mf-end-to-end.html">verification case</a>.</p>
+<h3 id="models-converted-from-textures">Models converted from textures</h3>
+<p>Assign the editable model colors to the selected machine&#39;s filament slots. Multiple model colors may share a slot. Enter available filament colors to get suggestions, then confirm the assignments. The 3MF stores those assignments and the editable CYM state, so you can reopen the original exported file without the source GLB.</p>
+<p>If brush edits create more than 16 colors, the export preview groups them into up to 16 rows. Review the grouped colors and their slots before exporting. Reopening the 3MF in CYM restores the exact editable face colors.</p>
 <h2 id="export-obj">Export OBJ</h2>
 <p>Exports <code>.obj</code> plus a sibling <code>.mtl</code>: per-face colours become <code>usemtl</code> material groups, quantized to at most 256 colours. No machine/process pickers needed — colour is written directly. Use OBJ for tools that don&#39;t read 3MF (DCC software, viewers).</p>
 <h2 id="which-one-when">Which one when?</h2>
@@ -333,7 +336,7 @@ Internals: <a href="../technical/export-pipeline.html">Technical: Export Pipelin
 </tbody></table>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#export-3mf-recommended">Export 3MF (recommended)</a></li><li class="toc-h2"><a href="#export-obj">Export OBJ</a></li><li class="toc-h2"><a href="#which-one-when">Which one when?</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#export-3mf-recommended">Export 3MF (recommended)</a></li><li class="toc-h3"><a href="#models-converted-from-textures">Models converted from textures</a></li><li class="toc-h2"><a href="#export-obj">Export OBJ</a></li><li class="toc-h2"><a href="#which-one-when">Which one when?</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

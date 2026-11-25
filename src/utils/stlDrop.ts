@@ -1,6 +1,6 @@
 /** Routing decision for files dropped onto the window (issue #21).
  *
- * Drops share the 📂 import pipeline (`useImportStl`): one file with a
+ * Drops share the 📂 import pipeline (`useImportModel`): one file with a
  * supported extension goes down exactly the same load path, everything else
  * gets a status-bar message instead of being silently swallowed by the
  * webview's drag-drop interception. A model that is already loaded is never
@@ -8,9 +8,12 @@
  * unexported painting (same stake as the exit confirm, issue #7).
  */
 
-/** Extensions the import pipeline understands: .stl imports a model, .cym
- *  opens a full project — the same pair the 📂 dialog filter offers. */
-export const DROPPABLE_EXTENSIONS = ["stl", "cym"] as const;
+/** The file picker and window drop handler accept the same formats. */
+export const DROPPABLE_EXTENSIONS = ["stl", "glb", "3mf", "cym"] as const;
+
+export function isTextureImport(path: string): boolean {
+  return path.toLowerCase().endsWith(".glb");
+}
 
 export type StlDropDecision =
   | { action: "import"; path: string }
@@ -32,5 +35,7 @@ export function planFileDrop(paths: string[], hasModel: boolean): StlDropDecisio
   if (!hasDroppableExtension(path)) {
     return { action: "reject", reason: "extension" };
   }
-  return hasModel ? { action: "confirm-replace", path } : { action: "import", path };
+  // The preview itself asks before GLB replaces the active model.
+  if (hasModel && !isTextureImport(path)) return { action: "confirm-replace", path };
+  return { action: "import", path };
 }

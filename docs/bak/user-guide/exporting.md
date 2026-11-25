@@ -27,6 +27,12 @@ flowchart LR
 
 **Verified end-to-end (2026-08-27)**: a real model exported from CYM imported into Snapmaker Orca (U1) with correct multi-filament colours and the embedded process preset (`0.20 Standard @Snapmaker U1 (0.4 nozzle)`) — see the [verification case](../cases/01-3mf-end-to-end.md).
 
+### Models converted from textures
+
+Assign the editable model colors to the selected machine's filament slots. Multiple model colors may share a slot. Enter available filament colors to get suggestions, then confirm the assignments. The 3MF stores those assignments and the editable CYM state, so you can reopen the original exported file without the source GLB.
+
+If brush edits create more than 16 colors, the export preview groups them into up to 16 rows. Review the grouped colors and their slots before exporting. Reopening the 3MF in CYM restores the exact editable face colors.
+
 ## Export OBJ
 
 Exports `.obj` plus a sibling `.mtl`: per-face colours become `usemtl` material groups, quantized to at most 256 colours. No machine/process pickers needed — colour is written directly. Use OBJ for tools that don't read 3MF (DCC software, viewers).

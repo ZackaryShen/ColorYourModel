@@ -3,7 +3,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore } from "../store/appStore";
 import { useUpdateStore } from "../store/updateStore";
-import { useImportStl } from "../hooks/useImportStl";
 import { useT } from "../i18n";
 import { log } from "../utils/logger";
 import { ExportDialog } from "./ExportDialog/ExportDialog";
@@ -31,14 +30,16 @@ type MenuId = "file" | "view" | "help";
  */
 export function MenuBar({
   onOpenPreferences,
+  onImport,
 }: {
+  onImport: () => Promise<void>;
   onOpenPreferences?: () => void;
 }) {
   const t = useT();
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const { importStl } = useImportStl();
+  const isLoading = useAppStore((s) => s.isLoading);
 
   const language = useAppStore((s) => s.language);
   const setLanguage = useAppStore((s) => s.setLanguage);
@@ -94,7 +95,7 @@ export function MenuBar({
       id: "file",
       label: t("menu.file"),
       items: [
-        { kind: "item", label: t("menu.import"), onClick: () => importStl() },
+        { kind: "item", label: t("menu.import"), disabled: isLoading, onClick: () => void onImport() },
         {
           kind: "item",
           label: t("menu.export"),

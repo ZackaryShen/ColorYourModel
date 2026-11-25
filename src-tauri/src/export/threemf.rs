@@ -19,11 +19,11 @@ use super::paint_color::{encode_paint_color, MAX_EXTRUDER_SLOT};
 use super::presets::{ExportSelection, ResolvedSelection};
 use super::project_config::{
     build_filament_profile_config, build_machine_profile_config, build_process_profile_config,
-    build_project_settings_config, build_selected_filament_config,
-    build_selected_machine_config, build_selected_process_config, filament_preset_path,
-    MACHINE_PRESET_PATH, PROCESS_PRESET_PATH,
+    build_project_settings_config, build_selected_filament_config, build_selected_machine_config,
+    build_selected_process_config, filament_preset_path, MACHINE_PRESET_PATH, PROCESS_PRESET_PATH,
 };
 use super::quantize::{quantize_face_colors, Quantized};
+use super::texture_mapping::TextureExportSnapshot;
 use crate::mesh::model::MeshModel;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
 use quick_xml::Writer;
@@ -54,6 +54,32 @@ pub fn export_3mf(
     selection: Option<&ExportSelection>,
     progress: &dyn Fn(f32, &str),
 ) -> Result<(), String> {
+    export_3mf_with_project(mesh, output_path, selection, None, &[], progress)
+}
+
+/// Write an optional editable project alongside the slicer's geometry and presets.
+pub fn export_3mf_with_project(
+    mesh: &MeshModel,
+    output_path: &Path,
+    selection: Option<&ExportSelection>,
+    texture_snapshot: Option<&TextureExportSnapshot>,
+    project_entries: &[(&str, &[u8])],
+    progress: &dyn Fn(f32, &str),
+) -> Result<(), String> {
+    if let Some(snapshot) = texture_snapshot {
+        return write_3mf_archive(
+            mesh,
+            output_path,
+            &snapshot.quantized,
+            Some(&snapshot.resolved),
+            project_entries,
+            progress,
+        );
+    }
+    if mesh.texture_painting {
+        return Err("Confirm the texture project's filament mapping before exporting".into());
+    }
+
     // An unpainted mesh (face_colors empty) still deserves to export — emit a
     // single neutral slot for every face instead of hard-erroring. A painted
     // mesh always has face_colors sized to faces (init_default_colors on load).
@@ -66,14 +92,6 @@ pub fn export_3mf(
         quantize_face_colors(&mesh.face_colors, MAX_EXTRUDER_SLOT as usize)
     };
 
-    if quantized.face_slots.len() != mesh.faces.len() {
-        return Err(format!(
-            "colour quantisation produced {} slots for {} faces",
-            quantized.face_slots.len(),
-            mesh.faces.len()
-        ));
-    }
-
     // Resolve the user's pick against the preset library. A dangling name is
     // an error the dialog should have prevented; failing here is better than
     // silently writing a file that opens with the wrong machine.
@@ -85,17 +103,38 @@ pub fn export_3mf(
         None => None,
     };
 
+    write_3mf_archive(
+        mesh,
+        output_path,
+        &quantized,
+        resolved.as_ref(),
+        project_entries,
+        progress,
+    )
+}
+
+fn write_3mf_archive(
+    mesh: &MeshModel,
+    output_path: &Path,
+    quantized: &Quantized,
+    resolved: Option<&ResolvedSelection<'_>>,
+    project_entries: &[(&str, &[u8])],
+    progress: &dyn Fn(f32, &str),
+) -> Result<(), String> {
+    if quantized.face_slots.len() != mesh.faces.len() {
+        return Err(format!(
+            "filament mapping produced {} slots for {} faces",
+            quantized.face_slots.len(),
+            mesh.faces.len()
+        ));
+    }
+
     let model_xml = build_model_xml(mesh, &quantized.face_slots)?;
     progress(0.55, "3mf:model");
-    let project_config =
-        build_project_settings_config(&quantized.palette, resolved.as_ref());
+    let project_config = build_project_settings_config(&quantized.palette, resolved);
     progress(0.65, "3mf:config");
-    let content_types = build_content_types();
+    let content_types = build_content_types(!project_entries.is_empty());
     let rels = build_rels();
-
-    let file = std::fs::File::create(output_path)
-        .map_err(|e| format!("Failed to create file: {}", e))?;
-    let mut zip = zip::ZipWriter::new(file);
 
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
@@ -107,7 +146,7 @@ pub fn export_3mf(
         ("_rels/.rels".to_string(), rels),
     ];
 
-    match &resolved {
+    match resolved {
         // Selected path: the machine + process presets are embedded so Orca's
         // dropdown can show the full vendor name ("Snapmaker U1 (0.4 nozzle)")
         // even when the vendor profile is not installed. Filament presets are
@@ -115,8 +154,14 @@ pub fn export_3mf(
         // everything the spool card needs, and Orca itself writes zero
         // filament files for "stock filament, custom colours" (REFUTE-7).
         Some(sel) => {
-            entries.push((MACHINE_PRESET_PATH.to_string(), build_selected_machine_config(sel)));
-            entries.push((PROCESS_PRESET_PATH.to_string(), build_selected_process_config(sel)));
+            entries.push((
+                MACHINE_PRESET_PATH.to_string(),
+                build_selected_machine_config(sel),
+            ));
+            entries.push((
+                PROCESS_PRESET_PATH.to_string(),
+                build_selected_process_config(sel),
+            ));
             // Self-contained filament presets: one per slot, named after the
             // real vendor preset so it matches project_settings.filament_settings_id.
             // Without these the spool card is incomplete unless the vendor
@@ -153,17 +198,43 @@ pub fn export_3mf(
     }
 
     progress(0.7, "3mf:zip");
-    for (path, body) in &entries {
-        zip.start_file(path.as_str(), options)
-            .map_err(|e| format!("Failed to create {} entry: {}", path, e))?;
-        std::io::Write::write_all(&mut zip, body.as_bytes())
-            .map_err(|e| format!("Failed to write {}: {}", path, e))?;
-    }
-
-    zip.finish()
-        .map_err(|e| format!("Failed to finalize ZIP: {}", e))?;
+    write_atomically(output_path, |file| {
+        let mut zip = zip::ZipWriter::new(file);
+        for (path, body) in entries
+            .iter()
+            .map(|(path, body)| (path.as_str(), body.as_bytes()))
+            .chain(project_entries.iter().copied())
+        {
+            zip.start_file(path, options)
+                .map_err(|e| format!("Failed to create {path} entry: {e}"))?;
+            std::io::Write::write_all(&mut zip, body)
+                .map_err(|e| format!("Failed to write {path}: {e}"))?;
+        }
+        zip.finish().map_err(|e| format!("Failed to finalize ZIP: {e}"))?;
+        Ok(())
+    })?;
     progress(0.97, "3mf:zip");
 
+    Ok(())
+}
+
+fn write_atomically(
+    output_path: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> Result<(), String>,
+) -> Result<(), String> {
+    // Stage on the same filesystem so a failed write cannot truncate a
+    // previous editable project and the final rename is atomic.
+    let directory = output_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temporary = tempfile::NamedTempFile::new_in(directory)
+        .map_err(|error| format!("Could not create a temporary 3MF: {error}"))?;
+    write(temporary.as_file_mut())?;
+    temporary.as_file().sync_all()
+        .map_err(|error| format!("Could not flush 3MF: {error}"))?;
+    temporary.persist(output_path)
+        .map_err(|error| format!("Could not replace the selected 3MF: {}", error.error))?;
     Ok(())
 }
 
@@ -275,15 +346,24 @@ fn build_model_xml(mesh: &MeshModel, face_slots: &[u8]) -> Result<String, String
 /// Mirrors what `_add_content_types_file_to_archive` writes in `bbs_3mf.cpp`.
 /// Note that `.config` is deliberately absent there too; the reader locates
 /// `project_settings.config` by path, not by content type.
-fn build_content_types() -> String {
-    r#"<?xml version="1.0" encoding="UTF-8"?>
+fn build_content_types(has_project: bool) -> String {
+    let mut types = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
  <Default Extension="png" ContentType="image/png"/>
- <Default Extension="gcode" ContentType="text/x.gcode"/>
-</Types>"#
-        .to_string()
+ <Default Extension="gcode" ContentType="text/x.gcode"/>"#,
+    );
+    if has_project {
+        types.push_str(
+            r#"
+ <Default Extension="json" ContentType="application/json"/>
+ <Default Extension="bin" ContentType="application/octet-stream"/>"#,
+        );
+    }
+    types.push_str("\n</Types>");
+    types
 }
 
 fn build_rels() -> String {
@@ -463,7 +543,10 @@ mod tests {
         }
         let filament: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(filament["name"], "Generic PLA");
-        assert_eq!(filament["filament_settings_id"], serde_json::json!(["Generic PLA"]));
+        assert_eq!(
+            filament["filament_settings_id"],
+            serde_json::json!(["Generic PLA"])
+        );
         assert_eq!(filament["filament_type"], "PLA");
 
         let mut body = String::new();
@@ -499,6 +582,136 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    fn read_archive_part(archive: &mut zip::ZipArchive<std::fs::File>, name: &str) -> String {
+        let mut body = String::new();
+        std::io::Read::read_to_string(&mut archive.by_name(name).unwrap(), &mut body).unwrap();
+        body
+    }
+
+    #[test]
+    fn explicit_u1_mapping_matches_face_order_and_spool_settings_in_the_archive() {
+        use crate::export::texture_mapping::{preview, TextureColorAssignment, TextureSlotMapping};
+
+        let mut mesh = two_face_mesh(vec![
+            [255, 0, 0, 255],
+            [0, 0, 255, 255],
+            [255, 120, 0, 255],
+            [0, 0, 255, 255],
+        ]);
+        mesh.faces.extend([[0, 1, 3], [0, 3, 2]]);
+        mesh.texture_painting = true;
+        let mapping = TextureSlotMapping {
+            selection: ExportSelection {
+                machine_id: "snapmaker_u1".into(),
+                nozzle_diameter: "0.4".into(),
+                process_name: "0.20 Standard @Snapmaker U1 (0.4 nozzle)".into(),
+                filament_names: ["Generic ABS", "Generic PLA", "Generic TPU", "Generic PETG"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                target_slicer: "snapmaker_orca".into(),
+            },
+            nominal_colors: vec![None, Some([0, 40, 255]), None, Some([230, 40, 12])],
+            assignments: vec![
+                TextureColorAssignment {
+                    rgb: [255, 0, 0],
+                    slot: 4,
+                },
+                TextureColorAssignment {
+                    rgb: [0, 0, 255],
+                    slot: 2,
+                },
+                TextureColorAssignment {
+                    rgb: [255, 120, 0],
+                    slot: 4,
+                },
+            ],
+        };
+        let snapshot =
+            TextureExportSnapshot::build(&mesh, &preview(&mesh).unwrap().revision, &mapping)
+                .unwrap();
+        let path = std::env::temp_dir().join("cym-explicit-u1-mapping-test.3mf");
+        export_3mf_with_project(&mesh, &path, None, Some(&snapshot), &[], &|_, _| {}).unwrap();
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
+
+        let xml = read_archive_part(&mut archive, MODEL_PATH);
+        let slots: Vec<&str> = xml
+            .match_indices("paint_color=\"")
+            .map(|(idx, key)| xml[idx + key.len()..].split('"').next().unwrap())
+            .collect();
+        assert_eq!(slots, ["1C", "8", "1C", "8"]);
+        let project: serde_json::Value =
+            serde_json::from_str(&read_archive_part(&mut archive, PROJECT_CONFIG_PATH)).unwrap();
+        assert_eq!(
+            project["filament_colour"],
+            serde_json::json!(["#8A8A8A", "#0028FF", "#8A8A8A", "#E6280C"])
+        );
+        assert_eq!(
+            project["filament_settings_id"],
+            serde_json::json!(["Generic ABS", "Generic PLA", "Generic TPU", "Generic PETG"])
+        );
+        assert_eq!(project["nozzle_diameter"].as_array().unwrap().len(), 4);
+        let fourth_slot: serde_json::Value = serde_json::from_str(&read_archive_part(
+            &mut archive,
+            "Metadata/filament_settings_4.config",
+        ))
+        .unwrap();
+        assert_eq!(
+            fourth_slot["filament_colour"],
+            serde_json::json!(["#E6280C"])
+        );
+        assert_eq!(fourth_slot["name"], "Generic PETG");
+        assert!(archive
+            .by_name("Metadata/filament_settings_5.config")
+            .is_err());
+        drop(archive);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn the_sixteenth_slot_can_be_written_with_a_sixteen_slot_target() {
+        use crate::export::texture_mapping::{materialize_plan, TextureColorAssignment};
+
+        let mesh = two_face_mesh(vec![[55, 88, 21, 255], [120, 31, 88, 255]]);
+        let slots = (1..=16).map(|i| [i, 0, 0]).collect();
+        let plan = materialize_plan(
+            &mesh.face_colors,
+            slots,
+            &[
+                TextureColorAssignment {
+                    rgb: [55, 88, 21],
+                    slot: 16,
+                },
+                TextureColorAssignment {
+                    rgb: [120, 31, 88],
+                    slot: 3,
+                },
+            ],
+        )
+        .unwrap();
+        let path = std::env::temp_dir().join("cym-explicit-slot-16-test.3mf");
+        write_3mf_archive(&mesh, &path, &plan, None, &[], &|_, _| {}).unwrap();
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
+
+        let xml = read_archive_part(&mut archive, MODEL_PATH);
+        assert!(xml.contains("v3=\"2\" paint_color=\"DC\""));
+        let project: serde_json::Value =
+            serde_json::from_str(&read_archive_part(&mut archive, PROJECT_CONFIG_PATH)).unwrap();
+        assert_eq!(project["filament_colour"].as_array().unwrap().len(), 16);
+        assert_eq!(project["filament_colour"][15], "#100000");
+        let sixteenth_slot: serde_json::Value = serde_json::from_str(&read_archive_part(
+            &mut archive,
+            "Metadata/filament_settings_16.config",
+        ))
+        .unwrap();
+        assert_eq!(
+            sixteenth_slot["filament_colour"],
+            serde_json::json!(["#100000"])
+        );
+        drop(archive);
+        let _ = std::fs::remove_file(path);
     }
 
     /// Writes a small multi-colour sample next to the repo's example models so
@@ -557,3 +770,15 @@ mod tests {
         println!("wrote sample to {}", path.display());
     }
 }
+    #[test]
+    fn failing_archive_writer_preserves_the_existing_project() {
+        use std::io::Write;
+        let old = crate::threemf::test_support::Fixture::new(&[("sentinel", vec![1, 2, 3])]);
+        let previous = std::fs::read(old.path()).unwrap();
+        let result = write_atomically(old.path(), |file| {
+            file.write_all(b"incomplete ZIP").unwrap();
+            Err("injected write error".into())
+        });
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(old.path()).unwrap(), previous);
+    }

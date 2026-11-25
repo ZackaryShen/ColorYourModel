@@ -1,0 +1,215 @@
+.export-dialog-fields {
+  padding: 0;
+  border: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.texture-export-layout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.texture-export-viewport,
+.texture-export-settings {
+  min-width: min(100%, 310px);
+  flex: 1 1 310px;
+}
+
+.texture-export-canvas {
+  position: relative;
+  height: clamp(220px, 44vh, 450px);
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-canvas);
+}
+
+.texture-export-canvas > p {
+  margin: 16px;
+  color: var(--text-2);
+}
+
+.texture-export-viewport-caption {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 8px;
+  color: var(--text-1);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.texture-export-action {
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-1);
+  font-size: 12px;
+}
+
+.texture-export-mapping {
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.texture-export-mapping h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.texture-export-mapping p,
+.texture-export-mapping-status {
+  margin: 6px 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.texture-export-mapping-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.texture-export-table-wrap {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.texture-export-mapping table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.texture-export-mapping th,
+.texture-export-mapping td {
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--border);
+}
+
+.texture-export-mapping thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-elevated);
+  color: var(--text-2);
+}
+
+.texture-export-mapping tbody th {
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.texture-export-slot {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.texture-export-slot select {
+  width: 100%;
+  min-width: 0;
+  padding: 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-1);
+}
+
+.texture-export-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.texture-export-face-count {
+  margin-left: 6px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.texture-export-nominal-colour {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.texture-export-nominal-colour input[type="color"] {
+  width: 25px;
+  height: 25px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+}
+
+.texture-export-spools {
+  margin-top: 14px;
+  font-size: 12px;
+}
+
+.texture-export-spools summary {
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+.texture-export-spools p,
+.texture-export-feedback {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.texture-export-spool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.texture-export-spool > label:first-child {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.texture-export-spool .texture-export-nominal-colour,
+.texture-export-spool .texture-export-action {
+  margin-bottom: 2px;
+}
+
+.texture-export-feedback[role="alert"] {
+  border: 1px solid var(--danger-border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.texture-export-feedback[role="alert"] .texture-export-action {
+  margin-left: 8px;
+}
+
+.export-dialog-error {
+  max-height: 6em;
+  overflow-y: auto;
+}

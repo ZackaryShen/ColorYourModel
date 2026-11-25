@@ -29,7 +29,7 @@ describe("planFileDrop", () => {
   });
 
   it("rejects files whose extension is not part of the import pipeline", () => {
-    for (const path of ["C:\\m\\part.obj", "C:\\m\\part.3mf", "C:\\m\\README"]) {
+    for (const path of ["C:\\m\\part.obj", "C:\\m\\part.fbx", "C:\\m\\README"]) {
       expect(planFileDrop([path], false)).toEqual({
         action: "reject",
         reason: "extension",
@@ -57,6 +57,16 @@ describe("planFileDrop", () => {
       action: "confirm-replace",
       path: "C:\\p\\project.cym",
     });
+  });
+
+  it("opens GLB preview directly even with a loaded model", () => {
+    const path = "/models/Tide Vase.GLB";
+    expect(planFileDrop([path], true)).toEqual({ action: "import", path });
+  });
+
+  it("routes a 3MF project through the existing replacement confirmation", () => {
+    const path = "/models/Tide Vase.3mf";
+    expect(planFileDrop([path], true)).toEqual({ action: "confirm-replace", path });
   });
 
   it("treats an empty drop as a multi-file rejection (never imports)", () => {

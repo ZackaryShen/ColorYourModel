@@ -4,7 +4,6 @@ import { useAppStore } from "../../store/appStore";
 import { PaintTool } from "../../types/mesh";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo } from "../../hooks/useHistory";
-import { useImportStl } from "../../hooks/useImportStl";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 import { ExportDialog } from "../ExportDialog/ExportDialog";
@@ -22,7 +21,7 @@ const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.Seed, icon: "🌱", i18nKey: "tool.seed" },
 ];
 
-export function Toolbar() {
+export function Toolbar({ onImport }: { onImport: () => Promise<void> }) {
   const t = useT();
   const activeTool = useAppStore((s) => s.activeTool);
   const setActiveTool = useAppStore((s) => s.setActiveTool);
@@ -42,7 +41,6 @@ export function Toolbar() {
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
   const historyPanelOpen = useAppStore((s) => s.historyPanelOpen);
   const setHistoryPanelOpen = useAppStore((s) => s.setHistoryPanelOpen);
-  const { importStl: handleImport } = useImportStl();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {
@@ -68,9 +66,6 @@ export function Toolbar() {
     };
   }, [setImportProgress, setSegmentProgress, setLoadingKind]);
 
-  // handleImport comes from the shared useImportStl hook (also used by the
-  // File menu): file picker → import progress → loadModel → status messages.
-
   const handleExport = () => {
     setExportDialogOpen(true);
   };
@@ -79,7 +74,7 @@ export function Toolbar() {
     <div style={styles.container}>
       {exportDialogOpen && <ExportDialog onClose={() => setExportDialogOpen(false)} />}
       <div style={styles.section}>
-        <button onClick={handleImport} disabled={isLoading} className="cym-btn" style={styles.button} title={t("toolbar.import")}>
+        <button onClick={onImport} disabled={isLoading} className="cym-btn" style={styles.button} title={t("toolbar.import")}>
           {isLoading ? "..." : "📂"}
         </button>
         <button

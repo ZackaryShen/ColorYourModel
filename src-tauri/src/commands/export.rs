@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use serde::Deserialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::mesh::AppState;
@@ -7,7 +8,11 @@ use crate::export::obj::export_obj;
 use crate::export::paint_color::MAX_EXTRUDER_SLOT;
 use crate::export::presets::{summary, ExportSelection, MachineSummary};
 use crate::export::quantize::quantize_face_colors;
-use crate::export::threemf::export_3mf;
+use crate::export::texture_mapping::{
+    preview, suggestions, NominalColorPredictor, Rgb, TextureExportSnapshot, TextureMappingPreview,
+    TextureMappingSuggestions, TextureSlotMapping,
+};
+use crate::export::threemf::{export_3mf, export_3mf_with_project};
 
 /// The printer / process / filament catalogue the export dialog renders.
 ///
@@ -35,6 +40,28 @@ pub fn export_palette_preview(state: State<AppState>) -> Result<Vec<String>, Str
         .iter()
         .map(|c| format!("#{:02X}{:02X}{:02X}", c[0], c[1], c[2]))
         .collect())
+}
+
+#[tauri::command]
+pub fn texture_mapping_preview(state: State<AppState>) -> Result<TextureMappingPreview, String> {
+    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    preview(mesh)
+}
+
+#[tauri::command]
+pub fn suggest_texture_mapping(
+    selection: ExportSelection,
+    nominal_colors: Vec<Option<Rgb>>,
+    colors: Vec<Rgb>,
+) -> Result<TextureMappingSuggestions, String> {
+    suggestions(&selection, &nominal_colors, &colors, &NominalColorPredictor)
+}
+
+#[derive(Deserialize)]
+pub struct TextureMappingRequest {
+    revision: String,
+    mapping: TextureSlotMapping,
 }
 
 /// Build a progress callback that forwards to the frontend as `export-progress`
@@ -81,17 +108,58 @@ fn with_normalized_extension(path: &str, ext: &str) -> PathBuf {
 pub async fn export_3mf_command(
     path: String,
     selection: Option<ExportSelection>,
+    mapping_request: Option<TextureMappingRequest>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+    // Keep the same locked mesh through confirmation, geometry serialization,
+    // and accepting the mapping. Painting or import must not split that transaction.
+    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let snapshot = match (mesh.texture_painting, mapping_request) {
+        (true, Some(request)) => Some(TextureExportSnapshot::build(
+            mesh,
+            &request.revision,
+            &request.mapping,
+        )?),
+        (true, None) => {
+            return Err("Confirm the texture project's filament mapping before exporting".into())
+        }
+        (false, Some(_)) => return Err("The texture project was replaced. Reopen export.".into()),
+        (false, None) => None,
+    };
 
-    let mut output_path = with_normalized_extension(&path, "3mf");
-
+    let output_path = if snapshot.is_some() {
+        // The native save dialog already confirmed the exact path, including
+        // any intentionally repeated extension. Never target its neighbour.
+        let chosen = PathBuf::from(&path);
+        if !chosen.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("3mf")) {
+            return Err("Choose a .3mf filename for the texture project".into());
+        }
+        chosen
+    } else {
+        with_normalized_extension(&path, "3mf")
+    };
     let progress = export_progress(&app);
     progress(0.05, "3mf:start");
-    export_3mf(mesh, &output_path, selection.as_ref(), &progress)?;
+    if let Some(snapshot) = &snapshot {
+        let project_parts =
+            crate::engineering::encode_project_parts(mesh, Some(&snapshot.mapping))?;
+        let entries: Vec<_> = project_parts
+            .iter()
+            .map(|(path, contents)| (*path, contents.as_slice()))
+            .collect();
+        export_3mf_with_project(
+            mesh,
+            &output_path,
+            None,
+            Some(snapshot),
+            &entries,
+            &progress,
+        )?;
+    } else {
+        export_3mf(mesh, &output_path, selection.as_ref(), &progress)?;
+    }
     progress(0.97, "3mf:verify");
 
     // Adversarial hardening: do NOT trust zip.finish()'s Ok. Confirm the file
@@ -105,6 +173,9 @@ pub async fn export_3mf_command(
     let final_path = output_path
         .canonicalize()
         .unwrap_or_else(|_| output_path.clone());
+    if let Some(snapshot) = snapshot {
+        mesh.texture_slot_mapping = Some(snapshot.mapping);
+    }
     progress(1.0, "done");
 
     Ok(format!("Exported to {}", final_path.display()))
@@ -123,7 +194,7 @@ pub async fn export_obj_command(
     let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
 
-    let mut output_path = with_normalized_extension(&path, "obj");
+    let output_path = with_normalized_extension(&path, "obj");
 
     let progress = export_progress(&app);
     progress(0.05, "obj:start");
@@ -150,8 +221,7 @@ mod tests {
     #[test]
     fn normalizes_double_extension() {
         assert_eq!(
-            with_normalized_extension("C:\\tmp\\mymodel.3mf.3mf", "3mf")
-                .to_string_lossy(),
+            with_normalized_extension("C:\\tmp\\mymodel.3mf.3mf", "3mf").to_string_lossy(),
             "C:\\tmp\\mymodel.3mf"
         );
         assert_eq!(

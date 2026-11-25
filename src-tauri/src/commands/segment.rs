@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::mesh::AppState;
 use crate::mesh::loader::ProgressFn;
-use crate::mesh::model::{MeshModel, Segment, DEFAULT_FACE_COLOR};
+use crate::mesh::model::{MeshModel, Segment};
 use crate::segment::dihedral::segment_by_dihedral_angle;
 use crate::segment::manual::{
     finalize_manual_region_with_progress as backend_finalize_manual_region_with_progress,
@@ -433,6 +433,7 @@ pub async fn auto_segment_v2(
     // the heavy work no longer blocks the webview thread (the "(未响应)" freeze).
     // The mesh is restored afterwards; any command that races in during compute
     // sees "No mesh loaded" instead of stalling the UI.
+    let _operation = state.begin_mesh_operation()?;
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
     drop(mesh_guard);
@@ -476,7 +477,7 @@ pub(crate) fn reset_mesh_state(mesh: &mut MeshModel) {
     mesh.segments.clear();
     mesh.segment_names.clear();
     mesh.next_manual_label = MANUAL_SEGMENT_OFFSET;
-    mesh.face_colors = vec![DEFAULT_FACE_COLOR; n];
+    mesh.init_default_colors();
     mesh.history.clear();
 }
 
@@ -522,12 +523,18 @@ pub async fn resegment_region(
 
     // Take the mesh out of the shared Mutex for the (potentially long) sub-mesh
     // segmentation — mirror auto_segment_v2's rationale.
+    let _operation = state.begin_mesh_operation()?;
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
     drop(mesh_guard);
 
-    let inner = resegment_region_impl(&mut mesh, label, &algorithm, &*progress_cb)
-        .map_err(|e| e.to_string())?;
+    let inner = match resegment_region_impl(&mut mesh, label, &algorithm, &*progress_cb) {
+        Ok(result) => result,
+        Err(error) => {
+            *state.mesh.lock().map_err(|e| e.to_string())? = Some(mesh);
+            return Err(error.to_string());
+        }
+    };
 
     let _ = app.emit(
         "segment-progress",
@@ -822,6 +829,7 @@ pub async fn fuse_segmentation(
 
     // Take the mesh out for the whole compute (mirror auto_segment_v2) so a
     // concurrent sync command cannot stall on the lock.
+    let _operation = state.begin_mesh_operation()?;
     let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
     let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
     drop(mesh_guard);
@@ -988,7 +996,7 @@ pub async fn fuse_segmentation(
 #[cfg(test)]
 mod reset_tests {
     use super::*;
-    use crate::mesh::model::MeshModel;
+    use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR};
 
     fn tiny_mesh() -> MeshModel {
         let mut m = MeshModel::new();

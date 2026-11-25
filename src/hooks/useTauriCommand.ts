@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useT, translateError } from "../i18n";
 import { useAppStore } from "../store/appStore";
 import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, HistoryEntriesResult, UsedColorEntry, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion , PaintResult } from "../types/mesh";
-import type { ExportSelection } from "../types/export";
+import type { ExportSelection, TextureMappingRequest } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
 
@@ -241,13 +241,18 @@ export function useTauriCommand() {
    * in lib.rs as a stable legacy entry point but is no longer wired to the UI.
    */
 
-  const export3mf = async (path: string, selection?: ExportSelection) => {
+  const export3mf = async (
+    path: string,
+    selection?: ExportSelection,
+    mappingRequest?: TextureMappingRequest,
+  ) => {
     log.info("useTauriCommand", `export3mf("${path}")`, { selection });
     try {
       setStatusMessage(t("export.exporting"));
       const msg: string = await invoke("export_3mf_command", {
         path,
         selection: selection ?? null,
+        mappingRequest: mappingRequest ?? null,
       });
       log.info("useTauriCommand", "export3mf complete", { msg });
       markPaintExported();
@@ -269,11 +274,12 @@ export function useTauriCommand() {
    */
   const exportObj = async (path: string) => {
     log.info("useTauriCommand", `exportObj("${path}")`);
+    const textureProject = useAppStore.getState().meshData?.texturePainting;
     try {
       setStatusMessage(t("export.exporting"));
       const msg: string = await invoke("export_obj_command", { path });
       log.info("useTauriCommand", "exportObj complete", { msg });
-      markPaintExported();
+      if (!textureProject) markPaintExported();
       setStatusMessage(t("export.complete"));
       setToast(t("export.successObj", msg.replace(/^Exported to /, "")));
       return msg;
@@ -480,6 +486,10 @@ export function useTauriCommand() {
     algorithm: SegmentationAlgorithm
   ): Promise<SegmentResult> => {
     log.info("useTauriCommand", `resegmentRegion(${label}, ${algorithm.type})`);
+    const store = useAppStore.getState();
+    if (store.isLoading) throw new Error(t("drop.importInProgress"));
+    store.setLoadingKind("segment");
+    setLoading(true);
     try {
       setStatusMessage(t("cmd.resegment.working"));
       const result = await invoke<SegmentResult>("resegment_region", { label, algorithm });
@@ -490,6 +500,8 @@ export function useTauriCommand() {
       log.error("useTauriCommand", "resegmentRegion failed", { error: String(e) });
       setStatusMessage(t("cmd.resegment.failed", tErr(e)));
       throw e;
+    } finally {
+      setLoading(false);
     }
   };
 

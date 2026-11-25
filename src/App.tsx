@@ -17,9 +17,10 @@ import { DropReplaceDialog } from "./components/DropReplaceDialog";
 import { UpdateDialog } from "./components/UpdateDialog/UpdateDialog";
 import { useAutoUpdateCheck } from "./hooks/useAutoUpdateCheck";
 import { useDropImport } from "./hooks/useDropImport";
-import { useImportStl } from "./hooks/useImportStl";
+import { useImportModel } from "./hooks/useImportModel";
+import { useTextureImport } from "./hooks/useTextureImport";
+import { TexturePreviewDialog } from "./components/TexturePreview/TexturePreviewDialog";
 import { useAppStore } from "./store/appStore";
-import { useT } from "./i18n";
 
 function App() {
   const theme = useAppStore((s) => s.theme);
@@ -28,15 +29,12 @@ function App() {
   // showing them on the empty state invited dead-slider fiddling.
   const hasMesh = useAppStore((s) => s.meshData !== null);
   const historyPanelOpen = useAppStore((s) => s.historyPanelOpen);
-  // Issue #21: drag an STL/.cym onto ANY part of the window to import it.
-  // The drop shares the 📂 pipeline (importFromPath); a drop that would
-  // replace a loaded model first asks, like the exit confirm does.
-  const { importFromPath } = useImportStl();
+  const textureImport = useTextureImport();
+  const { pickModel, importFromPath, isImportBusy } = useImportModel(textureImport);
   const { dragOver, pendingReplacePath, confirmReplace, cancelReplace } =
-    useDropImport(importFromPath);
+    useDropImport(importFromPath, isImportBusy);
   const [confirmExit, setConfirmExit] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
-  const t = useT();
 
   // Silent startup update check (dev builds and opted-out users never fire).
   useAutoUpdateCheck();
@@ -55,6 +53,13 @@ function App() {
     let unlisten: (() => void) | null = null;
     getCurrentWindow()
       .onCloseRequested(async (event) => {
+        // Applying changes the active backend mesh. Keep the window open
+        // until the renderer receives the same committed mesh.
+        if (textureImport.isApplying()) {
+          event.preventDefault();
+          return;
+        }
+        if (textureImport.isOpen()) textureImport.cancel();
         const { meshData, paintDirty } = useAppStore.getState();
         // Nothing at stake -> fall through to the default close path.
         if (!meshData || !paintDirty) return;
@@ -69,7 +74,7 @@ function App() {
       disposed = true;
       unlisten?.();
     };
-    // t is re-created each render; language is the only real dependency.
+    // Texture callbacks only read stable refs and update through a stable setter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language]);
 
@@ -77,13 +82,13 @@ function App() {
     <div style={styles.root}>
       {/* Top menu bar (File / View / Help) — conventional desktop entry
           points alongside the left tool Toolbar. */}
-      <MenuBar onOpenPreferences={() => setPrefsOpen(true)} />
+      <MenuBar onOpenPreferences={() => setPrefsOpen(true)} onImport={pickModel} />
 
       {/* Main layout */}
       <div style={styles.main}>
         {/* Left toolbar */}
         <div style={styles.leftPanel}>
-          <Toolbar />
+          <Toolbar onImport={pickModel} />
         </div>
 
         {/* Center viewport */}
@@ -127,6 +132,17 @@ function App() {
       {dragOver && <DropOverlay />}
       {pendingReplacePath && (
         <DropReplaceDialog onCancel={cancelReplace} onConfirm={confirmReplace} />
+      )}
+
+      {textureImport.session && (
+        <TexturePreviewDialog
+          session={textureImport.session}
+          hasModel={hasMesh}
+          onApply={textureImport.apply}
+          onCancel={textureImport.cancel}
+          onColorLimit={textureImport.setColorLimit}
+          onRetry={textureImport.retry}
+        />
       )}
 
       {/* Update module: renders nothing while phase === "idle"; owns its own

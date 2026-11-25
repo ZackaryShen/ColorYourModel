@@ -81,12 +81,7 @@ pub fn load_stl(path: &Path, on_progress: &ProgressFn) -> Result<MeshModel, Stri
     // `assert_eq!(segment_labels.len(), faces.len())` also requires this length.
     model.segment_labels = vec![0u32; model.faces.len()];
 
-    on_progress(0.65, "Building spatial index (KD-Tree)...");
-    model.build_kdtree();
-    model.build_vertex_kdtree();
-
-    on_progress(0.75, "Building adjacency graph...");
-    model.build_adjacency();
+    build_mesh_indices(&mut model, on_progress);
 
     on_progress(0.95, "Finalizing...");
 
@@ -99,6 +94,15 @@ pub fn load_stl(path: &Path, on_progress: &ProgressFn) -> Result<MeshModel, Stri
     );
 
     Ok(model)
+}
+
+pub(crate) fn build_mesh_indices(model: &mut MeshModel, on_progress: &ProgressFn) {
+    on_progress(0.65, "Building spatial index (KD-Tree)...");
+    model.build_kdtree();
+    model.build_vertex_kdtree();
+
+    on_progress(0.75, "Building adjacency graph...");
+    model.build_adjacency();
 }
 
 #[cfg(test)]
