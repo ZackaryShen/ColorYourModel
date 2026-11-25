@@ -1,4 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
+import { decodeMeshResponse } from "../utils/meshResponse";
+import { invoke as rawInvoke } from "@tauri-apps/api/core";
+import { invokeTab, carryTabResult, isCurrentTabResult } from "../utils/tabCommand";
 import { useT, translateError } from "../i18n";
 import { useAppStore } from "../store/appStore";
 import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, HistoryEntriesResult, UsedColorEntry, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion , PaintResult } from "../types/mesh";
@@ -8,30 +10,38 @@ import { log } from "../utils/logger";
 
 export function useTauriCommand() {
   const t = useT();
+  const tabId = useAppStore(s => s.activeTabId);
+  const tabEpoch = useAppStore(s => s.tabEpoch);
+  const owned = () => { const state = useAppStore.getState(); return state.activeTabId === tabId && state.tabEpoch === tabEpoch; };
+  const guarded = <A extends unknown[]>(fn: (...args: A) => void) => (...args: A) => { if (owned()) fn(...args); };
+  const invoke = <T,>(command: string, args?: Record<string, unknown>) => owned() ? invokeTab<T>(command, args, tabId) : Promise.reject<T>(new Error("Tab changed; stale operation cancelled"));
   // Backend rejects carry stable English error strings (fuse/seeded/resegment);
   // localise them against the *live* language so a mid-flight switch still
   // renders the right one.
   const tErr = (e: unknown) => translateError(String(e), useAppStore.getState().language);
   const setMeshData = useAppStore((s) => s.setMeshData);
-  const updateSegmentLabels = useAppStore((s) => s.updateSegmentLabels);
-  const setStatusMessage = useAppStore((s) => s.setStatusMessage);
+  const updateSegmentLabels = guarded(useAppStore((s) => s.updateSegmentLabels));
+  const setStatusMessage = guarded(useAppStore((s) => s.setStatusMessage));
   // Drives the global ProgressBar overlay (Viewport). The lasso finalize
   // flips it so the backend's `manual:*` segment-progress events render as a
   // visible stage bar instead of a frozen click.
-  const setLoading = useAppStore((s) => s.setLoading);
-  const setSelectedSegment = useAppStore((s) => s.setSelectedSegment);
-  const clearMergePicked = useAppStore((s) => s.clearMergePicked);
-  const setSegmentMetadata = useAppStore((s) => s.setSegmentMetadata);
-  const markHistoryDirty = useAppStore((s) => s.markHistoryDirty);
-  const markPaintExported = useAppStore((s) => s.markPaintExported);
-  const setToast = useAppStore((s) => s.setToast);
+  const setLoading = guarded(useAppStore((s) => s.setLoading));
+  const setSelectedSegment = guarded(useAppStore((s) => s.setSelectedSegment));
+  const clearMergePicked = guarded(useAppStore((s) => s.clearMergePicked));
+  const setSegmentMetadata = guarded(useAppStore((s) => s.setSegmentMetadata));
+  const resetHistory = guarded(useAppStore(s => s.resetHistory));
+  const markHistoryDirty = guarded(useAppStore((s) => s.markHistoryDirty));
+  const markPaintExported = guarded(useAppStore((s) => s.markPaintExported));
+  const setToast = guarded(useAppStore((s) => s.setToast));
+  const setProjectPath = guarded(useAppStore(s => s.setProjectPath));
 
   const loadModel = async (path: string) => {
     log.info("useTauriCommand", `loadModel("${path}")`);
     try {
       setStatusMessage(t("toolbar.startImport"));
       const t0 = performance.now();
-      const data = await invoke<MeshData>("load_model", { path });
+      const data = decodeMeshResponse(await rawInvoke<ArrayBuffer | MeshData>("load_model", { path }));
+      if (!data) throw new Error("Missing mesh response");
       const dt = (performance.now() - t0).toFixed(1);
 
       log.info("useTauriCommand", `loadModel returned in ${dt}ms`, {
@@ -42,7 +52,15 @@ export function useTauriCommand() {
         bbox: data.bbox,
       });
 
+      const previousPath = useAppStore.getState().projectPath;
       setMeshData(data);
+      if (/\.stl$/i.test(path)) useAppStore.getState().setProjectPath(previousPath);
+      // A 3MF can restore both stacks; a fresh model's default flags must not
+      // leave those operations inaccessible after reopening the project.
+      const history = await invokeTab<HistoryState>("history_state", {}, data.tabId ?? null).catch(() => null);
+      if (history && useAppStore.getState().meshData === data) {
+        useAppStore.getState().setHistoryFlags(history.canUndo, history.canRedo);
+      }
       log.info("useTauriCommand", "meshData stored in appStore");
       setStatusMessage(t("status.loaded", data.faceCount.toLocaleString()));
       return data;
@@ -70,6 +88,7 @@ export function useTauriCommand() {
       // construction (issue #16); the panel's prune effect would also catch
       // this, but clearing here keeps the rule next to the other resets.
       clearMergePicked();
+      resetHistory();
       setStatusMessage(t("cmd.reset.done"));
     } catch (e) {
       log.error("useTauriCommand", "resetSegmentation failed", { error: String(e) });
@@ -92,10 +111,11 @@ export function useTauriCommand() {
   const renameSegment = async (segmentId: number, name: string): Promise<boolean> => {
     try {
       const segments = await invoke<Segment[]>("rename_segment", { segmentId, name });
+      if (!owned() || !isCurrentTabResult(segments)) return false;
       setSegmentMetadata(segments);
-      // rename_segment clears the backend timeline (labels renumber), so the
-      // panel and undo flags must drop too — not just on import.
-      useAppStore.getState().resetHistory();
+      // Names are persisted project data. Renaming leaves the backend's
+      // paint/region timeline intact, so preserve the available operations.
+      useAppStore.setState({ paintDirty: true });
       return true;
     } catch (e) {
       log.error("useTauriCommand", "renameSegment failed", { segmentId, error: String(e) });
@@ -203,19 +223,18 @@ export function useTauriCommand() {
     // overlay covers the backend compute AND the IPC payload parse (both happen
     // before the invoke promise resolves) — only the final React repaint lands
     // after it drops.
+    if (!owned() || useAppStore.getState().isLoading) return;
+    useAppStore.setState({ loadingKind: "segment", segmentProgress: 0, segmentStage: "manual:snap" });
     setLoading(true);
     try {
-      const result = await invoke<SegmentResult>("finalize_manual_region", {
+      const result = await invoke<SegmentResult & { label: number }>("finalize_manual_region", {
         points,
         faceIndices,
       });
+      if (!isCurrentTabResult(result)) return;
       updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
-      // Auto-select the freshly created region so the user immediately sees it
-      // highlighted (cyan fill + yellow outline) instead of a silent "done".
-      if (result.segments.length > 0) {
-        const newLabel = result.segments.reduce((m, s) => Math.max(m, s.id), 0);
-        setSelectedSegment(newLabel);
-      }
+      setSelectedSegment(result.label);
+      markHistoryDirty();
       setStatusMessage(t("cmd.manual.done", result.segments.length));
       // REFUTE-driven (iteration 7, problem 3c1): surface a clear success popup
       // so the user knows the partition was created — the whole point of
@@ -241,15 +260,17 @@ export function useTauriCommand() {
    * in lib.rs as a stable legacy entry point but is no longer wired to the UI.
    */
 
-  const export3mf = async (path: string, selection?: ExportSelection) => {
+  const export3mf = async (path: string, selection?: ExportSelection, preserveSource = false) => {
     log.info("useTauriCommand", `export3mf("${path}")`, { selection });
     try {
       setStatusMessage(t("export.exporting"));
       const msg: string = await invoke("export_3mf_command", {
         path,
         selection: selection ?? null,
+        preserveSource,
       });
       log.info("useTauriCommand", "export3mf complete", { msg });
+      setProjectPath(msg.startsWith("Exported to ") ? msg.slice(12) : path);
       markPaintExported();
       setStatusMessage(t("export.complete"));
       setToast(t("export.success", msg.replace(/^Exported to /, "")));
@@ -273,7 +294,7 @@ export function useTauriCommand() {
       setStatusMessage(t("export.exporting"));
       const msg: string = await invoke("export_obj_command", { path });
       log.info("useTauriCommand", "exportObj complete", { msg });
-      markPaintExported();
+      // OBJ contains one mesh; other plates and engineering history remain unsaved.
       setStatusMessage(t("export.complete"));
       setToast(t("export.successObj", msg.replace(/^Exported to /, "")));
       return msg;
@@ -554,7 +575,7 @@ export function useTauriCommand() {
         faceIndex: r.faceIndex,
       }));
       setStatusMessage(t("cmd.suggest.done", seeds.length));
-      return seeds;
+      return carryTabResult(raw, seeds);
     } catch (e) {
       log.error("useTauriCommand", "recommendSeeds failed", { error: String(e) });
       setStatusMessage(t("cmd.suggest.failed", String(e)));
@@ -601,11 +622,11 @@ export function useTauriCommand() {
         faceIndices: r.faceIndices,
       }));
       setStatusMessage(t("cmd.planar.done", regions.length));
-      return regions;
+      return carryTabResult(raw, regions);
     } catch (e) {
       log.error("useTauriCommand", "detectPlanarRegions failed", { error: String(e) });
       setStatusMessage(t("cmd.planar.failed", String(e)));
-      return [];
+      throw e;
     }
   };
 
@@ -643,11 +664,11 @@ export function useTauriCommand() {
         faceIndices: r.faceIndices,
       }));
       setStatusMessage(t("cmd.multiview.done", regions.length));
-      return regions;
+      return carryTabResult(raw, regions);
     } catch (e) {
       log.error("useTauriCommand", "detectMultiViewRegions failed", { error: String(e) });
       setStatusMessage(t("cmd.multiview.failed", String(e)));
-      return [];
+      throw e;
     }
   };
 
@@ -687,11 +708,11 @@ export function useTauriCommand() {
         boundaryEdges: r.boundaryEdges,
       }));
       setStatusMessage(t("cmd.crossSection.done", regions.length));
-      return regions;
+      return carryTabResult(raw, regions);
     } catch (e) {
       log.error("useTauriCommand", "detectCrossSectionRegions failed", { error: String(e) });
       setStatusMessage(t("cmd.crossSection.failed", String(e)));
-      return [];
+      throw e;
     }
   };
 
@@ -731,11 +752,11 @@ export function useTauriCommand() {
         .map((k) => `${k}:${tally[k] ?? 0}`)
         .join(" ");
       setStatusMessage(t("cmd.eye.done", regions.length, parts));
-      return regions;
+      return carryTabResult(raw, regions);
     } catch (e) {
       log.error("useTauriCommand", "detectEyeRegions failed", { error: String(e) });
       setStatusMessage(t("cmd.eye.failed", String(e)));
-      return [];
+      throw e;
     }
   };
 
@@ -770,11 +791,11 @@ export function useTauriCommand() {
         .map((k) => `${k}:${tally[k] ?? 0}`)
         .join(" ");
       setStatusMessage(t("cmd.eyeAuto.done", regions.length, parts));
-      return regions;
+      return carryTabResult(raw, regions);
     } catch (e) {
       log.error("useTauriCommand", "detectEyeRegionsAuto failed", { error: String(e) });
       setStatusMessage(t("cmd.eyeAuto.failed", String(e)));
-      return [];
+      throw e;
     }
   };
 

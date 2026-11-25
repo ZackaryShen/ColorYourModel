@@ -1,3 +1,4 @@
+import { isCurrentTabResult } from "../../utils/tabCommand";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
@@ -197,6 +198,7 @@ export function SegmentsPanel() {
     if (splitting) return;
     setSplitting(true);
     const result = await splitSegment(id, { type: "crease", thresholdDeg: splitThreshold });
+      if (!isCurrentTabResult(result)) return;
     setSplitting(false);
     setSplitFor(null);
     if (!result) return;
@@ -259,6 +261,7 @@ export function SegmentsPanel() {
       }
       const algorithm = buildAlgorithm(resegKind, params);
       const result = await resegmentRegion(id, algorithm);
+      if (!isCurrentTabResult(result)) return;
       if (!result) return;
       setStatusMessage(t("segments.resegmentDone", result.segments.length));
       // The target label no longer exists; clear the (now stale) selection.
@@ -293,7 +296,7 @@ export function SegmentsPanel() {
     return (
       <div style={styles.container}>
         <div style={styles.header}>{t("segments.title")}</div>
-        <div style={styles.empty}>{t("segments.empty")}</div>
+        <div style={styles.empty}>{t(isLoaded ? "segments.emptyLoaded" : "segments.empty")}</div>
       </div>
     );
   }
@@ -399,7 +402,7 @@ export function SegmentsPanel() {
                     style={styles.itemInput}
                   />
                 ) : (
-                  <span style={styles.itemName}>{displaySegmentName(seg.name, t)}</span>
+                  <span style={styles.itemName} title={displaySegmentName(seg.name, t)}>{displaySegmentName(seg.name, t)}</span>
                 )}
                 <span style={styles.itemCount}>{seg.faceCount}</span>
                 {!editing && !splitOpen && !resegOpen && (

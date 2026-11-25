@@ -3,6 +3,7 @@ mod export;
 mod mesh;
 mod paint;
 mod segment;
+mod threemf;
 
 use commands::mesh::AppState;
 
@@ -23,6 +24,10 @@ pub fn run() {
         .manage(commands::update::UpdateState::new())
         .invoke_handler(tauri::generate_handler![
             commands::mesh::load_model,
+            commands::mesh::switch_tab,
+            commands::mesh::close_tab,
+            commands::mesh::rename_tab,
+            commands::mesh::project_tabs,
             commands::mesh::get_face_color,
             commands::segment::auto_segment,
             commands::segment::auto_segment_smart,

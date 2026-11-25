@@ -91,8 +91,8 @@ enum Direction {
     Redo,
 }
 
-fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+fn step(tab_id: u64, state: State<AppState>, dir: Direction) -> Result<HistoryResult, String> {
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     // Split the borrow: the history and the buffers it mutates are separate
@@ -111,10 +111,13 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
     };
 
     let Some(outcome) = outcome else {
-        return Ok(HistoryResult::empty(mesh.history.can_undo(), mesh.history.can_redo()));
+        return Ok(HistoryResult::empty(
+            mesh.history.can_undo(),
+            mesh.history.can_redo(),
+        ));
     };
 
-    Ok(history_result(
+    let result = history_result(
         mesh,
         match dir {
             Direction::Undo => "undo",
@@ -124,7 +127,9 @@ fn step(state: State<AppState>, dir: Direction) -> Result<HistoryResult, String>
         outcome.faces,
         outcome.colors,
         outcome.labels_changed,
-    ))
+    );
+    mesh_guard.commit_if(result.applied);
+    Ok(result)
 }
 
 /// Assemble the wire result for a timeline move. Undo, redo and jump differ
@@ -160,11 +165,7 @@ fn history_result(
         applied: true,
         full,
         faces: if full { Vec::new() } else { faces },
-        colors: if full {
-            Vec::new()
-        } else {
-            flatten(&colors)
-        },
+        colors: if full { Vec::new() } else { flatten(&colors) },
         segments: full.then(|| mesh.sorted_segments()),
         segment_labels: full.then(|| mesh.segment_labels.clone()),
         face_colors: full.then(|| flatten(&mesh.face_colors)),
@@ -174,13 +175,13 @@ fn history_result(
 }
 
 #[tauri::command]
-pub fn undo(state: State<AppState>) -> Result<HistoryResult, String> {
-    step(state, Direction::Undo)
+pub fn undo(tab_id: u64, state: State<AppState>) -> Result<HistoryResult, String> {
+    step(tab_id, state, Direction::Undo)
 }
 
 #[tauri::command]
-pub fn redo(state: State<AppState>) -> Result<HistoryResult, String> {
-    step(state, Direction::Redo)
+pub fn redo(tab_id: u64, state: State<AppState>) -> Result<HistoryResult, String> {
+    step(tab_id, state, Direction::Redo)
 }
 
 /// Stack state without touching it, for enabling the toolbar buttons on load.
@@ -195,8 +196,8 @@ pub struct HistoryState {
 }
 
 #[tauri::command]
-pub fn history_state(state: State<AppState>) -> Result<HistoryState, String> {
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+pub fn history_state(tab_id: u64, state: State<AppState>) -> Result<HistoryState, String> {
+    let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
     Ok(HistoryState {
         can_undo: mesh.history.can_undo(),
@@ -236,8 +237,11 @@ pub struct HistoryEntriesResult {
 }
 
 #[tauri::command]
-pub fn history_entries(state: State<AppState>) -> Result<HistoryEntriesResult, String> {
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+pub fn history_entries(
+    tab_id: u64,
+    state: State<AppState>,
+) -> Result<HistoryEntriesResult, String> {
+    let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
     Ok(HistoryEntriesResult {
         current: mesh.history.undo_depth(),
@@ -262,8 +266,12 @@ pub fn history_entries(state: State<AppState>) -> Result<HistoryEntriesResult, S
 /// faces with their final colours, full-payload whenever labels moved,
 /// exactly like a single undo/redo would produce.
 #[tauri::command]
-pub fn history_jump(target: usize, state: State<AppState>) -> Result<HistoryResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+pub fn history_jump(
+    target: usize,
+    tab_id: u64,
+    state: State<AppState>,
+) -> Result<HistoryResult, String> {
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     let crate::mesh::model::MeshModel {
@@ -274,15 +282,20 @@ pub fn history_jump(target: usize, state: State<AppState>) -> Result<HistoryResu
     } = mesh;
 
     let Some(out) = history.jump_to(target, face_colors, segment_labels) else {
-        return Ok(HistoryResult::empty(mesh.history.can_undo(), mesh.history.can_redo()));
+        return Ok(HistoryResult::empty(
+            mesh.history.can_undo(),
+            mesh.history.can_redo(),
+        ));
     };
 
-    Ok(history_result(
+    let result = history_result(
         mesh,
         "jump",
         out.kind,
         out.faces,
         out.colors,
         out.labels_changed,
-    ))
+    );
+    mesh_guard.commit_if(result.applied);
+    Ok(result)
 }

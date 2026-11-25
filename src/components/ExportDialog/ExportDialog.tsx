@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { invokeTab } from "../../utils/tabCommand";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useT } from "../../i18n";
@@ -77,7 +78,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       try {
         const [ms, pal] = await Promise.all([
           invoke<MachineSummary[]>("list_export_presets"),
-          invoke<string[]>("export_palette_preview"),
+          invokeTab<string[]>("export_palette_preview"),
         ]);
         if (cancelled) return;
         setMachines(ms);
@@ -115,17 +116,12 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
 
   const nozzles = machine?.nozzles ?? [];
 
-  // Reset nozzle / process / filament whenever the machine changes. When a
-  // persisted selection matches, restore its nozzle / process / filaments.
+  // Restore a supported nozzle; dependent choices are validated below.
   useEffect(() => {
     const persisted = lastSelection;
     const matches = persisted && persisted.machineId === machineId;
-    setNozzle(matches ? persisted!.nozzleDiameter : (nozzles[0] ?? ""));
-    setProcessName(matches ? persisted!.processName : "");
-    if (matches) {
-      const names = persisted!.filamentNames;
-      if (names.length > 0) setFilamentNames(names.slice(0, palette.length || 1));
-    }
+    setNozzle(matches && nozzles.includes(persisted.nozzleDiameter)
+      ? persisted.nozzleDiameter : (nozzles[0] ?? ""));
   }, [machineId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const processes = useMemo(
@@ -141,7 +137,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
 
   // The filament the bulk control will apply; falls back to the first available
   // one so "one-click switch" always has a target.
-  const bulkTarget = bulkFilament || filaments[0]?.name || "";
+  const bulkTarget = filaments.some(f => f.name === bulkFilament)
+    ? bulkFilament : (filaments[0]?.name ?? "");
   const applyBulk = () => {
     if (!bulkTarget) return;
     setFilamentNames((prev) => {
@@ -158,30 +155,30 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
     });
   };
 
-  // Reset process when nozzle changes (a process may not exist for the new nozzle).
+  // Preserve valid choices, including the saved non-default process.
   useEffect(() => {
-    const first = processes[0];
-    setProcessName(first ? first.name : "");
-  }, [nozzle, processes.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    const persisted = lastSelection?.machineId === machineId && lastSelection.nozzleDiameter === nozzle
+      ? lastSelection : null;
+    setProcessName(previous => processes.some(p => p.name === previous) ? previous
+      : processes.some(p => p.name === persisted?.processName) ? persisted!.processName
+      : (processes[0]?.name ?? ""));
+  }, [machineId, nozzle, processes, lastSelection]);
 
-  // Keep one filament picker per palette slot; shorter arrays repeat the last
-  // entry on the backend, so a single choice covers every slot. An EMPTY slot
-  // (not just a missing one) must fall back to the first filament, otherwise a
-  // blank entry survives the `??` and the backend rejects an empty preset name.
+  // Every displayed material must also be valid in the submitted selection.
   useEffect(() => {
-    const fill = filaments[0]?.name ?? "";
-    setFilamentNames((prev) => {
-      const next: string[] = [];
-      for (let i = 0; i < palette.length; i++) {
-        const existing = prev[i];
-        const chosen = existing && existing.length > 0 ? existing : fill;
-        next.push(chosen);
-      }
-      return next;
-    });
-  }, [palette.length, filaments]); // eslint-disable-line react-hooks/exhaustive-deps
+    const persisted = lastSelection?.machineId === machineId && lastSelection.nozzleDiameter === nozzle
+      ? lastSelection.filamentNames : [];
+    setFilamentNames(previous => palette.map((_colour, i) => {
+      const saved = persisted[Math.min(i, persisted.length - 1)];
+      if (filaments.some(f => f.name === previous[i])) return previous[i];
+      if (filaments.some(f => f.name === saved)) return saved;
+      return filaments[0]?.name ?? "";
+    }));
+  }, [machineId, nozzle, palette.length, filaments, lastSelection]);
 
   const doExport = async () => {
+    const state = useAppStore.getState();
+    if (state.importBusy || state.saveBusy || state.isLoading || state.pendingImportPath || state.pendingCloseTabId != null) return;
     if (format === "3mf" && (!machine || !processName)) return;
     const selection: ExportSelection = {
       machineId,
@@ -190,6 +187,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       filamentNames,
       targetSlicer,
     };
+    useAppStore.setState({ saveBusy: true });
     setExporting(true);
     setProgress(0);
     try {
@@ -200,17 +198,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       });
       if (!path) return; // user cancelled the save dialog
 
-      // Windows "Save As" appends the filter extension even when the user
-      // already typed it (e.g. "mymodel.3mf" -> "mymodel.3mf.3mf"), which would
-      // otherwise write an invisible "model.3mf.3mf". Strip every trailing copy
-      // of the target extension, then add exactly one, so the file can be named
-      // anything.
-      const normExt = `.${ext}`;
-      let base = path;
-      while (base.toLowerCase().endsWith(normExt)) {
-        base = base.slice(0, base.length - normExt.length);
-      }
-      const outPath = `${base}${normExt}`;
+      // The native dialog confirmed this exact destination, including its name.
+      const outPath = path;
 
       if (format === "obj") {
         await exportObj(outPath);
@@ -229,6 +218,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       log.error("ExportDialog", "export failed", { error: String(e) });
       setStatusMessage(t("export.failure", String(e)));
     } finally {
+      useAppStore.setState({ saveBusy: false });
       setExporting(false);
     }
   };

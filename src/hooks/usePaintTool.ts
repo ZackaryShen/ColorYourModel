@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invokeTab, isCurrentTabResult, carryTabResult } from "../utils/tabCommand";
 import { useAppStore } from "../store/appStore";
 import { useT } from "../i18n";
 import { PaintResult, PaintTool } from "../types/mesh";
@@ -35,6 +35,10 @@ export type PaintOutcome = PaintResult & {
 
 export function usePaintTool() {
   const t = useT();
+  const tabId = useAppStore(s => s.activeTabId);
+  const tabEpoch = useAppStore(s => s.tabEpoch);
+  const ownsCurrentTab = () => { const state = useAppStore.getState(); return state.activeTabId === tabId && state.tabEpoch === tabEpoch; };
+  const invoke = <T,>(command: string, args?: Record<string, unknown>) => invokeTab<T>(command, args, tabId);
   const activeTool = useAppStore((s) => s.activeTool);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
@@ -47,6 +51,7 @@ export function usePaintTool() {
     faceId: number,
     overrideSegmentId?: number
   ): Promise<PaintOutcome | null> => {
+    if (!ownsCurrentTab()) return null;
     const meshData = useAppStore.getState().meshData;
     if (!meshData || !meshData.segmentLabels.length) return null;
     const segmentId = overrideSegmentId ?? meshData.segmentLabels[faceId];
@@ -61,6 +66,7 @@ export function usePaintTool() {
         segmentId,
         color: currentColor,
       });
+      if (!isCurrentTabResult(result)) return null;
       log.debug("usePaintTool", "fillSegment result", { faces: result.updatedFaces.length });
       // NOTE: we deliberately do NOT switch views here. The user clicked a
       // partition to fill it in the CURRENT view (iteration 7, problem 3c3) —
@@ -74,10 +80,10 @@ export function usePaintTool() {
       const c = useAppStore.getState().currentColor;
       const hex = `#${c[0].toString(16).padStart(2, "0")}${c[1].toString(16).padStart(2, "0")}${c[2].toString(16).padStart(2, "0")}`.toUpperCase();
       setStatusMessage(t("fill.done", segmentId, result.updatedFaces.length, hex));
-      return { ...result, fillRouting: "segment", fillTarget: segmentId };
+      return carryTabResult<PaintOutcome>(result, { ...result, fillRouting: "segment", fillTarget: segmentId });
     } catch (e) {
       log.error("usePaintTool", "fillSegment failed", { segmentId, error: String(e) });
-      setStatusMessage(t("fill.failed", String(e)));
+      if (ownsCurrentTab()) setStatusMessage(t("fill.failed", String(e)));
       return null;
     }
   };
@@ -86,6 +92,7 @@ export function usePaintTool() {
     faceId: number,
     opts?: { wholeRegion?: boolean; hoveredSegment?: number | null; strokeId?: number | null }
   ): Promise<PaintOutcome | null> => {
+    if (!ownsCurrentTab()) return null;
     log.debug("usePaintTool", `paintFace(${faceId})`, { tool: activeTool, color: currentColor });
     try {
       let result: PaintResult;
@@ -193,6 +200,7 @@ export function usePaintTool() {
             "pick_color",
             { faceId }
           );
+          if (!isCurrentTabResult(color)) return null;
           useAppStore.getState().setCurrentColor(color);
           setStatusMessage(t("paint.pickedColor", color[0], color[1], color[2]));
           return null;
@@ -202,13 +210,14 @@ export function usePaintTool() {
           return null;
       }
 
+      if (!isCurrentTabResult(result)) return null;
       log.debug("usePaintTool", "paintFace result", {
         faces: result.updatedFaces.length,
       });
-      return { ...result, fillRouting, fillTarget };
+      return carryTabResult(result, { ...result, fillRouting, fillTarget });
     } catch (e) {
       log.error("usePaintTool", "Paint command failed", { faceId, tool: activeTool, error: String(e) });
-      setStatusMessage(t("paint.error", String(e)));
+      if (ownsCurrentTab()) setStatusMessage(t("paint.error", String(e)));
       return null;
     }
   };

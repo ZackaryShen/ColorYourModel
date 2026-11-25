@@ -25,8 +25,8 @@ export interface ReplacePlan {
  * DISTINCT regions they span.
  */
 export function planReplaceColour(
-  faceColors: number[],
-  segmentLabels: number[],
+  faceColors: ArrayLike<number>,
+  segmentLabels: ArrayLike<number>,
   from: [number, number, number, number]
 ): ReplacePlan {
   let faces = 0;

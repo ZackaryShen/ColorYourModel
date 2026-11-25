@@ -1,3 +1,4 @@
+import { TabBar } from "./components/TabBar";
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Viewport } from "./components/Viewport/Viewport";
@@ -22,6 +23,7 @@ import { useAppStore } from "./store/appStore";
 import { useT } from "./i18n";
 
 function App() {
+  const activeTabId = useAppStore(s => s.activeTabId);
   const theme = useAppStore((s) => s.theme);
   const language = useAppStore((s) => s.language);
   // GUI audit 2026-10-02 (B14): the brush controls do nothing without a mesh;
@@ -31,9 +33,8 @@ function App() {
   // Issue #21: drag an STL/.cym onto ANY part of the window to import it.
   // The drop shares the 📂 pipeline (importFromPath); a drop that would
   // replace a loaded model first asks, like the exit confirm does.
-  const { importFromPath } = useImportStl();
-  const { dragOver, pendingReplacePath, confirmReplace, cancelReplace } =
-    useDropImport(importFromPath);
+  const { importFromPath, pendingReplacePath, confirmReplace, cancelReplace } = useImportStl();
+  const { dragOver } = useDropImport(importFromPath);
   const [confirmExit, setConfirmExit] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const t = useT();
@@ -55,9 +56,9 @@ function App() {
     let unlisten: (() => void) | null = null;
     getCurrentWindow()
       .onCloseRequested(async (event) => {
-        const { meshData, paintDirty } = useAppStore.getState();
+        const { meshData, paintDirty, tabs } = useAppStore.getState();
         // Nothing at stake -> fall through to the default close path.
-        if (!meshData || !paintDirty) return;
+        if (!meshData || !(paintDirty || tabs.some(tab => tab.dirty))) return;
         event.preventDefault();
         setConfirmExit(true);
       })
@@ -79,6 +80,8 @@ function App() {
           points alongside the left tool Toolbar. */}
       <MenuBar onOpenPreferences={() => setPrefsOpen(true)} />
 
+      <TabBar />
+
       {/* Main layout */}
       <div style={styles.main}>
         {/* Left toolbar */}
@@ -97,9 +100,9 @@ function App() {
 
         {/* Right panel */}
         <div style={styles.rightPanel}>
-          <SegmentsPanel />
+          <SegmentsPanel key={`segments-${activeTabId ?? "none"}`} />
           {hasMesh && <BrushSettings />}
-          <ColorPanel />
+          <ColorPanel key={`colors-${activeTabId ?? "none"}`} />
         </div>
       </div>
 
@@ -164,7 +167,8 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
   },
   rightPanel: {
-    width: 220,
+    width: 300,
+    flexShrink: 0,
     padding: 8,
     display: "flex",
     flexDirection: "column",

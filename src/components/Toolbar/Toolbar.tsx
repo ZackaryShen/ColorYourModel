@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useAppStore } from "../../store/appStore";
 import { PaintTool } from "../../types/mesh";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
@@ -7,7 +7,7 @@ import { useUndoRedo } from "../../hooks/useHistory";
 import { useImportStl } from "../../hooks/useImportStl";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
-import { ExportDialog } from "../ExportDialog/ExportDialog";
+import { useProjectSave } from "../../hooks/useProjectSave";
 
 const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.View, icon: "🖐️", i18nKey: "tool.view" },
@@ -29,7 +29,6 @@ export function Toolbar() {
   const isLoaded = useAppStore((s) => s.isLoaded);
   const isLoading = useAppStore((s) => s.isLoading);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
-  const setLoading = useAppStore((s) => s.setLoading);
   const setImportProgress = useAppStore((s) => s.setImportProgress);
   // Segment-progress listener writes to a separate slice so the ProgressBar
   // can render the canonical "Stage X/Y" plan instead of the raw loader stage
@@ -38,12 +37,13 @@ export function Toolbar() {
   const setLoadingKind = useAppStore((s) => s.setLoadingKind);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
-  const { loadModel, undo, redo, historyState } = useTauriCommand();
+  const { undo, redo, historyState } = useTauriCommand();
   const { undo: doUndo, redo: doRedo, canUndo, canRedo } = useUndoRedo({ undo, redo, historyState });
   const historyPanelOpen = useAppStore((s) => s.historyPanelOpen);
   const setHistoryPanelOpen = useAppStore((s) => s.setHistoryPanelOpen);
   const { importStl: handleImport } = useImportStl();
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const { saveProject } = useProjectSave();
+  const saveBusy = useAppStore((s) => s.saveBusy);
   // Register progress listeners at mount time (avoids race condition + leak)
   useEffect(() => {
     const unlistenImport = listen<{ progress: number; stage: string }>(
@@ -71,23 +71,18 @@ export function Toolbar() {
   // handleImport comes from the shared useImportStl hook (also used by the
   // File menu): file picker → import progress → loadModel → status messages.
 
-  const handleExport = () => {
-    setExportDialogOpen(true);
-  };
-
   return (
     <div style={styles.container}>
-      {exportDialogOpen && <ExportDialog onClose={() => setExportDialogOpen(false)} />}
       <div style={styles.section}>
         <button onClick={handleImport} disabled={isLoading} className="cym-btn" style={styles.button} title={t("toolbar.import")}>
           {isLoading ? "..." : "📂"}
         </button>
         <button
-          onClick={handleExport}
-          disabled={!isLoaded}
+          onClick={() => void saveProject()}
+          disabled={!isLoaded || isLoading || saveBusy}
           className="cym-btn"
           style={styles.button}
-          title={t("toolbar.export")}
+          title={t("menu.save")}
         >
           💾
         </button>

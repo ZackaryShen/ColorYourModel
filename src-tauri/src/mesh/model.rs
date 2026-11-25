@@ -85,6 +85,11 @@ pub const DEFAULT_FACE_COLOR: [u8; 4] = [138, 138, 138, 255];
 
 /// Main mesh data structure holding geometry, colors, segmentation, and spatial indices
 pub struct MeshModel {
+    pub hidden_labels: std::collections::HashSet<u32>,
+    pub source_path: Option<std::path::PathBuf>,
+    pub source_plate_count: u32,
+    /// Source preset snapshot belongs to this model, never to a prior project.
+    pub source_presets: Option<Result<crate::export::source_presets::SourcePresets, String>>,
     // Geometry
     pub vertices: Vec<[f32; 3]>,
     pub faces: Vec<[u32; 3]>,
@@ -159,16 +164,58 @@ pub struct MeshModel {
     pub face_kdtree_degraded: bool,
     pub vertex_kdtree_degraded: bool,
     pub face_adjacency: UnGraph<u32, ()>,
+    vertex_incidence: std::sync::OnceLock<VertexIncidence>,
 
     // Metadata
     pub bbox: BoundingBox,
     pub unit: String,
 }
 
+struct VertexIncidence {
+    offsets: Vec<usize>,
+    faces: Vec<u32>,
+}
+
+impl VertexIncidence {
+    fn new(mesh: &MeshModel) -> Self {
+        fn vertices(face: &[u32; 3], count: usize) -> impl Iterator<Item = usize> + '_ {
+            face.iter()
+                .enumerate()
+                .filter(move |(i, vertex)| {
+                    (**vertex as usize) < count && !face[..*i].contains(vertex)
+                })
+                .map(|(_, &vertex)| vertex as usize)
+        }
+        let count = mesh.vertices.len();
+        let mut offsets = vec![0; count + 1];
+        for face in &mesh.faces {
+            for vertex in vertices(face, count) {
+                offsets[vertex + 1] += 1;
+            }
+        }
+        for i in 1..offsets.len() {
+            offsets[i] += offsets[i - 1];
+        }
+        let mut cursors = offsets.clone();
+        let mut faces = vec![0; offsets[count]];
+        for (i, face) in mesh.faces.iter().enumerate() {
+            for vertex in vertices(face, count) {
+                faces[cursors[vertex]] = i as u32;
+                cursors[vertex] += 1;
+            }
+        }
+        Self { offsets, faces }
+    }
+}
+
 /// Serializable mesh data for IPC transfer to frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MeshDataDto {
+    #[serde(default)]
+    pub tab_id: u64,
+    #[serde(default)]
+    pub tabs: Vec<crate::commands::workspace::TabInfo>,
     pub vertices: Vec<f32>,
     pub faces: Vec<u32>,
     pub face_colors: Vec<u8>,
@@ -176,12 +223,43 @@ pub struct MeshDataDto {
     pub bbox: BoundingBox,
     pub face_count: u32,
     pub segments: Vec<Segment>,
+    /// 1-based index of the plate this mesh came from. Always 1 today: P0
+    /// imports the first plate of a multi-plate 3MF. Additive field — older
+    /// payloads that predate 3MF import deserialize to the single-plate
+    /// default instead of failing.
+    #[serde(default = "one")]
+    pub plate_index: u32,
+    /// How many plates the source file declared. 1 for STL and single-plate
+    /// 3MF; >1 tells the frontend it is looking at plate 1 of N.
+    #[serde(default = "one")]
+    pub plate_count: u32,
+    /// What happened to a 3MF's optional engineering state:
+    /// `"restored" | "absent" | "dropped"`. `None` for STL (no engineering
+    /// concept) and for payloads written before this field existed. `dropped`
+    /// means parts existed but were rejected and the UI must say so.
+    #[serde(default)]
+    pub engineering_state: Option<String>,
+    /// True when a persisted undo history part existed but could not be
+    /// decoded, so the model opened with an empty stack. Missing history (no
+    /// part at all) is not a loss and stays `false`.
+    #[serde(default)]
+    pub history_dropped: bool,
+}
+
+/// serde default for the additive plate fields: a payload written before they
+/// existed describes exactly one plate.
+fn one() -> u32 {
+    1
 }
 
 impl MeshModel {
     /// Create a new empty MeshModel
     pub fn new() -> Self {
         Self {
+            hidden_labels: std::collections::HashSet::new(),
+            source_path: None,
+            source_plate_count: 1,
+            source_presets: None,
             vertices: Vec::new(),
             faces: Vec::new(),
             normals: Vec::new(),
@@ -197,6 +275,7 @@ impl MeshModel {
             face_kdtree_degraded: false,
             vertex_kdtree_degraded: false,
             face_adjacency: UnGraph::default(),
+            vertex_incidence: std::sync::OnceLock::new(),
             bbox: BoundingBox {
                 min: [0.0, 0.0, 0.0],
                 max: [0.0, 0.0, 0.0],
@@ -372,7 +451,9 @@ impl MeshModel {
         // kiddo 4 `nearest_one` returns NearestNeighbour directly (not Option).
         // The distance is measured against the JITTERED stored point, so
         // recompute it against the true vertex — callers threshold on it.
-        let nn = self.vertex_kdtree.nearest_one::<kiddo::SquaredEuclidean>(point);
+        let nn = self
+            .vertex_kdtree
+            .nearest_one::<kiddo::SquaredEuclidean>(point);
         let vi = nn.item as usize;
         Some((vi as u32, Self::squared_dist(point, &self.vertices[vi])))
     }
@@ -387,12 +468,19 @@ impl MeshModel {
     /// First face that contains the given vertex (for vertex→face mapping in
     /// geodesic path computation). Scans faces once; cheap for typical meshes.
     pub fn face_of_vertex(&self, vertex: u32) -> Option<u32> {
-        for (fi, face) in self.faces.iter().enumerate() {
-            if face[0] == vertex || face[1] == vertex || face[2] == vertex {
-                return Some(fi as u32);
-            }
+        self.faces_at_vertex(vertex).first().copied()
+    }
+
+    /// Incident face indices in their original order, indexed on first use.
+    pub fn faces_at_vertex(&self, vertex: u32) -> &[u32] {
+        let vertex = vertex as usize;
+        if vertex >= self.vertices.len() {
+            return &[];
         }
-        None
+        let index = self
+            .vertex_incidence
+            .get_or_init(|| VertexIncidence::new(self));
+        &index.faces[index.offsets[vertex]..index.offsets[vertex + 1]]
     }
 
     /// Build face adjacency graph using edge sharing
@@ -407,10 +495,7 @@ impl MeshModel {
                 (face[0].min(face[2]), face[0].max(face[2])),
             ];
             for edge in edges {
-                edge_to_face
-                    .entry(edge)
-                    .or_default()
-                    .push(face_idx as u32);
+                edge_to_face.entry(edge).or_default().push(face_idx as u32);
             }
         }
         let t_edge_map_done = t_edge_map.elapsed();
@@ -459,6 +544,7 @@ impl MeshModel {
 
     /// Compute face normals
     pub fn compute_normals(&mut self) {
+        self.vertex_incidence.take();
         self.normals = self
             .faces
             .iter()
@@ -729,7 +815,9 @@ impl MeshModel {
         let mut tally: HashMap<[u8; 4], (u32, HashSet<u32>)> = HashMap::new();
         for (face, color) in self.face_colors.iter().enumerate() {
             let effective = match self.paint_sources.get(&(face as u32)) {
-                Some((src, painted)) if self.face_colors.get(face as usize) == Some(painted) => *src,
+                Some((src, painted)) if self.face_colors.get(face as usize) == Some(painted) => {
+                    *src
+                }
                 _ => *color,
             };
             let e = tally.entry(effective).or_insert((0, HashSet::new()));
@@ -777,11 +865,7 @@ impl MeshModel {
     /// `Some(source)` = the user's brush colour for those faces; `None` =
     /// the faces left the tracked set (erased, or flattened to a plain colour
     /// by replace).
-    pub fn record_paint_sources(
-        &mut self,
-        source: Option<[u8; 4]>,
-        updates: &[(u32, [u8; 4])],
-    ) {
+    pub fn record_paint_sources(&mut self, source: Option<[u8; 4]>, updates: &[(u32, [u8; 4])]) {
         for &(face, painted) in updates {
             match source {
                 Some(src) => {
@@ -869,7 +953,11 @@ impl MeshModel {
 
     /// Convert to DTO for IPC transfer
     pub fn to_dto(&self) -> MeshDataDto {
-        let vertices: Vec<f32> = self.vertices.iter().flat_map(|v| v.iter().copied()).collect();
+        let vertices: Vec<f32> = self
+            .vertices
+            .iter()
+            .flat_map(|v| v.iter().copied())
+            .collect();
         let faces: Vec<u32> = self.faces.iter().flat_map(|f| f.iter().copied()).collect();
         let face_colors: Vec<u8> = self
             .face_colors
@@ -879,6 +967,8 @@ impl MeshModel {
         let segments = self.sorted_segments();
 
         MeshDataDto {
+            tab_id: 0,
+            tabs: Vec::new(),
             vertices,
             faces,
             face_colors,
@@ -886,6 +976,14 @@ impl MeshModel {
             bbox: self.bbox.clone(),
             face_count: self.faces.len() as u32,
             segments,
+            // `to_dto` alone always describes a single-plate model; the 3MF
+            // branch in `commands::mesh::load_model` overwrites `plate_count`.
+            plate_index: 1,
+            plate_count: 1,
+            // Engineering state is a 3MF concept; the command layer fills
+            // these in for that branch.
+            engineering_state: None,
+            history_dropped: false,
         }
     }
 
@@ -1194,7 +1292,11 @@ mod tests {
         assert!(m.merge_segments(9, &[1]).is_err(), "unknown target");
         assert!(m.merge_segments(0, &[9]).is_err(), "unknown source");
         assert!(m.merge_segments(0, &[0]).is_err(), "merging into itself");
-        assert_eq!(m.segment_labels, vec![0, 1], "a rejected merge changes nothing");
+        assert_eq!(
+            m.segment_labels,
+            vec![0, 1],
+            "a rejected merge changes nothing"
+        );
     }
 
     // ─── Used-colours panel (issue #23) ────────────────────────────────
@@ -1271,5 +1373,62 @@ mod tests {
         assert_eq!(used.len(), 1);
         assert_eq!(used[0].color, DEFAULT_FACE_COLOR);
         assert_eq!(used[0].faces, 2);
+    }
+
+    /// `plate_index`/`plate_count` were added additively for 3MF import. An
+    /// older payload shape (no plate fields) must still deserialize, and a
+    /// plain `to_dto` reports the single-plate defaults; only the 3MF branch
+    /// in `commands::mesh::load_model` overwrites the count.
+    #[test]
+    fn dto_plate_fields_default_to_one_and_accept_old_payloads() {
+        let legacy = serde_json::json!({
+            "vertices": [],
+            "faces": [],
+            "faceColors": [],
+            "segmentLabels": [],
+            "bbox": { "min": [0.0, 0.0, 0.0], "max": [0.0, 0.0, 0.0] },
+            "faceCount": 0,
+            "segments": [],
+        });
+        let dto: MeshDataDto =
+            serde_json::from_value(legacy).expect("pre-3MF payload still deserializes");
+        assert_eq!((dto.plate_index, dto.plate_count), (1, 1));
+
+        let fresh = MeshModel::new().to_dto();
+        assert_eq!((fresh.plate_index, fresh.plate_count), (1, 1));
+    }
+
+    /// The engineering report travels on the same DTO: optional camelCase
+    /// fields (STL has no engineering concept, old payloads predate them) that
+    /// the 3MF command branch fills in.
+    #[test]
+    fn dto_engineering_fields_are_optional_camel_case_and_default_to_none() {
+        let legacy = serde_json::json!({
+            "vertices": [],
+            "faces": [],
+            "faceColors": [],
+            "segmentLabels": [],
+            "bbox": { "min": [0.0, 0.0, 0.0], "max": [0.0, 0.0, 0.0] },
+            "faceCount": 0,
+            "segments": [],
+        });
+        let legacy: MeshDataDto =
+            serde_json::from_value(legacy).expect("pre-engineering payload still deserializes");
+        assert_eq!(legacy.engineering_state, None);
+        assert!(!legacy.history_dropped);
+
+        let mut dto = MeshModel::new().to_dto();
+        assert_eq!(dto.engineering_state, None, "STL has no engineering state");
+        assert!(!dto.history_dropped);
+
+        dto.engineering_state = Some("dropped".to_string());
+        dto.history_dropped = true;
+        let value = serde_json::to_value(&dto).expect("DTO is serialisable");
+        assert_eq!(value["engineeringState"], "dropped");
+        assert_eq!(value["historyDropped"], true);
+        assert!(
+            value.get("engineering_state").is_none(),
+            "the wire form is camelCase"
+        );
     }
 }

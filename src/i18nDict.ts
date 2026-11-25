@@ -10,7 +10,7 @@ export type Lang = "zh" | "en";
 // ─── Translation dictionaries ────────────────────────────────────
 const dict: Record<string, Record<Lang, string>> = {
   // Toolbar — buttons
-  "toolbar.import": { zh: "导入 STL 文件", en: "Import STL file" },
+  "toolbar.import": { zh: "导入 STL / 3MF 文件", en: "Import STL / 3MF file" },
   "toolbar.export": { zh: "导出涂装模型为 3MF", en: "Export painted model as 3MF" },
   "toolbar.reSegment": { zh: "重新自动分区（阈值: 30°）", en: "Re-run auto segmentation (threshold: 30°)" },
   "toolbar.smartSegment": { zh: "智能分区（SDF 形态直径）", en: "Smart segment (SDF shape diameter)" },
@@ -24,14 +24,19 @@ const dict: Record<string, Record<Lang, string>> = {
   "toolbar.importComplete": { zh: "导入完成", en: "Import complete" },
   "toolbar.importFailed": { zh: "导入失败", en: "Import failed" },
   "toolbar.startImport": { zh: "开始导入…", en: "Starting import…" },
+  // Status line after a multi-plate 3MF import: P0 shows plate 1 only.
+  "toolbar.importPlateOfTotal": {
+    zh: "当前第 {0} / {1} 盘，使用上方 Tab 切换",
+    en: "Plate {0} of {1}; switch plates using the tabs above",
+  },
 
   // Drag & drop import (issue #21)
-  "drop.hint": { zh: "松开以导入 STL", en: "Drop STL to import" },
+  "drop.hint": { zh: "松开以导入 STL / 3MF", en: "Drop STL / 3MF to import" },
   "drop.rejectMulti": { zh: "一次只能导入一个模型", en: "Only one model can be imported at a time" },
-  "drop.rejectExtension": { zh: "只支持 STL 模型或 .cym 工程文件", en: "Only STL models or .cym project files are supported" },
+  "drop.rejectExtension": { zh: "只支持 STL 模型或 3MF 工程文件", en: "Only STL models or 3MF project files are supported" },
   "drop.importInProgress": { zh: "正在导入，请稍候…", en: "An import is already in progress…" },
-  "drop.replaceTitle": { zh: "替换当前模型？", en: "Replace current model?" },
-  "drop.replaceBody": { zh: "窗口中已有模型。导入新文件将丢弃当前模型及其未导出的涂装。", en: "A model is already loaded. Importing will discard it together with any unexported paint." },
+  "drop.replaceTitle": { zh: "替换当前工程？", en: "Replace current project?" },
+  "drop.replaceBody": { zh: "打开 3MF 将替换所有打印盘，并丢弃尚未保存的修改。", en: "A model is already loaded. Importing will discard it together with any unexported paint." },
   "drop.replaceConfirm": { zh: "导入并替换", en: "Import and replace" },
   "drop.replaceCancel": { zh: "取消", en: "Cancel" },
 
@@ -205,6 +210,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "segments.reset": { zh: "重置", en: "Reset" },
   "segments.resetHint": { zh: "清除全部分区与上色，回到刚导入的未上色状态", en: "Clear all regions and paint, back to the freshly-loaded uncoloured state" },
   "segments.resetConfirm": { zh: "确定重置分区并清除所有上色吗？此操作不可撤销。", en: "Reset all regions and clear all paint? This cannot be undone." },
+  "segments.emptyLoaded": { zh: "暂无分区，可使用分区工具创建", en: "No regions yet. Use a segmentation tool to create them." },
   "segments.empty": { zh: "暂无分区，请先导入模型", en: "No segments yet. Import a model first." },
   "segments.renameHint": { zh: "双击重命名，Ctrl+点击多选", en: "Double-click to rename, Ctrl-click to multi-select" },
   "segments.defaultName": { zh: "分区 {0}", en: "Region {0}" },
@@ -250,7 +256,7 @@ const dict: Record<string, Record<Lang, string>> = {
 
   // Viewport — misc
   "view.loading": { zh: "加载中…", en: "Loading…" },
-  "view.emptyState": { zh: "导入 STL 文件开始涂装", en: "Import an STL file to get started" },
+  "view.emptyState": { zh: "导入 STL 或打开 3MF 开始涂装", en: "Import an STL file to get started" },
 
   // Viewport — lasso / segment-brush status details
   "lasso.selected": { zh: "套索：已选 {0} 个点", en: "Lasso: {0} points selected" },
@@ -266,8 +272,21 @@ const dict: Record<string, Record<Lang, string>> = {
   // "Left: Rotate (View) | …" string contradicted every non-view tool.
   // StatusBar now resolves its hint through utils/controlsHint.ts, the same
   // source as the viewport help bar (controls.viewHint / brushHint / editHint).
+  "tabs.loading": { zh: "正在读取盘", en: "Loading plate" },
   "status.ready": { zh: "就绪", en: "Ready" },
   "status.loaded": { zh: "已加载 {0} 个面", en: "Loaded {0} faces" },
+  // 3MF engineering state existed but could not be applied (fingerprint/version/
+  // decode mismatch): the user must know their saved labels/colours were not
+  // restored, and that a slicer may have rewritten the file.
+  "status.engineeringDropped": {
+    zh: "工程数据与几何不匹配，已按普通 3MF 导入",
+    en: "Engineering data does not match the geometry; imported as a plain 3MF",
+  },
+  // The engineering state restored, but its persisted undo history was rejected.
+  "status.historyDropped": {
+    zh: "部分或全部撤销历史未恢复，已保留可用步骤",
+    en: "Some or all undo history was not restored; available steps were kept",
+  },
 
   // Debug log viewer (iteration 59) + its status-bar toggle
   "debugLog.title": { zh: "🐞 调试日志（{0} 条）", en: "🐞 Debug log ({0} entries)" },
@@ -420,7 +439,19 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.file": { zh: "文件", en: "File" },
   "menu.view": { zh: "视图", en: "View" },
   "menu.help": { zh: "帮助", en: "Help" },
-  "menu.import": { zh: "导入 STL…", en: "Import STL…" },
+  "menu.import": { zh: "导入 STL / 3MF…", en: "Import STL / 3MF…" },
+  "menu.save": { zh: "保存 (⌘S)", en: "Save (⌘S)" },
+  "menu.saveAs": { zh: "另存为 3MF…", en: "Save As 3MF…" },
+  "status.multiPlateSaveBlocked": { zh: "当前只载入第一盘，无法覆盖多盘工程；请另存当前盘到新文件", en: "Only the first plate is loaded; use Save As to save this plate to a new file without overwriting the multi-plate project" },
+  "tabs.plates": { zh: "打印盘", en: "Print plates" },
+  "tabs.name": { zh: "盘名称", en: "Plate name" },
+  "tabs.close": { zh: "关闭盘", en: "Close plate" },
+  "tabs.closeTitle": { zh: "关闭未保存的盘？", en: "Close unsaved plate?" },
+  "tabs.closeBody": { zh: "此盘的修改尚未保存。关闭后将丢弃这些修改。", en: "This plate has unsaved changes. Closing it discards those changes." },
+  "tabs.discardClose": { zh: "丢弃并关闭", en: "Discard and close" },
+  "status.projectSaving": { zh: "正在保存工程…", en: "Saving project…" },
+  "status.projectSaved": { zh: "已保存", en: "Saved" },
+  "toolbar.saveProjectFailed": { zh: "保存失败", en: "Save failed" },
   "menu.export": { zh: "导出涂装模型…", en: "Export painted model…" },
   "menu.quit": { zh: "退出", en: "Quit" },
   "menu.resetView": { zh: "重置视角", en: "Reset view" },

@@ -6,3 +6,7 @@ pub mod mesh;
 pub mod paint;
 pub mod segment;
 pub mod update;
+
+pub mod workspace;
+
+pub mod mesh_lease;

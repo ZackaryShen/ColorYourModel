@@ -1,3 +1,7 @@
+import amsPalette from "./amsPalette.json";
+
+export interface TabInfo { id: number; name: string; faceCount: number; dirty: boolean; }
+
 export interface BoundingBox {
   min: [number, number, number];
   max: [number, number, number];
@@ -11,13 +15,29 @@ export interface Segment {
 }
 
 export interface MeshData {
-  vertices: number[];
-  faces: number[];
-  faceColors: number[];
-  segmentLabels: number[];
+  tabId?: number;
+  tabs?: TabInfo[];
+  vertices: number[] | Float32Array;
+  faces: number[] | Uint32Array;
+  faceColors: number[] | Uint8Array;
+  segmentLabels: number[] | Uint32Array;
   bbox: BoundingBox;
   faceCount: number;
   segments: Segment[];
+  /** 1-based plate this mesh came from (P0 always imports the first plate).
+   *  Optional so fixtures/payloads written before 3MF import stay valid; callers
+   *  treat an absent value as 1. */
+  plateIndex?: number;
+  /** Plates the source file declared; absent means 1 (STL / old payload). */
+  plateCount?: number;
+  /** What happened to a 3MF source's optional engineering state. `absent` is a
+   *  plain import with no notice (the file never carried any); `dropped` means
+   *  parts existed but were rejected, so the UI must tell the user their saved
+   *  labels/colours were not restored. Absent for STL. */
+  engineeringState?: "restored" | "absent" | "dropped";
+  /** True when a persisted undo history part existed but could not be decoded
+   *  (the model opens with an empty stack). A missing part stays false. */
+  historyDropped?: boolean;
 }
 
 export interface PaintResult {
@@ -184,21 +204,5 @@ export interface ColorEntry {
   color: [number, number, number];
 }
 
-// Default AMS palette from Bambu Lab
-export const AMS_PALETTE: ColorEntry[] = [
-  { name: "White", color: [255, 255, 255] },
-  { name: "Black", color: [0, 0, 0] },
-  { name: "Red", color: [255, 0, 0] },
-  { name: "Orange", color: [255, 128, 0] },
-  { name: "Yellow", color: [255, 255, 0] },
-  { name: "Green", color: [0, 176, 80] },
-  { name: "Cyan", color: [0, 176, 240] },
-  { name: "Blue", color: [0, 32, 255] },
-  { name: "Purple", color: [112, 48, 160] },
-  { name: "Pink", color: [255, 192, 203] },
-  { name: "Brown", color: [139, 69, 19] },
-  { name: "Gray", color: [128, 128, 128] },
-  { name: "Silver", color: [192, 192, 192] },
-  { name: "Gold", color: [255, 215, 0] },
-  { name: "Desert Tan", color: [210, 180, 140] },
-];
+// Default AMS palette, shared with legacy brush recovery.
+export const AMS_PALETTE = amsPalette as ColorEntry[];

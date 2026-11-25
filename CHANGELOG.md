@@ -4,6 +4,19 @@
 
 ---
 
+## [Unreleased] — 0.2.0-P0 工程化
+
+### Added
+
+- **版本 bump 脚本**（`tools/bump-version.mjs`）：`tauri.conf.json` 为唯一版本源（vite 从它注入 `__APP_VERSION__`，自更新器也按它比较），一键同步 package.json / Cargo.toml / Cargo.lock；`--check` 校验四文件一致，已接入 CI 门禁。顺带修正 `globals.d.ts` 中版本来源注释的文档漂移（原写 package.json）
+- **融合分阶段计时埋点**：`fuse_segmentation` 按阶段（planar / multiview / dihedral / vote）记录 wall-time，随 `fuse-debug` 事件输出 `durationsMs` 并写入日志——「超大模型 vote 阶段 >30min」从此每次运行可量化，不再靠秒表目测。纯观测，不参与控制流
+
+### Changed
+
+- **CI 新增 Windows matrix**：frontend（`tsc` + `vitest`）与 rust（`cargo test`）两个 job 均跑 `ubuntu-latest` + `windows-latest`——自动更新模块只在 Windows 上运行，此前 Windows 零 CI 覆盖；apt 系统依赖经 `runner.os` 条件仅在 Linux 安装。vitest 硬门禁已随 0.1.2 落地，本次只补矩阵
+
+---
+
 ## [0.1.2] — 2026-11-14
 
 ### Added

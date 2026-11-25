@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore } from "../store/appStore";
 import { useUpdateStore } from "../store/updateStore";
 import { useImportStl } from "../hooks/useImportStl";
+import { useProjectSave } from "../hooks/useProjectSave";
 import { useT } from "../i18n";
 import { log } from "../utils/logger";
 import { ExportDialog } from "./ExportDialog/ExportDialog";
@@ -60,6 +61,7 @@ export function MenuBar({
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const { importStl } = useImportStl();
+  const { saveProject, saveProjectAs } = useProjectSave();
 
   const language = useAppStore((s) => s.language);
   const setLanguage = useAppStore((s) => s.setLanguage);
@@ -95,6 +97,27 @@ export function MenuBar({
       window.removeEventListener("keydown", onKey);
     };
   }, [openMenu]);
+
+  // Cmd/Ctrl+S writes the current 3MF back to the file it was opened from
+  // (Shift = Save As). Refs keep the once-registered listener current without
+  // resubscribing on every render; text fields keep their own save behaviour.
+  const saveRef = useRef({ saveProject, saveProjectAs });
+  saveRef.current = { saveProject, saveProjectAs };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "s") return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
+        return;
+      }
+      e.preventDefault();
+      if (e.shiftKey) void saveRef.current.saveProjectAs();
+      else void saveRef.current.saveProject();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const act = (fn: () => void) => () => {
     setOpenMenu(null);
@@ -137,6 +160,21 @@ export function MenuBar({
       label: t("menu.file"),
       items: [
         { kind: "item", label: t("menu.import"), onClick: () => importStl() },
+        {
+          kind: "item",
+          label: t("menu.save"),
+          disabled: !hasMesh,
+          hint: hasMesh ? undefined : t("export.needModel"),
+          onClick: () => void saveProject(),
+        },
+        {
+          kind: "item",
+          label: t("menu.saveAs"),
+          disabled: !hasMesh,
+          hint: hasMesh ? undefined : t("export.needModel"),
+          onClick: () => void saveProjectAs(),
+        },
+        { kind: "sep" },
         {
           kind: "item",
           label: t("menu.export"),

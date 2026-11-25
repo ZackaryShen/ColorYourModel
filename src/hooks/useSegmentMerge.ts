@@ -1,3 +1,4 @@
+import { captureTabOwnership, isCurrentTabOwnership } from "../utils/tabCommand";
 import { useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { useTauriCommand } from "./useTauriCommand";
@@ -34,10 +35,11 @@ export function useSegmentMerge(): {
     const anchor = picked[0];
     // Guard re-entrant clicks and a bar/panel stale enough to hold <2 labels.
     if (anchor === undefined || picked.length < 2 || merging) return;
+    const owner = captureTabOwnership();
     setMerging(true);
     const moved = await mergeSegments(anchor, picked.slice(1));
     setMerging(false);
-    if (moved === null) return;
+    if (moved === null || !isCurrentTabOwnership(owner)) return;
     setStatusMessage(t("segments.merged", picked.length, moved));
     setMergePicked([anchor]);
     setSelectedSegment(anchor);

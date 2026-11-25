@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 /**
  * Lightweight i18n system — English fallback, Chinese in Chinese locales
  * (default follows the OS locale; see appStore).
@@ -16,6 +17,6 @@ export type { Lang };
 
 export function useT() {
   const lang = useAppStore((s) => s.language);
-  return (key: string, ...args: (string | number)[]): string =>
-    translate(key, lang, ...args);
+  return useCallback((key: string, ...args: (string | number)[]): string =>
+    translate(key, lang, ...args), [lang]);
 }

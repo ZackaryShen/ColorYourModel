@@ -1,40 +1,35 @@
-use tauri::{Emitter, State};
 use serde::{Deserialize, Serialize};
+use tauri::{Emitter, State};
 
 use crate::commands::mesh::AppState;
 use crate::mesh::loader::ProgressFn;
 use crate::mesh::model::{MeshModel, Segment, DEFAULT_FACE_COLOR};
+use crate::segment::cross_section::{
+    detect_cross_section_features as backend_detect_cross_section_features, CrossSectionRegion,
+};
 use crate::segment::dihedral::segment_by_dihedral_angle;
+use crate::segment::eye::{detect_eye_regions as backend_detect_eye_regions, EyeParams, EyeRegion};
+use crate::segment::fuse::fuse_region_sets;
 use crate::segment::manual::{
     finalize_manual_region_with_progress as backend_finalize_manual_region_with_progress,
-    snap_point_to_vertex_on_face,
-    MANUAL_SEGMENT_OFFSET,
-};
-use crate::segment::sdf::segment_by_sdf;
-use crate::segment::split::{split_segment as split_segment_impl, SplitMethod, SplitResult};
-use crate::segment::resegment::resegment_region as resegment_region_impl;
-use crate::segment::recommend::{
-    recommend_seeds as backend_recommend_seeds, RecommendWeights, SeedSuggestion,
-};
-use crate::segment::planar::{
-    detect_planar_regions as backend_detect_planar_regions, PlanarParams, PlanarRegion,
-};
-use crate::segment::eye::{
-    detect_eye_regions as backend_detect_eye_regions, EyeParams, EyeRegion,
-};
-use crate::segment::template::{
-    detect_eyes_global as backend_detect_eyes_global, TemplateParams,
+    snap_point_to_vertex_on_face, MANUAL_SEGMENT_OFFSET,
 };
 use crate::segment::multiview::{
     detect_multiview_regions as backend_detect_multiview_regions,
     detect_multiview_regions_with_progress as backend_detect_multiview_regions_with_progress,
     MultiViewParams, MultiViewRegion,
 };
-use crate::segment::cross_section::{
-    detect_cross_section_features as backend_detect_cross_section_features, CrossSectionRegion,
+use crate::segment::planar::{
+    detect_planar_regions as backend_detect_planar_regions, PlanarParams, PlanarRegion,
 };
-use crate::segment::fuse::fuse_region_sets;
+use crate::segment::recommend::{
+    recommend_seeds as backend_recommend_seeds, RecommendWeights, SeedSuggestion,
+};
+use crate::segment::resegment::resegment_region as resegment_region_impl;
+use crate::segment::sdf::segment_by_sdf;
 use crate::segment::seeded::{seed_grow as backend_seed_grow, SeedGrowParams, SeedInput};
+use crate::segment::split::{split_segment as split_segment_impl, SplitMethod, SplitResult};
+use crate::segment::template::{detect_eyes_global as backend_detect_eyes_global, TemplateParams};
 use crate::segment::{run_segmentation, SegmentationAlgorithm};
 
 /// Flatten per-face `[[r,g,b,a]; N]` into a flat `Vec<u8>` matching `MeshDataDto.faceColors`.
@@ -56,16 +51,39 @@ pub struct SegmentResult {
 /// Manual segment label offset — imported from segment::manual so it stays
 /// the single source of truth (auto_segment_* also reuse it).
 
+type PersistedState = (
+    Vec<u32>,
+    Vec<[u8; 4]>,
+    std::collections::HashMap<u32, String>,
+    u32,
+    (usize, usize, usize),
+);
+fn persisted_state(mesh: &crate::mesh::model::MeshModel) -> PersistedState {
+    (
+        mesh.segment_labels.clone(),
+        mesh.face_colors.clone(),
+        mesh.segment_names.clone(),
+        mesh.next_manual_label,
+        (
+            mesh.history.undo_depth(),
+            mesh.history.redo_depth(),
+            mesh.history.bytes(),
+        ),
+    )
+}
+
 #[tauri::command]
 pub fn auto_segment(
     angle_threshold: f32,
     app: tauri::AppHandle,
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<SegmentResult, String> {
     log::info!("[cmd:auto_segment] angle_threshold={}", angle_threshold);
 
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let before = persisted_state(mesh);
 
     // Build progress callback that emits Tauri events
     let app_for_progress = app.clone();
@@ -90,11 +108,14 @@ pub fn auto_segment(
 
     log::info!("[cmd:auto_segment] done: {} segments", segments.len());
 
-    Ok(SegmentResult {
+    let result = SegmentResult {
         segments,
         segment_labels: mesh.segment_labels.clone(),
         face_colors: flatten_face_colors(&mesh.face_colors),
-    })
+    };
+    let changed = before != persisted_state(mesh);
+    mesh_guard.commit_if(changed);
+    Ok(result)
 }
 
 /// Result of painting a single face into a manual segment (incremental).
@@ -115,12 +136,13 @@ pub struct PaintSegmentFaceResult {
 /// Returns the face color for immediate incremental GPU update.
 #[tauri::command]
 pub fn paint_segment_face(
+    tab_id: u64,
     state: State<AppState>,
     face_id: u32,
     segment_label: Option<u32>,
     stroke_id: Option<u64>,
 ) -> Result<PaintSegmentFaceResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     let face_count = mesh.faces.len();
@@ -128,6 +150,11 @@ pub fn paint_segment_face(
         return Err(format!("face_id {} out of range ({})", face_id, face_count));
     }
 
+    let before = (
+        mesh.segment_labels[face_id as usize],
+        mesh.face_colors[face_id as usize],
+        mesh.next_manual_label,
+    );
     // Continue the stroke's existing segment, or reserve a fresh one on the
     // first face of the drag. Allocation never recycles a retired number —
     // see MeshModel::alloc_manual_label.
@@ -142,6 +169,13 @@ pub fn paint_segment_face(
     // segment-brush gesture into one undo level.
     mesh.apply_segment_paint(stroke_id, face_id, label, color);
 
+    let changed = before
+        != (
+            mesh.segment_labels[face_id as usize],
+            mesh.face_colors[face_id as usize],
+            mesh.next_manual_label,
+        );
+    mesh_guard.commit_if(changed);
     Ok(PaintSegmentFaceResult {
         face_id,
         color,
@@ -163,10 +197,11 @@ pub struct FinalizeSegmentResult {
 /// Called once on pointer-up after a segment paint drag.
 #[tauri::command]
 pub fn finalize_segment(
+    tab_id: u64,
     state: State<AppState>,
     segment_label: u32,
 ) -> Result<FinalizeSegmentResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
 
     if segment_label < MANUAL_SEGMENT_OFFSET {
@@ -204,65 +239,82 @@ pub struct ManualPointResult {
 /// land on a back-face vertex through a thin mesh — see
 /// `segment::manual::snap_point_to_vertex_on_face`.
 #[tauri::command]
-pub fn manual_region_add_point(
+pub async fn manual_region_add_point(
     point: [f32; 3],
     face_index: u32,
-    state: State<AppState>,
+    tab_id: u64,
+    state: State<'_, AppState>,
 ) -> Result<ManualPointResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
-
-    let (vi, snapped) = snap_point_to_vertex_on_face(mesh, &point, face_index)
-        .ok_or_else(|| "No vertex found near point".to_string())?;
-    // Anchor face: the first face containing this vertex
-    let face_id = mesh
-        .face_of_vertex(vi)
-        .ok_or_else(|| format!("vertex {} has no incident face", vi))?;
-
-    Ok(ManualPointResult {
-        vertex_index: vi,
-        face_id,
-        snapped,
+    let state = AppState {
+        workspace: std::sync::Arc::clone(&state.workspace),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let mesh_guard = state.lock_mesh(tab_id)?;
+        let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
+        let (vertex_index, snapped) = snap_point_to_vertex_on_face(mesh, &point, face_index)
+            .ok_or("No vertex found near point")?;
+        let face_id = mesh.face_of_vertex(vertex_index).ok_or("Vertex has no incident face")?;
+        Ok(ManualPointResult { vertex_index, face_id, snapped })
     })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Finalize a manual region from an ordered list of clicked 3D points.
 /// Closes the loop (last point connects back to first), builds the enclosed
 /// region via geodesic surface paths + bounded flood fill, and assigns a fresh
 /// manual segment label. See segment::manual::finalize_manual_region.
+#[derive(Serialize)]
+pub struct ManualRegionResult {
+    label: u32,
+    #[serde(flatten)]
+    region: SegmentResult,
+}
+
 #[tauri::command]
-pub fn finalize_manual_region(
+pub async fn finalize_manual_region(
     points: Vec<[f32; 3]>,
     face_indices: Vec<u32>,
     app: tauri::AppHandle,
-    state: State<AppState>,
-) -> Result<SegmentResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    tab_id: u64,
+    state: State<'_, AppState>,
+) -> Result<ManualRegionResult, String> {
+    let state = AppState {
+        workspace: std::sync::Arc::clone(&state.workspace),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut mesh = state.take_mesh(tab_id)?;
 
-    // The frontend's ProgressBar overlay is driven by these events (the
-    // finalize hook flips isLoading around the invoke). The dominant stage is
-    // `manual:loop` — one A* per gap between clicked points.
-    let app_for_progress = app.clone();
-    let progress: Box<ProgressFn> = Box::new(move |fraction: f32, stage: &str| {
-        emit_fuse_progress(&app_for_progress, fraction, stage);
-    });
-    let (_label, _region) =
-        backend_finalize_manual_region_with_progress(mesh, &points, &face_indices, &*progress)?;
+        // The frontend's ProgressBar overlay is driven by these events (the
+        // finalize hook flips isLoading around the invoke). The dominant stage is
+        // `manual:loop` — one A* per gap between clicked points.
+        let app_for_progress = app.clone();
+        let progress: Box<ProgressFn> = Box::new(move |fraction: f32, stage: &str| {
+            emit_fuse_progress(&app_for_progress, fraction, stage);
+        });
+        let (label, _) = backend_finalize_manual_region_with_progress(
+            &mut mesh,
+            &points,
+            &face_indices,
+            &*progress,
+        )?;
+        mesh.commit();
 
-    // Emit completion
-    let _ = app.emit(
-        "segment-progress",
-        serde_json::json!({ "progress": 1.0, "stage": "done" }),
-    );
+        emit_fuse_progress(&app, 1.0, "done");
 
-    Ok(SegmentResult {
-        segments: mesh.sorted_segments(),
-        segment_labels: mesh.segment_labels.clone(),
-        face_colors: flatten_face_colors(&mesh.face_colors),
+        let result = SegmentResult {
+            segments: mesh.sorted_segments(),
+            segment_labels: mesh.segment_labels.clone(),
+            face_colors: flatten_face_colors(&mesh.face_colors),
+        };
+        Ok(ManualRegionResult {
+            label,
+            region: result,
+        })
     })
+    .await
+    .map_err(|e| e.to_string())?
 }
-
 
 /// Smart auto-segmentation via Shape Diameter Function (Tier 0).
 /// Produces semantic "parts" (thin vs thick) instead of the dihedral
@@ -271,11 +323,13 @@ pub fn finalize_manual_region(
 pub fn auto_segment_smart(
     k: u32,
     app: tauri::AppHandle,
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<SegmentResult, String> {
     log::info!("[cmd:auto_segment_smart] k={}", k);
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let before = persisted_state(mesh);
 
     let app_for_progress = app.clone();
     let progress_cb: Box<ProgressFn> = Box::new(move |fraction: f32, stage: &str| {
@@ -294,11 +348,14 @@ pub fn auto_segment_smart(
     );
     log::info!("[cmd:auto_segment_smart] done: {} parts", segments.len());
 
-    Ok(SegmentResult {
+    let result = SegmentResult {
         segments,
         segment_labels: mesh.segment_labels.clone(),
         face_colors: flatten_face_colors(&mesh.face_colors),
-    })
+    };
+    let changed = before != persisted_state(mesh);
+    mesh_guard.commit_if(changed);
+    Ok(result)
 }
 
 /// What the frontend has to replace after a merge.
@@ -323,6 +380,7 @@ pub struct MergeResult {
 pub fn merge_segments(
     target_id: u32,
     source_ids: Vec<u32>,
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<MergeResult, String> {
     log::info!(
@@ -330,14 +388,16 @@ pub fn merge_segments(
         target_id,
         source_ids
     );
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
     let moved_faces = mesh.merge_segments(target_id, &source_ids)?;
-    Ok(MergeResult {
+    let result = MergeResult {
         segments: mesh.sorted_segments(),
         segment_labels: mesh.segment_labels.clone(),
         moved_faces,
-    })
+    };
+    mesh_guard.commit_if(moved_faces > 0);
+    Ok(result)
 }
 
 /// Divide one region into sub-regions along its internal creases.
@@ -352,10 +412,11 @@ pub fn merge_segments(
 pub fn split_segment(
     label: u32,
     method: SplitMethod,
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<SplitResult, String> {
     log::info!("[cmd:split_segment] label={} method={:?}", label, method);
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
     let result = split_segment_impl(mesh, label, &method)?;
     log::info!(
@@ -364,6 +425,7 @@ pub fn split_segment(
         result.kept_label,
         result.new_label
     );
+    mesh_guard.commit_if(result.moved_faces > 0);
     Ok(result)
 }
 
@@ -385,13 +447,18 @@ pub fn split_segment(
 pub fn rename_segment(
     segment_id: u32,
     name: String,
+    tab_id: u64,
     state: State<AppState>,
 ) -> Result<Vec<Segment>, String> {
     log::info!("[cmd:rename_segment] id={} name={:?}", segment_id, name);
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let before = mesh.segment_names.get(&segment_id).cloned();
     mesh.rename_segment(segment_id, &name)?;
-    Ok(mesh.sorted_segments())
+    let changed = before != mesh.segment_names.get(&segment_id).cloned();
+    let result = mesh.sorted_segments();
+    mesh_guard.commit_if(changed);
+    Ok(result)
 }
 
 /// Unified multi-algorithm auto-segmentation entry point. The UI sends a single
@@ -408,6 +475,7 @@ pub async fn auto_segment_v2(
     algorithm: SegmentationAlgorithm,
     preserve_manual: Option<bool>,
     app: tauri::AppHandle,
+    tab_id: u64,
     state: State<'_, AppState>,
 ) -> Result<SegmentResult, String> {
     let preserve_manual = preserve_manual.unwrap_or(true);
@@ -433,9 +501,7 @@ pub async fn auto_segment_v2(
     // the heavy work no longer blocks the webview thread (the "(未响应)" freeze).
     // The mesh is restored afterwards; any command that races in during compute
     // sees "No mesh loaded" instead of stalling the UI.
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
-    drop(mesh_guard);
+    let mut mesh = state.take_mesh(tab_id)?;
 
     let segments = run_segmentation(&mut mesh, &algorithm, preserve_manual, &*progress_cb);
     // Auto segmentation rewrites all labels; drop stale history (see auto_segment).
@@ -452,9 +518,8 @@ pub async fn auto_segment_v2(
     // also forces a full front-end repaint (REFUTE major-5). Mirror
     // MergeResult/SplitResult: return labels + metadata only.
     let labels = mesh.segment_labels.clone();
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    *mesh_guard = Some(mesh);
 
+    mesh.commit();
     Ok(SegmentResult {
         segments,
         segment_labels: labels,
@@ -481,17 +546,21 @@ pub(crate) fn reset_mesh_state(mesh: &mut MeshModel) {
 }
 
 #[tauri::command]
-pub fn reset_segmentation(state: State<AppState>) -> Result<SegmentResult, String> {
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+pub fn reset_segmentation(tab_id: u64, state: State<AppState>) -> Result<SegmentResult, String> {
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let before = persisted_state(mesh);
     reset_mesh_state(mesh);
     let labels = mesh.segment_labels.clone();
     let face_colors = flatten_face_colors(&mesh.face_colors);
-    Ok(SegmentResult {
+    let result = SegmentResult {
         segments: Vec::new(),
         segment_labels: labels,
         face_colors,
-    })
+    };
+    let changed = before != persisted_state(mesh);
+    mesh_guard.commit_if(changed);
+    Ok(result)
 }
 
 /// Re-run any segmentation algorithm on a single existing region, replacing it
@@ -504,6 +573,7 @@ pub async fn resegment_region(
     label: u32,
     algorithm: SegmentationAlgorithm,
     app: tauri::AppHandle,
+    tab_id: u64,
     state: State<'_, AppState>,
 ) -> Result<SegmentResult, String> {
     log::info!(
@@ -522,9 +592,7 @@ pub async fn resegment_region(
 
     // Take the mesh out of the shared Mutex for the (potentially long) sub-mesh
     // segmentation — mirror auto_segment_v2's rationale.
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
-    drop(mesh_guard);
+    let mut mesh = state.take_mesh(tab_id)?;
 
     let inner = resegment_region_impl(&mut mesh, label, &algorithm, &*progress_cb)
         .map_err(|e| e.to_string())?;
@@ -543,9 +611,8 @@ pub async fn resegment_region(
     // clear history — `resegment_region_impl` already recorded an `OpKind::Split`
     // undo op, letting the user undo the refine just like a split.
     let labels = mesh.segment_labels.clone();
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    *mesh_guard = Some(mesh);
 
+    mesh.commit();
     Ok(SegmentResult {
         segments: inner.segments,
         segment_labels: labels,
@@ -563,6 +630,7 @@ pub fn seed_grow(
     barrier_deg: f32,
     optimizer: bool,
     app: tauri::AppHandle,
+    tab_id: u64,
     state: State<'_, AppState>,
 ) -> Result<SegmentResult, String> {
     log::info!(
@@ -577,8 +645,9 @@ pub fn seed_grow(
         optimizer,
     };
 
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let before = persisted_state(mesh);
 
     let inner = backend_seed_grow(mesh, &seeds, &params).map_err(|e| e.to_string())?;
 
@@ -592,11 +661,14 @@ pub fn seed_grow(
         inner.moved_faces
     );
 
-    Ok(SegmentResult {
+    let result = SegmentResult {
         segments: inner.segments,
         segment_labels: inner.segment_labels,
         face_colors: flatten_face_colors(&mesh.face_colors),
-    })
+    };
+    let changed = before != persisted_state(mesh);
+    mesh_guard.commit_if(changed);
+    Ok(result)
 }
 
 /// Suggest seed locations for the seeded-watershed tool (iteration 52). Returns
@@ -611,6 +683,7 @@ pub fn recommend_seeds(
     count: usize,
     curvature: f32,
     concavity: f32,
+    tab_id: u64,
     state: State<'_, AppState>,
 ) -> Result<Vec<SeedSuggestion>, String> {
     log::info!(
@@ -619,14 +692,17 @@ pub fn recommend_seeds(
         curvature,
         concavity
     );
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
     let weights = RecommendWeights {
         curvature,
         concavity,
     };
     let suggestions = backend_recommend_seeds(mesh, count, weights);
-    log::info!("[cmd:recommend_seeds] done: {} suggestions", suggestions.len());
+    log::info!(
+        "[cmd:recommend_seeds] done: {} suggestions",
+        suggestions.len()
+    );
     Ok(suggestions)
 }
 
@@ -645,6 +721,7 @@ pub fn detect_planar_regions(
     angle_threshold_deg: f32,
     dist_thr_factor: f32,
     min_region_faces: u32,
+    tab_id: u64,
     state: State<'_, AppState>,
 ) -> Result<Vec<PlanarRegion>, String> {
     log::info!(
@@ -653,7 +730,7 @@ pub fn detect_planar_regions(
         dist_thr_factor,
         min_region_faces
     );
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
     let params = crate::segment::planar::PlanarParams {
         angle_thr_deg: angle_threshold_deg,
@@ -673,9 +750,13 @@ pub fn detect_planar_regions(
 /// them as advisory regions with boundary edges. Read-only — the mesh is never
 /// mutated, mirroring `detect_planar_regions`.
 #[tauri::command]
-pub fn detect_eye_regions(roi_faces: Vec<u32>, state: State<AppState>) -> Result<Vec<EyeRegion>, String> {
+pub fn detect_eye_regions(
+    roi_faces: Vec<u32>,
+    tab_id: u64,
+    state: State<AppState>,
+) -> Result<Vec<EyeRegion>, String> {
     log::info!("[cmd:detect_eye_regions] roi_faces={}", roi_faces.len());
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
     let regions = backend_detect_eye_regions(mesh, &roi_faces, &EyeParams::default());
     log::info!(
@@ -690,9 +771,12 @@ pub fn detect_eye_regions(roi_faces: Vec<u32>, state: State<AppState>) -> Result
 /// `EyeRegion` structure as the ROI-based path so the frontend can render and
 /// fuse them uniformly.
 #[tauri::command]
-pub fn detect_eye_regions_auto(state: State<'_, AppState>) -> Result<Vec<EyeRegion>, String> {
+pub fn detect_eye_regions_auto(
+    tab_id: u64,
+    state: State<'_, AppState>,
+) -> Result<Vec<EyeRegion>, String> {
     log::info!("[cmd:detect_eye_regions_auto] start");
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
     let regions = backend_detect_eyes_global(mesh, &TemplateParams::default());
     log::info!(
@@ -719,6 +803,7 @@ pub fn detect_multiview_regions(
     angle_threshold_deg: f32,
     min_region_faces: u32,
     match_threshold: u32,
+    tab_id: u64,
     state: State<'_, AppState>,
 ) -> Result<Vec<MultiViewRegion>, String> {
     log::info!(
@@ -728,7 +813,7 @@ pub fn detect_multiview_regions(
         min_region_faces,
         match_threshold
     );
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
     let params = crate::segment::multiview::MultiViewParams {
         view_count: view_count as usize,
@@ -760,6 +845,7 @@ pub fn detect_multiview_regions(
 pub fn detect_cross_section_features(
     planes_per_axis: u32,
     feature_threshold: f32,
+    tab_id: u64,
     state: State<'_, AppState>,
 ) -> Result<Vec<CrossSectionRegion>, String> {
     log::info!(
@@ -767,7 +853,7 @@ pub fn detect_cross_section_features(
         planes_per_axis,
         feature_threshold
     );
-    let mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
+    let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
     let params = crate::segment::cross_section::CrossSectionParams {
         planes_per_axis: planes_per_axis as usize,
@@ -810,6 +896,7 @@ pub async fn fuse_segmentation(
     dihedral_deg: f32,
     eye_face_indices: Option<Vec<Vec<u32>>>,
     app: tauri::AppHandle,
+    tab_id: u64,
     state: State<'_, AppState>,
 ) -> Result<SegmentResult, String> {
     log::info!(
@@ -822,9 +909,15 @@ pub async fn fuse_segmentation(
 
     // Take the mesh out for the whole compute (mirror auto_segment_v2) so a
     // concurrent sync command cannot stall on the lock.
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    let mut mesh = mesh_guard.take().ok_or("No mesh loaded")?;
-    drop(mesh_guard);
+    let mut mesh = state.take_mesh(tab_id)?;
+
+    // Per-stage wall-time instrumentation (0.2.0-P0): the Known Issues list
+    // documents multi-million-face models stalling >30min in the edge vote;
+    // these timings make that measurable per run via `fuse-debug` + the log
+    // instead of a stopwatch next to the screen. Purely observational — no
+    // control flow reads them.
+    let t_start = std::time::Instant::now();
+    let mut t_stage = std::time::Instant::now();
 
     // Progress plan (fractions are the fuse pipeline's measured stage weights
     // on a 1.5M-face sculpt: multiview ≈ 40%, dihedral backbone ≈ 40%, the
@@ -848,6 +941,8 @@ pub async fn fuse_segmentation(
             min_region_faces: detect_min,
         },
     );
+    let planar_ms = t_stage.elapsed().as_millis() as u64;
+    t_stage = std::time::Instant::now();
     // Layer 3: machine-vision evidence channel — the long pole. Each rendered
     // view reports 0.08 → 0.50. The callback must be 'static (ProgressFn), so
     // it owns an AppHandle clone like every other command's progress wiring.
@@ -863,6 +958,8 @@ pub async fn fuse_segmentation(
         },
         &move |f, _| emit_fuse_progress(&mv_app, 0.08 + 0.42 * f, "fuse:multiview"),
     );
+    let multiview_ms = t_stage.elapsed().as_millis() as u64;
+    t_stage = std::time::Instant::now();
 
     // Layer 0: geometry backbone — dihedral crease vote. On smooth / single-
     // colour / organic meshes planar+multiview return little or nothing, so
@@ -898,6 +995,8 @@ pub async fn fuse_segmentation(
         mesh.segment_names.clear();
         sets
     };
+    let dihedral_ms = t_stage.elapsed().as_millis() as u64;
+    t_stage = std::time::Instant::now();
 
     let planar_sets: Vec<Vec<u32>> = planar_regions
         .iter()
@@ -927,15 +1026,22 @@ pub async fn fuse_segmentation(
         min_region_faces as usize,
     )
     .map_err(|e| e.to_string())?;
+    let vote_ms = t_stage.elapsed().as_millis() as u64;
+    let total_ms = t_start.elapsed().as_millis() as u64;
 
     let _ = app.emit(
         "segment-progress",
         serde_json::json!({ "progress": 1.0, "stage": "done" }),
     );
     log::info!(
-        "[cmd:fuse_segmentation] done: {} regions ({} faces moved)",
+        "[cmd:fuse_segmentation] done: {} regions ({} faces moved); timings ms planar={} multiview={} dihedral={} vote={} total={}",
         result.region_count,
-        result.moved_faces
+        result.moved_faces,
+        planar_ms,
+        multiview_ms,
+        dihedral_ms,
+        vote_ms,
+        total_ms
     );
     // Surface a structured breakdown to the UI so the user can read *why* the
     // button produced e.g. 535 regions on a smooth model and tweak the knobs.
@@ -968,6 +1074,13 @@ pub async fn fuse_segmentation(
             "regionsBeforeMerge": result.regions_before_merge,
             "regionsAfterMerge": result.regions_after_merge,
             "mergePasses": result.merge_passes,
+            "durationsMs": {
+                "planar": planar_ms,
+                "multiview": multiview_ms,
+                "dihedral": dihedral_ms,
+                "vote": vote_ms,
+                "total": total_ms,
+            },
             "minFaces": result.min_faces,
             "tinyRegionsBeforeMerge": result.tiny_regions_before_merge,
         }),
@@ -975,9 +1088,8 @@ pub async fn fuse_segmentation(
 
     let labels = result.segment_labels.clone();
     let face_colors = flatten_face_colors(&mesh.face_colors);
-    let mut mesh_guard = state.mesh.lock().map_err(|e| e.to_string())?;
-    *mesh_guard = Some(mesh);
 
+    mesh.commit();
     Ok(SegmentResult {
         segments: result.segments,
         segment_labels: labels,

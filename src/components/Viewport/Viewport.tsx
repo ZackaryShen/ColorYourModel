@@ -1,3 +1,5 @@
+import { listenViewportKeydown } from "../../utils/viewportKeyboard";
+import { isCurrentTabResult, captureTabOwnership, isCurrentTabOwnership } from "../../utils/tabCommand";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -5,6 +7,7 @@ import * as THREE from "three";
 import { useAppStore } from "../../store/appStore";
 import { useMesh } from "../../hooks/useMesh";
 import { usePaintTool, MANUAL_SEGMENT_OFFSET } from "../../hooks/usePaintTool";
+import { usePaintStroke } from "../../hooks/usePaintStroke";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import { useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
 import type { HistoryResult } from "../../types/mesh";
@@ -13,7 +16,7 @@ import { hintKeyForTool } from "../../utils/controlsHint";
 import { useT } from "../../i18n";
 import { SeedPanel } from "../SeedPanel";
 import { resolveSegmentStage } from "../../segmentStages";
-import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
+import { MeshBVH, type SerializedBVH, computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
 import { ViewGizmo } from "./ViewGizmo";
 import { isPointerInGizmo } from "./viewGizmoModel";
 import { MergeBar } from "./MergeBar";
@@ -426,9 +429,9 @@ function BrushCursorImperative({ hoverInfoRef, brushRadius, color }: {
 
 // ─── Adjacency helpers (perf: precompute once per meshData) ─────
 interface MeshDataLike {
-  vertices: number[];
-  faces: number[];
-  segmentLabels: number[];
+  vertices: ArrayLike<number>;
+  faces: ArrayLike<number>;
+  segmentLabels: ArrayLike<number>;
 }
 
 /// Build an edge→faces map with a NUMERIC key `a*vmax + b` (a<b). Numeric keys
@@ -525,12 +528,13 @@ function buildVertexData(meshData: MeshDataLike): {
 // issue #16) share a secondary colour so anchor vs sources read at a glance.
 // Single-label callers (selection highlight, hover) pass a one-element array.
 function SegmentOutline({ meshData, labels, edgeMap, facesBySeg }: {
-  meshData: { faces: number[]; segmentLabels: number[]; vertices: number[] };
+  meshData: MeshDataLike;
   labels: number[];
   edgeMap: { map: Map<number, number[]>; vmax: number };
   facesBySeg: Map<number, number[]>;
 }) {
   const overlay = useOverlayColors();
+  const labelKey = labels.join(",");
   const geometries = useMemo(() => {
     const faces = meshData.faces;
     const faceLabels = meshData.segmentLabels;
@@ -571,8 +575,9 @@ function SegmentOutline({ meshData, labels, edgeMap, facesBySeg }: {
       }
       if (boundaryVerts.length === 0) continue;
       if (i === 0) anchorVerts = boundaryVerts;
-      else if (secondaryVerts) secondaryVerts.push(...boundaryVerts);
-      else secondaryVerts = boundaryVerts;
+      else if (secondaryVerts) {
+        for (const coordinate of boundaryVerts) secondaryVerts.push(coordinate);
+      } else secondaryVerts = boundaryVerts;
     }
 
     const toGeometry = (v: number[] | null) => {
@@ -582,7 +587,9 @@ function SegmentOutline({ meshData, labels, edgeMap, facesBySeg }: {
       return geo;
     };
     return { anchor: toGeometry(anchorVerts), secondary: toGeometry(secondaryVerts) };
-  }, [meshData.faces, meshData.segmentLabels, meshData.vertices, labels, edgeMap, facesBySeg]);
+  // labelKey retains the order used to assign the primary outline.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meshData.faces, meshData.segmentLabels, meshData.vertices, labelKey, edgeMap, facesBySeg]);
 
   if (!geometries.anchor && !geometries.secondary) return null;
 
@@ -610,7 +617,7 @@ function SegmentOutline({ meshData, labels, edgeMap, facesBySeg }: {
 /// outside the set, or the edge borders nothing), keyed by set membership
 /// instead of a label.
 function FaceSetOutline({ meshData, faces, edgeMap }: {
-  meshData: { faces: number[]; vertices: number[] };
+  meshData: Pick<MeshDataLike, "faces" | "vertices">;
   faces: number[];
   edgeMap: { map: Map<number, number[]>; vmax: number };
 }) {
@@ -663,7 +670,7 @@ function FaceSetOutline({ meshData, faces, edgeMap }: {
 /// vertex array. Equivalent to the backend `nearest_vertex` (Euclidean kd-tree
 /// lookup) but computed locally for zero-latency hover preview. Returns the
 /// vertex position in LOCAL coords (same space as `meshData.vertices`).
-function nearestVertexLocal(vertices: number[], p: THREE.Vector3): THREE.Vector3 | null {
+function nearestVertexLocal(vertices: ArrayLike<number>, p: THREE.Vector3): THREE.Vector3 | null {
   if (!vertices || vertices.length < 3) return null;
   let best = -1;
   let bestSq = Infinity;
@@ -690,8 +697,8 @@ function nearestVertexLocal(vertices: number[], p: THREE.Vector3): THREE.Vector3
 const SNAP_K = 1.5; // shared with backend manual.rs — keep in sync
 
 function nearestVertexLocalOnFace(
-  vertices: number[],
-  faces: number[],
+  vertices: ArrayLike<number>,
+  faces: ArrayLike<number>,
   p: THREE.Vector3,
   faceIndex: number,
   faceNormal: THREE.Vector3,
@@ -950,6 +957,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // that genuinely vanish are pruned live by the panel's filter instead.
   const viewSelectedRegions = useAppStore((s) => s.viewSelectedRegions);
   const hiddenSegments = useAppStore((s) => s.hiddenSegments);
+  const tabId = useAppStore(s => s.activeTabId);
   const modelVertices = useAppStore((s) => s.meshData?.vertices);
   useEffect(() => {
     useAppStore.getState().setViewSelectedRegions([]);
@@ -962,7 +970,9 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // Model load resets hiddenSegments to empty, which also clears the backend.
   useEffect(() => {
     void syncHiddenLabels(Array.from(hiddenSegments));
-  }, [hiddenSegments, syncHiddenLabels]);
+  // The command is bound to the tab rendered at this point.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hiddenSegments, tabId]);
   useEffect(() => {
     const geo = meshRef.current?.geometry;
     if (!geo || !modelFaceLabels) return;
@@ -973,11 +983,15 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       geo.setAttribute("aHidden", attr);
     }
     const arr = attr.array as Float32Array;
-    for (let f = 0; f < faceCount; f++) {
-      const v = hiddenSegments.has(modelFaceLabels[f]) ? 1 : 0;
-      arr[f * 3] = v;
-      arr[f * 3 + 1] = v;
-      arr[f * 3 + 2] = v;
+    if (hiddenSegments.size === 0) {
+      arr.fill(0);
+    } else {
+      for (let f = 0; f < faceCount; f++) {
+        const v = hiddenSegments.has(modelFaceLabels[f]) ? 1 : 0;
+        arr[f * 3] = v;
+        arr[f * 3 + 1] = v;
+        arr[f * 3 + 2] = v;
+      }
     }
     attr.needsUpdate = true;
   }, [hiddenSegments, modelFaceLabels, meshRef]);
@@ -1226,7 +1240,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // can drive undo/redo through the one real `updateFaceColors`.
   const applyHistory = useCallback(
     (result: HistoryResult | null) => {
-      if (!result) return;
+      if (!result || !isCurrentTabResult(result)) return;
       const st = useAppStore.getState();
       st.setHistoryFlags(result.canUndo, result.canRedo);
       if (!result.applied) return;
@@ -1251,68 +1265,71 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
     return () => setHistoryApplier(null);
   }, [applyHistory]);
 
-  // Build the raycasting BVH for this geometry. Deferred to a macrotask (NOT in
-  // the render-phase useMemo above) so the first paint + surface picking are
-  // never blocked by the O(F log F) tree build — consistent with the iteration-9
-  // rule that O(V+F) scans must live in effects, not render (iteration 16).
-  // `acceleratedRaycast` uses brute force until the tree exists, then auto-upgrades.
-  // `indirect: true` keeps the geometry non-indexed so faceIndex == backend face.
   useEffect(() => {
-    if (!geometry) return;
-    let cancelled = false;
-    const id = setTimeout(() => {
-      if (cancelled) return;
-      try {
-        // `indirect: true` is supported at runtime (verified in three-mesh-bvh
-        // 0.7.8 build, line 1169/1193) but absent from its .d.ts — cast to satisfy
-        // tsc without losing the required "keep geometry non-indexed" behaviour.
-        geometry.computeBoundsTree({ indirect: true } as never);
-        log.info("MeshDisplay", "BVH ready", { faces: geometry.getAttribute("position")?.count ?? 0 });
-      } catch (e) {
-        log.warn("MeshDisplay", "computeBoundsTree failed", { error: String(e) });
-      }
-    }, 0);
+    if (!geometry || !meshData || meshData.faceCount === 0) return;
+    let worker: Worker | undefined;
+    let fallback: ReturnType<typeof setTimeout> | undefined;
+    const buildLocally = () => {
+      fallback = setTimeout(() => {
+        try {
+          geometry.computeBoundsTree({ indirect: true } as never);
+        } catch (error) {
+          log.warn("MeshDisplay", "computeBoundsTree failed", { error: String(error) });
+        }
+      }, 0);
+    };
+    try {
+      worker = new Worker(new URL("./meshBvh.worker.ts", import.meta.url), { type: "module" });
+      // Keep the live buffers on the main thread and transfer independent copies.
+      const positions = new Float32Array(meshData.vertices);
+      const indices = new Uint32Array(meshData.faces);
+      worker.onmessage = (event: MessageEvent<{ bounds?: SerializedBVH; error?: string }>) => {
+        worker?.terminate();
+        if (!event.data.bounds) {
+          buildLocally();
+          return;
+        }
+        const indexed = new THREE.BufferGeometry();
+        indexed.setAttribute("position", new THREE.BufferAttribute(
+          meshData.vertices instanceof Float32Array ? meshData.vertices : new Float32Array(meshData.vertices), 3));
+        indexed.setIndex(new THREE.BufferAttribute(
+          meshData.faces instanceof Uint32Array ? meshData.faces : new Uint32Array(meshData.faces), 1));
+        geometry.boundsTree = MeshBVH.deserialize(event.data.bounds, indexed, { setIndex: false });
+        log.info("MeshDisplay", "BVH ready", { faces: meshData.faceCount });
+      };
+      worker.onerror = () => { worker?.terminate(); buildLocally(); };
+      worker.postMessage({ positions, indices }, [positions.buffer, indices.buffer]);
+    } catch {
+      worker?.terminate();
+      buildLocally();
+    }
     return () => {
-      cancelled = true;
-      clearTimeout(id);
+      worker?.terminate();
+      clearTimeout(fallback);
       geometry.disposeBoundsTree?.();
     };
+  // Reactivate only when the geometry changes. Labels and colours are irrelevant to picking.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geometry]);
 
-  // Precompute adjacency / segment maps ONCE per relevant meshData slice, but
-  // DEFERRED to effects so the FIRST paint + surface picking are never blocked
-  // by these O(V+F) scans — the source of the multi-second "import lag before
-  // I can pick" complaint (iteration 9, problem 2). SegmentOutline and the lasso
-  // same-side snap all guard on these being non-null, so a brief null window
-  // (until the effect runs, post-paint) is harmless.
-  const [edgeMap, setEdgeMap] = useState<{ map: Map<number, number[]>; vmax: number } | null>(null);
-  const [vertexData, setVertexData] = useState<{
+  const [cachedEdgeMap, setEdgeMap] = useState<{ map: Map<number, number[]>; vmax: number } | null>(null);
+  const [cachedVertexData, setVertexData] = useState<{
     vertexFaces: Map<number, number[]>;
     vertexNormals: Float32Array;
   } | null>(null);
 
-  // facesBySeg as synchronous derived value (iteration 23, REFUTE B11). Was
-  // useState + useEffect which lagged one commit behind meshData — causing the
-  // highlight/JSX to flash off/on when a new region was finalized (the effect
-  // hadn't run yet so facesBySeg.get(newLabel) returned undefined).
-  // useMemo eliminates that frame delay.
-  const facesBySeg = useMemo((): Map<number, number[]> | null => {
-    if (!meshData) return null;
-    return buildFacesBySegment(meshData);
-  }, [meshData?.faces, meshData?.segmentLabels]);
-
-  // edgeMap + vertexData depend only on geometry (faces/vertices), NOT labels —
-  // they stay stable across selection / label toggles and only rebuild on a new
-  // mesh load.
+  const edgeGeometry = useRef<MeshDataLike["faces"] | null>(null);
+  const vertexGeometry = useRef<MeshDataLike["faces"] | null>(null);
+  const edgeMap = edgeGeometry.current === meshData?.faces ? cachedEdgeMap : null;
+  const vertexData = vertexGeometry.current === meshData?.faces ? cachedVertexData : null;
   useEffect(() => {
-    if (!meshData) {
-      setEdgeMap(null);
-      setVertexData(null);
-      return;
-    }
-    setEdgeMap(buildEdgeMap(meshData));
-    setVertexData(buildVertexData(meshData));
-  }, [meshData?.faces, meshData?.vertices]);
+    if (!meshData || !isLassoTool || vertexGeometry.current === meshData.faces) return;
+    const id = setTimeout(() => {
+      setVertexData(buildVertexData(meshData));
+      vertexGeometry.current = meshData.faces;
+    }, 0);
+    return () => clearTimeout(id);
+  }, [meshData, isLassoTool]);
 
   // Set of valid segment ids (membership test). Used to decide whether the face
   // under the cursor / clicked for Fill belongs to a real partition. CRITICAL:
@@ -1370,6 +1387,21 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
 
   // Published after commit, never during render (P1-8). `enqueuePaint` reads it
   // synchronously from a pointer handler, so a layout effect is early enough.
+  const needsOutline = renderedHighlightLabel !== null || mergePicked.length > 0 ||
+    viewSelectedRegions.length > 0 || (segmentView && hoveredSegment !== null) ||
+    Boolean(usedColourFaces?.length || paintSourceHoverFaces?.length);
+  useEffect(() => {
+    if (!meshData || !needsOutline || edgeGeometry.current === meshData.faces) return;
+    const id = setTimeout(() => {
+      setEdgeMap(buildEdgeMap(meshData));
+      edgeGeometry.current = meshData.faces;
+    }, 0);
+    return () => clearTimeout(id);
+  }, [meshData, needsOutline]);
+
+  const facesBySeg = useMemo(() => meshData && edgeMap ? buildFacesBySegment(meshData) : null,
+    [edgeMap, meshData?.faces, meshData?.segmentLabels]);
+
   const renderedHighlightLabelRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     renderedHighlightLabelRef.current = renderedHighlightLabel;
@@ -1584,7 +1616,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           currentSegLabelRef.current ?? undefined,
           opts?.strokeId ?? undefined
         );
-        if (result) {
+        if (result && isCurrentTabResult(result)) {
           // Track label for subsequent faces in this drag
           currentSegLabelRef.current = result.segmentLabel;
           // Incremental color update on GPU
@@ -1598,7 +1630,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         const result = await paintFace(faceId, opts); // opts already has snapshotted hoveredSegment from enqueuePaint
         // iter30 PROBE: confirm what hoveredSegment actually arrived here (post-async).
         setHoverProbe(`[FILL-RX] opts.hover=${opts?.hoveredSegment ?? "null"} → passed to paintFace`);
-        if (result) {
+        if (result && isCurrentTabResult(result)) {
           const gpu = updateFaceColors(result.updatedFaces, result.updatedColors);
           const first5 = result.updatedFaces.slice(0, 5).join(",");
           const state = useAppStore.getState();
@@ -1672,24 +1704,28 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // (iteration 15) and latest-wins (iteration 16), and paintQueue.test.ts for
   // the strokeId-forwarding contract whose loss was issue #20 (one drag undone
   // one sample at a time).
+  const tabEpoch = useAppStore(state => state.tabEpoch);
   const paintQueue = useMemo(
-    () =>
-      createSerialPaintQueue<PaintJob>((job) =>
-        handleFacePickedRef.current(job.faceId, {
+    () => {
+      const owner = captureTabOwnership();
+      return createSerialPaintQueue<PaintJob>((job) => {
+        if (!isCurrentTabOwnership(owner)) return Promise.resolve();
+        return handleFacePickedRef.current(job.faceId, {
           wholeRegion: job.wholeRegion,
           hoveredSegment: job.hoveredSegment,
           renderedHover: job.renderedHover,
           strokeId: job.strokeId,
-        })
-      ),
-    []
+        });
+      });
+    },
+    [meshData?.tabId, tabEpoch]
   );
+  useEffect(() => () => paintQueue.cancel(), [paintQueue]);
   // Backend coalesces consecutive paint calls that share a `stroke_id` into ONE
   // undo entry. We mint a fresh id per drag (pointerdown) and reuse it for the
   // whole drag, so a single brush stroke = one undo step. The id alone delimits
   // the stroke, so a lost pointerup can never merge two drags.
-  const strokeCounterRef = useRef(0);
-  const activeStrokeIdRef = useRef<number | null>(null);
+  const { activeStrokeIdRef, beginStroke } = usePaintStroke();
   // iter30-era stale-hover cache retired (2026-08-27): Fill routing now reads
   // `segmentLabels[clickedFace]` directly (see usePaintTool), so a cached
   // "last valid hover" no longer has any legitimate consumer. Keeping it around
@@ -1711,7 +1747,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // into one field would hide the very signal the HUD exists to expose.
       renderedHover: renderedHighlightLabelRef.current,
       // The stroke id minted at pointerdown; groups this whole drag into one
-      // backend undo entry (see strokeCounterRef above). Forwarding this field
+      // backend undo entry. Forwarding this field
       // is load-bearing: dropping it was issue #20.
       strokeId: activeStrokeIdRef.current,
     };
@@ -1789,8 +1825,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           : t("segments.showGroup", group.length - hiddenCount)
       );
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return listenViewportKeydown(onKey);
   }, [setStatusMessage, t]);
 
   // Issue #16/#24: Esc clears transient selections (merge multi-select and
@@ -1807,8 +1842,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         setStatusMessage(t("segments.selectionCleared"));
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return listenViewportKeydown(onKey);
   }, [setStatusMessage, t]);
 
 
@@ -2055,7 +2089,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // (backend coalesces consecutive calls sharing the id; see mesh/history.rs).
       // Pointerup is irrelevant — the id alone delimits the stroke, so a lost
       // pointerup can't merge two drags into one undo unit.
-      activeStrokeIdRef.current = ++strokeCounterRef.current;
+      beginStroke();
       isPainting.current = true;
       // Capture the pointer so pointerup fires on the canvas even when the
       // cursor is released OUTSIDE it.
@@ -2391,8 +2425,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         setStatusMessage(t("seed.clear"));
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return listenViewportKeydown(onKey);
   }, [isSeedTool, clearSeedPoints, setSeedEraseMode, setStatusMessage, t]);
 
   // Lasso keyboard:
@@ -2448,8 +2481,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // Ctrl/Cmd+Z / Ctrl/Cmd+Y / Ctrl/Cmd+Shift+Z are handled by the global
       // undo/redo effect below so paint-stroke undo/redo works outside lasso.
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return listenViewportKeydown(onKey);
   }, [isLassoTool, setStatusMessage, t, finalizeLasso]);
 
   // Global undo/redo — covers paint strokes AND lasso regions, and works in any
@@ -2504,8 +2536,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
         historyUndo();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return listenViewportKeydown(onKey);
   }, [historyUndo, historyRedo, setStatusMessage, t]);
 
   // Issue #16: Esc clears the merge multi-select (same exit as the merge bar's
@@ -2518,8 +2549,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       if (picked.length === 0) return;
       clearMergePicked();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return listenViewportKeydown(onKey);
   }, []);
 
   if (!geometry) return null;
@@ -3296,7 +3326,7 @@ function Toast() {
   if (!toast) return null;
   return (
     <div style={toastStyles.box}>
-      <span style={toastStyles.icon}>✅</span>
+      <span style={toastStyles.icon}>ℹ️</span>
       <span style={toastStyles.text}>{toast}</span>
     </div>
   );
@@ -3420,11 +3450,11 @@ export function Viewport() {
         <IdleFrameloop />
         <CameraFit />
         <ControlsBridge />
-        {isLoaded && <MeshDisplay />}
+        {isLoaded && <MeshDisplay key={useAppStore.getState().activeTabId ?? "none"} />}
         <AdaptiveGrid />
         <ViewGizmo />
       </Canvas>
-      {isLoaded && activeTool === "seed" && <SeedPanel />}
+      {isLoaded && activeTool === "seed" && <SeedPanel key={useAppStore.getState().activeTabId ?? "none"} />}
       <ProgressBar />
       <SegmentToggle />
       <SegmentViewHint />

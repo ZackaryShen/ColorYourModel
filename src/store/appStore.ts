@@ -1,6 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { MeshData, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
+import { MeshData, TabInfo, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
 import { translate, type Lang } from "../i18nDict";
 import { log } from "../utils/logger";
@@ -19,7 +19,22 @@ import {
 interface AppStore {
   // Mesh
   meshData: MeshData | null;
+  tabs: TabInfo[];
+  activeTabId: number | null;
+  tabEpoch: number;
+  tabViews: Record<number, number[]>;
   isLoaded: boolean;
+  /** Path of the 3MF this model was opened from, or null when the model came
+   *  from an STL (there is nothing to save back to). Set by the import hook
+   *  and updated by Save As, so Cmd+S can write straight back into the file
+   *  the user opened — a 3MF is both the export and the project. */
+  projectPath: string | null;
+  importSourcePath: string | null;
+  /** Shared across picker, toolbar, menu and drag import hook instances. */
+  importBusy: boolean;
+  saveBusy: boolean;
+  pendingImportPath: string | null;
+  pendingCloseTabId: number | null;
 
   // Tool
   activeTool: PaintTool;
@@ -157,6 +172,7 @@ interface AppStore {
 
   // Actions
   setMeshData: (data: MeshData) => void;
+  setProjectPath: (path: string | null) => void;
   updateSegmentLabels: (labels: number[], segments: Segment[], faceColors?: number[]) => void;
   /** Write back the colors a paint command just produced into the CANONICAL
    *  `meshData.faceColors`. Mutates in place and deliberately does NOT call
@@ -493,7 +509,17 @@ function mergePrefs(persisted: unknown, current: AppStore): AppStore {
 
 const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   meshData: null,
+  tabs: [],
+  activeTabId: null,
+  tabEpoch: 0,
+  tabViews: {},
   isLoaded: false,
+  projectPath: null,
+  importSourcePath: null,
+  importBusy: false,
+  saveBusy: false,
+  pendingImportPath: null,
+  pendingCloseTabId: null,
 
   activeTool: PaintTool.View,
   brushRadius: 2.0,
@@ -553,23 +579,42 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   segmentStageKind: null,
 
   setMeshData: (data) =>
-    set(() => ({
+    set((previous) => ({
       meshData: data,
+      tabs: (data.tabs ?? []).map(tab => ({ ...tab, dirty: tab.dirty || previous.tabs.find(old => old.id === tab.id)?.dirty || (tab.id === previous.activeTabId && previous.paintDirty) })),
+      activeTabId: data.tabId ?? null,
+      tabEpoch: previous.tabEpoch + 1,
+      tabViews: Object.fromEntries((data.tabs ?? []).map(tab => [tab.id, tab.id === previous.activeTabId ? [...previous.hiddenSegments] : previous.tabViews[tab.id] ?? []])),
       isLoaded: true,
+      projectPath: null,
       canUndo: false,
       canRedo: false,
-      paintDirty: false,
+      paintDirty: Boolean(data.tabs?.find(tab => tab.id === data.tabId)?.dirty || previous.tabs.find(tab => tab.id === data.tabId)?.dirty || (data.tabId != null && data.tabId === previous.activeTabId && previous.paintDirty)),
+      selectedSegment: null,
+      hoveredSegment: null,
+      pendingPaintResult: null,
+      paintSourceHoverFaces: null,
+      lastPaintDebug: null,
+      hoverProbe: null,
+      seedPoints: [],
+      suggestedSeeds: [],
+      planarRegions: [],
+      multiviewRegions: [],
+      crossSectionRegions: [],
+      eyeRegions: [],
       // Fresh model → a pending merge multi-select is stale by construction
       // (its labels belonged to the previous mesh). 0.1.1 clears load-time
       // transient state here rather than via a dedicated reset action.
       mergePicked: [],
       // Issue #24: visibility is per-model view state — a fresh model starts
       // with every region visible.
-      hiddenSegments: new Set<number>(),
+      hiddenSegments: new Set(data.tabId != null && data.tabId === previous.activeTabId ? previous.hiddenSegments : data.tabId == null ? [] : previous.tabViews[data.tabId] ?? []),
       viewSelectedRegions: [],
       segments: projectSegments(data.segments),
       statusMessage: translate("status.loaded", get().language, data.faceCount.toLocaleString()),
     })),
+
+  setProjectPath: (path) => set(path ? { projectPath: path, importSourcePath: null } : { projectPath: null }),
 
   updateSegmentLabels: (labels, segments, faceColors) =>
     set((state) => ({
@@ -817,7 +862,7 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   setImportProgress: (progress, stage) => set({ importProgress: progress, importStage: stage }),
   setImportError: (message) => set({ importError: message }),
   setLanguage: (lang) => set({ language: lang }),
-  markPaintExported: () => set({ paintDirty: false }),
+  markPaintExported: () => set(state => ({ paintDirty: false, tabs: state.tabs.map(tab => ({ ...tab, dirty: false })) })),
   setLastPaintDebug: (s) => set({ lastPaintDebug: s }),
   setHoverProbe: (s) => set({ hoverProbe: s }),
   setLastExportSelection: (s) => set({ lastExportSelection: s }),
