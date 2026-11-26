@@ -42,23 +42,22 @@ The window has five parts: the **left toolbar** (import/export, 10 tools, undo/r
 
 A classic three-menu bar now sits at the top of the window:
 
-- **File**: Import STL, Export painted model, Quit — with unexported paint or segmentation changes, quitting (including the window close button) pops an in-app confirmation: **Stay / Quit anyway**; with no changes it exits silently.
+- **File** provides Import Model, Export Model and Quit. CYM asks before quitting with unsaved paint or segmentation changes.
 - **View**: Reset view, UI language, light/dark theme, debug-log toggle.
 - **Help**: User guide (follows the UI language), Examples gallery, Documentation home, GitHub Discussions, **Check for updates…**, About (version + "check for updates on startup" toggle).
 
 ## 1. Importing a model
 
-1. Click the **📂** button (top-left) and pick an **STL file** (binary or ASCII).
+1. Click the **📂** button (top-left) and pick a model file.
 2. A large model (1.5M faces) loads in ~3–4 seconds behind a progress bar; the status bar shows the total face count when done.
 
-You can also **drag a file from File Explorer and drop it anywhere on the window** (viewport or side panels alike): while you drag, the whole window lights up with a dashed border and a "Drop STL to import" hint, and releasing runs the exact same import pipeline as 📂 (same progress bar, same status messages). One file at a time; unsupported formats are reported in the status bar; when a model is already loaded, a confirmation dialog asks before replacing it, so a stray drop can never discard unexported paint. `.cym` project files can be dropped to open, too.
+You can also drop one file onto the window. Drops use the same import and progress feedback as the file picker. Each mesh opens as a new plate. Opening a 3MF loads its project, with a confirmation when it would replace your current work.
 
 Import is the whole load — **the model comes in with no regions** (one big region). That is deliberate: the model is browsable immediately, and segmentation is something you start explicitly in section 4. You can already paint right away — Fill's normal click works radius-bounded without regions.
 
 **About formats**:
 
-- Only **STL** is supported; the file picker shows `.stl` only.
-- To colour a split 3MF: convert the 3MF to STL first. Note that slicer-split part STLs use "print layout" coordinates (parts laid flat on the plate), not assembly positions — importing several parts scatters them, and fragmented plates confuse auto-segmentation, so process them one at a time.
+- Open 3MF projects or import STL, OBJ, PLY, glTF/GLB, FBX and USD meshes. FBX and USD require Blender 4.5 or newer. [Formats, units and colours](exporting.md#exchange-meshes-with-design-tools)
 - Sphere-like STLs ("same-latitude rings sharing axis coordinates") used to crash the import; fixed well before v0.1.0.
 
 ## 2. Brushes and shortcuts
@@ -208,7 +207,7 @@ The lasso (📍) is the last mile of refinement — where geometry offers no bou
 
 Click **💾** in the toolbar (a model must be loaded) to open the export dialog:
 
-1. **Format**: 3MF (for slicers, default) / OBJ (with colour).
+1. Choose 3MF (for slicers, default) or a mesh format from **Format**. The following machine and filament settings apply to 3MF.
 2. **Vendor / Machine**: currently the embedded **Snapmaker U1** preset (nothing to install).
 3. **Nozzle diameter**: 0.2 / 0.4 / 0.6 / 0.8 — the process list filters automatically.
 4. **Process**: the print profiles available for that machine + nozzle (0.20 Standard etc.).
@@ -222,7 +221,7 @@ Click **💾** in the toolbar (a model must be loaded) to open the export dialog
 
 The exported 3MF is verified end-to-end: imported into Snapmaker Orca (U1), machine, process and multi-filament colours all land correctly (see the [verification case](../cases/01-3mf-end-to-end.md)).
 
-**OBJ**: writes `.obj` + `.mtl` with per-face colours (quantized to at most 256) and needs no machine/process picks. For Blender / MeshLab / web viewers; for printing, use 3MF.
+**Mesh exports** write the active plate. OBJ carries up to 256 face colours and opacity levels in a companion MTL. PLY, glTF/GLB, FBX and USD can store painted meshes. STL stores geometry. Save the project to keep all plates and edit history. [Mesh export details](exporting.md#exchange-meshes-with-design-tools)
 
 ## Auto-update (new in v0.1.1)
 

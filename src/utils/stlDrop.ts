@@ -1,3 +1,5 @@
+import { MODEL_FORMATS } from "../types/modelFormats";
+
 /** Routing decision for files dropped onto the window (issue #21).
  *
  * Drops share the 📂 import pipeline (`useImportStl`): one file with a
@@ -8,8 +10,7 @@
  * unexported painting (same stake as the exit confirm, issue #7).
  */
 
-/** STL and GLB add plates. A 3MF opens its complete project. */
-export const DROPPABLE_EXTENSIONS = ["stl", "glb", "3mf"] as const;
+export const DROPPABLE_EXTENSIONS = MODEL_FORMATS;
 
 export type StlDropDecision =
   | { action: "import"; path: string }
@@ -55,5 +56,7 @@ export function planFileDrop(paths: string[], hasModel: boolean): StlDropDecisio
   if (!hasDroppableExtension(path)) {
     return { action: "reject", reason: "extension" };
   }
-  return hasModel && !/\.glb$/i.test(path) ? { action: "confirm-replace", path } : { action: "import", path };
+  return hasModel && /\.3mf$/i.test(path)
+    ? { action: "confirm-replace", path }
+    : { action: "import", path };
 }

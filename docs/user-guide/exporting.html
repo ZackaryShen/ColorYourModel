@@ -291,9 +291,9 @@ pre.mermaid.mermaid-offline::after {
 Internals: <a href="../technical/export-pipeline.html">Technical: Export Pipeline</a>.</p>
 </blockquote>
 <h2 id="save-a-3mf-project">Save a 3MF project</h2>
-<p>Use <strong>File → Save</strong> (Cmd/Ctrl+S) or the disk button to save your CYM project. For an external 3MF or STL, the first save asks where to write a new 3MF. After that, Save updates the CYM file directly. Choose <strong>Save As 3MF</strong> to save a copy. Project files retain exact paint colors, brush color groups, regions and available undo/redo history. Use <strong>Export</strong> to choose printer and filament settings for slicing.</p>
+<p>Use <strong>File → Save</strong> (Cmd/Ctrl+S) or the disk button to save your CYM project. After importing into a workspace without a saved project, the first save asks where to write a new 3MF. After that, Save updates the CYM file directly. Choose <strong>Save As 3MF</strong> to save a copy. Project files retain exact paint colors, brush color groups, regions and available undo/redo history. Use <strong>Export</strong> to choose printer and filament settings for slicing.</p>
 <p>Saving retains the imported project&#39;s printer, process and material settings. Colours used by explicit process material references remain in the palette even when no painted face uses them. If source settings cannot be interpreted safely, saving reports an error and preserves the previous file; use <strong>Export</strong> to choose new settings explicitly. Source materials with identical RGB colours and explicit material references currently require this explicit export path.</p>
-<p>Use the plate tabs above the viewport to switch plates. Double-click a tab to rename it, or use its × button to close it; closing a dirty plate asks before discarding its edits. Each plate retains its own regions, hidden regions and undo/redo history. An STL import adds a plate. Opening a 3MF replaces the whole project and asks first if any plate has unsaved edits. Closing the final plate clears the project and its save destination.</p>
+<p>Use the plate tabs above the viewport to switch plates. Double-click a tab to rename it, or use its × button to close it. Closing a dirty plate asks before discarding its edits. Each plate retains its own regions, hidden regions and undo/redo history. A mesh import adds a plate. Opening a 3MF replaces the whole project and asks first if any plate has unsaved edits. Closing the final plate clears the project and its save destination.</p>
 <p>A successful whole-project 3MF export becomes the current project file. The next <strong>Save</strong> writes to that destination.</p>
 <p>Save and Export use the exact path confirmed in the file dialog, preserving filename case and repeated suffixes without redirecting to another filename.</p>
 <p><strong>Save and whole-project 3MF export include every open plate</strong>, with one shared material palette and printer/process selection. The active plate, plate names, exact engineering colours and histories are restored when reopening the file. Clean inactive plates can be reloaded from their source on demand. Edited plates remain in memory in this release. A failed source load preserves the current plate and its edits.</p>
@@ -325,32 +325,55 @@ Internals: <a href="../technical/export-pipeline.html">Technical: Export Pipelin
 <p>On the active texture plate, select the printer and assign the model colours to its physical filament slots. Several model colours may share a slot. Above 16 edited colours, the preview groups them into a palette of up to 16 rows for confirmation.</p>
 <p>Mapped print export writes the active plate as a separate 3MF with its confirmed slot assignments. Use <strong>Save</strong> or <strong>Save As 3MF</strong> to preserve the entire workspace, including each plate&#39;s exact editable colours and confirmed texture mapping. You can reopen either file without the source GLB.</p>
 <p>For a workspace containing textured plates, switch to the texture plate you want to print and export it with its confirmed slots. Ordinary whole-project print export uses a shared automatic palette.</p>
-<h2 id="export-obj">Export OBJ</h2>
-<p>Exports <code>.obj</code> plus a sibling <code>.mtl</code>: per-face colours become <code>usemtl</code> material groups, quantized to at most 256 colours. No machine/process pickers needed — colour is written directly. Use OBJ for tools that don&#39;t read 3MF (DCC software, viewers).</p>
-<h2 id="which-one-when">Which one when?</h2>
+<h2 id="exchange-meshes-with-design-tools">Exchange meshes with design tools</h2>
+<p>Use <strong>File → Import Model</strong> or drag a file onto CYM. To write the edited active plate, choose its format in <strong>File → Export Model</strong>. Save the workspace as 3MF to keep every plate, regions and editing history.</p>
 <table>
 <thead>
 <tr>
-<th>Target</th>
 <th>Format</th>
+<th>Import</th>
+<th>Export</th>
 </tr>
 </thead>
 <tbody><tr>
-<td>Slice &amp; print (multi-material)</td>
-<td><strong>3MF</strong></td>
+<td>STL</td>
+<td>ASCII or binary triangles</td>
+<td>Binary geometry</td>
 </tr>
 <tr>
-<td>Blender / MeshLab / web viewers</td>
-<td><strong>OBJ</strong></td>
+<td>OBJ</td>
+<td>Mesh with MTL diffuse colours and opacity, or vertex colours</td>
+<td>OBJ with companion MTL, up to 256 RGBA materials</td>
 </tr>
 <tr>
-<td>Sharing a printable job with presets</td>
-<td><strong>3MF</strong></td>
+<td>PLY</td>
+<td>ASCII or binary mesh with face or vertex colours</td>
+<td>Binary mesh with RGBA vertex colours</td>
+</tr>
+<tr>
+<td>glTF / GLB</td>
+<td>Static 2.0 triangle geometry with base colours and vertex colours. Keep local glTF buffers alongside the file.</td>
+<td>Flat face colours, stored as vertex colours. Both exports are self-contained.</td>
+</tr>
+<tr>
+<td>FBX</td>
+<td>Static mesh from binary FBX</td>
+<td>Binary FBX with mesh and colours</td>
+</tr>
+<tr>
+<td>USD / USDA / USDC / USDZ</td>
+<td>Static meshes with display colours or simple material colours</td>
+<td>Mesh with display colours and opacity</td>
 </tr>
 </tbody></table>
+<p>STL, OBJ and PLY have no standard unit declaration here. CYM reads and writes their coordinates in millimetres. glTF/GLB uses the standard metre and Y-up convention; FBX and USD use their scene units and axes.</p>
+<p>FBX and USD require a separately installed Blender 4.5 or newer. CYM locates Blender in its usual installation locations or on PATH. Set <code>CYM_BLENDER</code> to the executable path to use a specific installation. These exchanges carry static triangles and flat colours. Rigs, animation, editable shaders and texture maps are outside this conversion.</p>
+<p>Keep an OBJ next to its MTL when sharing it. OBJ export requires a <code>.obj</code> filename and picks a numbered MTL filename when the matching library already exists. The exported OBJ references the new library.</p>
+<p>For a textured GLB, CYM offers a colour-baking preview. If the texture cannot be baked, the preview offers to import just the mesh and base colours. Vertex colours that vary across a triangle are reduced to one face colour.</p>
+<p>On macOS, reading an MTL or glTF buffer from a protected folder such as Downloads may prompt for folder access.</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#save-a-3mf-project">Save a 3MF project</a></li><li class="toc-h2"><a href="#export-3mf-recommended">Export 3MF (recommended)</a></li><li class="toc-h3"><a href="#gradient-paint-to-snapmaker-orca">Gradient paint to Snapmaker Orca</a></li><li class="toc-h3"><a href="#models-converted-from-textures">Models converted from textures</a></li><li class="toc-h2"><a href="#export-obj">Export OBJ</a></li><li class="toc-h2"><a href="#which-one-when">Which one when?</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#save-a-3mf-project">Save a 3MF project</a></li><li class="toc-h2"><a href="#export-3mf-recommended">Export 3MF (recommended)</a></li><li class="toc-h3"><a href="#gradient-paint-to-snapmaker-orca">Gradient paint to Snapmaker Orca</a></li><li class="toc-h3"><a href="#models-converted-from-textures">Models converted from textures</a></li><li class="toc-h2"><a href="#exchange-meshes-with-design-tools">Exchange meshes with design tools</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

@@ -24,12 +24,12 @@ pub struct Quantized {
 }
 
 /// A working set of colours during the median cut.
-struct ColorBox {
-    /// `(rgb, face_count)` pairs, always non-empty.
-    entries: Vec<([u8; 3], usize)>,
+struct ColorBox<const CHANNELS: usize> {
+    /// `(color, face_count)` pairs, always non-empty.
+    entries: Vec<([u8; CHANNELS], usize)>,
 }
 
-impl ColorBox {
+impl<const CHANNELS: usize> ColorBox<CHANNELS> {
     fn total_count(&self) -> usize {
         self.entries.iter().map(|(_, c)| *c).sum()
     }
@@ -40,7 +40,7 @@ impl ColorBox {
     fn longest_channel(&self) -> (usize, u8) {
         let mut best_channel = 0usize;
         let mut best_extent = 0u8;
-        for channel in 0..3 {
+        for channel in 0..CHANNELS {
             let mut lo = u8::MAX;
             let mut hi = u8::MIN;
             for (rgb, _) in &self.entries {
@@ -68,18 +68,16 @@ impl ColorBox {
     }
 
     /// Count-weighted mean, rounded half-up.
-    fn representative(&self) -> [u8; 3] {
+    fn representative(&self) -> [u8; CHANNELS] {
         let total = self.total_count().max(1) as u64;
-        let mut out = [0u8; 3];
-        for channel in 0..3 {
+        std::array::from_fn(|channel| {
             let sum: u64 = self
                 .entries
                 .iter()
                 .map(|(rgb, count)| u64::from(rgb[channel]) * *count as u64)
                 .sum();
-            out[channel] = ((sum * 2 + total) / (total * 2)).min(255) as u8;
-        }
-        out
+            ((sum * 2 + total) / (total * 2)).min(255) as u8
+        })
     }
 }
 
@@ -137,7 +135,10 @@ pub fn map_colors_to_palette(face_colors: &[[u8; 4]], palette: &[[u8; 3]]) -> Ve
 pub const MAX_HISTOGRAM_COLORS: usize = 4096;
 
 /// Quantise weighted colours directly; counts are never expanded into faces.
-pub fn quantize_histogram(histogram: &[([u8; 3], usize)], max_slots: usize) -> Vec<[u8; 3]> {
+pub fn quantize_histogram<const CHANNELS: usize>(
+    histogram: &[([u8; CHANNELS], usize)],
+    max_slots: usize,
+) -> Vec<[u8; CHANNELS]> {
     let max_slots = max_slots.max(1);
     let mut merged = std::collections::BTreeMap::new();
     for &(rgb, count) in histogram {
@@ -147,7 +148,7 @@ pub fn quantize_histogram(histogram: &[([u8; 3], usize)], max_slots: usize) -> V
     }
     let entries: Vec<_> = merged.into_iter().collect();
 
-    let boxes: Vec<ColorBox> = if entries.len() <= max_slots {
+    let boxes: Vec<_> = if entries.len() <= max_slots {
         // Everything already fits; one box per colour keeps the originals exact.
         entries
             .into_iter()
@@ -159,7 +160,7 @@ pub fn quantize_histogram(histogram: &[([u8; 3], usize)], max_slots: usize) -> V
 
     // Dominant colour first so it lands on slot 1. Tie-break on the
     // representative colour to stay deterministic when counts are equal.
-    let mut ranked: Vec<([u8; 3], usize)> = boxes
+    let mut ranked: Vec<_> = boxes
         .iter()
         .map(|b| (b.representative(), b.total_count()))
         .collect();
@@ -316,14 +317,16 @@ fn nearest_slot(palette: &[[u8; 3]], rgb: [u8; 3]) -> u8 {
 }
 
 /// Zero-based index without the slicer's 1-based u8 slot limit (OBJ uses 256 materials).
-pub fn nearest_palette_index(palette: &[[u8; 3]], rgb: [u8; 3]) -> usize {
+pub fn nearest_palette_index<const CHANNELS: usize>(
+    palette: &[[u8; CHANNELS]],
+    color: [u8; CHANNELS],
+) -> usize {
     let mut best_index = 0usize;
     let mut best_distance = u32::MAX;
     for (index, entry) in palette.iter().enumerate() {
-        let dr = i32::from(entry[0]) - i32::from(rgb[0]);
-        let dg = i32::from(entry[1]) - i32::from(rgb[1]);
-        let db = i32::from(entry[2]) - i32::from(rgb[2]);
-        let distance = (dr * dr + dg * dg + db * db) as u32;
+        let distance: u32 = entry.iter().zip(color)
+            .map(|(&a, b)| (i32::from(a) - i32::from(b)).pow(2) as u32)
+            .sum();
         if distance < best_distance {
             best_distance = distance;
             best_index = index;
@@ -332,7 +335,10 @@ pub fn nearest_palette_index(palette: &[[u8; 3]], rgb: [u8; 3]) -> usize {
     best_index
 }
 
-fn median_cut(entries: Vec<([u8; 3], usize)>, max_slots: usize) -> Vec<ColorBox> {
+fn median_cut<const CHANNELS: usize>(
+    entries: Vec<([u8; CHANNELS], usize)>,
+    max_slots: usize,
+) -> Vec<ColorBox<CHANNELS>> {
     let mut boxes = vec![ColorBox { entries }];
 
     while boxes.len() < max_slots {
@@ -364,7 +370,9 @@ fn median_cut(entries: Vec<([u8; 3], usize)>, max_slots: usize) -> Vec<ColorBox>
 
 /// Split along the longest channel at the count-weighted median, guaranteeing
 /// both halves are non-empty.
-fn split_box(mut victim: ColorBox) -> (ColorBox, ColorBox) {
+fn split_box<const CHANNELS: usize>(
+    mut victim: ColorBox<CHANNELS>,
+) -> (ColorBox<CHANNELS>, ColorBox<CHANNELS>) {
     let (channel, _) = victim.longest_channel();
 
     // Sort on the split channel, falling back to the full colour so equal

@@ -28,7 +28,7 @@ kiddo = "4"
 
 # File parsing
 base64 = "0.22"
-gltf = { version = "1.4", default-features = false, features = ["extensions", "utils"] }
+gltf = { version = "1.4", default-features = false, features = ["extensions", "extras", "utils"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 stl_io = "0.7"
 quick-xml = "0.36"
@@ -46,6 +46,7 @@ parry3d = "0.30.2"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
 tokio = { version = "1", features = ["fs", "io-util", "time", "sync"] }
 semver = "1"
+earcutr = "0.5.0"
 
 # Dev-build runtime speed: the interactive paths (lasso finalize, paint, fuse)
 # are O(mesh) passes over up to 1.5M faces, and unoptimized debug codegen made

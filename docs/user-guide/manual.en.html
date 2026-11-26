@@ -335,21 +335,20 @@ pre.mermaid.mermaid-offline::after {
 <h2 id="0-top-menu-bar-new-in-v011">0. Top menu bar (new in v0.1.1)</h2>
 <p>A classic three-menu bar now sits at the top of the window:</p>
 <ul>
-<li><strong>File</strong>: Import STL, Export painted model, Quit — with unexported paint or segmentation changes, quitting (including the window close button) pops an in-app confirmation: <strong>Stay / Quit anyway</strong>; with no changes it exits silently.</li>
+<li><strong>File</strong> provides Import Model, Export Model and Quit. CYM asks before quitting with unsaved paint or segmentation changes.</li>
 <li><strong>View</strong>: Reset view, UI language, light/dark theme, debug-log toggle.</li>
 <li><strong>Help</strong>: User guide (follows the UI language), Examples gallery, Documentation home, GitHub Discussions, <strong>Check for updates…</strong>, About (version + &quot;check for updates on startup&quot; toggle).</li>
 </ul>
 <h2 id="1-importing-a-model">1. Importing a model</h2>
 <ol>
-<li>Click the <strong>📂</strong> button (top-left) and pick an <strong>STL file</strong> (binary or ASCII).</li>
+<li>Click the <strong>📂</strong> button (top-left) and pick a model file.</li>
 <li>A large model (1.5M faces) loads in ~3–4 seconds behind a progress bar; the status bar shows the total face count when done.</li>
 </ol>
-<p>You can also <strong>drag a file from File Explorer and drop it anywhere on the window</strong> (viewport or side panels alike): while you drag, the whole window lights up with a dashed border and a &quot;Drop STL to import&quot; hint, and releasing runs the exact same import pipeline as 📂 (same progress bar, same status messages). One file at a time; unsupported formats are reported in the status bar; when a model is already loaded, a confirmation dialog asks before replacing it, so a stray drop can never discard unexported paint. <code>.cym</code> project files can be dropped to open, too.</p>
+<p>You can also drop one file onto the window. Drops use the same import and progress feedback as the file picker. Each mesh opens as a new plate. Opening a 3MF loads its project, with a confirmation when it would replace your current work.</p>
 <p>Import is the whole load — <strong>the model comes in with no regions</strong> (one big region). That is deliberate: the model is browsable immediately, and segmentation is something you start explicitly in section 4. You can already paint right away — Fill&#39;s normal click works radius-bounded without regions.</p>
 <p><strong>About formats</strong>:</p>
 <ul>
-<li>Only <strong>STL</strong> is supported; the file picker shows <code>.stl</code> only.</li>
-<li>To colour a split 3MF: convert the 3MF to STL first. Note that slicer-split part STLs use &quot;print layout&quot; coordinates (parts laid flat on the plate), not assembly positions — importing several parts scatters them, and fragmented plates confuse auto-segmentation, so process them one at a time.</li>
+<li>Open 3MF projects or import STL, OBJ, PLY, glTF/GLB, FBX and USD meshes. FBX and USD require Blender 4.5 or newer. <a href="exporting.html#exchange-meshes-with-design-tools">Formats, units and colours</a></li>
 <li>Sphere-like STLs (&quot;same-latitude rings sharing axis coordinates&quot;) used to crash the import; fixed well before v0.1.0.</li>
 </ul>
 <h2 id="2-brushes-and-shortcuts">2. Brushes and shortcuts</h2>
@@ -609,7 +608,7 @@ pre.mermaid.mermaid-offline::after {
 <h2 id="5-exporting-3mf">5. Exporting 3MF</h2>
 <p>Click <strong>💾</strong> in the toolbar (a model must be loaded) to open the export dialog:</p>
 <ol>
-<li><strong>Format</strong>: 3MF (for slicers, default) / OBJ (with colour).</li>
+<li>Choose 3MF (for slicers, default) or a mesh format from <strong>Format</strong>. The following machine and filament settings apply to 3MF.</li>
 <li><strong>Vendor / Machine</strong>: currently the embedded <strong>Snapmaker U1</strong> preset (nothing to install).</li>
 <li><strong>Nozzle diameter</strong>: 0.2 / 0.4 / 0.6 / 0.8 — the process list filters automatically.</li>
 <li><strong>Process</strong>: the print profiles available for that machine + nozzle (0.20 Standard etc.).</li>
@@ -620,7 +619,7 @@ pre.mermaid.mermaid-offline::after {
 <p><img src="../../samples/manual/04-export-dialog.png" alt="Export dialog: machine, nozzle, process and per-slot filaments"></p>
 <p><em>The export dialog: 13 regions map to 13 filament slots, each selectable individually or in bulk.</em></p>
 <p>The exported 3MF is verified end-to-end: imported into Snapmaker Orca (U1), machine, process and multi-filament colours all land correctly (see the <a href="../cases/01-3mf-end-to-end.html">verification case</a>).</p>
-<p><strong>OBJ</strong>: writes <code>.obj</code> + <code>.mtl</code> with per-face colours (quantized to at most 256) and needs no machine/process picks. For Blender / MeshLab / web viewers; for printing, use 3MF.</p>
+<p><strong>Mesh exports</strong> write the active plate. OBJ carries up to 256 face colours and opacity levels in a companion MTL. PLY, glTF/GLB, FBX and USD can store painted meshes. STL stores geometry. Save the project to keep all plates and edit history. <a href="exporting.html#exchange-meshes-with-design-tools">Mesh export details</a></p>
 <h2 id="auto-update-new-in-v011">Auto-update (new in v0.1.1)</h2>
 <ul>
 <li><strong>Startup check</strong> (Windows): 4 seconds after launch the app silently checks GitHub Releases once per session; offline, rate-limited or timed-out checks never surface. A newer release pops a dialog: <strong>Update now / Later / Skip this version / Never remind</strong>.</li>

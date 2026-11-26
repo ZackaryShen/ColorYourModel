@@ -1,4 +1,5 @@
 use crate::export::{paint_color::MAX_EXTRUDER_SLOT, quantize::quantize_face_colors};
+use super::face_colors::{linear_to_srgb, srgb_to_linear};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use gltf::accessor::{DataType, Dimensions};
 use gltf::texture::{MagFilter, MinFilter, WrappingMode};
@@ -920,22 +921,6 @@ impl TextureSampler<'_> {
                 linear(bottom_left[channel]) * (1.0 - x) + linear(bottom_right[channel]) * x;
             top * (1.0 - y) + bottom * y
         })
-    }
-}
-
-fn srgb_to_linear(value: f32) -> f32 {
-    if value <= 0.04045 {
-        value / 12.92
-    } else {
-        ((value + 0.055) / 1.055).powf(2.4)
-    }
-}
-
-fn linear_to_srgb(value: f32) -> f32 {
-    if value <= 0.0031308 {
-        value * 12.92
-    } else {
-        1.055 * value.powf(1.0 / 2.4) - 0.055
     }
 }
 

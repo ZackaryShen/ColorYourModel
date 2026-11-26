@@ -36,7 +36,7 @@ function App() {
   // The drop shares the 📂 pipeline (importFromPath); a drop that would
   // replace a loaded model first asks, like the exit confirm does.
   const textureImport = useTextureImport();
-  const { importStl, importFromPath, pendingReplacePath, confirmReplace, cancelReplace } =
+  const { importStl, importFromPath, importGeometry, pendingReplacePath, confirmReplace, cancelReplace } =
     useImportStl(textureImport.open);
   const { dragOver } = useDropImport(importFromPath);
   const [confirmExit, setConfirmExit] = useState(false);
@@ -147,6 +147,10 @@ function App() {
           onCancel={textureImport.cancel}
           onColorLimit={textureImport.setColorLimit}
           onRetry={textureImport.retry}
+          onImportGeometry={(path) => {
+            textureImport.cancel();
+            void importGeometry(path);
+          }}
         />
       )}
 

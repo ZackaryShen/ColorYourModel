@@ -13,8 +13,8 @@ describe("planFileDrop", () => {
     expect(planFileDrop([path], false)).toEqual({ action: "import", path });
   });
 
-  it("asks for confirmation when a model is already loaded", () => {
-    const path = "C:\\models\\part.stl";
+  it("asks for confirmation when a dropped 3MF will replace the project", () => {
+    const path = "C:\\models\\part.3MF";
     expect(planFileDrop([path], true)).toEqual({
       action: "confirm-replace",
       path,
@@ -29,7 +29,7 @@ describe("planFileDrop", () => {
   });
 
   it("rejects files whose extension is not part of the import pipeline", () => {
-    for (const path of ["C:\\m\\part.obj", "C:\\m\\part.cym", "C:\\m\\README"]) {
+    for (const path of ["C:\\m\\part.step", "C:\\m\\part.cym", "C:\\m\\README"]) {
       expect(planFileDrop([path], false)).toEqual({
         action: "reject",
         reason: "extension",
@@ -37,13 +37,21 @@ describe("planFileDrop", () => {
     }
   });
 
+  it.each(["OBJ", "ply", "GLTF", "fbx", "usd", "usda", "usdc", "usdz"])(
+    "adds a %s mesh beside the existing model",
+    (ext) => {
+      const path = `/tmp/part.${ext}`;
+      expect(planFileDrop([path], true)).toEqual({ action: "import", path });
+    }
+  );
+
   it("matches extensions case-insensitively (Windows filenames)", () => {
     expect(planFileDrop(["C:\\m\\PART.STL"], false)).toEqual({
       action: "import",
       path: "C:\\m\\PART.STL",
     });
     expect(planFileDrop(["C:\\m\\part.Stl"], true)).toEqual({
-      action: "confirm-replace",
+      action: "import",
       path: "C:\\m\\part.Stl",
     });
   });

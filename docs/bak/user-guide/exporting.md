@@ -5,11 +5,11 @@
 
 ## Save a 3MF project
 
-Use **File → Save** (Cmd/Ctrl+S) or the disk button to save your CYM project. For an external 3MF or STL, the first save asks where to write a new 3MF. After that, Save updates the CYM file directly. Choose **Save As 3MF** to save a copy. Project files retain exact paint colors, brush color groups, regions and available undo/redo history. Use **Export** to choose printer and filament settings for slicing.
+Use **File → Save** (Cmd/Ctrl+S) or the disk button to save your CYM project. After importing into a workspace without a saved project, the first save asks where to write a new 3MF. After that, Save updates the CYM file directly. Choose **Save As 3MF** to save a copy. Project files retain exact paint colors, brush color groups, regions and available undo/redo history. Use **Export** to choose printer and filament settings for slicing.
 
 Saving retains the imported project's printer, process and material settings. Colours used by explicit process material references remain in the palette even when no painted face uses them. If source settings cannot be interpreted safely, saving reports an error and preserves the previous file; use **Export** to choose new settings explicitly. Source materials with identical RGB colours and explicit material references currently require this explicit export path.
 
-Use the plate tabs above the viewport to switch plates. Double-click a tab to rename it, or use its × button to close it; closing a dirty plate asks before discarding its edits. Each plate retains its own regions, hidden regions and undo/redo history. An STL import adds a plate. Opening a 3MF replaces the whole project and asks first if any plate has unsaved edits. Closing the final plate clears the project and its save destination.
+Use the plate tabs above the viewport to switch plates. Double-click a tab to rename it, or use its × button to close it. Closing a dirty plate asks before discarding its edits. Each plate retains its own regions, hidden regions and undo/redo history. A mesh import adds a plate. Opening a 3MF replaces the whole project and asks first if any plate has unsaved edits. Closing the final plate clears the project and its save destination.
 
 A successful whole-project 3MF export becomes the current project file. The next **Save** writes to that destination.
 
@@ -61,14 +61,25 @@ Mapped print export writes the active plate as a separate 3MF with its confirmed
 
 For a workspace containing textured plates, switch to the texture plate you want to print and export it with its confirmed slots. Ordinary whole-project print export uses a shared automatic palette.
 
-## Export OBJ
+## Exchange meshes with design tools
 
-Exports `.obj` plus a sibling `.mtl`: per-face colours become `usemtl` material groups, quantized to at most 256 colours. No machine/process pickers needed — colour is written directly. Use OBJ for tools that don't read 3MF (DCC software, viewers).
+Use **File → Import Model** or drag a file onto CYM. To write the edited active plate, choose its format in **File → Export Model**. Save the workspace as 3MF to keep every plate, regions and editing history.
 
-## Which one when?
+| Format | Import | Export |
+|--------|--------|--------|
+| STL | ASCII or binary triangles | Binary geometry |
+| OBJ | Mesh with MTL diffuse colours and opacity, or vertex colours | OBJ with companion MTL, up to 256 RGBA materials |
+| PLY | ASCII or binary mesh with face or vertex colours | Binary mesh with RGBA vertex colours |
+| glTF / GLB | Static 2.0 triangle geometry with base colours and vertex colours. Keep local glTF buffers alongside the file. | Flat face colours, stored as vertex colours. Both exports are self-contained. |
+| FBX | Static mesh from binary FBX | Binary FBX with mesh and colours |
+| USD / USDA / USDC / USDZ | Static meshes with display colours or simple material colours | Mesh with display colours and opacity |
 
-| Target | Format |
-|--------|--------|
-| Slice & print (multi-material) | **3MF** |
-| Blender / MeshLab / web viewers | **OBJ** |
-| Sharing a printable job with presets | **3MF** |
+STL, OBJ and PLY have no standard unit declaration here. CYM reads and writes their coordinates in millimetres. glTF/GLB uses the standard metre and Y-up convention; FBX and USD use their scene units and axes.
+
+FBX and USD require a separately installed Blender 4.5 or newer. CYM locates Blender in its usual installation locations or on PATH. Set `CYM_BLENDER` to the executable path to use a specific installation. These exchanges carry static triangles and flat colours. Rigs, animation, editable shaders and texture maps are outside this conversion.
+
+Keep an OBJ next to its MTL when sharing it. OBJ export requires a `.obj` filename and picks a numbered MTL filename when the matching library already exists. The exported OBJ references the new library.
+
+For a textured GLB, CYM offers a colour-baking preview. If the texture cannot be baked, the preview offers to import just the mesh and base colours. Vertex colours that vary across a triangle are reduced to one face colour.
+
+On macOS, reading an MTL or glTF buffer from a protected folder such as Downloads may prompt for folder access.

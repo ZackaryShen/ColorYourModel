@@ -1,8 +1,10 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { useT } from "../i18n";
 import { useAppStore } from "../store/appStore";
 import { useTauriCommand } from "./useTauriCommand";
 import { DROPPABLE_EXTENSIONS } from "../utils/stlDrop";
+import { BLENDER_MESH_FORMATS, NATIVE_MESH_FORMATS } from "../types/modelFormats";
 import { log } from "../utils/logger";
 import type { MeshData } from "../types/mesh";
 
@@ -26,6 +28,7 @@ export function importStatusMessage(
   if (data.engineeringState === "dropped") warnings.push(t("status.engineeringDropped"));
   else if (data.historyDropped) warnings.push(t("status.historyDropped"));
   if (data.importWarning === "3mf-texture") warnings.push(t("project.openWarning.3mf-texture"));
+  if (data.importWarning === "gltf-texture") warnings.push(t("import.gltfTexture"));
   // The DTO fields are additive; absent means a single-plate source (STL or an
   // older payload).
   const plateIndex = data.plateIndex ?? 1;
@@ -60,14 +63,19 @@ export function useImportStl(openTexture?: (path: string) => void) {
     return true;
   };
 
-  const performImport = async (selected: string) => {
+  const performImport = async (selected: string, geometryOnly = false) => {
     if (blocked()) return;
     useAppStore.setState({ importBusy: true });
     log.info("importStl", `Importing: ${selected}`);
     useAppStore.setState({loadingKind: "import", importProgress: 0, importStage: t("toolbar.startImport")});
     setLoading(true);
 
+    let preview = false;
     try {
+      if (!geometryOnly && /\.glb$/i.test(selected) && openTexture) {
+        preview = await invoke<boolean>("has_gltf_base_color_texture", { path: selected });
+        if (preview) return;
+      }
       const data = await loadModel(selected);
       if (/\.3mf$/i.test(selected)) {
         const restored = data.engineeringState === "restored";
@@ -92,15 +100,12 @@ export function useImportStl(openTexture?: (path: string) => void) {
     } finally {
       setLoading(false);
       useAppStore.setState({ importBusy: false });
+      if (preview) openTexture?.(selected);
     }
   };
 
   const importFromPath = async (selected: string, confirmLoaded = false) => {
     if (blocked()) return;
-    if (/\.glb$/i.test(selected) && openTexture) {
-      openTexture(selected);
-      return;
-    }
     const state = useAppStore.getState();
     if (/\.3mf$/i.test(selected) && state.meshData && (state.paintDirty || state.tabs.some(tab => tab.dirty) || confirmLoaded)) {
       useAppStore.setState({ pendingImportPath: selected });
@@ -128,6 +133,8 @@ export function useImportStl(openTexture?: (path: string) => void) {
         // Picker and drop routing accept the same formats.
         filters: [
           { name: t("menu.modelFileFilter"), extensions: [...DROPPABLE_EXTENSIONS] },
+          { name: t("menu.nativeModelFileFilter"), extensions: ["3mf", ...NATIVE_MESH_FORMATS] },
+          { name: t("menu.blenderModelFileFilter"), extensions: [...BLENDER_MESH_FORMATS] },
         ],
       });
     } catch (e) {
@@ -145,5 +152,7 @@ export function useImportStl(openTexture?: (path: string) => void) {
     await importFromPath(selected);
   };
 
-  return { importStl, importFromPath, pendingReplacePath, confirmReplace, cancelReplace };
+  const importGeometry = (path: string) => performImport(path, true);
+
+  return { importStl, importFromPath, importGeometry, pendingReplacePath, confirmReplace, cancelReplace };
 }
