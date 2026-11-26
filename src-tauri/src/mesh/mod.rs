@@ -9,3 +9,8 @@ pub mod loader;
 /// Core mesh data model
 pub mod model;
 pub mod texture;
+pub(crate) mod exchange;
+pub(crate) mod exchange_blender;
+pub(crate) mod exchange_gltf;
+pub(crate) mod exchange_obj;
+pub(crate) mod exchange_ply;

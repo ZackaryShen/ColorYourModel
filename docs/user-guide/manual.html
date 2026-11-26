@@ -335,21 +335,20 @@ pre.mermaid.mermaid-offline::after {
 <h2 id="0-顶栏菜单栏v011-新增">0. 顶栏菜单栏（v0.1.1 新增）</h2>
 <p>窗口顶部新增经典三菜单，常用操作不再只依赖工具栏：</p>
 <ul>
-<li><strong>文件</strong>：导入 STL、导出涂装模型、退出——有未导出的涂装/分区修改时，退出（含点窗口关闭按钮）会弹出应用内确认：「留在应用 / 直接退出」，防止手滑丢掉涂装；无修改时静默退出；</li>
+<li><strong>文件</strong>提供导入模型、导出涂装模型和退出入口。有未保存的涂装或分区修改时，退出前会弹出确认。</li>
 <li><strong>视图</strong>：复位视图、界面语言、深浅色主题、调试日志开关；</li>
 <li><strong>帮助</strong>：用户手册（自动跟随当前语言）、示例图库、文档主页、GitHub Discussions、<strong>检查更新…</strong>、关于（版本号 + 「启动时检查更新」开关）。</li>
 </ul>
 <h2 id="1-导入模型">1. 导入模型</h2>
 <ol>
-<li>点左上角 <strong>📂</strong> 按钮，选择一个 <strong>STL 文件</strong>（二进制或 ASCII 均可）。</li>
+<li>点左上角 <strong>📂</strong> 按钮，选择一个模型文件。</li>
 <li>大模型（如 150 万面）加载约 3–4 秒，期间显示进度条；完成后状态栏显示总面数。</li>
 </ol>
-<p>也可以<strong>直接把文件从资源管理器拖进窗口</strong>（视口或侧栏均可）：拖动时整窗出现虚线高亮和「松开以导入 STL」提示，松开即走与 📂 完全相同的导入流程（同样的进度条与状态栏提示）。一次只能导入一个文件；不支持的格式会在状态栏给出提示；窗口中已有模型时会先弹窗确认再替换，防止手滑丢掉未导出的涂装。<code>.cym</code> 工程文件同样可以直接拖入打开。</p>
+<p>也可以把一个文件拖进窗口，松开后沿用文件选择器的导入流程和进度提示。网格文件会添加为新盘。打开 3MF 会加载整个工程，如果可能替换当前模型，CYM 会在需要时先确认。</p>
 <p>导入即完成——<strong>导入后模型没有任何分区</strong>（通体一个区），这是有意设计：模型立刻可浏览、可查看，分区由你在第 4 节显式发起。此时就可以直接用画笔/填充涂色（填充按半径生效，不依赖分区）。</p>
 <p><strong>关于文件格式</strong>：</p>
 <ul>
-<li>目前<strong>只支持 STL</strong>。文件选择器只显示 <code>.stl</code>。</li>
-<li>想给 3MF 拆件模型上色：先用转换工具把 3MF 转成 STL 再导入。注意切片软件拆出的分件 STL 是&quot;打印排布&quot;坐标（零件平铺在板上），不是装配位置——多个零件导入会散开，且碎件会干扰自动分区，建议逐件处理。</li>
+<li>可打开 3MF 工程，也可导入 STL、OBJ、PLY、glTF/GLB、FBX 和 USD 网格。FBX 和 USD 需要已安装的 Blender 4.5 或更新版本。<a href="exporting.html#exchange-meshes-with-design-tools">格式、坐标与颜色说明</a></li>
 <li>球面类&quot;同一纬度环共享轴坐标&quot;的 STL 曾经会闪退，v0.1.0 已修复，可放心导入。</li>
 </ul>
 <h2 id="2-各类画笔与快捷键">2. 各类画笔与快捷键</h2>
@@ -609,7 +608,7 @@ pre.mermaid.mermaid-offline::after {
 <h2 id="5-导出-3mf">5. 导出 3MF</h2>
 <p>点工具栏 <strong>💾</strong>（需已加载模型）打开导出对话框：</p>
 <ol>
-<li><strong>格式</strong>：3MF（切片软件，默认）/ OBJ（带颜色）。</li>
+<li>在<strong>格式</strong>下拉框选择 3MF（切片软件，默认）或其他网格格式。以下机型与耗材设置适用于 3MF。</li>
 <li><strong>厂商 / 机型</strong>：当前内置 <strong>Snapmaker U1</strong> 的完整预设（无需安装任何机型配置）。</li>
 <li><strong>喷嘴直径</strong>：0.2 / 0.4 / 0.6 / 0.8，选完工艺列表自动过滤。</li>
 <li><strong>工艺</strong>：该机型+喷嘴下可用的打印配置（0.20 Standard 等）。</li>
@@ -620,7 +619,7 @@ pre.mermaid.mermaid-offline::after {
 <p><img src="../../samples/manual/04-export-dialog.png" alt="导出对话框：机型、喷嘴、工艺与按槽位指定耗材"></p>
 <p><em>导出对话框：13 个分区对应 13 个耗材槽位，每个槽位可单独选耗材，也可勾选后批量套用。</em></p>
 <p>导出的 3MF 已做端到端验证：导入 Snapmaker Orca (U1) 后机型、工艺、多耗材颜色一次到位（见<a href="../cases/01-3mf-end-to-end.html">验证案例</a>）。</p>
-<p><strong>OBJ</strong>：输出 <code>.obj</code> + <code>.mtl</code>，逐面写入颜色（量化到最多 256 色），不需要机型/工艺选择。给 Blender / MeshLab / 在线查看器用；要打印还是选 3MF。</p>
+<p><strong>网格导出</strong>仅写当前盘。OBJ 通过配套 MTL 保存最多 256 种面颜色和透明度。PLY、glTF/GLB、FBX 和 USD 可以保存着色网格。STL 保存几何。使用「保存工程」保留全部盘和编辑历史。<a href="exporting.html#exchange-meshes-with-design-tools">各格式导出说明</a></p>
 <h2 id="自动更新v011-新增">自动更新（v0.1.1 新增）</h2>
 <ul>
 <li><strong>启动检查</strong>（Windows）：应用启动 4 秒后静默检查一次 GitHub Releases，每个会话只查一次；离线、限流、超时完全无感。发现新版会弹出对话框：<strong>立即更新 / 稍后 / 跳过此版本 / 不再提醒</strong>。</li>

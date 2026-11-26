@@ -13,11 +13,11 @@
 //! never bleed between adjacent differently-coloured faces.
 
 use crate::export::quantize::{nearest_palette_index, quantize_histogram};
+use crate::mesh::face_colors::srgb_to_linear;
 use crate::mesh::model::MeshModel;
 use std::collections::BTreeMap;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::io::{ErrorKind, Write};
+use std::path::Path;
 
 /// Cap on the number of distinct materials written to the `.mtl`.
 ///
@@ -30,55 +30,68 @@ const MAX_OBJ_COLORS: usize = 256;
 
 /// Resolve the loaded mesh's per-face colours into a material palette and a
 /// parallel `face_material` array (0-based material index per face).
-fn build_palette(mesh: &MeshModel) -> (Vec<[u8; 3]>, Vec<usize>) {
+fn build_palette(mesh: &MeshModel) -> (Vec<[u8; 4]>, Vec<usize>) {
     if mesh.face_colors.is_empty() {
         // An unpainted mesh still deserves a file: a single neutral material
         // for every face.
-        return (vec![[200, 200, 200]], vec![0; mesh.faces.len()]);
+        return (vec![[200, 200, 200, 255]], vec![0; mesh.faces.len()]);
     }
 
     // Exact unique colours first so small palettes survive untouched.
-    let mut palette: Vec<[u8; 3]> = Vec::new();
-    let mut lookup: BTreeMap<[u8; 3], usize> = BTreeMap::new();
-    for rgba in &mesh.face_colors {
-        let rgb = [rgba[0], rgba[1], rgba[2]];
-        if !lookup.contains_key(&rgb) {
-            lookup.insert(rgb, palette.len());
-            palette.push(rgb);
-        }
+    let mut palette = Vec::new();
+    let mut lookup = BTreeMap::new();
+    for &color in &mesh.face_colors {
+        lookup.entry(color).or_insert_with(|| {
+            let index = palette.len();
+            palette.push(color);
+            index
+        });
     }
 
     if palette.len() > MAX_OBJ_COLORS {
         let mut counts = BTreeMap::new();
-        for rgba in &mesh.face_colors {
-            *counts.entry([rgba[0], rgba[1], rgba[2]]).or_insert(0usize) += 1;
+        for &color in &mesh.face_colors {
+            *counts.entry(color).or_insert(0usize) += 1;
         }
         let histogram: Vec<_> = counts.into_iter().collect();
         palette = quantize_histogram(&histogram, MAX_OBJ_COLORS);
         // OBJ material 255 is valid; passing through a 1-based u8 slicer slot
         // would wrap its value 256 to zero and silently select material 0.
-        for (rgb, material) in &mut lookup {
-            *material = nearest_palette_index(&palette, *rgb);
+        for (color, material) in &mut lookup {
+            *material = nearest_palette_index(&palette, *color);
         }
     }
-    let face_material = mesh
-        .face_colors
-        .iter()
-        .map(|rgba| lookup[&[rgba[0], rgba[1], rgba[2]]])
-        .collect();
+    let face_material = mesh.face_colors.iter().map(|color| lookup[color]).collect();
     (palette, face_material)
 }
 
 /// Export mesh with per-face colours to a `.obj` + sibling `.mtl`.
 ///
 /// `output_path` is the exact OBJ destination confirmed by the user. The
-/// material library is written alongside as `<stem>.mtl` and referenced via
-/// `mtllib`.
+/// material library is written alongside and its filename is returned.
 pub fn export_obj(
     mesh: &MeshModel,
     output_path: &Path,
     progress: &dyn Fn(f32, &str),
-) -> Result<(), String> {
+) -> Result<String, String> {
+    if !output_path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"))
+    {
+        return Err("Choose an .obj filename for this export".into());
+    }
+    let stem = output_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or("OBJ material filename is not valid UTF-8")?;
+    if stem.contains(['\r', '\n']) {
+        return Err("OBJ material filename cannot contain a line break".into());
+    }
+    let directory = output_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+
     let (palette, face_material) = build_palette(mesh);
     if face_material.len() != mesh.faces.len() {
         return Err(format!(
@@ -89,34 +102,19 @@ pub fn export_obj(
     }
     progress(0.2, "obj:colors");
 
-    if output_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("mtl"))
-    {
-        return Err("OBJ output conflicts with its companion material library".into());
-    }
-    let obj_path = output_path.to_path_buf();
-    let mtl_path = obj_path.with_extension("mtl");
-    let mtl_name = mtl_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or("OBJ material filename is not valid UTF-8")?
-        .to_string();
-
     // --- Material library (.mtl) -------------------------------------------
     let mtl_body = {
         let mut body = String::new();
         body.push_str("# ColorYourModel material library\n");
+        body.push_str("# Kd uses linear sRGB\n");
         body.push_str("# One material per exported face colour.\n\n");
-        for (i, rgb) in palette.iter().enumerate() {
-            body.push_str(&format!(
-                "newmtl m{}\nKd {:.6} {:.6} {:.6}\n\n",
-                i,
-                rgb[0] as f32 / 255.0,
-                rgb[1] as f32 / 255.0,
-                rgb[2] as f32 / 255.0,
-            ));
+        for (i, &[r, g, b, alpha]) in palette.iter().enumerate() {
+            let [r, g, b] = [r, g, b].map(|byte| srgb_to_linear(f32::from(byte) / 255.0));
+            body.push_str(&format!("newmtl m{i}\nKd {r:.6} {g:.6} {b:.6}\n",));
+            if alpha < 255 {
+                body.push_str(&format!("d {:.6}\n", f32::from(alpha) / 255.0));
+            }
+            body.push('\n');
         }
         body
     };
@@ -125,15 +123,10 @@ pub fn export_obj(
     // --- Geometry (.obj) ---------------------------------------------------
     let obj_body = {
         let mut body = String::new();
-        body.push_str("# ColorYourModel OBJ export\n");
-        body.push_str("# Per-face colours are carried via usemtl groups + the sibling .mtl.\n");
-        body.push_str(&format!("mtllib {}\n", mtl_name));
-        body.push('\n');
-
         // Vertices. OBJ indices are 1-based; the mesh's vertices are reused
         // verbatim across colour groups.
         for v in &mesh.vertices {
-            body.push_str(&format!("v {:.6} {:.6} {:.6}\n", v[0], v[1], v[2]));
+            body.push_str(&format!("v {} {} {}\n", v[0], v[1], v[2]));
         }
         body.push('\n');
         progress(0.6, "obj:vertices");
@@ -163,148 +156,67 @@ pub fn export_obj(
 
         body
     };
-    let mut files = [
-        StagedOutput::new(&mtl_path, mtl_body.as_bytes())?,
-        StagedOutput::new(&obj_path, obj_body.as_bytes())?,
-    ];
-    commit_pair(&mut files, &|from, to| std::fs::rename(from, to))?;
-    progress(0.95, "obj:write");
-
-    Ok(())
-}
-
-static OUTPUT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-
-struct StagedOutput {
-    target: PathBuf,
-    staged: PathBuf,
-    backup: PathBuf,
-    staged_owned: bool,
-    backed_up: bool,
-    installed: bool,
-    committed: bool,
-}
-
-impl StagedOutput {
-    fn new(target: &Path, contents: &[u8]) -> Result<Self, String> {
-        match std::fs::symlink_metadata(target) {
-            Ok(meta) if !meta.is_file() && !meta.file_type().is_symlink() => {
+    let mut staged_mtl = stage(directory, &[mtl_body.as_bytes()])?;
+    // Only the OBJ went through the overwrite dialog. Use an exclusive
+    // install for the MTL, including when two exports pick the same name.
+    for index in 0..=u32::MAX {
+        let mtl_name = if index == 0 {
+            format!("{stem}.mtl")
+        } else {
+            format!("{stem}.{index}.mtl")
+        };
+        let mtl_path = directory.join(&mtl_name);
+        if mtl_path.symlink_metadata().is_ok() {
+            continue;
+        }
+        let header = format!("# ColorYourModel OBJ export\nmtllib {mtl_name}\n\n");
+        let staged_obj = stage(directory, &[header.as_bytes(), obj_body.as_bytes()])?;
+        match staged_mtl.persist_noclobber(&mtl_path) {
+            Ok(file) => drop(file),
+            Err(error) if error.error.kind() == ErrorKind::AlreadyExists => {
+                staged_mtl = error.file;
+                continue;
+            }
+            Err(error) => {
                 return Err(format!(
-                    "Export destination is not a file: {}",
-                    target.display()
+                    "Failed to install {}: {}",
+                    mtl_path.display(),
+                    error.error
                 ));
             }
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                return Err(error.to_string())
+        }
+        if let Err(error) = staged_obj.persist(output_path) {
+            let mut message = format!(
+                "Failed to install {}: {}",
+                output_path.display(),
+                error.error
+            );
+            if let Err(cleanup) = std::fs::remove_file(&mtl_path) {
+                message.push_str(&format!(
+                    "\nFailed to remove {}: {cleanup}",
+                    mtl_path.display()
+                ));
             }
-            _ => {}
+            return Err(message);
         }
-        let id = OUTPUT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| e.to_string())?
-            .as_nanos();
-        let prefix = format!(".cym-obj-{}-{}-{}", std::process::id(), nonce, id);
-        let mut file = Self {
-            target: target.to_path_buf(),
-            staged: target.with_file_name(format!("{}.tmp", prefix)),
-            backup: target.with_file_name(format!("{}.bak", prefix)),
-            staged_owned: false,
-            backed_up: false,
-            installed: false,
-            committed: false,
-        };
-        let mut output = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&file.staged)
-            .map_err(|e| e.to_string())?;
-        file.staged_owned = true;
-        output
-            .write_all(contents)
-            .and_then(|_| output.sync_all())
-            .map_err(|e| e.to_string())?;
-        Ok(file)
+        progress(0.95, "obj:write");
+        return Ok(mtl_name);
     }
-
-    fn rollback(&mut self) -> Result<(), String> {
-        if self.installed {
-            std::fs::remove_file(&self.target).map_err(|e| e.to_string())?;
-            self.installed = false;
-        }
-        if self.backed_up {
-            std::fs::rename(&self.backup, &self.target).map_err(|e| {
-                format!(
-                    "Cannot restore {}; old file retained at {}: {}",
-                    self.target.display(),
-                    self.backup.display(),
-                    e
-                )
-            })?;
-            self.backed_up = false;
-        }
-        Ok(())
-    }
+    Err("No name available for the OBJ material library".into())
 }
 
-impl Drop for StagedOutput {
-    fn drop(&mut self) {
-        if !self.committed {
-            if let Err(error) = self.rollback() {
-                log::error!("OBJ rollback: {}", error);
-            }
-        }
-        if self.staged_owned {
-            let _ = std::fs::remove_file(&self.staged);
-        }
-        if self.committed {
-            let _ = std::fs::remove_file(&self.backup);
-        }
+fn stage(directory: &Path, parts: &[&[u8]]) -> Result<tempfile::NamedTempFile, String> {
+    let mut file = tempfile::Builder::new()
+        .prefix(".cym-obj-")
+        .tempfile_in(directory)
+        .map_err(|error| format!("Could not stage OBJ export: {error}"))?;
+    for part in parts {
+        file.write_all(part).map_err(|error| error.to_string())?;
     }
-}
-
-// Stage both files before replacing either. This is failure-safe, not a
-// cross-file atomic transaction against process or machine crashes.
-fn commit_pair(
-    files: &mut [StagedOutput; 2],
-    rename: &dyn Fn(&Path, &Path) -> std::io::Result<()>,
-) -> Result<(), String> {
-    let result = (|| {
-        for file in files.iter_mut() {
-            match std::fs::symlink_metadata(&file.target) {
-                Ok(meta) if !meta.is_file() && !meta.file_type().is_symlink() => {
-                    return Err(format!(
-                        "Export destination is not a file: {}",
-                        file.target.display()
-                    ))
-                }
-                Ok(_) => {
-                    std::fs::rename(&file.target, &file.backup).map_err(|e| e.to_string())?;
-                    file.backed_up = true;
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error.to_string()),
-            }
-        }
-        for file in files.iter_mut() {
-            rename(&file.staged, &file.target)
-                .map_err(|e| format!("Failed to install {}: {}", file.target.display(), e))?;
-            file.installed = true;
-        }
-        Ok(())
-    })();
-    if let Err(mut error) = result {
-        for file in files.iter_mut().rev() {
-            if let Err(restore) = file.rollback() {
-                error.push_str(&format!("; {}", restore));
-            }
-        }
-        return Err(error);
-    }
-    for file in files {
-        file.committed = true;
-    }
-    Ok(())
+    file.as_file()
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    Ok(file)
 }
 
 #[cfg(test)]
@@ -356,15 +268,12 @@ mod tests {
     #[test]
     fn unpainted_mesh_exports_a_single_neutral_material() {
         let mesh = two_face_mesh(vec![]);
-        let dir = std::env::temp_dir().join("cym-obj-test");
-        std::fs::create_dir_all(&dir).unwrap();
-        let obj = dir.join("neutral.obj");
+        let dir = tempfile::tempdir().unwrap();
+        let obj = dir.path().join("neutral.obj");
 
         export_obj(&mesh, &obj, &|_, _| {}).expect("neutral obj export must succeed");
         let obj_text = std::fs::read_to_string(&obj).unwrap();
         assert_eq!(obj_text.matches("usemtl m").count(), 1);
-
-        let _ = std::fs::remove_file(&obj);
     }
 
     #[test]
@@ -398,7 +307,7 @@ mod tests {
             "the 256th palette entry must be addressable"
         );
         for (rgba, &material) in mesh.face_colors.iter().zip(&materials) {
-            let distance = |rgb: &[u8; 3]| -> i32 {
+            let distance = |rgb: &[u8; 4]| -> i32 {
                 (0..3)
                     .map(|i| (i32::from(rgb[i]) - i32::from(rgba[i])).pow(2))
                     .sum()
@@ -423,7 +332,7 @@ mod tests {
         for (name, material) in [
             ("sample.OBJ", "sample.mtl"),
             ("sample.obj.obj", "sample.obj.mtl"),
-            ("extensionless", "extensionless.mtl"),
+            ("Sample Name.obj", "Sample Name.mtl"),
         ] {
             let obj = dir.join(name);
             export_obj(&mesh, &obj, &|_, _| {}).unwrap();
@@ -458,7 +367,51 @@ mod tests {
     }
 
     #[test]
-    fn geometry_write_failure_preserves_the_existing_material_library() {
+    fn obj_export_cannot_overwrite_an_existing_3mf() {
+        let mesh = two_face_mesh(vec![[255, 0, 0, 255], [0, 0, 255, 255]]);
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("project.3mf");
+        std::fs::write(
+            &project,
+            include_bytes!("../../../examples/3plate_sample.3mf"),
+        )
+        .unwrap();
+        let original = std::fs::read(&project).unwrap();
+
+        assert!(export_obj(&mesh, &project, &|_, _| {}).is_err());
+        assert_eq!(std::fs::read(&project).unwrap(), original);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn obj_export_keeps_existing_companions_and_references_the_new_materials() {
+        let mesh = two_face_mesh(vec![[255, 0, 0, 255], [0, 0, 255, 255]]);
+        let dir = tempfile::tempdir().unwrap();
+        let obj = dir.path().join("project.OBJ");
+        let first = dir.path().join("project.mtl");
+        let second = dir.path().join("project.1.mtl");
+        std::fs::write(&first, "library from another model").unwrap();
+        std::fs::write(&second, "another library").unwrap();
+
+        let new_library = export_obj(&mesh, &obj, &|_, _| {}).unwrap();
+        assert_eq!(new_library, "project.2.mtl");
+        assert_eq!(
+            std::fs::read_to_string(first).unwrap(),
+            "library from another model"
+        );
+        assert_eq!(std::fs::read_to_string(second).unwrap(), "another library");
+        let data = std::fs::read_to_string(&obj).unwrap();
+        let library = data
+            .lines()
+            .find_map(|line| line.strip_prefix("mtllib "))
+            .unwrap();
+        assert_eq!(library, new_library);
+        let actual = std::fs::read_to_string(dir.path().join(library)).unwrap();
+        assert!(actual.contains("newmtl m1"));
+    }
+
+    #[test]
+    fn geometry_install_failure_preserves_existing_files_and_removes_the_new_library() {
         let mesh = two_face_mesh(vec![[255, 0, 0, 255], [0, 0, 255, 255]]);
         let dir = std::env::temp_dir().join(format!("cym-obj-failure-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("project.obj")).unwrap();
@@ -469,35 +422,28 @@ mod tests {
             std::fs::read_to_string(mtl).unwrap(),
             "original material library"
         );
+        assert!(dir.join("project.obj").is_dir());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
-    fn a_second_install_failure_restores_both_old_files_and_removes_temporary_files() {
-        let dir = std::env::temp_dir().join(format!("cym-obj-rollback-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let mtl = dir.join("project.mtl");
-        let obj = dir.join("project.obj");
-        std::fs::write(&mtl, "old materials").unwrap();
-        std::fs::write(&obj, "old geometry").unwrap();
-        let mut files = [
-            StagedOutput::new(&mtl, b"new materials").unwrap(),
-            StagedOutput::new(&obj, b"new geometry").unwrap(),
-        ];
-        let result = commit_pair(&mut files, &|from, to| {
-            if to == obj {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "injected geometry install failure",
-                ));
-            }
-            std::fs::rename(from, to)
-        });
-        assert!(result.is_err());
-        assert_eq!(std::fs::read_to_string(&mtl).unwrap(), "old materials");
-        assert_eq!(std::fs::read_to_string(&obj).unwrap(), "old geometry");
-        drop(files);
-        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
-        std::fs::remove_dir_all(dir).unwrap();
+    fn replacing_confirmed_obj_keeps_its_previous_library_available() {
+        let dir = tempfile::tempdir().unwrap();
+        let obj = dir.path().join("painted.obj");
+        let mut mesh = two_face_mesh(vec![[10, 20, 30, 255], [255, 0, 0, 255]]);
+        let first = export_obj(&mesh, &obj, &|_, _| {}).unwrap();
+        let former_materials = std::fs::read(dir.path().join(&first)).unwrap();
+
+        mesh.face_colors[0] = [1, 2, 3, 255];
+        let second = export_obj(&mesh, &obj, &|_, _| {}).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(
+            std::fs::read(dir.path().join(first)).unwrap(),
+            former_materials
+        );
+        let model = std::fs::read_to_string(&obj).unwrap();
+        assert!(model.lines().any(|line| line == format!("mtllib {second}")));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 3);
     }
 }

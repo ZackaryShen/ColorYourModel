@@ -7,17 +7,18 @@ import { useAppStore } from "../../store/appStore";
 import type { MeshData } from "../../types/mesh";
 import { ExportDialog } from "./ExportDialog";
 
-const { invoke, save, export3mf, exportObj } = vi.hoisted(() => ({
+const { invoke, save, export3mf, exportObj, exportMesh } = vi.hoisted(() => ({
   invoke: vi.fn(),
   save: vi.fn(),
   export3mf: vi.fn(),
   exportObj: vi.fn(),
+  exportMesh: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save }));
-vi.mock("../../hooks/useTauriCommand", () => ({ useTauriCommand: () => ({ export3mf, exportObj }) }));
+vi.mock("../../hooks/useTauriCommand", () => ({ useTauriCommand: () => ({ export3mf, exportObj, exportMesh }) }));
 vi.mock("../TexturePreview/TexturePreviewCanvas", () => ({
   TexturePreviewCanvas: ({ label, converted }: { label: string; converted: MeshData }) =>
     <div aria-label={label}>{converted.faceColors.join(",")}</div>,
@@ -153,12 +154,27 @@ describe("texture mappings in ExportDialog", () => {
     render(<ExportDialog onClose={() => {}} />);
 
     await screen.findByRole("checkbox", { name: "Select slot 2" });
-    fireEvent.click(screen.getByRole("button", { name: "OBJ (with colour)" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Format" }), { target: { value: "obj" } });
     fireEvent.click(screen.getByRole("button", { name: "Choose location & export" }));
     await waitFor(() => expect(exportObj).toHaveBeenCalledWith("/tmp/legacy.obj.obj"));
     expect(invoke).not.toHaveBeenCalledWith("texture_mapping_preview");
     expect(export3mf).not.toHaveBeenCalled();
   });
+
+  it.each(["stl", "ply", "gltf", "glb", "fbx", "usd", "usda", "usdc", "usdz"])(
+    "exports the active plate as %s with the matching native file filter",
+    async (format) => {
+      const path = `/tmp/plate.${format}`;
+      save.mockResolvedValue(path);
+      exportMesh.mockResolvedValue(`Exported to ${path}`);
+      render(<ExportDialog onClose={() => {}} />);
+      fireEvent.change(screen.getByRole("combobox", { name: "Format" }), { target: { value: format } });
+      fireEvent.click(screen.getByRole("button", { name: "Choose location & export" }));
+      await waitFor(() => expect(exportMesh).toHaveBeenCalledWith(path, format));
+      expect(save).toHaveBeenCalledWith({ filters: [{ name: format.toUpperCase(), extensions: [format] }], defaultPath: `model.${format}` });
+      expect(export3mf).not.toHaveBeenCalled();
+    }
+  );
 
   it("renders grouped faces from the export preview's row indexes", async () => {
     const fixture = invoke.getMockImplementation()!;

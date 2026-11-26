@@ -18,6 +18,8 @@ use crate::export::texture_mapping::{
 use crate::export::threemf::{
     write_mapped_texture_3mf, write_project_3mf, ProjectPlate, ProjectWritePurpose,
 };
+use crate::mesh::exchange;
+use std::sync::Arc;
 
 /// The printer / process / filament catalogue the export dialog renders.
 ///
@@ -371,7 +373,7 @@ pub async fn export_3mf_command(
     }
 }
 
-/// Export the loaded mesh as a `.obj` + sibling `.mtl`, carrying per-face RGB
+/// Export the loaded mesh as a `.obj` + sibling `.mtl`, carrying per-face RGBA
 /// colour through `usemtl` groups. Unlike 3MF, OBJ needs no machine / process /
 /// filament selection — the colour is written directly, so the export dialog
 /// skips those pickers for this format.
@@ -389,20 +391,38 @@ pub async fn export_obj_command(
 
     let progress = export_progress(&app);
     progress(0.05, "obj:start");
-    export_obj(mesh, &output_path, &progress)?;
+    let mtl_name = export_obj(mesh, &output_path, &progress)?;
     progress(1.0, "done");
 
-    let mtl_name = output_path
-        .with_extension("mtl")
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("model.mtl")
-        .to_string();
     Ok(format!(
         "Exported to {} (with {})",
         output_path.display(),
         mtl_name
     ))
+}
+
+/// Exchange the active plate without changing its project or dirty state.
+#[tauri::command]
+pub(crate) async fn export_mesh_command(
+    tab_id: u64,
+    path: String,
+    format: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let output = confirmed_output_path(&path)?;
+    let workspace = Arc::clone(&state.workspace);
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = AppState { workspace };
+        let mesh = state.take_mesh(tab_id)?;
+        let progress = export_progress(&app);
+        progress(0.05, "mesh:start");
+        exchange::write_model(&mesh, &output, &format)?;
+        progress(1.0, "done");
+        Ok(format!("Exported to {}", output.display()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]

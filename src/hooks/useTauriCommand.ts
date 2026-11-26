@@ -5,6 +5,7 @@ import { useT, translateError } from "../i18n";
 import { useAppStore } from "../store/appStore";
 import { MeshData, ManualPointResult, Segment, SegmentResult, HistoryResult, HistoryState, HistoryEntriesResult, UsedColorEntry, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion , PaintResult, TabInfo } from "../types/mesh";
 import type { ExportSelection, TextureMappingRequest } from "../types/export";
+import type { GeometryExportFormat } from "../types/modelFormats";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
 
@@ -56,9 +57,7 @@ export function useTauriCommand() {
         bbox: data.bbox,
       });
 
-      const previousPath = useAppStore.getState().projectPath;
-      setMeshData(data);
-      if (/\.stl$/i.test(path)) useAppStore.getState().setProjectPath(previousPath);
+      setMeshData(data, !/\.3mf$/i.test(path));
       // A 3MF can restore both stacks; a fresh model's default flags must not
       // leave those operations inaccessible after reopening the project.
       const history = await invokeTab<HistoryState>("history_state", {}, data.tabId ?? null).catch(() => null);
@@ -328,6 +327,19 @@ export function useTauriCommand() {
       setStatusMessage(t("export.failure", String(e)));
       setToast(t("export.failure", String(e)));
       throw e;
+    }
+  };
+
+  const exportMesh = async (path: string, format: GeometryExportFormat) => {
+    setStatusMessage(t("export.exporting"));
+    try {
+      const message = await invoke<string>("export_mesh_command", { path, format });
+      setStatusMessage(t("export.complete"));
+      setToast(t("export.success", message.replace(/^Exported to /, "")));
+      return message;
+    } catch (error) {
+      setStatusMessage(t("export.failure", String(error)));
+      throw error;
     }
   };
 
@@ -870,6 +882,7 @@ export function useTauriCommand() {
     loadModel,
     export3mf,
     exportObj,
+    exportMesh,
     paintSegmentFace,
     finalizeSegment,
     renameSegment,

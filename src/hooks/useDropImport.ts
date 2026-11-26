@@ -6,7 +6,7 @@ import { planFileDrop } from "../utils/stlDrop";
 import { log } from "../utils/logger";
 
 /**
- * Drag-and-drop STL, GLB and 3MF import (issue #21).
+ * Drag-and-drop model import (issue #21).
  *
  * With the default `dragDropEnabled: true` the webview intercepts OS
  * drag-drop on Windows, so HTML5 dragover/drop handlers never fire — the

@@ -36,6 +36,7 @@ const COPY = {
     rendererError: "无法显示模型预览",
     imageLoading: "正在显示原始贴图…",
     retry: "重试",
+    importGeometry: "导入网格和基础颜色",
     apply: "应用到新盘",
     cancel: "取消",
     faces: (count: number) => count.toLocaleString("zh") + " 面",
@@ -70,6 +71,7 @@ const COPY = {
     rendererError: "Could not display the model preview",
     imageLoading: "Loading the original texture…",
     retry: "Retry",
+    importGeometry: "Import mesh with base colours",
     apply: "Apply to new plate",
     cancel: "Cancel",
     faces: (count: number) => count.toLocaleString("en") + (count === 1 ? " face" : " faces"),
@@ -83,9 +85,10 @@ interface PreviewDialogProps {
   onCancel: () => void;
   onColorLimit: (count: number) => void;
   onRetry: () => void;
+  onImportGeometry: (path: string) => void;
 }
 
-export function TexturePreviewDialog({ session, onApply, onCancel, onColorLimit, onRetry }: PreviewDialogProps) {
+export function TexturePreviewDialog({ session, onApply, onCancel, onColorLimit, onRetry, onImportGeometry }: PreviewDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const language = useAppStore((state) => state.language);
   const theme = useAppStore((state) => state.theme);
@@ -252,6 +255,11 @@ export function TexturePreviewDialog({ session, onApply, onCancel, onColorLimit,
           ) : null}
         </div>
         <button className="texture-preview-button cym-btn" disabled={applying} onClick={onCancel}>{copy.cancel}</button>
+        {phase === "prepare-error" && (
+          <button className="texture-preview-button cym-btn" onClick={() => onImportGeometry(session.path)}>
+            {copy.importGeometry}
+          </button>
+        )}
         {error ? (
           <button className="texture-preview-button texture-preview-primary cym-btn" onClick={onRetry}>{copy.retry}</button>
         ) : (

@@ -10,7 +10,7 @@ export type Lang = "zh" | "en";
 // ─── Translation dictionaries ────────────────────────────────────
 const dict: Record<string, Record<Lang, string>> = {
   // Toolbar — buttons
-  "toolbar.import": { zh: "导入 STL / 3MF 文件", en: "Import STL / 3MF file" },
+  "toolbar.import": { zh: "导入模型", en: "Import model" },
   "toolbar.export": { zh: "导出涂装模型为 3MF", en: "Export painted model as 3MF" },
   "toolbar.reSegment": { zh: "重新自动分区（阈值: 30°）", en: "Re-run auto segmentation (threshold: 30°)" },
   "toolbar.smartSegment": { zh: "智能分区（SDF 形态直径）", en: "Smart segment (SDF shape diameter)" },
@@ -31,9 +31,9 @@ const dict: Record<string, Record<Lang, string>> = {
   },
 
   // Drag & drop import (issue #21)
-  "drop.hint": { zh: "松开以导入 STL / 3MF", en: "Drop STL / 3MF to import" },
+  "drop.hint": { zh: "松开以导入模型", en: "Drop a model to import it" },
   "drop.rejectMulti": { zh: "一次只能导入一个模型", en: "Only one model can be imported at a time" },
-  "drop.rejectExtension": { zh: "请选择 STL、GLB 或 3MF 文件", en: "Choose an STL, GLB or 3MF file" },
+  "drop.rejectExtension": { zh: "请选择 STL、3MF、OBJ、PLY、glTF、GLB、FBX 或 USD 文件", en: "Choose an STL, 3MF, OBJ, PLY, glTF, GLB, FBX or USD file" },
   "drop.importInProgress": { zh: "正在导入，请稍候…", en: "An import is already in progress…" },
   "drop.replaceTitle": { zh: "替换当前工程？", en: "Replace current project?" },
   "drop.replaceBody": { zh: "打开 3MF 将替换所有打印盘，并丢弃尚未保存的修改。", en: "A model is already loaded. Importing will discard it together with any unexported paint." },
@@ -275,7 +275,7 @@ const dict: Record<string, Record<Lang, string>> = {
 
   // Viewport — misc
   "view.loading": { zh: "加载中…", en: "Loading…" },
-  "view.emptyState": { zh: "导入 STL 或打开 3MF 开始涂装", en: "Import an STL file to get started" },
+  "view.emptyState": { zh: "导入模型开始涂装", en: "Import a model to start painting" },
 
   // Viewport — lasso / segment-brush status details
   "lasso.selected": { zh: "套索：已选 {0} 个点", en: "Lasso: {0} points selected" },
@@ -388,13 +388,20 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.textureInvalidProfile": { zh: "当前机型和喷嘴缺少可用的工艺或耗材配置。", en: "This machine and nozzle need a compatible process and filament preset." },
   "export.textureRetry": { zh: "重试", en: "Retry" },
   "export.textureConfirm": { zh: "确认并导出", en: "Confirm and export" },
-  "menu.modelFileFilter": { zh: "STL / GLB / 3MF", en: "STL / GLB / 3MF" },
+  "menu.modelFileFilter": { zh: "所有支持的模型", en: "All supported models" },
+  "menu.nativeModelFileFilter": { zh: "STL / 3MF / OBJ / PLY / glTF / GLB", en: "STL / 3MF / OBJ / PLY / glTF / GLB" },
+  "menu.blenderModelFileFilter": { zh: "FBX / USD（需要 Blender）", en: "FBX / USD (requires Blender)" },
+  "import.gltfTexture": { zh: "已载入网格和基础颜色。若需烘焙贴图，请使用带内嵌贴图的 GLB。", en: "Loaded the mesh and base colours. Use a GLB with an embedded image to bake its texture." },
   "export.textureScope": { zh: "仅导出当前纹理盘。使用「保存工程」保存所有盘及各盘的颜色分配。", en: "This exports the active texture plate. Save the project to keep all plates and their assignments." },
   "export.title": { zh: "导出模型", en: "Export Model" },
   "export.format": { zh: "格式", en: "Format" },
   "export.format3mf": { zh: "3MF（切片软件）", en: "3MF (slicer)" },
   "export.formatObj": { zh: "OBJ（带颜色）", en: "OBJ (with colour)" },
-  "export.objNote": { zh: "OBJ 直接写入每面 RGB 颜色（.obj + .mtl），无需选择机型/工艺。", en: "OBJ writes per-face RGB directly (.obj + .mtl), no machine/process needed." },
+  "export.objNote": { zh: "面颜色写入配套的 .mtl 文件，最多保留 256 种颜色。", en: "The companion .mtl file carries up to 256 face colours." },
+  "export.meshScope": { zh: "仅导出当前盘。使用「保存工程」保留全部盘和编辑历史。", en: "Exports the active plate. Save the project to keep all plates and edit history." },
+  "export.stlNote": { zh: "STL 仅保存几何。", en: "STL stores geometry only." },
+  "export.meshColorNote": { zh: "保存网格和当前面颜色。", en: "Stores the mesh and its current face colours." },
+  "export.blenderNote": { zh: "通过本机 Blender 转换，保存静态网格和面颜色。", en: "Uses an installed copy of Blender to export a static mesh with face colours." },
   "export.machine": { zh: "厂商 / 机型", en: "Vendor / Machine" },
   "export.nozzle": { zh: "喷嘴直径", en: "Nozzle diameter" },
   "export.process": { zh: "工艺（打印参数）", en: "Process (print profile)" },
@@ -422,7 +429,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.presetLoadFailed": { zh: "导出配置加载失败：{0}", en: "Failed to load export presets: {0}" },
   "export.needModel": { zh: "请先导入模型", en: "Import a model first" },
   "export.noModel": { zh: "尚未导入模型", en: "No model loaded" },
-  "export.noModelHint": { zh: "导出需要先导入 STL 模型并完成涂装，请先从「文件 → 导入 STL…」或左侧工具栏导入。", en: "Exporting needs an imported (and painted) STL model first — use File → Import STL… or the left toolbar." },
+  "export.noModelHint": { zh: "请先从「文件 → 导入模型」或左侧工具栏导入模型。", en: "Use File → Import Model or the left toolbar to load a model first." },
 
   // Reset confirm dialog (issue #28)
   "reset.confirmTitle": { zh: "清空所有分区", en: "Clear all regions" },
@@ -492,7 +499,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "menu.file": { zh: "文件", en: "File" },
   "menu.view": { zh: "视图", en: "View" },
   "menu.help": { zh: "帮助", en: "Help" },
-  "menu.import": { zh: "导入 STL / 3MF…", en: "Import STL / 3MF…" },
+  "menu.import": { zh: "导入模型…", en: "Import Model…" },
   "menu.save": { zh: "保存 (⌘S)", en: "Save (⌘S)" },
   "menu.saveAs": { zh: "另存为 3MF…", en: "Save As 3MF…" },
   "status.multiPlateSaveBlocked": { zh: "当前只载入第一盘，无法覆盖多盘工程；请另存当前盘到新文件", en: "Only the first plate is loaded; use Save As to save this plate to a new file without overwriting the multi-plate project" },

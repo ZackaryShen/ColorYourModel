@@ -15,6 +15,8 @@ import type {
   TextureMappingRequest,
   TextureMappingSuggestions,
 } from "../../types/export";
+import { BLENDER_MESH_FORMATS, isBlenderFormat, NATIVE_MESH_FORMATS } from "../../types/modelFormats";
+import type { ModelFormat } from "../../types/modelFormats";
 import { log } from "../../utils/logger";
 import {
   fromHex,
@@ -64,7 +66,7 @@ function selectProfile(
 
 export function ExportDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
-  const { export3mf, exportObj } = useTauriCommand();
+  const { export3mf, exportObj, exportMesh } = useTauriCommand();
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
   const setLastExportSelection = useAppStore((s) => s.setLastExportSelection);
   const theme = useAppStore((s) => s.theme);
@@ -75,7 +77,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [owner] = useState(captureTabOwnership);
   const [sourceMesh] = useState(meshData);
   const isTexture = sourceMesh?.texturePainting === true;
-  const [format, setFormat] = useState<"3mf" | "obj">("3mf");
+  const [format, setFormat] = useState<ModelFormat>("3mf");
   const [progress, setProgress] = useState(0);
   const [machines, setMachines] = useState<MachineSummary[]>([]);
   const [paintPreview, setPaintPreview] = useState<ExportPalettePreview | null>(null);
@@ -184,7 +186,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
     || meshData.vertices !== sourceMesh.vertices || meshData.faces !== sourceMesh.faces;
   const textureReady = !!mappingPreview?.rows.length && !!currentSuggestions?.data
     && mappingPreview.rows.every(({ rgb }) => assigned.has(rgbHex(rgb)));
-  const canExport = !exporting && !sourceReplaced && (format === "obj" || (!!validProfile && (!isTexture || textureReady)));
+  const canExport = !exporting && !sourceReplaced && (format !== "3mf" || (!!validProfile && (!isTexture || textureReady)));
 
   const chooseProfile = (next: MachineSummary, nextNozzle: string) => {
     if (next.id === selection?.machineId && nextNozzle === nozzle) return;
@@ -297,15 +299,15 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       if (!path) return;
       if (!isCurrentTabOwnership(owner)) throw new Error(t("export.modelChanged"));
 
-      if (mappingRequest) {
-        // The native overwrite prompt covers this exact path.
-        await export3mf(path, mappingRequest.mapping.selection, false, mappingRequest);
-      } else {
-        if (format === "obj") await exportObj(path);
-        else if (selection) await export3mf(path, selection);
-      }
       if (format === "3mf" && selection) {
+        // The native overwrite prompt covers this exact path.
+        if (mappingRequest) await export3mf(path, selection, false, mappingRequest);
+        else await export3mf(path, selection);
         setLastExportSelection(selection);
+      } else if (format === "obj") {
+        await exportObj(path);
+      } else if (format !== "3mf") {
+        await exportMesh(path, format);
       }
       onClose();
     } catch (e) {
@@ -371,29 +373,30 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
 
         <div style={styles.body}>
           <fieldset className="export-dialog-fields" disabled={exporting}>
-            <div style={styles.label}>{t("export.format")}</div>
-            <div style={styles.row}>
-              <button
-                className="cym-btn"
-                style={{ ...styles.fmtBtn, ...(format === "3mf" ? styles.fmtActive : {}) }}
-                aria-pressed={format === "3mf"}
-                onClick={() => { setFormat("3mf"); setExportError(null); }}
+            <label style={styles.label}>
+              {t("export.format")}
+              <select
+                style={styles.select}
+                value={format}
+                onChange={(event) => { setFormat(event.target.value as ModelFormat); setExportError(null); }}
               >
-                {t("export.format3mf")}
-              </button>
-              <button
-                className="cym-btn"
-                style={{ ...styles.fmtBtn, ...(format === "obj" ? styles.fmtActive : {}) }}
-                aria-pressed={format === "obj"}
-                onClick={() => { setFormat("obj"); setExportError(null); }}
-              >
-                {t("export.formatObj")}
-              </button>
-            </div>
+                <option value="3mf">{t("export.format3mf")}</option>
+                {NATIVE_MESH_FORMATS.map((ext) => (
+                  <option key={ext} value={ext}>{ext === "obj" ? t("export.formatObj") : ext.toUpperCase()}</option>
+                ))}
+                <optgroup label={t("menu.blenderModelFileFilter")}>
+                  {BLENDER_MESH_FORMATS.map((ext) => <option key={ext} value={ext}>{ext.toUpperCase()}</option>)}
+                </optgroup>
+              </select>
+            </label>
 
             {showMapping && <p style={styles.note}>{t("export.textureScope")}</p>}
-            {format === "obj" ? (
-              <p style={styles.note}>{t("export.objNote")}</p>
+            {format !== "3mf" ? (
+              <p style={styles.note}>
+                {t("export.meshScope")} {t(format === "obj" ? "export.objNote"
+                  : format === "stl" ? "export.stlNote"
+                  : isBlenderFormat(format) ? "export.blenderNote" : "export.meshColorNote")}
+              </p>
             ) : (
               <div className={showMapping ? "texture-export-layout" : undefined}>
                 {showMapping && mappingPreview && (
@@ -703,20 +706,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
   },
   nozzleActive: {
-    border: "1px solid var(--accent, #4a9eff)",
-    background: "var(--bg-active, #3a5a7a)",
-  },
-  fmtBtn: {
-    flex: 1,
-    padding: "6px 8px",
-    border: "1px solid var(--border, #555)",
-    background: "var(--bg-elevated, #3a3a3a)",
-    color: "var(--text-1, #eee)",
-    borderRadius: 6,
-    cursor: "pointer",
-    fontSize: 13,
-  },
-  fmtActive: {
     border: "1px solid var(--accent, #4a9eff)",
     background: "var(--bg-active, #3a5a7a)",
   },

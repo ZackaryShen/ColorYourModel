@@ -43,7 +43,7 @@ export interface MeshData {
   canRedo?: boolean;
   gradientContext?: GradientPaintContext;
   hasGradientPaint?: boolean;
-  importWarning?: "3mf-texture";
+  importWarning?: "3mf-texture" | "gltf-texture";
 }
 
 export interface PaintResult {

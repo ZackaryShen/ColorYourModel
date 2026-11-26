@@ -28,6 +28,7 @@ beforeEach(() => {
   vi.mocked(open).mockReset();
   vi.mocked(invoke).mockImplementation(async (command) => {
     if (command === "load_model") return newModel;
+    if (command === "has_gltf_base_color_texture") return true;
     if (command === "history_state") return { canUndo: false, canRedo: false };
     throw new Error(`Unexpected: ${command}`);
   });
@@ -53,10 +54,38 @@ it("routes picker and dropped GLBs to preview without offering to replace the pr
   await act(async () => { await result.current.importStl(); });
   await act(async () => { await result.current.importFromPath("/dropped.GLB", true); });
   expect(preview.mock.calls).toEqual([["/texture.glb"], ["/dropped.GLB"]]);
-  expect(invoke).not.toHaveBeenCalled();
+  expect(invoke).not.toHaveBeenCalledWith("load_model", expect.anything());
   expect(useAppStore.getState().pendingImportPath).toBeNull();
   expect(useAppStore.getState().projectPath).toBe("/old.3mf");
 });
+
+it("explicit GLB mesh import skips texture detection and appends the editable geometry", async () => {
+  const preview = vi.fn();
+  const { result } = renderHook(() => useImportStl(preview));
+  await act(async () => { await result.current.importGeometry("/failed-texture.glb"); });
+  expect(invoke).not.toHaveBeenCalledWith("has_gltf_base_color_texture", expect.anything());
+  expect(invoke).toHaveBeenCalledWith("load_model", { path: "/failed-texture.glb" });
+  expect(preview).not.toHaveBeenCalled();
+  expect(useAppStore.getState().projectPath).toBe("/old.3mf");
+});
+
+it.each(["/static.GLB", "/sculpture.OBJ", "/scan.ply", "/scene.gltf", "/scene.fbx", "/scene.usdz"])(
+  "opens %s as an editable plate and keeps the project destination",
+  async (path) => {
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "load_model") return newModel;
+      if (command === "has_gltf_base_color_texture") return false;
+      return { canUndo: false, canRedo: false };
+    });
+    const preview = vi.fn();
+    vi.mocked(open).mockResolvedValue(path);
+    const { result } = renderHook(() => useImportStl(preview));
+    await act(async () => { await result.current.importStl(); });
+    expect(invoke).toHaveBeenCalledWith("load_model", { path });
+    expect(useAppStore.getState().projectPath).toBe("/old.3mf");
+    expect(preview).not.toHaveBeenCalled();
+  }
+);
 
 it("confirmation imports once without asking again across hook instances", async () => {
   const first = renderHook(() => useImportStl());

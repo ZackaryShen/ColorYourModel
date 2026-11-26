@@ -1,6 +1,6 @@
 use super::texture::TextureImportJobs;
 use super::workspace::{MeshGuard, TabInfo, Workspace};
-use crate::mesh::loader::load_stl;
+use crate::mesh::{exchange, exchange_gltf};
 use crate::mesh::model::MeshDataDto;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -68,6 +68,15 @@ pub(super) fn mesh_response(mut dto: MeshDataDto) -> Result<Response, String> {
 }
 
 #[tauri::command]
+pub(crate) async fn has_gltf_base_color_texture(path: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        exchange_gltf::has_base_color_texture(std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn load_model(
     path: String,
     app: tauri::AppHandle,
@@ -85,15 +94,6 @@ pub async fn load_model(
             .unwrap_or("")
             .to_lowercase();
         let dto = match ext.as_str() {
-            "stl" => {
-                let mesh = load_stl(&path, &progress)?;
-                let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("plate");
-                let mut ws = workspace.lock().map_err(|e| e.to_string())?;
-                let mut jobs = jobs.lock().map_err(|e| e.to_string())?;
-                ws.append(mesh, name.to_owned())?;
-                jobs.invalidate();
-                ws.dto()?
-            }
             "3mf" => {
                 let mut ws = workspace.lock().map_err(|e| e.to_string())?;
                 let mut jobs = jobs.lock().map_err(|e| e.to_string())?;
@@ -101,7 +101,19 @@ pub async fn load_model(
                 jobs.invalidate();
                 ws.dto()?
             }
-            _ => return Err(format!("Unsupported file format: {ext}")),
+            format => {
+                let (mesh, skipped_texture) = exchange::read_model(&path, format, &progress)?;
+                let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("plate");
+                let mut ws = workspace.lock().map_err(|e| e.to_string())?;
+                let mut jobs = jobs.lock().map_err(|e| e.to_string())?;
+                ws.append(mesh, name.to_owned())?;
+                jobs.invalidate();
+                let mut dto = ws.dto()?;
+                if skipped_texture {
+                    dto.import_warning = Some("gltf-texture".into());
+                }
+                dto
+            }
         };
         mesh_response(dto)
     })

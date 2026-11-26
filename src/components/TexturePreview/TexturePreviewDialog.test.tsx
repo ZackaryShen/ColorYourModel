@@ -38,11 +38,12 @@ const session: TextureImportSession = {
 function renderPreview(active: TextureImportSession = session) {
   const onApply = vi.fn();
   const onCancel = vi.fn();
+  const onImportGeometry = vi.fn();
   render(
     <TexturePreviewDialog session={active} onApply={onApply} onCancel={onCancel}
-      onColorLimit={vi.fn()} onRetry={vi.fn()} />,
+      onColorLimit={vi.fn()} onRetry={vi.fn()} onImportGeometry={onImportGeometry} />,
   );
-  return { onApply, onCancel };
+  return { onApply, onCancel, onImportGeometry };
 }
 
 beforeEach(() => {
@@ -54,6 +55,14 @@ beforeEach(() => {
 });
 
 describe("texture import preview", () => {
+  it("offers an explicit geometry import when texture baking fails", () => {
+    const { onImportGeometry } = renderPreview({
+      ...session, phase: "prepare-error", preview: null, error: "Multiple base colour images",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Import mesh with base colours" }));
+    expect(onImportGeometry).toHaveBeenCalledWith(session.path);
+  });
+
   it("explains a reduced preview and keeps the apply decision available", () => {
     renderPreview({ ...session, preview: { ...session.preview!, warning: "budget" } });
     expect(screen.getByText(/subdivision face budget was reached/i)).toBeTruthy();

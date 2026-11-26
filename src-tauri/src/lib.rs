@@ -26,6 +26,7 @@ pub fn run() {
         .manage(commands::update::UpdateState::new())
         .invoke_handler(tauri::generate_handler![
             commands::mesh::load_model,
+            commands::mesh::has_gltf_base_color_texture,
             commands::mesh::switch_tab,
             commands::mesh::close_tab,
             commands::mesh::rename_tab,
@@ -85,6 +86,7 @@ pub fn run() {
             commands::history::history_jump,
             commands::export::export_3mf_command,
             commands::export::export_obj_command,
+            commands::export::export_mesh_command,
             commands::export::list_export_presets,
             commands::export::export_palette_preview,
             commands::export::texture_mapping_preview,

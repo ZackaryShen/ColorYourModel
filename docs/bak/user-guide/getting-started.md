@@ -24,18 +24,19 @@ For a packaged release build, use `npm run tauri build` (produces the installer 
 
 ## Your first colour job
 
-1. **Import** an STL white model (binary or ASCII) via the 📂 button — or just drag the file onto the window. 1.5M-face-class models load in ~4 s with a progress bar.
+1. **Import** a model via the 📂 button or drag the file onto the window. See [mesh formats](exporting.md#exchange-meshes-with-design-tools) for available formats, units and colours.
 2. **Segment** — nothing runs automatically; open the **Seed panel** and click fuse (or place seeds and grow) — see [Seed Tools](seed-tools.md). The model stays fully usable unsegmented: normal Fill clicks are radius-bounded.
 3. **Refine regions** — merge/split/rename regions in the Segments panel, or resegment a single one.
 4. **Paint** — pick a tool and go (see [Painting Tools](painting-tools.md)). Everything is undoable.
-5. **Export** a 3MF with machine presets, or an OBJ with per-face colours (see [Exporting](exporting.md)), and slice it in Snapmaker Orca / OrcaSlicer.
+5. **Export** a 3MF with machine presets for Snapmaker Orca or OrcaSlicer, or [export the active mesh](exporting.md#exchange-meshes-with-design-tools) to continue in a design tool.
 
 ```mermaid
 flowchart LR
-    A["Import STL"] --> B["Segment<br/>(Seed panel: fuse / grow)"]
+    A["Import model"] --> B["Segment<br/>(Seed panel: fuse / grow)"]
     B --> C["Refine regions"]
     C --> D["Paint"]
-    D --> E["Export 3MF / OBJ"]
+    D --> E["Export 3MF"]
+    D --> G["Export coloured mesh"]
     E --> F["Slice & print"]
 ```
 

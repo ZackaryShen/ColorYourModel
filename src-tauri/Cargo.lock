@@ -654,6 +654,7 @@ name = "color-your-model"
 version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
+ "earcutr",
  "env_logger",
  "gltf",
  "image",
@@ -1150,6 +1151,16 @@ name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+
+[[package]]
+name = "earcutr"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afc28d89ac6cb489f679fcf51aaa62b4667bb0fb73a30f1d4d23949069707c07"
+dependencies = [
+ "itertools 0.14.0",
+ "num-traits",
+]
 
 [[package]]
 name = "either"
@@ -2315,6 +2326,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2519,7 +2539,7 @@ dependencies = [
  "fixed",
  "generator",
  "init_with",
- "itertools",
+ "itertools 0.13.0",
  "log",
  "num-traits",
  "ordered-float 4.6.0",
