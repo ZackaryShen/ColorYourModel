@@ -9,7 +9,7 @@ export async function showTab(data: MeshData | null) {
   const state = useAppStore.getState();
   const path = state.projectPath;
   if (!data) {
-    useAppStore.setState({ meshData: null, segments: [], statusMessage: "status.ready", projectPath: null, importSourcePath: null, tabEpoch: state.tabEpoch + 1, isLoaded: false, tabs: [], activeTabId: null, paintDirty: false, canUndo: false, canRedo: false, hiddenSegments: new Set(), tabViews: {}, pendingPaintResult: null, selectedSegment: null, hoveredSegment: null, mergePicked: [], paintSourceHoverFaces: null, seedPoints: [], suggestedSeeds: [], planarRegions: [], multiviewRegions: [], crossSectionRegions: [], eyeRegions: [] });
+    useAppStore.setState({ meshData: null, segments: [], statusMessage: "status.ready", projectPath: null, importSourcePath: null, tabEpoch: state.tabEpoch + 1, isLoaded: false, tabs: [], activeTabId: null, paintDirty: false, canUndo: false, canRedo: false, hiddenSegments: new Set(), tabViews: {}, pendingPaintResult: null, selectedSegment: null, hoveredSegment: null, mergePicked: [], paintSourceHoverFaces: null, seedPoints: [], suggestedSeeds: [], planarRegions: [], multiviewRegions: [], crossSectionRegions: [], eyeRegions: [], gradientContext: null, gradientEnabled: false, hasGradientPaint: false, showSavedGradientGuide: false });
     return;
   }
   state.setMeshData(data);

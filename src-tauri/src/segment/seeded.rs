@@ -319,7 +319,6 @@ pub fn seed_grow(
 
     // 7. Write labels + colours, record one undo entry (labels only — paint
     //    is untouched, mirroring finalize_manual_region).
-    let mut prev_colors = Vec::with_capacity(n);
     let mut prev_labels = Vec::with_capacity(n);
     let mut moved = 0usize;
     for f in 0..n {
@@ -331,7 +330,6 @@ pub fn seed_grow(
         }
         let fi = f as u32;
         prev_labels.push((fi, mesh.segment_labels[f]));
-        prev_colors.push((fi, mesh.face_colors[f]));
         if mesh.segment_labels[f] != r {
             moved += 1;
         }
@@ -340,7 +338,7 @@ pub fn seed_grow(
         // grow assigns labels (segment view tints by label) but never paints.
     }
     mesh.history
-        .record(OpKind::ManualRegion, None, &prev_colors, &prev_labels);
+        .record(OpKind::ManualRegion, None, &[], &prev_labels);
     mesh.rebuild_segments();
 
     let region_count = region.iter().collect::<HashSet<_>>().len();

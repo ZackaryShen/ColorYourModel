@@ -611,16 +611,8 @@ pub fn finalize_manual_region_with_progress(
     // Colours and labels go into one entry so undo can never restore them out of
     // step, and because the prior state may itself be an earlier manual region
     // the LIFO order keeps overlapping lassos consistent.
-    let mut prev_colors = Vec::with_capacity(region.len());
-    let mut prev_labels = Vec::with_capacity(region.len());
-    for &f in &region {
-        let fi = f as usize;
-        prev_colors.push((f, mesh.face_colors[fi]));
-        prev_labels.push((f, mesh.segment_labels[fi]));
-    }
     // A lasso is a single confirmed gesture, never a coalescing drag: `None`.
-    mesh.history
-        .record(OpKind::ManualRegion, None, &prev_colors, &prev_labels);
+    mesh.record_paint_edit(OpKind::ManualRegion, None, region.iter().copied());
     for &f in &region {
         mesh.segment_labels[f as usize] = label;
         mesh.face_colors[f as usize] = color;

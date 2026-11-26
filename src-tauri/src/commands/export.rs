@@ -1,14 +1,15 @@
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::mesh::AppState;
 use crate::commands::workspace::{SourcePlate, Workspace};
+use crate::export::gradient::{ColorHistograms, GradientColors};
 use crate::export::obj::export_obj;
 use crate::export::paint_color::MAX_EXTRUDER_SLOT;
-use crate::export::presets::{summary, ExportSelection, MachineSummary};
-use crate::export::quantize::{bounded_color_histogram, quantize_histogram};
+use crate::export::presets::{library, summary, ExportSelection, MachineSummary};
+use crate::export::quantize::quantize_histogram;
 use crate::export::source_presets::SourcePresets;
 use crate::export::texture_mapping::{
     preview, suggestions, NominalColorPredictor, Rgb, TextureExportSnapshot, TextureMappingPreview,
@@ -28,14 +29,27 @@ pub fn list_export_presets() -> Vec<MachineSummary> {
     summary()
 }
 
-/// The extruder palette the current mesh would quantise to, as `#RRGGBB`.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportPalettePreview {
+    flat: Vec<String>,
+    gradient_by_slot_count: std::collections::BTreeMap<usize, GradientPalettePreview>,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+struct GradientPalettePreview {
+    colors: Vec<String>,
+    approximated: bool,
+}
+
+/// The filament palettes the project would export, as `#RRGGBB`.
 ///
 /// The export dialog renders one filament picker per entry. It has to come
 /// from the backend: the dialog must show the slots that will actually be
 /// written, and re-deriving them in TypeScript would mean two quantisers that
 /// can drift apart.
 #[tauri::command]
-pub fn export_palette_preview(tab_id: u64, state: State<AppState>) -> Result<Vec<String>, String> {
+pub fn export_palette_preview(tab_id: u64, state: State<AppState>) -> Result<ExportPalettePreview, String> {
     let mut ws = state.workspace.lock().map_err(|e| e.to_string())?;
     ws.validate_active(tab_id)?;
     workspace_palette_preview(&mut ws, &mut |_| {})
@@ -68,32 +82,51 @@ pub struct TextureMappingRequest {
 fn workspace_palette_preview(
     ws: &mut Workspace,
     observe: &mut dyn FnMut(usize),
-) -> Result<Vec<String>, String> {
+) -> Result<ExportPalettePreview, String> {
     ws.ensure_idle()?;
     ws.evict_clean_inactive();
     let mut merged = std::collections::BTreeMap::new();
+    let mut gradients = GradientColors::default();
     for index in 0..ws.tabs.len() {
         if ws.tabs[index].color_histogram.is_none() {
             ws.ensure_resident(index)?;
             observe(ws.tabs.iter().filter(|tab| tab.mesh.is_some()).count());
             let mesh = ws.tabs[index].mesh.as_ref().ok_or("No mesh loaded")?;
-            let histogram = bounded_color_histogram(&mesh.face_colors, mesh.faces.len());
-            ws.tabs[index].color_histogram = Some(histogram);
+            ws.tabs[index].color_histogram = Some(ColorHistograms::from_mesh(mesh));
             ws.evict_clean_inactive();
         }
-        for &(rgb, count) in ws.tabs[index].color_histogram.as_ref().unwrap() {
+        let histograms = ws.tabs[index].color_histogram.as_ref().unwrap();
+        for &(rgb, count) in &histograms.flat {
             *merged.entry(rgb).or_insert(0usize) += count;
         }
+        gradients.absorb(histograms);
     }
     let histogram: Vec<_> = merged.into_iter().collect();
     let mut palette = quantize_histogram(&histogram, MAX_EXTRUDER_SLOT as usize);
     if palette.is_empty() && !ws.tabs.is_empty() {
         palette.push([200, 200, 200]);
     }
-    Ok(palette
-        .iter()
-        .map(|rgb| format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]))
-        .collect())
+    let limits = library().iter()
+        .filter(|machine| machine.model_ids.contains_key("snapmaker_orca"))
+        .flat_map(|machine| machine.variants.iter().map(move |v| {
+            machine.extruder_count(&v.nozzle_diameter).min(usize::from(MAX_EXTRUDER_SLOT))
+        }))
+        .collect::<std::collections::BTreeSet<_>>();
+    let gradient_by_slot_count = limits.into_iter().filter_map(|limit| {
+        let palette = gradients.palette(limit)?;
+        Some((limit, GradientPalettePreview {
+            colors: palette.colors.into_iter().map(hex).collect(),
+            approximated: palette.approximated,
+        }))
+    }).collect();
+    Ok(ExportPalettePreview {
+        flat: palette.into_iter().map(hex).collect(),
+        gradient_by_slot_count,
+    })
+}
+
+fn hex([r, g, b]: [u8; 3]) -> String {
+    format!("#{r:02X}{g:02X}{b:02X}")
 }
 
 /// Build a progress callback that forwards to the frontend as `export-progress`
@@ -126,7 +159,7 @@ fn save_workspace(
     selection: Option<&ExportSelection>,
     preserve_source: bool,
     progress: &dyn Fn(f32, &str),
-) -> Result<(), String> {
+) -> Result<usize, String> {
     let result = (|| {
         if ws.project_path.is_none() {
             if let Ok(destination) = path.canonicalize() {
@@ -202,7 +235,7 @@ fn save_workspace(
                 mesh.history.set_persisted_truncated(tab.history_dropped);
             }
         }
-        Ok(())
+        Ok(report.omitted_gradient_recipes)
     })();
     ws.evict_clean_inactive();
     result
@@ -262,6 +295,19 @@ fn print_texture_plate(
     Ok(())
 }
 
+// Older callers parse "Exported to <path>". Only a caller requesting the
+// save report receives a structured warning when a native recipe cannot fit.
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+pub enum ExportCompletion {
+    Message(String),
+    SaveWarning {
+        message: String,
+        #[serde(rename = "omittedGradientRecipes")]
+        omitted_gradient_recipes: usize,
+    },
+}
+
 /// Export the loaded mesh as a `.3mf`.
 ///
 /// `selection` is optional. `None` keeps the original behaviour — a synthetic
@@ -274,23 +320,25 @@ pub async fn export_3mf_command(
     path: String,
     selection: Option<ExportSelection>,
     preserve_source: Option<bool>,
+    report_warnings: Option<bool>,
     texture: Option<TextureMappingRequest>,
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<String, String> {
+) -> Result<ExportCompletion, String> {
     let mut workspace = state.workspace.lock().map_err(|e| e.to_string())?;
     workspace.validate_active(tab_id)?;
     let output_path = confirmed_output_path(&path)?;
     let progress = export_progress(&app);
     progress(0.05, "3mf:start");
     let preserve_source = preserve_source.unwrap_or(false);
-    if let Some(texture) = texture.as_ref() {
+    let omitted_gradient_recipes = if let Some(texture) = texture.as_ref() {
         if preserve_source {
             return Err(
                 "Save the workspace separately from the mapped texture plate export".into(),
             );
         }
         print_texture_plate(&mut workspace, tab_id, &output_path, texture, &progress)?;
+        0
     } else {
         save_workspace(
             &mut workspace,
@@ -298,8 +346,8 @@ pub async fn export_3mf_command(
             selection.as_ref(),
             preserve_source,
             &progress,
-        )?;
-    }
+        )?
+    };
     progress(0.97, "3mf:verify");
 
     // Adversarial hardening: do NOT trust zip.finish()'s Ok. Confirm the file
@@ -315,7 +363,12 @@ pub async fn export_3mf_command(
         .unwrap_or_else(|_| output_path.clone());
     progress(1.0, "done");
 
-    Ok(format!("Exported to {}", final_path.display()))
+    let message = format!("Exported to {}", final_path.display());
+    if omitted_gradient_recipes > 0 && report_warnings == Some(true) {
+        Ok(ExportCompletion::SaveWarning { message, omitted_gradient_recipes })
+    } else {
+        Ok(ExportCompletion::Message(message))
+    }
 }
 
 /// Export the loaded mesh as a `.obj` + sibling `.mtl`, carrying per-face RGB
@@ -706,7 +759,7 @@ mod preview_tests {
             peak <= 2,
             "must retain active plus at most one clean inactive plate"
         );
-        assert_eq!(first.len(), 3);
+        assert_eq!(first.flat.len(), 3);
         assert!(ws.tabs.iter().all(|t| t.color_histogram.is_some()));
         std::fs::remove_file(&path).unwrap();
         let again = workspace_palette_preview(&mut ws, &mut |_| {}).unwrap();
@@ -730,7 +783,10 @@ mod histogram_invalidation_tests {
             .unwrap()
             .append(crate::mesh::model::MeshModel::new(), "A".into())
             .unwrap();
-        state.workspace.lock().unwrap().tabs[0].color_histogram = Some(vec![([1, 2, 3], 1)]);
+        state.workspace.lock().unwrap().tabs[0].color_histogram = Some(ColorHistograms {
+            flat: vec![([1, 2, 3], 1)],
+            gradient: None,
+        });
         state.lock_mesh(id).unwrap().commit_if(false);
         assert!(state.workspace.lock().unwrap().tabs[0]
             .color_histogram

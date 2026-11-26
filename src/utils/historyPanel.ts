@@ -30,7 +30,7 @@ export interface HistoryRow {
   isRedo: boolean;
 }
 
-/** Pristine row + one row per applied entry, oldest first. `current` is the
+/** Pristine row + one row per timeline entry, oldest first. `current` is the
  *  backend's live depth (`HistoryEntriesResult.current`). */
 export function buildHistoryRows(entries: HistoryPanelEntry[], current: number): HistoryRow[] {
   const rows: HistoryRow[] = [

@@ -1,7 +1,7 @@
 //! Project-state codec shared by the 3MF writer, the 3MF reader's fallback
 //! path and (in P2) the tab swap cache.
 //!
-//! Three parts, each independently optional:
+//! Core parts and optional paint metadata:
 //!
 //! * `project.json` — the header: format version, app, unit, active plate and
 //!   one [`PlateStateHeader`] per plate with the geometry fingerprint that
@@ -10,6 +10,8 @@
 //!   the manual-label high-water mark and the user-supplied region names.
 //! * `history_<i>.bin` — the undo/redo stacks, budgeted separately from the
 //!   in-memory history so a save can never be as large as the live process.
+//! * `gradient_faces_<i>.bin` — authored ramps and the exact blend sample for
+//!   each gradient-painted face. Undo and redo samples use the same ramp IDs.
 //!
 //! Geometry is never duplicated here: the 3MF mesh is authoritative, and the
 //! [`Fingerprint`] is what ties the saved state to it.
@@ -18,8 +20,12 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::mesh::history::{History, OpKind, RawEntry, DEFAULT_BYTE_BUDGET, DEFAULT_MAX_DEPTH};
-use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR};
+use crate::mesh::history::{
+    GradientContext, GradientTool, History, OpKind, RawEntry, DEFAULT_BYTE_BUDGET,
+    DEFAULT_MAX_DEPTH,
+};
+use crate::mesh::model::{GradientSample, MeshModel, DEFAULT_FACE_COLOR};
+use crate::paint::gradient::{GradientHit, MAX_POINTS, MAX_RADIUS, MAX_STOPS};
 
 /// Major version of the engineering parts.
 ///
@@ -448,6 +454,139 @@ pub fn decode_paint_sources(bytes: &[u8], face_count: usize) -> Result<PaintSour
     Ok(sources)
 }
 
+/// Optional exact per-face gradient semantics for the current state.
+const LEGACY_GRADIENT_MAGIC: &[u8; 8] = b"CYMGR1\x01\0";
+const GRADIENT_MAGIC: &[u8; 8] = b"CYMGR1\x02\0";
+const LEGACY_GRADIENT_RECORD_BYTES: usize = 4 + 4 + 4 + 2;
+const GRADIENT_RECORD_BYTES: usize = LEGACY_GRADIENT_RECORD_BYTES + 4;
+
+fn gradient_record_bytes(has_ramp_ids: bool) -> usize {
+    if has_ramp_ids {
+        GRADIENT_RECORD_BYTES
+    } else {
+        LEGACY_GRADIENT_RECORD_BYTES
+    }
+}
+
+fn write_gradient(out: &mut Vec<u8>, (face, sample): (u32, GradientSample)) {
+    out.extend_from_slice(&face.to_le_bytes());
+    out.extend_from_slice(&sample.from);
+    out.extend_from_slice(&sample.to);
+    out.extend_from_slice(&sample.mix.to_le_bytes());
+    out.extend_from_slice(&sample.ramp_id.to_le_bytes());
+}
+
+fn read_gradient(
+    cursor: &mut Cursor<'_>,
+    has_ramp_ids: bool,
+    ramps: &[Vec<[u8; 4]>],
+) -> Result<(u32, GradientSample), String> {
+    let face = cursor.u32()?;
+    let from = cursor.take(4)?.try_into().unwrap();
+    let to = cursor.take(4)?.try_into().unwrap();
+    let mix = cursor.u16()?;
+    let ramp_id = if has_ramp_ids { cursor.u32()? } else { 0 };
+    if ramp_id != 0 {
+        let ramp = ramps
+            .get((ramp_id - 1) as usize)
+            .ok_or("gradients: unknown ramp")?;
+        if !ramp.windows(2).any(|stops| stops == [from, to]) {
+            return Err("gradients: sample colours disagree with its ramp".into());
+        }
+    }
+    Ok((
+        face,
+        GradientSample {
+            from,
+            to,
+            mix,
+            ramp_id,
+        },
+    ))
+}
+
+pub fn encode_gradient_faces(mesh: &MeshModel) -> Vec<u8> {
+    let mut entries: Vec<_> = mesh.gradient_faces.iter().map(|(&f, &s)| (f, s)).collect();
+    entries.sort_unstable_by_key(|&(face, _)| face);
+    let ramp_bytes: usize = mesh
+        .gradient_ramps
+        .iter()
+        .map(|ramp| 1 + 4 * ramp.len())
+        .sum();
+    let mut bytes = Vec::with_capacity(
+        GRADIENT_MAGIC.len() + 4 + ramp_bytes + entries.len() * GRADIENT_RECORD_BYTES,
+    );
+    bytes.extend_from_slice(GRADIENT_MAGIC);
+    bytes.extend_from_slice(&(mesh.gradient_ramps.len() as u32).to_le_bytes());
+    for ramp in &mesh.gradient_ramps {
+        bytes.push(ramp.len() as u8);
+        for stop in ramp {
+            bytes.extend_from_slice(stop);
+        }
+    }
+    for record in entries {
+        write_gradient(&mut bytes, record);
+    }
+    bytes
+}
+
+pub fn decode_gradient_faces(
+    bytes: &[u8],
+    colors: &[[u8; 4]],
+) -> Result<(HashMap<u32, GradientSample>, Vec<Vec<[u8; 4]>>), String> {
+    let (body, has_ramp_ids) = if let Some(body) = bytes.strip_prefix(GRADIENT_MAGIC) {
+        (body, true)
+    } else {
+        (
+            bytes
+                .strip_prefix(LEGACY_GRADIENT_MAGIC)
+                .ok_or("gradients: invalid header")?,
+            false,
+        )
+    };
+    let mut cursor = Cursor::new(body);
+    let mut ramps = Vec::new();
+    if has_ramp_ids {
+        let ramp_count = cursor.u32()? as usize;
+        // Bound the table before allocating. Every ramp occupies at least
+        // nine wire bytes and at most MAX_STOPS colours in memory.
+        let max_ramp_bytes = std::mem::size_of::<Vec<[u8; 4]>>() + MAX_STOPS * 4;
+        if !cursor.has_room_for(ramp_count, 1 + 2 * 4)
+            || ramp_count > DEFAULT_BYTE_BUDGET / max_ramp_bytes
+        {
+            return Err("gradients: invalid ramp count".into());
+        }
+        ramps.reserve_exact(ramp_count);
+        for _ in 0..ramp_count {
+            let stops = cursor.u8()? as usize;
+            if !(2..=MAX_STOPS).contains(&stops) {
+                return Err("gradients: invalid colour stop count".into());
+            }
+            let ramp = cursor
+                .take(stops * 4)?
+                .chunks_exact(4)
+                .map(|rgba| rgba.try_into().unwrap())
+                .collect();
+            ramps.push(ramp);
+        }
+    }
+    let size = gradient_record_bytes(has_ramp_ids);
+    let count = cursor.remaining() / size;
+    if cursor.remaining() % size != 0 || count > colors.len() {
+        return Err("gradients: invalid record count".into());
+    }
+    let mut gradients = HashMap::with_capacity(count);
+    for _ in 0..count {
+        let (face, sample) = read_gradient(&mut cursor, has_ramp_ids, &ramps)?;
+        if colors.get(face as usize) != Some(&sample.rgba())
+            || gradients.insert(face, sample).is_some()
+        {
+            return Err("gradients: invalid face, duplicate face or mismatched colour".into());
+        }
+    }
+    Ok((gradients, ramps))
+}
+
 // ---------------------------------------------------------------------------
 // history_<i>.bin
 // ---------------------------------------------------------------------------
@@ -460,6 +599,8 @@ pub const MAX_PERSISTED_HISTORY_BYTES: usize = 64 * 1024 * 1024;
 const MIN_ENTRY_BYTES: usize = 1 + 1 + 4 + 4;
 /// Container overhead: the undo and redo stack counts.
 const HISTORY_HEADER_BYTES: usize = 4 + 4;
+const GRADIENT_CONTEXT_HEADER_BYTES: usize = 4 + 1 + 1 + 2;
+const GRADIENT_HIT_BYTES: usize = 4 + 3 * 4;
 
 /// Serialise `history_<i>.bin` under [`MAX_PERSISTED_HISTORY_BYTES`].
 pub fn encode_history(history: &History) -> Vec<u8> {
@@ -475,17 +616,31 @@ pub fn encode_history_report(history: &History) -> (Vec<u8>, bool) {
 fn entry_wire_len(entry: &RawEntry) -> usize {
     let stroke = if entry.stroke_id.is_some() { 8 } else { 0 };
     // kind + flag + (stroke) + colour count + colours + label count + labels
-    1 + 1 + stroke + 4 + entry.colors.len() * 8 + 4 + entry.labels.len() * 8
+    let gradients = if entry.gradients.is_empty() {
+        0
+    } else {
+        4 + entry.gradients.len() * GRADIENT_RECORD_BYTES
+    };
+    let context = entry.gradient_context.as_ref().map_or(0, |context| {
+        GRADIENT_CONTEXT_HEADER_BYTES
+            + context.stops.len() * 4
+            + context.points.len() * GRADIENT_HIT_BYTES
+    });
+    1 + 1 + stroke + 4 + entry.colors.len() * 8 + 4 + entry.labels.len() * 8 + gradients + context
 }
 
 fn write_entry(out: &mut Vec<u8>, entry: &RawEntry) {
     out.push(entry.kind.to_u8());
-    match entry.stroke_id {
-        Some(stroke_id) => {
-            out.push(1);
-            out.extend_from_slice(&stroke_id.to_le_bytes());
-        }
-        None => out.push(0),
+    // Bit 0 carries the stroke ID, bit 1 gradient samples, bit 2 the gesture,
+    // and bit 3 the ramp ID in each sample. Earlier samples omit the ID.
+    out.push(
+        u8::from(entry.stroke_id.is_some())
+            | (u8::from(!entry.gradients.is_empty()) << 1)
+            | (u8::from(entry.gradient_context.is_some()) << 2)
+            | (u8::from(!entry.gradients.is_empty()) << 3),
+    );
+    if let Some(stroke_id) = entry.stroke_id {
+        out.extend_from_slice(&stroke_id.to_le_bytes());
     }
     out.extend_from_slice(&(entry.colors.len() as u32).to_le_bytes());
     for (face, rgba) in &entry.colors {
@@ -496,6 +651,27 @@ fn write_entry(out: &mut Vec<u8>, entry: &RawEntry) {
     for (face, label) in &entry.labels {
         out.extend_from_slice(&face.to_le_bytes());
         out.extend_from_slice(&label.to_le_bytes());
+    }
+    if !entry.gradients.is_empty() {
+        out.extend_from_slice(&(entry.gradients.len() as u32).to_le_bytes());
+        for &record in &entry.gradients {
+            write_gradient(out, record);
+        }
+    }
+    if let Some(context) = &entry.gradient_context {
+        out.extend_from_slice(&context.radius.to_le_bytes());
+        out.push(u8::from(context.whole_region));
+        out.push(context.stops.len() as u8);
+        out.extend_from_slice(&(context.points.len() as u16).to_le_bytes());
+        for stop in &context.stops {
+            out.extend_from_slice(stop);
+        }
+        for hit in &context.points {
+            out.extend_from_slice(&hit.face_id.to_le_bytes());
+            for value in hit.point {
+                out.extend_from_slice(&value.to_le_bytes());
+            }
+        }
     }
 }
 
@@ -588,7 +764,11 @@ fn empty_history_container() -> Vec<u8> {
 /// depth limit, and the decoded payload may not exceed the in-memory byte
 /// budget. Without that, a crafted 512 MB (allowed) entry could ask
 /// [`Vec::with_capacity`] for gigabytes.
-pub fn decode_history(bytes: &[u8], face_count: usize) -> Result<Option<History>, String> {
+pub fn decode_history_with_ramps(
+    bytes: &[u8],
+    face_count: usize,
+    ramps: &[Vec<[u8; 4]>],
+) -> Result<Option<History>, String> {
     if bytes.len() > MAX_PERSISTED_HISTORY_BYTES {
         return Err(format!(
             "history: {} bytes exceeds the {} byte persisted-history budget",
@@ -614,7 +794,7 @@ pub fn decode_history(bytes: &[u8], face_count: usize) -> Result<Option<History>
     let mut undo = Vec::with_capacity(undo_count.min(DEFAULT_MAX_DEPTH));
     let mut decoded_bytes = 0usize;
     for _ in 0..undo_count {
-        match decode_entry(&mut cursor, face_count)? {
+        match decode_entry(&mut cursor, face_count, ramps)? {
             Some(entry) => {
                 decoded_bytes = decoded_bytes.saturating_add(entry_memory_bytes(&entry));
                 if decoded_bytes > DEFAULT_BYTE_BUDGET {
@@ -643,7 +823,7 @@ pub fn decode_history(bytes: &[u8], face_count: usize) -> Result<Option<History>
     }
     let mut redo = Vec::with_capacity(redo_count.min(DEFAULT_MAX_DEPTH));
     for _ in 0..redo_count {
-        match decode_entry(&mut cursor, face_count)? {
+        match decode_entry(&mut cursor, face_count, ramps)? {
             Some(entry) => {
                 decoded_bytes = decoded_bytes.saturating_add(entry_memory_bytes(&entry));
                 if decoded_bytes > DEFAULT_BYTE_BUDGET {
@@ -672,6 +852,11 @@ pub fn decode_history(bytes: &[u8], face_count: usize) -> Result<Option<History>
     Ok(Some(History::from_raw(undo, redo)))
 }
 
+#[cfg(test)]
+pub fn decode_history(bytes: &[u8], face_count: usize) -> Result<Option<History>, String> {
+    decode_history_with_ramps(bytes, face_count, &[])
+}
+
 /// In-memory footprint of one decoded entry, matching [`History::from_raw`]'s
 /// len-based accounting. Used to keep a file from exceeding the live history's
 /// byte budget.
@@ -679,23 +864,30 @@ fn entry_memory_bytes(entry: &RawEntry) -> usize {
     std::mem::size_of::<RawEntry>()
         + entry.colors.len() * std::mem::size_of::<(u32, [u8; 4])>()
         + entry.labels.len() * std::mem::size_of::<(u32, u32)>()
+        + entry.gradients.len() * std::mem::size_of::<(u32, GradientSample)>()
+        + entry
+            .gradient_context
+            .as_deref()
+            .map_or(0, GradientContext::bytes)
 }
 
-fn decode_entry(cursor: &mut Cursor<'_>, face_count: usize) -> Result<Option<RawEntry>, String> {
+fn decode_entry(
+    cursor: &mut Cursor<'_>,
+    face_count: usize,
+    ramps: &[Vec<[u8; 4]>],
+) -> Result<Option<RawEntry>, String> {
     let kind_byte = cursor.u8()?;
     let Some(kind) = OpKind::from_u8(kind_byte) else {
-        log::warn!(
-            "history: unknown op kind {kind_byte} (this build understands 0..=4); dropping the persisted history"
-        );
+        log::warn!("history: unknown op kind {kind_byte}; dropping the persisted history");
         return Ok(None);
     };
 
-    let stroke_flag = cursor.u8()?;
-    let stroke_id = match stroke_flag {
-        0 => None,
-        1 => Some(cursor.u64()?),
-        other => return Err(format!("history: invalid stroke flag {other}")),
-    };
+    let flags = cursor.u8()?;
+    let has_ramp_ids = flags & 8 != 0;
+    if flags & !15 != 0 || (has_ramp_ids && flags & 2 == 0) {
+        return Err(format!("history: unknown entry flags {flags}"));
+    }
+    let stroke_id = (flags & 1 != 0).then(|| cursor.u64()).transpose()?;
 
     let color_count = cursor.u32()? as usize;
     // Each colour record is a u32 face plus four RGBA bytes.
@@ -738,12 +930,98 @@ fn decode_entry(cursor: &mut Cursor<'_>, face_count: usize) -> Result<Option<Raw
         labels.push((face, label));
     }
 
+    let mut gradients = Vec::new();
+    if flags & 2 != 0 {
+        let count = cursor.u32()? as usize;
+        if count == 0
+            || count > color_count.min(face_count)
+            || !cursor.has_room_for(count, gradient_record_bytes(has_ramp_ids))
+        {
+            return Err("history: invalid gradient record count".into());
+        }
+        // Gradient records follow the colour records' order, but omit the
+        // faces that held solid paint. Check membership, order and RGBA.
+        let mut color_entries = colors.iter();
+        gradients.reserve_exact(count);
+        for _ in 0..count {
+            let (face, sample) = read_gradient(cursor, has_ramp_ids, ramps)?;
+            let previous_color = color_entries.find(|(candidate, _)| *candidate == face);
+            if previous_color.map(|&(_, color)| color) != Some(sample.rgba()) {
+                return Err("history: gradient disagrees with the colour payload".into());
+            }
+            gradients.push((face, sample));
+        }
+    }
+
+    let gradient_context = match (kind, flags & 4 != 0) {
+        (OpKind::GradientBrush, true) => Some(Box::new(read_gradient_context(
+            cursor,
+            GradientTool::Brush,
+            face_count,
+        )?)),
+        (OpKind::GradientFill, true) => Some(Box::new(read_gradient_context(
+            cursor,
+            GradientTool::Fill,
+            face_count,
+        )?)),
+        (OpKind::GradientBrush | OpKind::GradientFill, false) | (_, true) => {
+            return Err("history: invalid gradient context flag".into());
+        }
+        _ => None,
+    };
+
     Ok(Some(RawEntry {
         kind,
         stroke_id,
         colors,
         labels,
+        gradients,
+        gradient_context,
     }))
+}
+
+fn read_gradient_context(
+    cursor: &mut Cursor<'_>,
+    tool: GradientTool,
+    face_count: usize,
+) -> Result<GradientContext, String> {
+    let radius = cursor.f32()?;
+    let region_flag = cursor.u8()?;
+    let stop_count = cursor.u8()? as usize;
+    let point_count = cursor.u16()? as usize;
+    let valid_gesture = match tool {
+        GradientTool::Brush => region_flag == 0 && (1..=MAX_POINTS).contains(&point_count),
+        GradientTool::Fill => region_flag <= 1 && point_count == 2,
+    };
+    if !valid_gesture
+        || !radius.is_finite()
+        || radius <= 0.0
+        || radius > MAX_RADIUS
+        || !(2..=MAX_STOPS).contains(&stop_count)
+        || cursor.remaining() < stop_count * 4 + point_count * GRADIENT_HIT_BYTES
+    {
+        return Err("history: invalid gradient context".into());
+    }
+    let mut stops = Vec::with_capacity(stop_count);
+    for _ in 0..stop_count {
+        stops.push(cursor.take(4)?.try_into().unwrap());
+    }
+    let mut points = Vec::with_capacity(point_count);
+    for _ in 0..point_count {
+        let face_id = cursor.u32()?;
+        let point = [cursor.f32()?, cursor.f32()?, cursor.f32()?];
+        if !face_is_valid(face_id, face_count) || !point.iter().all(|value| value.is_finite()) {
+            return Err("history: invalid gradient hit".into());
+        }
+        points.push(GradientHit { face_id, point });
+    }
+    Ok(GradientContext {
+        tool,
+        stops: stops.into_boxed_slice(),
+        points: points.into_boxed_slice(),
+        radius,
+        whole_region: region_flag == 1,
+    })
 }
 
 fn face_is_valid(face: u32, face_count: usize) -> bool {
@@ -811,6 +1089,10 @@ impl<'a> Cursor<'a> {
         Ok(u32::from_le_bytes(bytes))
     }
 
+    fn f32(&mut self) -> Result<f32, String> {
+        self.u32().map(f32::from_bits)
+    }
+
     fn u64(&mut self) -> Result<u64, String> {
         let bytes: [u8; 8] = self
             .take(8)?
@@ -826,6 +1108,75 @@ mod tests {
     use crate::mesh::history::{History, OpKind, RawEntry};
     use crate::mesh::model::MeshModel;
     use std::collections::HashMap;
+
+    #[test]
+    fn gradient_parts_and_history_accept_legacy_samples_and_validate_new_ramp_ids() {
+        let ramp = vec![[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]];
+        let sample = GradientSample {
+            from: ramp[1],
+            to: ramp[2],
+            mix: 32768,
+            ramp_id: 1,
+        };
+        let colors = [sample.rgba()];
+        let mut mesh = MeshModel::new();
+        mesh.gradient_ramps.push(ramp);
+        mesh.gradient_faces.insert(0, sample);
+        let bytes = encode_gradient_faces(&mesh);
+        let (faces, ramps) = decode_gradient_faces(&bytes, &colors).unwrap();
+        assert_eq!(faces, mesh.gradient_faces);
+        assert_eq!(ramps, mesh.gradient_ramps);
+        // A paint entry can restore a gradient even when the live mesh has
+        // no gradient faces. The ramp table belongs to the whole plate.
+        mesh.gradient_faces.clear();
+        assert_eq!(
+            decode_gradient_faces(&encode_gradient_faces(&mesh), &colors)
+                .unwrap()
+                .1,
+            ramps
+        );
+
+        let entry = RawEntry {
+            kind: OpKind::Paint,
+            stroke_id: None,
+            colors: vec![(0, colors[0])],
+            labels: vec![],
+            gradients: vec![(0, sample)],
+            gradient_context: None,
+        };
+        let mut history = vec![];
+        write_entry(&mut history, &entry);
+        assert_eq!(history.len(), entry_wire_len(&entry));
+        let decoded = decode_entry(&mut Cursor::new(&history), 1, &ramps)
+            .unwrap()
+            .unwrap();
+        assert_eq!(decoded.gradients, entry.gradients);
+        assert!(decode_entry(&mut Cursor::new(&history), 1, &[]).is_err());
+        history[1] &= !8;
+        history.truncate(history.len() - 4);
+        let decoded = decode_entry(&mut Cursor::new(&history), 1, &[])
+            .unwrap()
+            .unwrap();
+        let legacy = GradientSample {
+            ramp_id: 0,
+            ..sample
+        };
+        assert_eq!(decoded.gradients, [(0, legacy)]);
+
+        let mut legacy_part = LEGACY_GRADIENT_MAGIC.to_vec();
+        let record_start = bytes.len() - GRADIENT_RECORD_BYTES;
+        legacy_part.extend_from_slice(&bytes[record_start..bytes.len() - 4]);
+        assert_eq!(
+            decode_gradient_faces(&legacy_part, &colors).unwrap(),
+            (HashMap::from([(0, legacy)]), vec![])
+        );
+        let mut corrupt = bytes.clone();
+        *corrupt.last_mut().unwrap() = 1;
+        assert!(decode_gradient_faces(&corrupt, &colors).is_err());
+        let mut corrupt = bytes;
+        corrupt[GRADIENT_MAGIC.len()..GRADIENT_MAGIC.len() + 4].fill(255);
+        assert!(decode_gradient_faces(&corrupt, &colors).is_err());
+    }
 
     /// A mesh with every persisted field set to a non-default value, including
     /// a non-ASCII region name.
@@ -1277,12 +1628,16 @@ mod tests {
             stroke_id: None,
             colors: (0..16u32).map(|face| (face, [1, 2, 3, 4])).collect(),
             labels: vec![],
+            gradients: Vec::new(),
+            gradient_context: None,
         };
         let redo_entry = RawEntry {
             kind: OpKind::Paint,
             stroke_id: None,
             colors: vec![(20, [5, 6, 7, 8])],
             labels: vec![],
+            gradients: Vec::new(),
+            gradient_context: None,
         };
         let history = History::from_raw(vec![undo_entry], vec![redo_entry]);
 
@@ -1307,12 +1662,16 @@ mod tests {
             stroke_id: None,
             colors: vec![(0, [1, 2, 3, 4])],
             labels: vec![],
+            gradients: Vec::new(),
+            gradient_context: None,
         };
         let top = RawEntry {
             kind: OpKind::Paint,
             stroke_id: None,
             colors: vec![(1, [5, 6, 7, 8])],
             labels: vec![],
+            gradients: Vec::new(),
+            gradient_context: None,
         };
         let history = History::from_raw(Vec::new(), vec![bottom, top]);
         // Entry wire size = 1+1+4+8+4 = 18; header = 8. One 18-byte slot fits.

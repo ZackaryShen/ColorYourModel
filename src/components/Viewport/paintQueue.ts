@@ -1,66 +1,61 @@
-/** Serial paint queue shared by every pointer-driven paint tool.
- *
- * A drag fires one async backend call per pointermove. Fire-and-forget invokes
- * returned OUT OF ORDER while `updateFaceColors` wrote them synchronously, so
- * overlapping brush strokes overwrote each other — the "color not following
- * the cursor" defect (iteration 15, req #2). Draining strictly in enqueue
- * order guarantees faces are colored in the order the cursor visited them.
- *
- * Latest-wins consumer throttle (iteration 16, REFUTE blocker-3): while a
- * Tauri paint IPC is in flight, only the MOST RECENT job is kept. The queue
- * never grows unbounded, so the visual paint lags by at most one round-trip,
- * and intermediate faces are covered by the brush's radius flood-fill.
- *
- * Every job carries the `strokeId` minted at pointerdown. The backend
- * coalesces consecutive paint calls sharing a `stroke_id` into ONE undo entry
- * (`mesh/history.rs`), so a single brush drag is one Ctrl+Z step. Dropping the
- * field on the way through this queue — exactly what v0.1.1 did (issue #20) —
- * made the backend see `stroke_id: None` for every sample and peeled each
- * stroke back one pointermove at a time. `paintQueue.test.ts` pins the
- * forwarding.
- */
+/** Serialise edit commands and their render updates. Adjacent pending solid
+ * samples coalesce. Completed gestures and history actions keep their place. */
 
-/** One unit of paint work, as produced by a pointerdown/pointermove sample. */
+/** One input sample for the solid paint tools. */
 export interface PaintJob {
   faceId: number;
   wholeRegion: boolean;
   hoveredSegment?: number | null;
   renderedHover?: number | null;
-  /** Stroke id minted at pointerdown; the backend's undo-coalescing key. */
+  /** The backend groups samples with the same pointerdown id into one undo entry. */
   strokeId?: number | null;
 }
 
 export interface SerialPaintQueue<Job> {
-  enqueue(job: Job): void;
+  enqueue(job: Job, kind?: "sample" | "gesture"): void;
+  enqueueAction(job: Job): Promise<void>;
   cancel(): void;
 }
 
-/** Create the drain-serially, latest-wins queue. `fn` is the backend call;
- *  a job whose `fn` rejects is swallowed — one failed face must not kill the
- *  queue, the next enqueue restarts the drain. */
+type Pending<Job> = {
+  job: Job;
+  kind: "sample" | "gesture";
+  resolve?: () => void;
+  reject?: (error: unknown) => void;
+};
+
+/** Process a job and apply its result before starting the next one. */
 export function createSerialPaintQueue<Job>(
   fn: (job: Job) => Promise<void>
 ): SerialPaintQueue<Job> {
-  let pending: Job | null = null;
+  const pending: Pending<Job>[] = [];
   let draining = false;
-  return {
-    cancel() { pending = null; },
-    enqueue(job: Job) {
-      pending = job; // busy → drop intermediate (covered by radius)
-      if (draining) return;
-      draining = true;
-      void (async () => {
-        while (pending != null) {
-          const next = pending;
-          pending = null;
-          try {
-            await fn(next);
-          } catch {
-            /* ignore single-face failures */
-          }
+  const add = (entry: Pending<Job>) => {
+    if (entry.kind === "sample" && pending[pending.length - 1]?.kind === "sample") pending.pop();
+    pending.push(entry);
+    if (draining) return;
+    draining = true;
+    void (async () => {
+      for (let next = pending.shift(); next; next = pending.shift()) {
+        try {
+          await fn(next.job);
+          next.resolve?.();
+        } catch (error) {
+          next.reject?.(error);
         }
-        draining = false;
-      })();
+      }
+      draining = false;
+    })();
+  };
+  return {
+    cancel() {
+      for (const entry of pending.splice(0)) entry.resolve?.();
+    },
+    enqueue(job: Job, kind = "sample") {
+      add({ job, kind });
+    },
+    enqueueAction(job: Job) {
+      return new Promise<void>((resolve, reject) => add({ job, kind: "gesture", resolve, reject }));
     },
   };
 }

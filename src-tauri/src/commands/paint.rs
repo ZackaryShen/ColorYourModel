@@ -3,10 +3,12 @@ use tauri::State;
 
 use crate::commands::mesh::AppState;
 use crate::mesh::face_colors::mix_color;
+use crate::mesh::history::{GradientContext, GradientTool};
 use crate::mesh::kdtree::distance;
-use crate::mesh::model::DEFAULT_FACE_COLOR;
+use crate::mesh::model::{GradientSample, MeshModel, DEFAULT_FACE_COLOR};
 use crate::paint::brush::{brush_hit, falloff_strength};
 use crate::paint::fill::{region_faces, segment_faces};
+use crate::paint::gradient::{self, GradientHit};
 use crate::paint::smart_snap::smart_brush_hit;
 use crate::paint::spray::spray_hit;
 
@@ -35,9 +37,9 @@ fn commit(
     let updates: Vec<_> = updates
         .into_iter()
         .filter(|(face, color)| {
-            mesh.face_colors
-                .get(*face as usize)
-                .is_some_and(|old| old != color || tracks_coverage)
+            mesh.face_colors.get(*face as usize).is_some_and(|old| {
+                old != color || tracks_coverage || mesh.gradient_faces.contains_key(face)
+            })
         })
         .collect();
     mesh.apply_paint(stroke_id, &updates);
@@ -55,10 +57,8 @@ fn commit_dabs(
     mut dabs: Vec<(u32, f32)>,
     color: [u8; 4],
 ) -> PaintResult {
-    if mesh.texture_painting {
-        // The outer half of a step brush can hit faces with zero coverage.
-        dabs.retain(|&(_, strength)| strength.is_finite() && strength > 0.0);
-    }
+    // A zero-coverage step dab must leave the current paint and its source intact.
+    dabs.retain(|&(_, strength)| strength.is_finite() && strength > 0.0);
     let updates = dabs
         .iter()
         .map(|&(face, strength)| {
@@ -168,15 +168,7 @@ pub fn apply_fill(
     hidden: &std::collections::HashSet<u32>,
 ) -> PaintResult {
     let faces = if radius > 0.0 {
-        let center = mesh.face_center(face_id);
-        let cand = mesh.faces_within_radius(&center, radius);
-        let mut local = Vec::new();
-        for fid in cand {
-            if distance(&center, &mesh.face_center(fid)) < radius {
-                local.push(fid);
-            }
-        }
-        cull_hidden(mesh, local, hidden)
+        cull_hidden(mesh, local_fill_faces(mesh, face_id, radius), hidden)
     } else {
         region_faces(mesh, face_id)
     };
@@ -185,6 +177,128 @@ pub fn apply_fill(
     // anything: `None`.
     let updates: Vec<(u32, [u8; 4])> = faces.into_iter().map(|fid| (fid, color)).collect();
     commit(mesh, None, updates, None)
+}
+
+fn local_fill_faces(mesh: &MeshModel, face_id: u32, radius: f32) -> Vec<u32> {
+    let center = mesh.face_center(face_id);
+    mesh.faces_within_radius(&center, radius)
+        .into_iter()
+        .filter(|&face| distance(&center, &mesh.face_center(face)) < radius)
+        .collect()
+}
+
+fn commit_gradient(
+    mesh: &mut MeshModel,
+    mut updates: Vec<(u32, GradientSample)>,
+    context: GradientContext,
+) -> PaintResult {
+    updates.retain(|(face, sample)| {
+        mesh.gradient_faces.get(face).is_none_or(|previous| {
+            let candidate = GradientSample { ramp_id: previous.ramp_id, ..*sample };
+            candidate != *previous
+                || mesh.gradient_ramp(previous.ramp_id) != Some(context.stops.as_ref())
+        })
+    });
+    updates.sort_unstable_by_key(|&(face, _)| face);
+    mesh.apply_gradient(&updates, context);
+    let (updated_faces, updated_colors) = updates
+        .into_iter()
+        .map(|(face, _)| (face, mesh.face_colors[face as usize]))
+        .unzip();
+    PaintResult {
+        updated_faces,
+        updated_colors,
+    }
+}
+
+fn apply_gradient_brush(
+    mesh: &mut MeshModel,
+    points: &[GradientHit],
+    stops: &[[u8; 4]],
+    radius: f32,
+) -> Result<PaintResult, String> {
+    gradient::validate(mesh, stops, radius)?;
+    let updates = gradient::brush_samples(mesh, points, stops, radius)?;
+    Ok(commit_gradient(
+        mesh,
+        updates,
+        GradientContext {
+            tool: GradientTool::Brush,
+            stops: stops.into(),
+            points: points.into(),
+            radius,
+            whole_region: false,
+        },
+    ))
+}
+
+#[tauri::command]
+pub fn gradient_brush_paint(
+    points: Vec<GradientHit>,
+    stops: Vec<[u8; 4]>,
+    radius: f32,
+    tab_id: u64,
+    state: State<AppState>,
+) -> Result<PaintResult, String> {
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let result = apply_gradient_brush(mesh, &points, &stops, radius)?;
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
+    Ok(result)
+}
+
+fn apply_gradient_fill(
+    mesh: &mut MeshModel,
+    start: GradientHit,
+    end: GradientHit,
+    stops: &[[u8; 4]],
+    radius: f32,
+    whole_region: bool,
+) -> Result<PaintResult, String> {
+    gradient::validate(mesh, stops, radius)?;
+    let start_point = gradient::hit_point(mesh, start)?;
+    let end_point = gradient::hit_point(mesh, end)?;
+    let segment = mesh
+        .segment_labels
+        .get(start.face_id as usize)
+        .filter(|label| mesh.segments.contains_key(label));
+    let faces = if whole_region {
+        region_faces(mesh, start.face_id)
+    } else if let Some(&segment) = segment {
+        segment_faces(mesh, segment)
+    } else {
+        local_fill_faces(mesh, start.face_id, radius)
+    };
+    let faces = cull_hidden(mesh, faces, &mesh.hidden_labels);
+    let updates = gradient::fill_samples(mesh, faces, start_point, end_point, stops)?;
+    Ok(commit_gradient(
+        mesh,
+        updates,
+        GradientContext {
+            tool: GradientTool::Fill,
+            stops: stops.into(),
+            points: Box::new([start, end]),
+            radius,
+            whole_region,
+        },
+    ))
+}
+
+#[tauri::command]
+pub fn gradient_fill_paint(
+    start: GradientHit,
+    end: GradientHit,
+    stops: Vec<[u8; 4]>,
+    radius: f32,
+    whole_region: bool,
+    tab_id: u64,
+    state: State<AppState>,
+) -> Result<PaintResult, String> {
+    let mut mesh_guard = state.lock_mesh(tab_id)?;
+    let mesh = mesh_guard.as_mut().ok_or("No mesh loaded")?;
+    let result = apply_gradient_fill(mesh, start, end, &stops, radius, whole_region)?;
+    mesh_guard.commit_if(!result.updated_faces.is_empty());
+    Ok(result)
 }
 
 #[tauri::command]
@@ -391,16 +505,13 @@ pub struct UsedColorDto {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct PaintSourceGroup {
-    /// The user's brush colour (what the palette showed when painting).
-    pub source: [u8; 4],
-    /// Live faces still wearing exactly what that brush pass wrote.
-    pub faces: u32,
+#[serde(untagged)]
+pub enum PaintSourceGroup {
+    Solid { source: [u8; 4], faces: u32 },
+    Gradient { stops: Vec<[u8; 4]>, faces: usize },
 }
 
-/// Paint provenance groups (issue #29 governance): the used-colours panel
-/// lists these as "painted with <colour>" entries — the BRUSH colour, not the
-/// blended per-face result.
+/// The colours and ramps the user painted with, grouped by live provenance.
 #[tauri::command]
 pub async fn paint_source_groups(
     tab_id: u64,
@@ -415,7 +526,10 @@ pub async fn paint_source_groups(
         Ok(mesh
             .paint_source_groups()
             .into_iter()
-            .map(|(source, faces)| PaintSourceGroup { source, faces })
+            .map(|(source, faces)| PaintSourceGroup::Solid { source, faces })
+            .chain(mesh.gradient_paint_groups().into_iter().map(|(stops, faces)| {
+                PaintSourceGroup::Gradient { stops, faces: faces.len() }
+            }))
             .collect())
     })
     .await
@@ -530,13 +644,18 @@ fn apply_replace_paint_source_shaped(
 /// 绘制颜色 swatches (issue #29 governance, acceptance round 4 feedback #4).
 #[tauri::command]
 pub fn paint_source_faces(
-    source: [u8; 4],
+    source: Option<[u8; 4]>,
+    stops: Option<Vec<[u8; 4]>>,
     tab_id: u64,
     state: State<AppState>,
 ) -> Result<Vec<u32>, String> {
     let mesh_guard = state.lock_mesh(tab_id)?;
     let mesh = mesh_guard.as_ref().ok_or("No mesh loaded")?;
-    Ok(mesh.paint_source_faces(source))
+    match (source, stops) {
+        (Some(source), None) => Ok(mesh.paint_source_faces(source)),
+        (None, Some(stops)) => Ok(mesh.gradient_paint_groups().remove(&stops).unwrap_or_default()),
+        _ => Err("Choose one paint source or gradient ramp".into()),
+    }
 }
 
 /// Every distinct colour currently on the model, most faces first (issue
@@ -1189,5 +1308,427 @@ mod replace_colour_tests {
         let result = apply_replace_face_color(&mut m, DEFAULT_FACE_COLOR, GREEN);
         assert_eq!(result.faces, 0);
         assert_eq!(m.history.undo_depth(), 0);
+    }
+}
+
+#[cfg(test)]
+mod gradient_tests {
+    use super::*;
+    use crate::mesh::model::MeshModel;
+
+    const RED: [u8; 4] = [255, 0, 0, 255];
+    const BLUE: [u8; 4] = [0, 0, 255, 255];
+    const STOPS: [[u8; 4]; 2] = [RED, BLUE];
+
+    fn strip() -> MeshModel {
+        let mut mesh = MeshModel::new();
+        for x in 0..=4 {
+            mesh.vertices
+                .extend([[x as f32, 0.0, 0.0], [x as f32, 1.0, 0.0]]);
+        }
+        for i in (0..8).step_by(2) {
+            mesh.faces
+                .extend([[i, i + 2, i + 1], [i + 1, i + 2, i + 3]]);
+        }
+        // An intersecting disconnected triangle must stay unpainted.
+        let first = mesh.vertices.len() as u32;
+        mesh.vertices
+            .extend([[1.0, 0.0, 0.1], [2.0, 0.0, 0.1], [1.0, 1.0, 0.1]]);
+        mesh.faces.push([first, first + 1, first + 2]);
+        mesh.segment_labels = vec![1, 1, 1, 1, 2, 2, 2, 2, 1];
+        mesh.rebuild_segments();
+        mesh.init_default_colors();
+        mesh.compute_bbox();
+        mesh.build_kdtree();
+        mesh.build_adjacency();
+        mesh
+    }
+
+    fn hit(mesh: &MeshModel, face_id: u32) -> GradientHit {
+        GradientHit {
+            face_id,
+            point: mesh.face_center(face_id),
+        }
+    }
+
+    #[test]
+    fn gradient_brush_fills_a_sparse_drag_without_painting_another_surface() {
+        let mut mesh = strip();
+        let points = [hit(&mesh, 0), hit(&mesh, 7)];
+        let result = apply_gradient_brush(&mut mesh, &points, &STOPS, 0.6).unwrap();
+        assert_eq!(result.updated_faces, (0..8).collect::<Vec<_>>());
+        assert_eq!(mesh.face_colors[0], RED);
+        assert_eq!(mesh.face_colors[7], BLUE);
+        assert_eq!(mesh.face_colors[8], DEFAULT_FACE_COLOR);
+        assert_eq!(mesh.gradient_faces.len(), 8);
+        assert_eq!(mesh.history.undo_depth(), 1);
+    }
+
+    #[test]
+    fn gradient_brush_keeps_a_narrow_stroke_continuous_on_coarse_triangles() {
+        let mut mesh = strip();
+        let points = [
+            GradientHit {
+                face_id: 0,
+                point: [0.1, 0.05, 0.0],
+            },
+            GradientHit {
+                face_id: 7,
+                point: [3.99, 0.05, 0.0],
+            },
+        ];
+        let result = apply_gradient_brush(&mut mesh, &points, &STOPS, 0.1).unwrap();
+        assert_eq!(result.updated_faces, (0..8).collect::<Vec<_>>());
+        assert!(mesh.face_colors[3][0] > mesh.face_colors[4][0]);
+        assert_eq!(mesh.face_colors[8], DEFAULT_FACE_COLOR);
+    }
+
+    #[test]
+    fn gradient_fill_uses_start_segment_and_shift_uses_connected_region() {
+        let mut mesh = strip();
+        let start = hit(&mesh, 0);
+        let end = hit(&mesh, 6);
+        let result = apply_gradient_fill(&mut mesh, start, end, &STOPS, 0.6, false).unwrap();
+        assert_eq!(result.updated_faces, [0, 1, 2, 3, 8]);
+        assert_eq!(mesh.face_colors[2], [170, 0, 85, 255]);
+        let mut mesh = strip();
+        let result = apply_gradient_fill(&mut mesh, start, end, &STOPS, 0.6, true).unwrap();
+        assert_eq!(result.updated_faces, [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn gradient_fill_matches_solid_fill_for_a_single_partition_and_local_fallback() {
+        let mut mesh = strip();
+        mesh.segment_labels.fill(0);
+        mesh.rebuild_segments();
+        let start = hit(&mesh, 0);
+        let end = hit(&mesh, 7);
+        let result = apply_gradient_fill(&mut mesh, start, end, &STOPS, 0.6, false).unwrap();
+        assert_eq!(result.updated_faces, (0..9).collect::<Vec<_>>());
+
+        let mut mesh = strip();
+        mesh.segments.clear();
+        let start = hit(&mesh, 0);
+        let end = hit(&mesh, 7);
+        let result = apply_gradient_fill(&mut mesh, start, end, &STOPS, 0.6, false).unwrap();
+        assert_eq!(result.updated_faces, [0, 1]);
+    }
+
+    #[test]
+    fn gradient_brush_uses_arc_length_on_a_bent_path_with_multiple_stops() {
+        let mut mesh = strip();
+        const GREEN: [u8; 4] = [0, 255, 0, 255];
+        let points = [hit(&mesh, 0), hit(&mesh, 7), hit(&mesh, 6)];
+        apply_gradient_brush(&mut mesh, &points, &[RED, GREEN, BLUE], 0.6).unwrap();
+        // The blue end is face 6, but face 7 lies at ~88% of the total arc.
+        assert_eq!(mesh.face_colors[0], RED);
+        assert_eq!(mesh.face_colors[6], BLUE);
+        assert_eq!(mesh.face_colors[7], [0, 63, 192, 255]);
+        assert_eq!(mesh.gradient_faces[&7].from, GREEN);
+        assert_eq!(mesh.gradient_faces[&7].to, BLUE);
+    }
+
+    #[test]
+    fn gradient_rejects_invalid_hits_and_directions_without_mutation() {
+        let mut mesh = strip();
+        let start = hit(&mesh, 0);
+        let mut off_mesh = hit(&mesh, 2);
+        off_mesh.point[2] = 3.0;
+        assert!(apply_gradient_brush(&mut mesh, &[start, off_mesh], &STOPS, 0.6).is_err());
+        assert!(apply_gradient_fill(&mut mesh, start, start, &STOPS, 0.6, false).is_err());
+        assert_eq!(mesh.history.undo_depth(), 0);
+        assert!(mesh.gradient_faces.is_empty());
+        assert_eq!(mesh.face_colors, vec![DEFAULT_FACE_COLOR; 9]);
+    }
+
+    #[test]
+    fn gradient_accepts_six_default_stops_and_the_eight_stop_limit() {
+        let stops = [
+            [235, 65, 75, 255],
+            [252, 143, 45, 255],
+            [250, 219, 72, 255],
+            [83, 197, 105, 255],
+            [53, 140, 245, 255],
+            [149, 79, 230, 255],
+            [128, 0, 255, 255],
+            [255, 0, 128, 255],
+            [255, 255, 255, 255],
+        ];
+        let mut mesh = strip();
+        let start = hit(&mesh, 0);
+        let end = hit(&mesh, 7);
+        apply_gradient_brush(&mut mesh, &[start, end], &stops[..6], 0.6).unwrap();
+        assert_eq!(mesh.face_colors[7], [149, 79, 230, 255]);
+        apply_gradient_fill(&mut mesh, end, start, &stops[..8], 0.6, false).unwrap();
+        assert_eq!(mesh.face_colors[7], [235, 65, 75, 255]);
+        assert!(apply_gradient_brush(&mut mesh, &[start, end], &stops, 0.6).is_err());
+        assert_eq!(mesh.history.undo_depth(), 2);
+    }
+
+    #[test]
+    fn gradient_project_round_trips_semantic_history_and_same_colour_overwrites() {
+        let mut mesh = strip();
+        let points = [hit(&mesh, 0), hit(&mesh, 7)];
+        apply_gradient_brush(&mut mesh, &points, &STOPS, 0.6).unwrap();
+        let gradient = mesh.gradient_faces.clone();
+        let colors = mesh.face_colors.clone();
+
+        // Same RGB, but an explicit solid stroke replaces the gradient.
+        commit(&mut mesh, None, vec![(0, RED)], Some(RED));
+        assert!(!mesh.gradient_faces.contains_key(&0));
+        assert_eq!(mesh.history.undo_depth(), 2);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("gradient.3mf");
+        crate::export::threemf::export_3mf(&mesh, &path, None, &|_, _| {}).unwrap();
+        let mut loaded = crate::threemf::load_plate(&path, 0, &|_, _| {})
+            .unwrap()
+            .mesh;
+        assert_eq!(loaded.face_colors, colors);
+        assert_eq!(loaded.gradient_faces, mesh.gradient_faces);
+        let groups = loaded.gradient_paint_groups();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[STOPS.as_slice()].len(), gradient.len() - 1);
+        assert!(!groups[STOPS.as_slice()].contains(&0));
+
+        loaded
+            .history
+            .undo_with_gradients(
+                &mut loaded.face_colors,
+                &mut loaded.segment_labels,
+                &mut loaded.gradient_faces,
+            )
+            .unwrap();
+        assert_eq!(loaded.gradient_faces, gradient);
+        assert_eq!(loaded.gradient_paint_groups()[STOPS.as_slice()].len(), gradient.len());
+        loaded
+            .history
+            .jump_to_with_gradients(
+                0,
+                &mut loaded.face_colors,
+                &mut loaded.segment_labels,
+                &mut loaded.gradient_faces,
+            )
+            .unwrap();
+        assert!(loaded.gradient_faces.is_empty());
+        assert_eq!(loaded.face_colors, vec![DEFAULT_FACE_COLOR; 9]);
+
+        crate::export::threemf::export_3mf(&loaded, &path, None, &|_, _| {}).unwrap();
+        let mut loaded = crate::threemf::load_plate(&path, 0, &|_, _| {})
+            .unwrap()
+            .mesh;
+        loaded
+            .history
+            .redo_with_gradients(
+                &mut loaded.face_colors,
+                &mut loaded.segment_labels,
+                &mut loaded.gradient_faces,
+            )
+            .unwrap();
+        assert_eq!(loaded.gradient_faces, gradient);
+        loaded
+            .history
+            .redo_with_gradients(
+                &mut loaded.face_colors,
+                &mut loaded.segment_labels,
+                &mut loaded.gradient_faces,
+            )
+            .unwrap();
+        assert_eq!(loaded.gradient_faces, mesh.gradient_faces);
+        assert_eq!(loaded.face_colors, colors);
+    }
+
+    #[test]
+    fn gradient_project_reopens_with_restored_brush_and_redo_fill_context() {
+        use crate::export::threemf::{write_project_3mf, ProjectPlate, ProjectWritePurpose};
+
+        let mut mesh = strip();
+        let points = [hit(&mesh, 0), hit(&mesh, 7)];
+        const GREEN: [u8; 4] = [0, 255, 0, 255];
+        apply_gradient_brush(&mut mesh, &points, &[RED, GREEN, BLUE], 0.6).unwrap();
+        let fill = apply_gradient_fill(&mut mesh, points[1], points[0], &STOPS, 1.5, true).unwrap();
+        mesh.history
+            .undo_with_gradients(
+                &mut mesh.face_colors,
+                &mut mesh.segment_labels,
+                &mut mesh.gradient_faces,
+            )
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("gradient-context.cym.3mf");
+        write_project_3mf(
+            &[ProjectPlate {
+                name: "strip".into(),
+                mesh: &mesh,
+            }],
+            0,
+            &path,
+            None,
+            None,
+            ProjectWritePurpose::EngineeringSave,
+            &|_, _| {},
+        )
+        .unwrap();
+        let mut loaded = crate::threemf::load_plate(&path, 0, &|_, _| {})
+            .unwrap()
+            .mesh;
+
+        let groups = loaded.gradient_paint_groups();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[&[RED, GREEN, BLUE][..]].len(), loaded.gradient_faces.len());
+        let brush = serde_json::to_value(loaded.to_dto()).unwrap();
+        assert_eq!(
+            brush["gradientContext"],
+            serde_json::json!({
+                "tool": "brush", "stops": [RED, GREEN, BLUE], "radius": 0.6_f32,
+                "points": [
+                    {"faceId": 0, "point": points[0].point},
+                    {"faceId": 7, "point": points[1].point}
+                ], "wholeRegion": false
+            })
+        );
+        assert_eq!(
+            loaded
+                .history
+                .entries()
+                .iter()
+                .map(|entry| entry.kind.key())
+                .collect::<Vec<_>>(),
+            ["gradientBrush", "gradientFill"]
+        );
+
+        loaded
+            .history
+            .jump_to_with_gradients(
+                2,
+                &mut loaded.face_colors,
+                &mut loaded.segment_labels,
+                &mut loaded.gradient_faces,
+            )
+            .unwrap();
+        let all_groups = loaded.gradient_paint_groups();
+        assert_eq!(all_groups[STOPS.as_slice()].len(), fill.updated_faces.len());
+        assert_eq!(all_groups[&[RED, GREEN, BLUE][..]].len(),
+            loaded.gradient_faces.len() - fill.updated_faces.len());
+        let fill = serde_json::to_value(loaded.to_dto()).unwrap();
+        assert_eq!(
+            fill["gradientContext"],
+            serde_json::json!({
+                "tool": "fill", "stops": STOPS, "radius": 1.5,
+                "points": [
+                    {"faceId": 7, "point": points[1].point},
+                    {"faceId": 0, "point": points[0].point}
+                ], "wholeRegion": true
+            })
+        );
+    }
+
+    #[test]
+    fn legacy_gradient_history_keeps_semantics_without_inventing_a_gesture() {
+        use crate::mesh::history::{History, OpKind};
+
+        let mut mesh = strip();
+        let points = [hit(&mesh, 0), hit(&mesh, 7)];
+        apply_gradient_brush(&mut mesh, &points, &STOPS, 0.6).unwrap();
+        commit(&mut mesh, None, vec![(0, RED)], Some(RED));
+        let (mut undo, mut redo) = mesh.history.to_raw();
+        for entry in undo.iter_mut().chain(&mut redo) {
+            for (_, sample) in &mut entry.gradients {
+                sample.ramp_id = 0;
+            }
+        }
+        for sample in mesh.gradient_faces.values_mut() {
+            sample.ramp_id = 0;
+        }
+        mesh.gradient_ramps.clear();
+        undo[0].kind = OpKind::Paint;
+        undo[0].gradient_context = None;
+        mesh.history = History::from_raw(undo, redo);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy-gradient.cym.3mf");
+        crate::export::threemf::export_3mf(&mesh, &path, None, &|_, _| {}).unwrap();
+        let loaded = crate::threemf::load_plate(&path, 0, &|_, _| {})
+            .unwrap()
+            .mesh;
+
+        assert!(loaded.to_dto().has_gradient_paint);
+        assert!(loaded.to_dto().gradient_context.is_none());
+        assert_eq!(loaded.gradient_faces, mesh.gradient_faces);
+        let groups = loaded.gradient_paint_groups();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[STOPS.as_slice()].len(), mesh.gradient_faces.len());
+        assert_eq!(
+            loaded
+                .history
+                .entries()
+                .iter()
+                .map(|entry| entry.kind.key())
+                .collect::<Vec<_>>(),
+            ["legacyGradientPaint", "paint"]
+        );
+    }
+
+    #[test]
+    fn whole_ramp_survives_history_eviction_and_project_reopen() {
+        let mut mesh = strip();
+        let stops = [RED, [0, 255, 0, 255], BLUE];
+        let points = [hit(&mesh, 0), hit(&mesh, 7)];
+        apply_gradient_brush(&mut mesh, &points, &stops, 0.6).unwrap();
+        for i in 0..mesh.history.max_depth() {
+            let color = if i % 2 == 0 { RED } else { BLUE };
+            commit(&mut mesh, None, vec![(8, color)], Some(color));
+        }
+        assert!(mesh.history.gradient_context().is_none());
+        assert_eq!(mesh.gradient_paint_groups()[stops.as_slice()].len(), 8);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("evicted-gradient.cym.3mf");
+        crate::export::threemf::export_3mf(&mesh, &path, None, &|_, _| {}).unwrap();
+        let loaded = crate::threemf::load_plate(&path, 0, &|_, _| {}).unwrap().mesh;
+        assert_eq!(loaded.gradient_faces, mesh.gradient_faces);
+        assert_eq!(loaded.gradient_paint_groups()[stops.as_slice()].len(), 8);
+    }
+
+    #[test]
+    #[ignore = "requires the CYM_LEGACY_GRADIENT_PROJECT cylinder file"]
+    fn opens_real_legacy_gradient_project() {
+        let source = std::env::var_os("CYM_LEGACY_GRADIENT_PROJECT").unwrap();
+        let mut mesh = crate::threemf::load_plate(std::path::Path::new(&source), 0, &|_, _| {})
+            .unwrap()
+            .mesh;
+        assert_eq!(mesh.faces.len(), 213_838);
+        assert_eq!(mesh.gradient_faces.len(), 74_510);
+        assert!(mesh
+            .gradient_faces
+            .values()
+            .all(|s| s.from == [235, 65, 75, 255] && s.to == [0, 176, 240, 255]));
+        assert!(mesh.history.gradient_context().is_none());
+        assert_eq!(
+            mesh.history
+                .entries()
+                .iter()
+                .map(|entry| entry.kind.key())
+                .collect::<Vec<_>>(),
+            ["paint", "paint", "legacyGradientPaint"]
+        );
+        let exact = mesh.gradient_faces.clone();
+        mesh.history
+            .undo_with_gradients(
+                &mut mesh.face_colors,
+                &mut mesh.segment_labels,
+                &mut mesh.gradient_faces,
+            )
+            .unwrap();
+        assert!(mesh.gradient_faces.is_empty());
+        mesh.history
+            .redo_with_gradients(
+                &mut mesh.face_colors,
+                &mut mesh.segment_labels,
+                &mut mesh.gradient_faces,
+            )
+            .unwrap();
+        assert_eq!(mesh.gradient_faces, exact);
     }
 }

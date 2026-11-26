@@ -88,6 +88,27 @@ it('remembers the actual complete-project export path for subsequent Save', asyn
   expect(useAppStore.getState().projectPath).toBe('/tmp/B.3mf');
 });
 
+it("shows the number of excess native recipes when a Chinese print export fails", async () => {
+  useAppStore.setState({ meshData: model, activeTabId: 1, language: "zh", projectPath: "/tmp/original.3mf" });
+  vi.mocked(invoke).mockRejectedValue("Snapmaker Orca supports 64 total filament slots. Reduce the number of gradient recipes by at least 2, or split the project.");
+  const { result } = renderHook(() => useTauriCommand());
+  await act(async () => {
+    await expect(result.current.export3mf("/tmp/out.3mf")).rejects.toContain("至少减少 2 组");
+  });
+  expect(useAppStore.getState().projectPath).toBe("/tmp/original.3mf");
+});
+
+it("reports the native recipe limit on save while retaining the canonical project path", async () => {
+  useAppStore.setState({ meshData: model, language: "en", activeTabId: 1, importBusy: false, saveBusy: false });
+  vi.mocked(invoke).mockResolvedValue({ message: "Exported to /tmp/saved.3mf", omittedGradientRecipes: 3 });
+  const { result } = renderHook(() => useTauriCommand());
+  await act(async () => {
+    expect(await result.current.export3mf("/tmp/link.3mf", undefined, true)).toBe("Exported to /tmp/saved.3mf");
+  });
+  expect(useAppStore.getState().projectPath).toBe("/tmp/saved.3mf");
+  expect(useAppStore.getState().toast).toContain("3 gradient");
+});
+
 it("keeps the workspace save path and unrelated dirty plates after exporting a mapped texture plate", async () => {
   vi.mocked(invoke).mockClear();
   const active = { id: 1, name: "Texture", faceCount: 1, dirty: false };

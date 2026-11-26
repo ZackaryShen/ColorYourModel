@@ -186,6 +186,25 @@ const dict: Record<string, Record<Lang, string>> = {
   "shading.flat": { zh: "🎯 平整色（精确）", en: "🎯 Flat (exact color)" },
   "shading.shaded": { zh: "💡 有光影（有形体）", en: "💡 Shaded (3D shape)" },
 
+  "gradient.mode": { zh: "渐变涂色", en: "Gradient" },
+  "gradient.stops": { zh: "颜色节点", en: "Colour stops" },
+  "gradient.stop": { zh: "颜色节点 {0}", en: "Colour stop {0}" },
+  "gradient.add": { zh: "添加颜色节点", en: "Add colour stop" },
+  "gradient.remove": { zh: "移除颜色节点 {0}", en: "Remove colour stop {0}" },
+  "gradient.moveUp": { zh: "上移颜色节点 {0}", en: "Move colour stop {0} up" },
+  "gradient.moveDown": { zh: "下移颜色节点 {0}", en: "Move colour stop {0} down" },
+  "gradient.textureUnavailable": { zh: "纹理盘仅支持纯色涂色。", en: "Texture plates support solid paint only." },
+  "gradient.fillNeedsDrag": { zh: "请在模型表面拖动并松开，指定渐变方向。", en: "Drag and release on the model to set the gradient direction." },
+  "gradient.localFillRadius": { zh: "局部填充半径", en: "Local fill radius" },
+  "gradient.applying": { zh: "正在应用渐变…", en: "Applying gradient…" },
+  "gradient.applied": { zh: "已为 {0} 个面应用渐变。", en: "Applied gradient to {0} faces." },
+  "gradient.noChange": { zh: "没有面发生颜色变化。", en: "No face colours changed." },
+  "gradient.contextUnavailable": { zh: "已恢复渐变涂色，原始手势不可用。", en: "Gradient colours restored. The original gesture is unavailable." },
+  "gradient.savedPath": { zh: "显示已保存的笔迹", en: "Show saved stroke" },
+  "gradient.savedDirection": { zh: "显示已保存的方向", en: "Show saved direction" },
+  "controls.gradientBrushHint": { zh: "左键沿模型表面绘制渐变 · 右键平移 · Ctrl+滚轮调笔刷", en: "Left drag: gradient stroke · Right Pan · Ctrl+Wheel brush size" },
+  "controls.gradientFillHint": { zh: "从目标区域左键拖动指定方向 · Shift：整个连通区域 · 右键平移", en: "Left drag from target region to set direction · Shift: connected region · Right Pan" },
+
   // ColorPanel
   "color.title": { zh: "颜色", en: "Color" },
   // Used colours (issue #23)
@@ -381,6 +400,10 @@ const dict: Record<string, Record<Lang, string>> = {
   "export.process": { zh: "工艺（打印参数）", en: "Process (print profile)" },
   "export.filament": { zh: "耗材（每槽位）", en: "Filament (per slot)" },
   "export.slots": { zh: " 个槽位", en: " slots" },
+  "export.gradientPrintLimit": { zh: "Snapmaker Orca 总共支持 64 个耗材槽。请至少减少 {0} 组渐变配方，或拆分工程后导出。", en: "Snapmaker Orca supports 64 total filament slots. Reduce the number of gradient recipes by at least {0}, or split the project." },
+  "export.gradientSaveLimit": { zh: "工程已保存全部渐变。受 Snapmaker Orca 的 64 个耗材槽限制，切片器中有 {0} 组渐变会显示为纯色。", en: "Project saved with all editable gradients. Snapmaker Orca’s 64-slot limit leaves {0} gradient groups displayed as solid colours in the slicer." },
+  "export.gradientRecipes": { zh: "导出为 Snapmaker Orca 原生 Gradient 配方，按涂色区域的 Z 高度走色。同层横向渐变会被近似。", en: "Export uses native Snapmaker Orca Gradient recipes that change with the painted height. Same-layer colour changes are approximated." },
+  "export.gradientApproximation": { zh: "颜色超出可用耗材槽数，导出会匹配最接近的耗材。原生 Gradient 按涂色区域的 Z 高度走色。", en: "Export matches the nearest filaments when colours exceed the available slots. Native Gradient recipes change with the painted height." },
   "export.selectAll": { zh: "全选槽位", en: "Select all" },
   "export.deselectAll": { zh: "清除选择", en: "Clear selection" },
   "export.applyToSelected": { zh: "套用到所选 ({0})", en: "Apply to selected ({0})" },
@@ -410,6 +433,7 @@ const dict: Record<string, Record<Lang, string>> = {
   "replace.title": { zh: "替换颜色", en: "Replace colour" },
   "color.paintColours": { zh: "绘制颜色", en: "Paint colours" },
   "color.paintTooltip": { zh: "{0} · 画笔绘制的 {1} 面 · 点击选中后可整体换色", en: "{0} · {1} faces painted by the brush · click to select, then repaint as one" },
+  "color.gradientPaintTooltip": { zh: "{0} · 渐变绘制的 {1} 面 · 点击复用渐变", en: "{0} · {1} faces painted with this gradient · click to reuse" },
   "color.repaintHint": { zh: "整体重涂这支笔迹：选一个目标色，重涂会保留笔迹原有的浓淡形态。", en: "Repaint this stroke: pick a target colour — the stroke's falloff shading is preserved." },
   "color.repaintApply": { zh: "重涂这支笔迹", en: "Repaint stroke" },
   "color.repaintNote": { zh: "一步撤销可还原；Esc 取消选中。", en: "One undo step reverts it; Esc cancels the selection." },
@@ -498,6 +522,9 @@ const dict: Record<string, Record<Lang, string>> = {
   "history.header": { zh: "第 {0} / {1} 步 · {2}", en: "Step {0} / {1} · {2}" },
   "history.pristine": { zh: "初始状态", en: "Original state" },
   "history.op.paint": { zh: "画笔", en: "Brush" },
+  "history.op.gradientBrush": { zh: "渐变画笔", en: "Gradient brush" },
+  "history.op.gradientFill": { zh: "渐变填充", en: "Gradient fill" },
+  "history.op.legacyGradientPaint": { zh: "渐变涂色（旧版）", en: "Gradient paint (legacy)" },
   "history.op.segmentPaint": { zh: "分区画笔", en: "Segment brush" },
   "history.op.region": { zh: "手工区域", en: "Manual region" },
   "history.op.merge": { zh: "合并区域", en: "Merge regions" },
@@ -720,6 +747,8 @@ const backendErrors: Array<[needle: string, key: string]> = [
 
 /** Localise a backend error string if it matches a known message. */
 export function translateError(raw: string, lang: Lang): string {
+  const gradientLimit = raw.match(/Snapmaker Orca supports 64 total filament slots\. Reduce the number of gradient recipes by at least (\d+),/);
+  if (gradientLimit) return translate("export.gradientPrintLimit", lang, gradientLimit[1]);
   for (const [needle, key] of backendErrors) {
     if (raw.includes(needle)) return translate(key, lang);
   }

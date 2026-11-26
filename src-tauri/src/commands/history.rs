@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::commands::mesh::AppState;
+use crate::mesh::history::GradientContext;
 use crate::mesh::model::Segment;
 
 /// Above this many faces the incremental path stops being worth it.
@@ -59,6 +60,10 @@ pub struct HistoryResult {
 
     pub can_undo: bool,
     pub can_redo: bool,
+    /// Omitted for ordinary steps, null when seeking removed the last gesture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gradient_context: Option<Option<GradientContext>>,
+    pub has_gradient_paint: bool,
 }
 
 impl HistoryResult {
@@ -75,6 +80,8 @@ impl HistoryResult {
             face_colors: None,
             can_undo,
             can_redo,
+            gradient_context: None,
+            has_gradient_paint: false,
         }
     }
 }
@@ -102,12 +109,13 @@ fn step(tab_id: u64, state: State<AppState>, dir: Direction) -> Result<HistoryRe
         history,
         face_colors,
         segment_labels,
+        gradient_faces,
         ..
     } = mesh;
 
     let outcome = match dir {
-        Direction::Undo => history.undo(face_colors, segment_labels),
-        Direction::Redo => history.redo(face_colors, segment_labels),
+        Direction::Undo => history.undo_with_gradients(face_colors, segment_labels, gradient_faces),
+        Direction::Redo => history.redo_with_gradients(face_colors, segment_labels, gradient_faces),
     };
 
     let Some(outcome) = outcome else {
@@ -127,6 +135,7 @@ fn step(tab_id: u64, state: State<AppState>, dir: Direction) -> Result<HistoryRe
         outcome.faces,
         outcome.colors,
         outcome.labels_changed,
+        outcome.kind.is_gradient(),
     );
     mesh_guard.commit_if(result.applied);
     Ok(result)
@@ -143,7 +152,11 @@ fn history_result(
     faces: Vec<u32>,
     colors: Vec<[u8; 4]>,
     labels_changed: bool,
+    restore_gradient_context: bool,
 ) -> HistoryResult {
+    if faces.iter().any(|face| mesh.gradient_faces.get(face).is_some_and(|sample| sample.ramp_id == 0)) {
+        mesh.recover_gradient_ramps();
+    }
     let full = labels_changed || faces.len() > MAX_INCREMENTAL_FACES;
 
     if labels_changed {
@@ -171,6 +184,9 @@ fn history_result(
         face_colors: full.then(|| flatten(&mesh.face_colors)),
         can_undo: mesh.history.can_undo(),
         can_redo: mesh.history.can_redo(),
+        gradient_context: restore_gradient_context
+            .then(|| mesh.history.gradient_context().cloned()),
+        has_gradient_paint: !mesh.gradient_faces.is_empty(),
     }
 }
 
@@ -232,7 +248,7 @@ pub struct HistoryEntriesResult {
     pub current: usize,
     pub max_depth: usize,
     pub bytes: usize,
-    /// Applied entries, oldest first; depth k = the state after `entries[k-1]`.
+    /// Applied entries followed by redo steps, in timeline order.
     pub entries: Vec<HistoryEntryDto>,
 }
 
@@ -278,10 +294,13 @@ pub fn history_jump(
         history,
         face_colors,
         segment_labels,
+        gradient_faces,
         ..
     } = mesh;
 
-    let Some(out) = history.jump_to(target, face_colors, segment_labels) else {
+    let Some(out) =
+        history.jump_to_with_gradients(target, face_colors, segment_labels, gradient_faces)
+    else {
         return Ok(HistoryResult::empty(
             mesh.history.can_undo(),
             mesh.history.can_redo(),
@@ -295,6 +314,7 @@ pub fn history_jump(
         out.faces,
         out.colors,
         out.labels_changed,
+        true,
     );
     mesh_guard.commit_if(result.applied);
     Ok(result)

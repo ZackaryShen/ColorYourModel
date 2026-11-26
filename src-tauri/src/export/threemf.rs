@@ -15,8 +15,9 @@
 //! `Metadata/project_settings.config`, so both pieces have to be written
 //! together or the colours fall back to whatever preset the user has loaded.
 
-use super::paint_color::{encode_paint_color, MAX_EXTRUDER_SLOT};
-use super::presets::{ExportSelection, ResolvedSelection};
+use super::gradient::{ColorHistograms, PrintGradients};
+use super::paint_color::{encode_paint_color, encode_snapmaker_paint_color, MAX_EXTRUDER_SLOT};
+use super::presets::ExportSelection;
 use super::project_config::{
     build_filament_profile_config, build_machine_profile_config, build_process_profile_config,
     build_project_settings_config, build_selected_filament_config, build_selected_machine_config,
@@ -24,9 +25,10 @@ use super::project_config::{
 };
 use super::project_state;
 use super::quantize::{
-    bounded_color_histogram, map_colors_to_palette, quantize_face_colors, quantize_histogram,
+    map_colors_to_palette, quantize_face_colors, quantize_histogram,
     Quantized,
 };
+use super::source_presets::{GradientPrintMarker, GRADIENT_PRINT_PART};
 use super::texture_mapping::TextureExportSnapshot;
 use crate::mesh::model::MeshModel;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
@@ -73,6 +75,7 @@ pub fn export_3mf(
 #[derive(Debug)]
 pub struct ProjectExportReport {
     pub history_truncated: Vec<bool>,
+    pub omitted_gradient_recipes: usize,
 }
 
 pub struct ProjectPlate<'a> {
@@ -189,26 +192,66 @@ fn write_project(
         return Err("Project has no valid active plate".into());
     }
     let quantized_project;
+    let mut gradients = None;
+    let mut preserve_source_slots = false;
+    let mut native_definitions_len = 0;
     let resolved_project;
     let (quantized, resolved) = if let Some(texture) = texture {
         (&texture.quantized, Some(&texture.resolved))
     } else {
         let colors = project_colors(plates)?;
-        quantized_project = if let Some(source) = source {
-            source.quantize(&colors, colors.len())?
+        let has_gradient = plates.iter().any(|plate| !plate.mesh.gradient_faces.is_empty());
+        let preserve_native_mix = purpose == ProjectWritePurpose::EngineeringSave || selection.is_none();
+        let source_palette = source
+            .map(|s| s.mixed_project_palette(preserve_native_mix, has_gradient))
+            .transpose()?
+            .flatten();
+        if let (Some(source), Some(palette)) = (source, source_palette) {
+            preserve_source_slots = true;
+            let native_definitions = source.native_definitions();
+            native_definitions_len = native_definitions.len();
+            gradients = Some(PrintGradients::with_palette(
+                plates,
+                &colors,
+                palette,
+                native_definitions,
+                source.native_slot_count()?,
+            ));
+        } else if purpose == ProjectWritePurpose::PrintExport
+            && source.is_none()
+            && has_gradient
+        {
+            if let Some(selection) = selection.filter(|s| s.target_slicer == "snapmaker_orca") {
+                let resolved = selection.resolve(0).map_err(|e| format!("export selection: {e}"))?;
+                let physical_limit = resolved.machine.extruder_count(&selection.nozzle_diameter);
+                gradients = PrintGradients::build(plates, &colors, physical_limit);
+            }
+        }
+        let quantized = if let Some(gradient) = &gradients {
+            &gradient.quantized
+        } else if let Some(source) = source {
+            quantized_project = source.quantize(&colors, colors.len())?;
+            &quantized_project
         } else {
-            quantize_project(plates, &colors)
+            quantized_project = quantize_project(plates, &colors);
+            &quantized_project
         };
         resolved_project = if source.is_some() {
             None
         } else {
             selection
-                .map(|s| s.resolve(quantized_project.palette.len()))
+                .map(|s| s.resolve(quantized.palette.len()))
                 .transpose()
                 .map_err(|e| format!("export selection: {e}"))?
         };
-        (&quantized_project, resolved_project.as_ref())
+        (quantized, resolved_project.as_ref())
     };
+    let omitted_gradient_recipes = gradients.as_ref().map_or(0, |g| g.omitted_recipes);
+    if omitted_gradient_recipes > 0 && purpose == ProjectWritePurpose::PrintExport {
+        return Err(format!(
+            "Snapmaker Orca supports 64 total filament slots. Reduce the number of gradient recipes by at least {omitted_gradient_recipes}, or split the project."
+        ));
+    }
     let mut entries = vec![
         (
             PROJECT_CONFIG_PATH.to_string(),
@@ -272,7 +315,11 @@ fn write_project(
     }
 
     if let Some(source) = source {
-        source.apply(&quantized.palette, &mut entries)?;
+        if preserve_source_slots {
+            source.apply_unchanged(&mut entries)?;
+        } else {
+            source.apply(&quantized.palette, &mut entries)?;
+        }
     }
     let config = entries
         .iter_mut()
@@ -280,13 +327,31 @@ fn write_project(
         .unwrap();
     let mut settings: serde_json::Value =
         serde_json::from_slice(&config.1).map_err(|e| format!("project settings: {e}"))?;
+    if let Some(gradient) = &gradients {
+        if gradient.definitions.is_empty() {
+            settings.as_object_mut().ok_or("Project settings are not an object")?
+                .remove("mixed_filament_definitions");
+        } else {
+            settings["mixed_filament_definitions"] = gradient.definitions.as_str().into();
+        }
+    }
     let (mut bed_width, mut bed_depth) = crate::threemf::bed_size(&config.1);
-    if bed_width <= 0.0 || bed_depth <= 0.0 {
+    let bed_fallback = bed_width <= 0.0 || bed_depth <= 0.0;
+    if bed_fallback {
         // The built-in generic profile uses a 220 mm square bed.
         bed_width = 220.0;
         bed_depth = 220.0;
         settings["printable_area"] = serde_json::json!(["0x0", "220x0", "220x220", "0x220"]);
+    }
+    if gradients.is_some() || bed_fallback {
         config.1 = serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?;
+    }
+    if gradients.as_ref().is_some_and(|g| g.definitions.len() > native_definitions_len) {
+        let marker = GradientPrintMarker { version: 2, native_definitions_len };
+        entries.push((
+            GRADIENT_PRINT_PART.into(),
+            serde_json::to_vec(&marker).map_err(|e| e.to_string())?,
+        ));
     }
     let mut worlds = Vec::with_capacity(plates.len());
     let mut headers = Vec::with_capacity(plates.len());
@@ -325,6 +390,17 @@ fn write_project(
             project_state::encode_plate_state(plate.mesh),
         ));
         entries.push((format!("Metadata/cym/history_{}.bin", i + 1), history));
+        if native_definitions_len > 0 {
+            if let Some(entry) = crate::threemf::source_materials_entry(i, plate.mesh, fingerprint) {
+                entries.push(entry);
+            }
+        }
+        if !plate.mesh.gradient_faces.is_empty() || !plate.mesh.gradient_ramps.is_empty() {
+            entries.push((
+                format!("Metadata/cym/gradient_faces_{}.bin", i + 1),
+                project_state::encode_gradient_faces(plate.mesh),
+            ));
+        }
         if !plate.mesh.texture_painting && !plate.mesh.paint_sources.is_empty() {
             entries.push((
                 format!("Metadata/cym/paint_sources_{}.bin", i + 1),
@@ -358,7 +434,12 @@ fn write_project(
     ));
     entries.push((
         MODEL_PATH.into(),
-        build_project_model_xml(plates, &worlds, &quantized.face_slots)?.into_bytes(),
+        build_project_model_xml(
+            plates,
+            &worlds,
+            &quantized.face_slots,
+            gradients.as_ref().is_some_and(|gradient| !gradient.definitions.is_empty()),
+        )?.into_bytes(),
     ));
     entries.push((
         "Metadata/model_settings.config".into(),
@@ -384,14 +465,13 @@ fn write_project(
     std::fs::rename(&temporary.path, output_path)
         .map_err(|e| format!("Failed to replace project: {e}"))?;
     progress(0.97, "3mf:zip");
-    Ok(ProjectExportReport { history_truncated })
+    Ok(ProjectExportReport { history_truncated, omitted_gradient_recipes })
 }
 
 fn quantize_project(plates: &[ProjectPlate<'_>], colors: &[[u8; 4]]) -> Quantized {
     let mut merged = std::collections::BTreeMap::new();
     for plate in plates {
-        for (rgb, count) in bounded_color_histogram(&plate.mesh.face_colors, plate.mesh.faces.len())
-        {
+        for (rgb, count) in ColorHistograms::flat_from_mesh(plate.mesh) {
             *merged.entry(rgb).or_insert(0usize) += count;
         }
     }
@@ -471,8 +551,10 @@ fn build_project_model_xml(
     plates: &[ProjectPlate<'_>],
     worlds: &[Vec<[f32; 3]>],
     slots: &[u8],
+    has_native_slots: bool,
 ) -> Result<String, String> {
     use std::fmt::Write;
+    let encode_slot = if has_native_slots { encode_snapmaker_paint_color } else { encode_paint_color };
     let mut xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="{NS_CORE}" xmlns:BambuStudio="{NS_BAMBU}"><resources>"#
     );
@@ -500,7 +582,7 @@ fn build_project_model_xml(
             {
                 return Err("Model contains an invalid face index".into());
             }
-            let paint = encode_paint_color(slots[offset]).ok_or("Invalid extruder slot")?;
+            let paint = encode_slot(slots[offset]).ok_or("Invalid extruder slot")?;
             offset += 1;
             write!(
                 xml,
@@ -736,6 +818,225 @@ mod tests {
         let mesh = two_face_mesh(colors);
         let quantized = quantize_face_colors(&mesh.face_colors, MAX_EXTRUDER_SLOT as usize);
         build_model_xml(&mesh, &quantized.face_slots).expect("model xml must build")
+    }
+
+    #[test]
+    fn snapmaker_ratio_export_uses_physical_and_virtual_slots() {
+        use crate::paint::gradient::GradientSample;
+
+        let colors = [[255, 0, 0, 255], [255, 255, 0, 255], [0, 0, 255, 255]];
+        let pairs = [(0, 1), (1, 2)];
+        let mut mesh = MeshModel::new();
+        for i in 0..=6 {
+            let x = i as f32 * 6.0;
+            mesh.vertices.extend([[x, 0., 0.], [x, 10., 0.], [x, 10., 20.], [x, 0., 20.]]);
+        }
+        for i in 0..6u32 {
+            for edge in 0..4 {
+                let left = i * 4 + edge;
+                let next = i * 4 + (edge + 1) % 4;
+                let start = mesh.faces.len() as u32;
+                mesh.faces.extend([[left, next + 4, left + 4], [left, next, next + 4]]);
+                if edge == 3 {
+                    let (from, to) = pairs[i as usize / 3];
+                    let mix = [16384, 32768, 49151][i as usize % 3];
+                    for face in start..start + 2 {
+                        mesh.gradient_faces.insert(face, GradientSample { from: colors[from], to: colors[to], mix, ramp_id: 0 });
+                    }
+                    let blended = crate::mesh::face_colors::mix_color(&colors[from], &colors[to], f32::from(mix) / f32::from(u16::MAX));
+                    mesh.face_colors.extend([blended; 2]);
+                } else {
+                    mesh.face_colors.extend([[138, 138, 138, 255]; 2]);
+                }
+            }
+        }
+        mesh.faces.extend([[0, 2, 1], [0, 3, 2], [24, 25, 26], [24, 26, 27]]);
+        mesh.face_colors.extend([[138, 138, 138, 255]; 4]);
+        mesh.segment_labels.resize(mesh.faces.len(), 0);
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("gradient.3mf");
+        let mut selection = ExportSelection {
+            machine_id: "snapmaker_u1".into(),
+            nozzle_diameter: "0.4".into(),
+            process_name: "0.20 Standard @Snapmaker U1 (0.4 nozzle)".into(),
+            filament_names: vec![],
+            target_slicer: "snapmaker_orca".into(),
+        };
+        export_3mf(&mesh, &path, Some(&selection), &|_, _| {}).unwrap();
+        let mut package = crate::threemf::opc::Package::open(&path).unwrap();
+        let cfg: serde_json::Value = serde_json::from_slice(&package.read(PROJECT_CONFIG_PATH).unwrap()).unwrap();
+        assert_eq!(cfg["filament_colour"].as_array().unwrap().len(), 4);
+        let definitions = cfg["mixed_filament_definitions"].as_str().unwrap();
+        let rows = definitions.split(';').collect::<Vec<_>>();
+        assert_eq!(rows.len(), 2, "one native gradient per adjacent filament pair");
+        assert!(rows.iter().all(|row| row.contains(",m0,z2,") && row.contains(",cm3,r1/")));
+        let model = String::from_utf8(package.read(MODEL_PATH).unwrap()).unwrap();
+        for slot in 5..=6 {
+            let tag = format!("paint_color=\"{}\"", encode_paint_color(slot).unwrap());
+            assert_eq!(model.matches(&tag).count(), 6, "virtual slot {slot}");
+        }
+        if let Some(output) = std::env::var_os("CYM_GRADIENT_QA_3MF") {
+            std::fs::copy(&path, output).unwrap();
+        }
+
+        let saved_path = dir.path().join("saved-gradient.3mf");
+        let source = super::super::source_presets::SourcePresets::read(&path).unwrap().unwrap();
+        mesh.face_colors[0] = [22, 19, 30, 255];
+        write_project_3mf(
+            &[ProjectPlate { name: "gradient".into(), mesh: &mesh }],
+            0, &saved_path, None, Some(&source), ProjectWritePurpose::EngineeringSave,
+            &|_, _| {},
+        ).unwrap();
+        let mut saved = crate::threemf::opc::Package::open(&saved_path).unwrap();
+        let saved_cfg: serde_json::Value = serde_json::from_slice(&saved.read(PROJECT_CONFIG_PATH).unwrap()).unwrap();
+        assert_eq!(saved_cfg["filament_colour"], cfg["filament_colour"]);
+        assert_eq!(saved_cfg["mixed_filament_definitions"], cfg["mixed_filament_definitions"]);
+        let saved_model = String::from_utf8(saved.read(MODEL_PATH).unwrap()).unwrap();
+        for slot in 5..=6 {
+            let tag = format!("paint_color=\"{}\"", encode_paint_color(slot).unwrap());
+            assert_eq!(saved_model.matches(&tag).count(), 6, "save virtual slot {slot}");
+        }
+        mesh.face_colors[0] = [138, 138, 138, 255];
+
+        selection.target_slicer = "orcaslicer".into();
+        let flat_path = dir.path().join("flat.3mf");
+        export_3mf(&mesh, &flat_path, Some(&selection), &|_, _| {}).unwrap();
+        let mut package = crate::threemf::opc::Package::open(&flat_path).unwrap();
+        let cfg: serde_json::Value = serde_json::from_slice(&package.read(PROJECT_CONFIG_PATH).unwrap()).unwrap();
+        assert!(cfg.get("mixed_filament_definitions").is_none());
+        assert_eq!(cfg["filament_colour"].as_array().unwrap().len(), 7);
+    }
+
+    #[test]
+    fn native_gradient_slot_budget_protects_print_and_preserves_engineering_save() {
+        use crate::paint::gradient::GradientSample;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("gradient.3mf");
+        let selection = ExportSelection {
+            machine_id: "snapmaker_u1".into(),
+            nozzle_diameter: "0.4".into(),
+            process_name: "0.20 Standard @Snapmaker U1 (0.4 nozzle)".into(),
+            filament_names: vec![],
+            target_slicer: "snapmaker_orca".into(),
+        };
+        let sample = GradientSample {
+            from: [255, 0, 0, 255],
+            to: [0, 0, 255, 255],
+            mix: 32768,
+            ramp_id: 0,
+        };
+        let mut mesh = MeshModel::new();
+        for face in 0..63 {
+            let x = face as f32 * 2.;
+            mesh.vertices.extend([[x, 0., 0.], [x + 1., 0., 0.], [x, 0., 1.]]);
+            mesh.faces.push([3 * face, 3 * face + 1, 3 * face + 2]);
+            mesh.face_colors.push(sample.rgba());
+            mesh.segment_labels.push(0);
+            mesh.gradient_faces.insert(face, sample);
+        }
+        mesh.build_adjacency();
+        // Two physical filaments leave room for exactly 62 disconnected recipes.
+        mesh.gradient_faces.remove(&62);
+        mesh.face_colors[62] = sample.from;
+        export_3mf(&mesh, &path, Some(&selection), &|_, _| {}).unwrap();
+        let original = std::fs::read(&path).unwrap();
+        let presets = super::super::source_presets::SourcePresets::read(&path)
+            .unwrap()
+            .unwrap();
+
+        mesh.gradient_faces.insert(62, sample);
+        mesh.face_colors[62] = sample.rgba();
+        let error = export_3mf(&mesh, &path, Some(&selection), &|_, _| {}).unwrap_err();
+        assert!(error.contains("Reduce the number of gradient recipes by at least 1"), "{error}");
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+
+        let report = write_project_3mf(
+            &[ProjectPlate { name: "gradient".into(), mesh: &mesh }],
+            0, &path, None, Some(&presets), ProjectWritePurpose::EngineeringSave, &|_, _| {},
+        )
+        .unwrap();
+        assert_eq!(report.omitted_gradient_recipes, 1);
+        let restored = crate::threemf::load_plate(&path, 0, &|_, _| {}).unwrap().mesh;
+        assert_eq!(restored.gradient_faces, mesh.gradient_faces);
+        assert_eq!(restored.face_colors, mesh.face_colors);
+    }
+
+    #[test]
+    fn saving_gradient_over_an_imported_mixed_project_keeps_its_slot_dependent_settings() {
+        use crate::paint::gradient::GradientSample;
+        use std::io::Write;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let input = dir.path().join("native.3mf");
+        let cfg = serde_json::json!({
+            "filament_colour": ["#212721", "#BA0C2F", "#FFFFFF", "#00FFFF"],
+            "additional_cooling_fan_speed": ["70", "70", "70", "70", "70"],
+            "mixed_filament_definitions": "1,2,1,1,62,0,g,w,m2,z0,xa0,xb0,d0,o0,u1,cm0",
+            "printable_area": ["0x0", "270x0", "270x270", "0x270"],
+        });
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&input).unwrap());
+        zip.start_file(PROJECT_CONFIG_PATH, zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(&serde_json::to_vec(&cfg).unwrap()).unwrap();
+        zip.finish().unwrap();
+        let source = super::super::source_presets::SourcePresets::read(&input).unwrap().unwrap();
+        let sample = GradientSample {
+            from: [186, 12, 47, 255],
+            to: [0, 255, 255, 255],
+            mix: 32768,
+            ramp_id: 0,
+        };
+        let imported_mix = [128, 22, 42, 255];
+        let mut mesh = two_face_mesh(vec![sample.rgba(), imported_mix]);
+        mesh.segment_labels = vec![0; 2];
+        mesh.source_material_colors = vec![
+            Some([33, 39, 33, 255]),
+            Some([186, 12, 47, 255]),
+            Some([255, 255, 255, 255]),
+            Some([0, 255, 255, 255]),
+            Some(imported_mix),
+        ];
+        mesh.source_material_slots = vec![1, 5];
+        mesh.gradient_faces.insert(0, sample);
+        let output = dir.path().join("saved.3mf");
+        write_project_3mf(
+            &[ProjectPlate { name: "gradient".into(), mesh: &mesh }],
+            0, &output, None, Some(&source), ProjectWritePurpose::EngineeringSave,
+            &|_, _| {},
+        ).unwrap();
+        let mut saved = crate::threemf::opc::Package::open(&output).unwrap();
+        let project: serde_json::Value = serde_json::from_slice(&saved.read(PROJECT_CONFIG_PATH).unwrap()).unwrap();
+        let existing = cfg["mixed_filament_definitions"].as_str().unwrap();
+        let definitions = project["mixed_filament_definitions"].as_str().unwrap();
+        assert_eq!(
+            definitions.strip_prefix(existing),
+            Some(";2,4,1,1,50,0,g,w,m0,z2,xa0,xb0,d0,o0,u2,cm3,r1/0.5300/0.4700")
+        );
+        assert_eq!(project["filament_colour"], cfg["filament_colour"]);
+        assert_eq!(project["additional_cooling_fan_speed"], cfg["additional_cooling_fan_speed"]);
+        let model = String::from_utf8(saved.read(MODEL_PATH).unwrap()).unwrap();
+        for slot in [5, 6] {
+            let tag = format!("paint_color=\"{}\"", encode_paint_color(slot).unwrap());
+            assert_eq!(model.matches(&tag).count(), 1, "slot {slot}");
+        }
+        let plate = crate::threemf::load_plate(&output, 0, &|_, _| {}).unwrap();
+        assert_eq!(plate.mesh.face_colors, mesh.face_colors);
+        assert_eq!(plate.mesh.gradient_faces, mesh.gradient_faces);
+        assert_eq!(plate.mesh.source_material_slots, mesh.source_material_slots);
+
+        // Clearing the last gradient should not make the same source settings unsavable.
+        mesh.gradient_faces.clear();
+        let source = super::super::source_presets::SourcePresets::read(&output).unwrap().unwrap();
+        let second_save = dir.path().join("saved-after-clearing.3mf");
+        write_project_3mf(
+            &[ProjectPlate { name: "solid".into(), mesh: &mesh }],
+            0, &second_save, None, Some(&source), ProjectWritePurpose::EngineeringSave,
+            &|_, _| {},
+        ).unwrap();
+        let mut saved = crate::threemf::opc::Package::open(&second_save).unwrap();
+        let project: serde_json::Value = serde_json::from_slice(&saved.read(PROJECT_CONFIG_PATH).unwrap()).unwrap();
+        assert_eq!(project, cfg);
     }
 
     #[test]

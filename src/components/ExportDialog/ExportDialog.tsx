@@ -7,6 +7,7 @@ import { useT } from "../../i18n";
 import { useAppStore } from "../../store/appStore";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
 import type {
+  ExportPalettePreview,
   ExportSelection,
   MachineSummary,
   Rgb,
@@ -23,6 +24,23 @@ import {
 } from "./TextureMappingPanel";
 
 const DEFAULT_TARGET = "snapmaker_orca";
+
+function gradientPalette(
+  preview: ExportPalettePreview | null,
+  machine: MachineSummary | undefined,
+  profile: ExportSelection | null,
+) {
+  if (profile?.targetSlicer !== DEFAULT_TARGET || !machine) return undefined;
+  return preview?.gradientBySlotCount[machine.slotsByNozzle[profile.nozzleDiameter]];
+}
+
+function exportColors(
+  preview: ExportPalettePreview | null,
+  machine: MachineSummary | undefined,
+  profile: ExportSelection | null,
+) {
+  return gradientPalette(preview, machine, profile)?.colors ?? preview?.flat ?? [];
+}
 
 function selectProfile(
   machine: MachineSummary,
@@ -60,7 +78,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [format, setFormat] = useState<"3mf" | "obj">("3mf");
   const [progress, setProgress] = useState(0);
   const [machines, setMachines] = useState<MachineSummary[]>([]);
-  const [palette, setPalette] = useState<string[]>([]);
+  const [paintPreview, setPaintPreview] = useState<ExportPalettePreview | null>(null);
   const [selection, setSelection] = useState<ExportSelection | null>(null);
   const [exporting, setExporting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -93,12 +111,12 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
     const persisted = useAppStore.getState().lastExportSelection;
     const loadPreview = isTexture
       ? invokeTab<TextureMappingPreview>("texture_mapping_preview", {}, owner.tabId)
-      : invokeTab<string[]>("export_palette_preview", {}, owner.tabId);
+      : invokeTab<ExportPalettePreview>("export_palette_preview", {}, owner.tabId);
 
     void Promise.all([invoke<MachineSummary[]>("list_export_presets"), loadPreview]).then(([presets, preview]) => {
       if (cancelled) return;
       setMachines(presets);
-      const accepted = Array.isArray(preview) ? null : preview.accepted;
+      const accepted = "accepted" in preview ? preview.accepted : null;
       const preferred = accepted?.selection ?? persisted ?? undefined;
       const machine = presets.find(({ id }) => id === preferred?.machineId) ?? presets[0];
       if (!machine) {
@@ -107,12 +125,15 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       }
       const saved = preferred?.machineId === machine.id ? preferred : undefined;
       const nozzle = machine.nozzles.find((n) => n === saved?.nozzleDiameter) ?? machine.nozzles[0] ?? "";
-      const slotCount = Array.isArray(preview) ? preview.length || 1 : machine.slotsByNozzle[nozzle] ?? 0;
-      setSelection(selectProfile(machine, nozzle, slotCount, saved));
-      if (Array.isArray(preview)) {
-        setPalette(preview.length ? preview : ["#8A8A8A"]);
+      if ("flat" in preview) {
+        const profile = selectProfile(machine, nozzle, 0, saved);
+        const slotCount = exportColors(preview, machine, profile).length;
+        setSelection(selectProfile(machine, nozzle, slotCount, saved));
+        setPaintPreview(preview);
         return;
       }
+      const slotCount = machine.slotsByNozzle[nozzle] ?? 0;
+      setSelection(selectProfile(machine, nozzle, slotCount, saved));
       setMappingPreview(preview);
       const matching = accepted?.selection.machineId === machine.id ? accepted : null;
       setNominalColors(Array.from({ length: slotCount }, (_, i) => matching?.nominalColors[i] ?? null));
@@ -128,6 +149,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   }, [isTexture, owner, sourceMesh]);
 
   const machine = machines.find(({ id }) => id === selection?.machineId);
+  const palette = exportColors(paintPreview, machine, selection);
+  const gradient = gradientPalette(paintPreview, machine, selection);
   const nozzle = selection?.nozzleDiameter ?? "";
   const processes = machine?.processes.filter((process) => process.nozzles.includes(nozzle)) ?? [];
   const filaments = machine?.filaments.filter((filament) => filament.nozzles.includes(nozzle)) ?? [];
@@ -165,15 +188,38 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
 
   const chooseProfile = (next: MachineSummary, nextNozzle: string) => {
     if (next.id === selection?.machineId && nextNozzle === nozzle) return;
-    const count = isTexture ? next.slotsByNozzle[nextNozzle] ?? 0 : palette.length;
     const sameMachine = next.id === selection?.machineId;
-    setSelection(selectProfile(next, nextNozzle, count, sameMachine ? selection : undefined));
+    const prior = sameMachine ? selection ?? undefined : undefined;
+    const profile = selectProfile(next, nextNozzle, 0, prior);
+    const nextColors = exportColors(paintPreview, next, profile);
+    const count = isTexture ? next.slotsByNozzle[nextNozzle] ?? 0 : nextColors.length;
+    const saved = prior && !isTexture ? {
+      ...prior,
+      filamentNames: nextColors.map((color) => prior.filamentNames[palette.indexOf(color)] ?? ""),
+    } : prior;
+    setSelection(selectProfile(next, nextNozzle, count, saved));
     setSelectedSlots(new Set());
     setBulkFilament("");
     if (isTexture) {
       setNominalColors((previous) => Array.from({ length: count }, (_, i) => sameMachine ? previous[i] ?? null : null));
       setAssigned((previous) => new Map(sameMachine ? [...previous].filter(([, slot]) => slot <= count) : []));
     }
+  };
+
+  const chooseTarget = (targetSlicer: string) => {
+    if (!selection || !machine) return;
+    const profile = { ...selection, targetSlicer };
+    if (isTexture) {
+      setSelection(profile);
+      return;
+    }
+    const colors = exportColors(paintPreview, machine, profile);
+    const fallback = selectProfile(machine, nozzle, colors.length, profile).filamentNames[0];
+    setSelection({
+      ...profile,
+      filamentNames: colors.map((color) => selection.filamentNames[palette.indexOf(color)] ?? fallback),
+    });
+    setSelectedSlots(new Set());
   };
 
   const setFilament = (slotIndex: number, name: string) => {
@@ -478,6 +524,9 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
                   ) : (
                     <>
                       <div style={styles.label}>{t("export.filament")} ({palette.length}{t("export.slots")})</div>
+                      {gradient && <p style={styles.note} role="status">{t(
+                        gradient.approximated ? "export.gradientApproximation" : "export.gradientRecipes"
+                      )}</p>}
                       <div style={styles.bulkRow}>
                         <button
                           className="cym-btn"
@@ -527,7 +576,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
                     <select
                       style={styles.select}
                       value={selection?.targetSlicer ?? ""}
-                      onChange={(e) => selection && setSelection({ ...selection, targetSlicer: e.target.value })}
+                      onChange={(e) => chooseTarget(e.target.value)}
                     >
                       {(!isTexture || machine?.targetSlicers.includes("snapmaker_orca")) && (
                         <option value="snapmaker_orca">{t("export.targetSnapmaker")}</option>

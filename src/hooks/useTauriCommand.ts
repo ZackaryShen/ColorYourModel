@@ -8,6 +8,10 @@ import type { ExportSelection, TextureMappingRequest } from "../types/export";
 import type { SegmentationAlgorithm, SplitMethod, SplitResult } from "../types/segment";
 import { log } from "../utils/logger";
 
+export type PaintSourceGroup =
+  | { source: [number, number, number, number]; faces: number }
+  | { stops: [number, number, number, number][]; faces: number };
+
 export function useTauriCommand() {
   const t = useT();
   const tabId = useAppStore(s => s.activeTabId);
@@ -264,12 +268,14 @@ export function useTauriCommand() {
     log.info("useTauriCommand", `export3mf("${path}")`, { selection });
     try {
       setStatusMessage(t("export.exporting"));
-      const msg: string = await invoke("export_3mf_command", {
+      const completion = await invoke<string | { message: string; omittedGradientRecipes: number }>("export_3mf_command", {
         path,
         selection: selection ?? null,
         preserveSource,
+        ...(preserveSource ? { reportWarnings: true } : {}),
         ...(texture ? { texture } : {}),
       });
+      const msg = typeof completion === "string" ? completion : completion.message;
       log.info("useTauriCommand", "export3mf complete", { msg });
       if (texture) {
         // Only the texture assignment changed in the workspace. Its printed
@@ -289,13 +295,16 @@ export function useTauriCommand() {
         markPaintExported();
       }
       setStatusMessage(t("export.complete"));
-      setToast(t("export.success", msg.replace(/^Exported to /, "")));
+      setToast(typeof completion === "string"
+        ? t("export.success", msg.replace(/^Exported to /, ""))
+        : t("export.gradientSaveLimit", completion.omittedGradientRecipes));
       return msg;
     } catch (e) {
+      const detail = tErr(e);
       log.error("useTauriCommand", "export3mf failed", { error: String(e) });
-      setStatusMessage(t("export.failure", String(e)));
-      setToast(t("export.failure", String(e)));
-      throw e;
+      setStatusMessage(t("export.failure", detail));
+      setToast(t("export.failure", detail));
+      throw detail === String(e) ? e : detail;
     }
   };
 
@@ -383,9 +392,7 @@ export function useTauriCommand() {
 
   /** Used-colours listing for the colour panel (issue #23): one entry per
    *  distinct colour on the model, most faces first. */
-  const paintSourceGroups = async (): Promise<
-    { source: [number, number, number, number]; faces: number }[]
-  > => {
+  const paintSourceGroups = async (): Promise<PaintSourceGroup[]> => {
     try {
       return await invoke("paint_source_groups");
     } catch (e) {
@@ -409,13 +416,14 @@ export function useTauriCommand() {
   };
 
   const paintSourceFaces = async (
-    source: [number, number, number, number]
-  ): Promise<number[]> => {
+    group: PaintSourceGroup
+  ): Promise<number[] | null> => {
     try {
-      return (await invoke<number[]>("paint_source_faces", { source })) ?? [];
+      const selector = "stops" in group ? { stops: group.stops } : { source: group.source };
+      return (await invoke<number[]>("paint_source_faces", selector)) ?? [];
     } catch (e) {
       log.error("useTauriCommand", "paintSourceFaces failed", { error: String(e) });
-      return [];
+      return null;
     }
   };
 

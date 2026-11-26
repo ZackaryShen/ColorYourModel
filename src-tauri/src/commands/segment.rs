@@ -54,6 +54,7 @@ pub struct SegmentResult {
 type PersistedState = (
     Vec<u32>,
     Vec<[u8; 4]>,
+    usize,
     std::collections::HashMap<u32, String>,
     u32,
     (usize, usize, usize),
@@ -62,6 +63,7 @@ fn persisted_state(mesh: &crate::mesh::model::MeshModel) -> PersistedState {
     (
         mesh.segment_labels.clone(),
         mesh.face_colors.clone(),
+        mesh.gradient_faces.len(),
         mesh.segment_names.clone(),
         mesh.next_manual_label,
         (
@@ -154,6 +156,7 @@ pub fn paint_segment_face(
         mesh.segment_labels[face_id as usize],
         mesh.face_colors[face_id as usize],
         mesh.next_manual_label,
+        mesh.gradient_faces.contains_key(&face_id),
     );
     // Continue the stroke's existing segment, or reserve a fresh one on the
     // first face of the drag. Allocation never recycles a retired number —
@@ -174,6 +177,7 @@ pub fn paint_segment_face(
             mesh.segment_labels[face_id as usize],
             mesh.face_colors[face_id as usize],
             mesh.next_manual_label,
+            mesh.gradient_faces.contains_key(&face_id),
         );
     mesh_guard.commit_if(changed);
     Ok(PaintSegmentFaceResult {

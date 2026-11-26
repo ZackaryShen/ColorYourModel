@@ -8,12 +8,20 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 const PROJECT: &str = "Metadata/project_settings.config";
+pub(crate) const GRADIENT_PRINT_PART: &str = "Metadata/cym/gradient_print.json";
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct GradientPrintMarker {
+    pub(crate) version: u32,
+    #[serde(default)]
+    pub(crate) native_definitions_len: usize,
+}
 const MAX_SNAPSHOT_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct SourcePresets {
     project: Value,
     files: Vec<(String, Vec<u8>)>,
+    gradient_print: Option<usize>,
 }
 
 impl SourcePresets {
@@ -39,7 +47,66 @@ impl SourcePresets {
             }
             files.push((name.clone(), body));
         }
-        Ok(Some(Self { project, files }))
+        let gradient_print = if names.iter().any(|name| name == GRADIENT_PRINT_PART) {
+            serde_json::from_slice::<GradientPrintMarker>(&package.read(GRADIENT_PRINT_PART)?)
+                .ok()
+                .filter(|marker| matches!(marker.version, 1 | 2))
+                .and_then(|marker| {
+                    let defs = project["mixed_filament_definitions"].as_str().unwrap_or("");
+                    let end = marker.native_definitions_len;
+                    defs.get(..end).filter(|base| {
+                        end == 0 || end == defs.len() || base.ends_with(';')
+                            || defs.as_bytes().get(end) == Some(&b';')
+                    }).map(|_| end)
+                })
+        } else {
+            None
+        };
+        Ok(Some(Self { project, files, gradient_print }))
+    }
+
+    pub(crate) fn native_definitions(&self) -> &str {
+        let definitions = self.project["mixed_filament_definitions"].as_str().unwrap_or("");
+        self.gradient_print.map_or(definitions, |end| &definitions[..end])
+    }
+
+    pub(crate) fn native_slot_count(&self) -> Result<usize, String> {
+        let source = serde_json::json!({
+            "filament_colour": self.project["filament_colour"],
+            "mixed_filament_definitions": self.native_definitions(),
+        });
+        Ok(crate::threemf::native_material_slot_count(&source)?
+            .map_or(0, |(_, virtual_count)| virtual_count))
+    }
+
+    /// Native mixed recipes and the machine's process settings reference the
+    /// original physical slot order.
+    pub(crate) fn mixed_project_palette(
+        &self,
+        include_native: bool,
+        has_gradient: bool,
+    ) -> Result<Option<Vec<[u8; 3]>>, String> {
+        let supports_mixing = !self.native_definitions().is_empty()
+            || has_gradient && self.project["printer_model"].as_str()
+                .is_some_and(|model| model.starts_with("Snapmaker"));
+        if !(self.gradient_print.is_some() || include_native && supports_mixing) {
+            return Ok(None);
+        }
+        let entries = self.project["filament_colour"].as_array()
+            .filter(|colors| (1..=usize::from(MAX_EXTRUDER_SLOT)).contains(&colors.len()))
+            .ok_or("Gradient print project has an invalid physical filament palette")?;
+        entries.iter().map(parse_rgb).collect::<Result<Vec<_>, _>>().map(Some)
+    }
+
+    pub(crate) fn apply_unchanged(
+        &self,
+        entries: &mut Vec<(String, Vec<u8>)>,
+    ) -> Result<(), String> {
+        let project = serde_json::to_vec_pretty(&self.project).map_err(|error| error.to_string())?;
+        entries.retain(|(name, _)| name != PROJECT && !is_preset_part(name));
+        entries.push((PROJECT.into(), project));
+        entries.extend(self.files.iter().cloned());
+        Ok(())
     }
 
     pub fn quantize(&self, colors: &[[u8; 4]], face_count: usize) -> Result<Quantized, String> {
@@ -439,6 +506,7 @@ mod tests {
     use serde_json::json;
     fn source() -> SourcePresets {
         SourcePresets {
+            gradient_print: None,
             project: json!({"printer_settings_id":"Custom U1", "print_settings_id":"Fine Custom", "filament_colour":["#FF0000","#0000FF"], "filament_type":["PLA","PETG"], "nozzle_temperature":["210","240"], "filament_settings_id":["Red PLA","Blue PETG"], "nozzle_diameter":["0.4"], "inherits_group":["Fine","PLA","PETG","U1"], "my_scalar":"keep"}),
             files: vec![
                 (

@@ -1,6 +1,7 @@
+import { DEFAULT_GRADIENT_STOPS, MAX_GRADIENT_STOPS, MIN_GRADIENT_STOPS, type GradientColor } from "../utils/gradientPaint";
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { MeshData, TabInfo, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion } from "../types/mesh";
+import { MeshData, TabInfo, PaintTool, Segment, SeedPoint, PlanarRegion, MultiViewRegion, CrossSectionRegion, EyeRegion, type GradientPaintContext } from "../types/mesh";
 import type { PersistedExportSelection } from "../types/export";
 import { translate, type Lang } from "../i18nDict";
 import { log } from "../utils/logger";
@@ -41,6 +42,11 @@ interface AppStore {
   brushRadius: number;
   brushStrength: number;
   brushFalloff: "linear" | "smooth" | "step";
+  gradientEnabled: boolean;
+  gradientStops: GradientColor[];
+  gradientContext: GradientPaintContext | null;
+  hasGradientPaint: boolean;
+  showSavedGradientGuide: boolean;
   /** Material shading mode (iteration 18 hotfix + iteration 19). "flat" =
    *  meshBasicMaterial — exact per-face color, no lighting, ideal for final
    *  colour verification. "shaded" = meshLambertMaterial — Lambert diffuse,
@@ -186,6 +192,11 @@ interface AppStore {
   setBrushRadius: (r: number) => void;
   setBrushStrength: (s: number) => void;
   setBrushFalloff: (f: "linear" | "smooth" | "step") => void;
+  setGradientEnabled: (enabled: boolean) => void;
+  setGradientStops: (stops: GradientColor[]) => void;
+  rememberGradientContext: (context: GradientPaintContext) => void;
+  restoreHistoryGradient: (context: GradientPaintContext | null | undefined, hasGradientPaint: boolean | undefined) => void;
+  setSavedGradientGuide: (show: boolean) => void;
   setShadingMode: (m: "flat" | "shaded") => void;
   setTheme: (t: "dark" | "light") => void;
   setCurrentColor: (c: [number, number, number, number]) => void;
@@ -356,6 +367,7 @@ interface PersistedPrefs {
   brushRadius: number;
   brushStrength: number;
   brushFalloff: "linear" | "smooth" | "step";
+  gradientStops: GradientColor[];
   currentColor: [number, number, number, number];
   snapEnabled: boolean;
   lastExportSelection: PersistedExportSelection | null;
@@ -460,6 +472,12 @@ function mergePrefs(persisted: unknown, current: AppStore): AppStore {
     const c = p.currentColor.map((v) => clamp(Math.round(v), 0, 255));
     next.currentColor = [c[0], c[1], c[2], c[3]];
   }
+  const stops = p.gradientStops;
+  if (Array.isArray(stops) && stops.length >= MIN_GRADIENT_STOPS && stops.length <= MAX_GRADIENT_STOPS &&
+      stops.every(c => Array.isArray(c) && c.length === 4 && c.every(isNum))) {
+    next.gradientStops = stops.map(([r, g, b]) =>
+      [clamp(Math.round(r), 0, 255), clamp(Math.round(g), 0, 255), clamp(Math.round(b), 0, 255), 255]);
+  }
   // Value-range validation for the persisted export selection. A hand-edited
   // payload must never produce a dialog stuck on an unknown machine id, so
   // only structurally sound selections survive rehydration; anything else is
@@ -507,6 +525,19 @@ function mergePrefs(persisted: unknown, current: AppStore): AppStore {
   return next;
 }
 
+function restoreGradientContext(context: GradientPaintContext) {
+  return {
+    gradientContext: context,
+    activeTool: context.tool,
+    gradientEnabled: true,
+    gradientStops: context.stops,
+    brushRadius: context.radius,
+    seedPickMode: false,
+    seedEraseMode: false,
+    showSavedGradientGuide: false,
+  };
+}
+
 const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   meshData: null,
   tabs: [],
@@ -525,6 +556,11 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
   brushRadius: 2.0,
   brushStrength: 0.8,
   brushFalloff: "smooth",
+  gradientEnabled: false,
+  gradientStops: DEFAULT_GRADIENT_STOPS,
+  gradientContext: null,
+  hasGradientPaint: false,
+  showSavedGradientGuide: false,
   shadingMode: "shaded",
   theme: initialTheme(),
 
@@ -589,6 +625,10 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       projectPath: preserveProjectPath ? previous.projectPath : null,
       canUndo: data.canUndo ?? false,
       canRedo: data.canRedo ?? false,
+      hasGradientPaint: data.hasGradientPaint ?? false,
+      ...(data.gradientContext && !data.texturePainting
+        ? restoreGradientContext(data.gradientContext)
+        : { gradientContext: null, gradientEnabled: false, showSavedGradientGuide: false }),
       paintDirty: Boolean(data.tabs?.find(tab => tab.id === data.tabId)?.dirty || previous.tabs.find(tab => tab.id === data.tabId)?.dirty || (data.tabId != null && data.tabId === previous.activeTabId && previous.paintDirty)),
       selectedSegment: null,
       hoveredSegment: null,
@@ -689,13 +729,26 @@ const createAppState: StateCreator<AppStore, [], []> = (set, get) => ({
       // Disarm every tool-local flag so the destination tool starts clean.
       seedPickMode: false,
       seedEraseMode: false,
+      showSavedGradientGuide: false,
     });
   },
-  setBrushRadius: (r) => set({ brushRadius: clamp(r, 0.5, 200) }),
+  setBrushRadius: (r) => set({ brushRadius: clamp(r, 0.5, 200), showSavedGradientGuide: false }),
   // M3: clamp to the BrushSettings slider range so a persisted/scripted value
   // can never produce a thumb position the user cannot reproduce by dragging.
   setBrushStrength: (s) => set({ brushStrength: clamp(s, 0.1, 1.0) }),
   setBrushFalloff: (f) => set({ brushFalloff: f }),
+  setGradientEnabled: (gradientEnabled) => set({ gradientEnabled, showSavedGradientGuide: false }),
+  setGradientStops: (gradientStops) => set({ gradientStops, showSavedGradientGuide: false }),
+  rememberGradientContext: (gradientContext) => set({ gradientContext, hasGradientPaint: true, showSavedGradientGuide: false }),
+  restoreHistoryGradient: (context, hasGradientPaint) => set(state => ({
+    hasGradientPaint: hasGradientPaint ?? state.hasGradientPaint,
+    ...(context
+      ? restoreGradientContext(context)
+      : context === null && state.gradientContext
+        ? { gradientContext: null, gradientEnabled: false, showSavedGradientGuide: false }
+        : {}),
+  })),
+  setSavedGradientGuide: (showSavedGradientGuide) => set({ showSavedGradientGuide }),
   setShadingMode: (m) => set({ shadingMode: m }),
   setTheme: (t) => {
     mirrorLegacyTheme(t); // M7: keep the legacy key readable by older builds
@@ -891,6 +944,7 @@ export const useAppStore = create<AppStore>()(
       brushRadius: s.brushRadius,
       brushStrength: s.brushStrength,
       brushFalloff: s.brushFalloff,
+      gradientStops: s.gradientStops,
       currentColor: s.currentColor,
       snapEnabled: s.snapEnabled,
       lastExportSelection: s.lastExportSelection,

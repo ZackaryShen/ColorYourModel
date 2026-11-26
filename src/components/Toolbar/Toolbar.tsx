@@ -7,6 +7,8 @@ import { useUndoRedo } from "../../hooks/useHistory";
 import { log } from "../../utils/logger";
 import { useT } from "../../i18n";
 import { useProjectSave } from "../../hooks/useProjectSave";
+import { isGradientTool } from "../../utils/gradientPaint";
+import { hintKeyForTool } from "../../utils/controlsHint";
 
 const TOOL_KEYS: { tool: PaintTool; icon: string; i18nKey: string }[] = [
   { tool: PaintTool.View, icon: "🖐️", i18nKey: "tool.view" },
@@ -34,6 +36,7 @@ export function Toolbar({ onImport }: { onImport: () => Promise<void> }) {
   // string. `loadingKind` lets the shared overlay pick which slice to read.
   const setSegmentProgress = useAppStore((s) => s.setSegmentProgress);
   const setLoadingKind = useAppStore((s) => s.setLoadingKind);
+  const gradientEnabled = useAppStore(s => s.gradientEnabled && !s.meshData?.texturePainting);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
   const { undo, redo, historyState } = useTauriCommand();
@@ -89,8 +92,11 @@ export function Toolbar({ onImport }: { onImport: () => Promise<void> }) {
       <div style={styles.section}>
         {TOOL_KEYS.map((item) => {
           // Build dynamic tooltip with current parameters for brush-type tools
-          let tip = t(item.i18nKey);
-          if (
+          const gradient = gradientEnabled && isGradientTool(item.tool);
+          let tip = gradient ? t(hintKeyForTool(item.tool, true)) : t(item.i18nKey);
+          if (gradient && item.tool === PaintTool.Brush) {
+            tip += ` [${t("brush.radius")}: ${brushRadius}mm]`;
+          } else if (
             item.tool === PaintTool.Brush ||
             item.tool === PaintTool.Spray ||
             item.tool === PaintTool.SmartBrush
