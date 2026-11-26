@@ -11,6 +11,7 @@ export function StatusBar({
   const statusMessage = useAppStore((s) => s.statusMessage);
   const meshData = useAppStore((s) => s.meshData);
   const activeTool = useAppStore((s) => s.activeTool);
+  const gradientEnabled = useAppStore(s => s.gradientEnabled && !s.meshData?.texturePainting);
   const language = useAppStore((s) => s.language);
   const setLanguage = useAppStore((s) => s.setLanguage);
   const theme = useAppStore((s) => s.theme);
@@ -35,7 +36,7 @@ export function StatusBar({
       {/* Same per-tool mapping the viewport help bar uses (utils/controlsHint).
           The old static `status.tip` ("Left: Rotate (View) | …") contradicted
           every non-view tool — GUI audit 2026-10-02, B4. */}
-      <span style={styles.tip}>{t(hintKeyForTool(activeTool))}</span>
+      <span style={styles.tip}>{t(hintKeyForTool(activeTool, gradientEnabled))}</span>
       {/* Debug log toggle joins the theme/language row: the old floating
           bottom-right 🐞 button sat on top of the language switch. */}
       <button

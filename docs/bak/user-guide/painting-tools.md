@@ -34,6 +34,17 @@ Clicking with Fill paints exactly the region the clicked face belongs to. Two co
 
 One unified timeline covers brush, spray, fill, erase and manual region edits — `Ctrl+Z` / `Ctrl+Y` (or the toolbar buttons) walk it back and forth. Backend-enforced, so it stays consistent across tools.
 
+## Gradient painting
+
+Select **Brush** or **Fill**, turn on **Gradient**, and arrange two to eight colours in the settings. Both tools use the same ordered colours.
+
+- With **Brush**, draw across the model. The colours advance from the first to the last stop along the stroke. Release to apply the stroke in one undo step.
+- With **Fill**, start inside the region to paint and drag toward the end colour. The same direction is applied across the selected area. Hold Shift for the connected-region fill.
+
+Painting follows the mesh triangles. Large triangles can produce stepped edges or make a thin stroke appear wider.
+
+The **Paint colours** panel groups these strokes by their ordered colour stops. Hover a ramp to locate its painted faces. Select the ramp to reuse its stops. **Save** preserves the ramps even after earlier undo entries expire. Choose **Snapmaker Orca** as the target in **Export** to turn gradient colours into editable native Gradient recipes based on the painted height. Gradient painting is available on mesh plates. Plates converted from GLB textures use the texture painting tools.
+
 ## Viewing and navigating
 
 - **Segment view** — toggle region-coloured visualization with yellow boundary outlines.

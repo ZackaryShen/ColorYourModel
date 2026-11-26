@@ -61,6 +61,11 @@ export interface PersistedExportSelection {
 }
 export type Rgb = [number, number, number];
 
+export interface ExportPalettePreview {
+  flat: string[];
+  gradientBySlotCount: Record<number, { colors: string[]; approximated: boolean }>;
+}
+
 export interface TextureColorAssignment {
   rgb: Rgb;
   slot: number;

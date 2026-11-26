@@ -170,6 +170,14 @@ pub fn quantize_histogram(histogram: &[([u8; 3], usize)], max_slots: usize) -> V
 
 /// Keep the most frequent colours and merge rare colours into their nearest RGB.
 pub fn bounded_color_histogram(colors: &[[u8; 4]], face_count: usize) -> Vec<([u8; 3], usize)> {
+    color_histogram_with_limit(colors, face_count, MAX_HISTOGRAM_COLORS)
+}
+
+pub(crate) fn color_histogram_with_limit(
+    colors: &[[u8; 4]],
+    face_count: usize,
+    limit: usize,
+) -> Vec<([u8; 3], usize)> {
     if colors.is_empty() {
         return if face_count == 0 {
             vec![]
@@ -183,12 +191,19 @@ pub fn bounded_color_histogram(colors: &[[u8; 4]], face_count: usize) -> Vec<([u
             .entry([color[0], color[1], color[2]])
             .or_insert(0usize) += 1;
     }
+    bound_color_counts(counts, limit)
+}
+
+pub(crate) fn bound_color_counts(
+    counts: std::collections::BTreeMap<[u8; 3], usize>,
+    limit: usize,
+) -> Vec<([u8; 3], usize)> {
     let mut entries: Vec<_> = counts.into_iter().collect();
-    if entries.len() <= MAX_HISTOGRAM_COLORS {
+    if entries.len() <= limit {
         return entries;
     }
     entries.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-    let rare = entries.split_off(MAX_HISTOGRAM_COLORS);
+    let rare = entries.split_off(limit);
     let palette: Vec<_> = entries.iter().map(|(rgb, _)| *rgb).collect();
     let tree = ColourTree::new(&palette);
     for (rgb, count) in rare {

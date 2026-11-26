@@ -9,7 +9,8 @@ vi.mock('@tauri-apps/api/core', () => ({invoke:vi.fn()}));
 vi.mock('@tauri-apps/api/event', () => ({listen:vi.fn(async () => () => {})}));
 vi.mock('@tauri-apps/plugin-dialog', () => ({save:vi.fn()}));
 const machine: MachineSummary = {
-  id:'snapmaker_u1',name:'Snapmaker U1',vendor:'Snapmaker', nozzles:['0.4','0.6'],targetSlicers:['snapmaker_orca'],
+  id:'snapmaker_u1',name:'Snapmaker U1',vendor:'Snapmaker', nozzles:['0.4','0.6'],
+  slotsByNozzle:{'0.4':4,'0.6':4},targetSlicers:['snapmaker_orca'],
   processes:[{name:'Standard 0.4',nozzles:['0.4'],layerHeight:'0.2'},{name:'Fine 0.4',nozzles:['0.4'],layerHeight:'0.1'},{name:'Standard 0.6',nozzles:['0.6'],layerHeight:'0.3'}],
   filaments:[{name:'PLA 0.4',nozzles:['0.4'],material:'PLA',vendor:'Generic'},{name:'PETG 0.4',nozzles:['0.4'],material:'PETG',vendor:'Generic'},{name:'PLA 0.6',nozzles:['0.6'],material:'PLA',vendor:'Generic'}],
 };
@@ -20,7 +21,7 @@ beforeEach(() => {
   useAppStore.setState({activeTabId:1,tabEpoch:1,language:'en',importBusy:false,saveBusy:false,lastExportSelection:null, meshData:{vertices:[0,0,0],faces:[0,0,0],faceColors:[255,0,0,255],segmentLabels:[1],segments:[],faceCount:1,bbox:{min:[0,0,0],max:[0,0,0]}}});
   vi.mocked(invoke).mockImplementation(async (command, args) => {
     if (command === 'export_3mf_command') { writtenSelection = (args as {selection:ExportSelection}).selection; return 'Exported to /tmp/presets.3mf'; }
-    return command === 'list_export_presets' ? [machine] : ['#FF0000'];
+    return command === 'list_export_presets' ? [machine] : { flat: ['#FF0000'], gradientBySlotCount: {} };
   });
 });
 it('restores a persisted non-default process when it is valid for the nozzle', async () => {
@@ -46,4 +47,23 @@ it('keeps all material choices consistent with the newly selected nozzle', async
       expect(Array.from(select.options).some(o => o.value === select.value)).toBe(true);
     }
   });
+});
+
+it('shows only physical gradient slots for Snapmaker and switches to the flat palette for OrcaSlicer', async () => {
+  const sharedMachine = {
+    ...machine, slotsByNozzle: { '0.4': 4, '0.6': 4 },
+    targetSlicers: ['snapmaker_orca', 'orcaslicer'],
+  };
+  vi.mocked(invoke).mockImplementation(async (command) => command === 'list_export_presets'
+    ? [sharedMachine]
+    : { flat: ['#AA00AA', '#CC00CC', '#FF0000'], gradientBySlotCount: {
+      '4': { colors: ['#FF0000', '#0000FF'], approximated: false },
+    } });
+  render(<ExportDialog onClose={() => {}}/>);
+  await screen.findByTitle('#0000FF');
+  expect(screen.getAllByRole('checkbox', { name: /Select slot/ })).toHaveLength(2);
+  expect(screen.queryByTitle('#AA00AA')).toBeNull();
+  fireEvent.change(screen.getByRole('combobox', { name: /target slicer/i }), { target: { value: 'orcaslicer' } });
+  await screen.findByTitle('#AA00AA');
+  expect(screen.getAllByRole('checkbox', { name: /Select slot/ })).toHaveLength(3);
 });

@@ -107,3 +107,55 @@ it('cancels unsent work and can resume after a StrictMode effect reset', async (
   queue.enqueue(3);
   expect(seen).toEqual([1, 3]);
 });
+
+it("keeps both completed gestures between coalesced brush samples", async () => {
+  let finish!: () => void;
+  const seen: string[] = [];
+  const queue = createSerialPaintQueue<string>(async job => {
+    seen.push(job);
+    if (job === "running") await new Promise<void>(resolve => { finish = resolve; });
+  });
+  queue.enqueue("running");
+  queue.enqueue("old sample");
+  queue.enqueue("final sample");
+  queue.enqueue("first gradient", "gesture");
+  queue.enqueue("second gradient", "gesture");
+  queue.enqueue("later sample");
+  finish();
+  await flush();
+  expect(seen).toEqual(["running", "final sample", "first gradient", "second gradient", "later sample"]);
+});
+
+it("applies undo after already entered gestures and before later paint", async () => {
+  let release!: () => void;
+  const inFlight = new Promise<void>(resolve => { release = resolve; });
+  const seen: string[] = [];
+  const queue = createSerialPaintQueue<string>(async job => {
+    if (job === "gradient B") await inFlight;
+    seen.push(job);
+  });
+  queue.enqueue("gradient B", "gesture");
+  queue.enqueue("gradient C", "gesture");
+  const undone = queue.enqueueAction("undo");
+  queue.enqueue("later paint");
+  expect(seen).toEqual([]);
+  release();
+  await undone;
+  expect(seen).toEqual(["gradient B", "gradient C", "undo", "later paint"]);
+});
+
+it("settles history callers when a tab departure drops the queued operation", async () => {
+  let release!: () => void;
+  const inFlight = new Promise<void>(resolve => { release = resolve; });
+  const seen: string[] = [];
+  const queue = createSerialPaintQueue<string>(async job => {
+    seen.push(job);
+    if (job === "paint") await inFlight;
+  });
+  queue.enqueue("paint", "gesture");
+  const dropped = queue.enqueueAction("undo");
+  queue.cancel();
+  await dropped;
+  release();
+  expect(seen).toEqual(["paint"]);
+});

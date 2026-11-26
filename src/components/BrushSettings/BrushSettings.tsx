@@ -1,8 +1,18 @@
+import { useId } from "react";
+import { isGradientTool } from "../../utils/gradientPaint";
+import { GradientSettings } from "./GradientSettings";
 import { useAppStore } from "../../store/appStore";
+import { PaintTool } from "../../types/mesh";
 import { useT } from "../../i18n";
 
 export function BrushSettings() {
   const t = useT();
+  const activeTool = useAppStore(s => s.activeTool);
+  const hasGradientTool = isGradientTool(activeTool);
+  const radiusLabel = useId();
+  const texturePlate = useAppStore(s => Boolean(s.meshData?.texturePainting));
+  const gradientActive = useAppStore(s => s.gradientEnabled) && hasGradientTool && !texturePlate;
+  const missingGradientGesture = useAppStore(s => s.hasGradientPaint && !s.gradientContext);
   const brushRadius = useAppStore((s) => s.brushRadius);
   const brushStrength = useAppStore((s) => s.brushStrength);
   const brushFalloff = useAppStore((s) => s.brushFalloff);
@@ -15,10 +25,15 @@ export function BrushSettings() {
   return (
     <div style={styles.container}>
       <div style={styles.header}>{t("brush.title")}</div>
+      {missingGradientGesture && <p className="gradient-settings gradient-settings__notice" role="status">{t("gradient.contextUnavailable")}</p>}
+      {hasGradientTool && <GradientSettings unavailable={texturePlate} />}
 
       <div style={styles.row}>
-        <label style={styles.label}>{t("brush.radius")}: {brushRadius.toFixed(1)}mm</label>
+        <label htmlFor={radiusLabel} style={styles.label}>
+          {t(gradientActive && activeTool === PaintTool.Fill ? "gradient.localFillRadius" : "brush.radius")}: {brushRadius.toFixed(1)}mm
+        </label>
         <input
+          id={radiusLabel}
           type="range"
           min="0.5"
           max="200"
@@ -29,35 +44,37 @@ export function BrushSettings() {
         />
       </div>
 
-      <div style={styles.row}>
-        <label style={styles.label}>
-          {t("brush.strength")}: {(brushStrength * 100).toFixed(0)}%
-        </label>
-        <input
-          type="range"
-          min="0.1"
-          max="1.0"
-          step="0.05"
-          value={brushStrength}
-          onChange={(e) => setBrushStrength(parseFloat(e.target.value))}
-          style={styles.slider}
-        />
-      </div>
+      {!gradientActive && (<>
+        <div style={styles.row}>
+          <label style={styles.label}>
+            {t("brush.strength")}: {(brushStrength * 100).toFixed(0)}%
+          </label>
+          <input
+            type="range"
+            min="0.1"
+            max="1.0"
+            step="0.05"
+            value={brushStrength}
+            onChange={(e) => setBrushStrength(parseFloat(e.target.value))}
+            style={styles.slider}
+          />
+        </div>
 
-      <div style={styles.row}>
-        <label style={styles.label}>{t("brush.falloff")}:</label>
-        <select
-          value={brushFalloff}
-          onChange={(e) =>
-            setBrushFalloff(e.target.value as "linear" | "smooth" | "step")
-          }
-          style={styles.select}
-        >
-          <option value="smooth">{t("brush.smooth")}</option>
-          <option value="linear">{t("brush.linear")}</option>
-          <option value="step">{t("brush.step")}</option>
-        </select>
-      </div>
+        <div style={styles.row}>
+          <label style={styles.label}>{t("brush.falloff")}:</label>
+          <select
+            value={brushFalloff}
+            onChange={(e) =>
+              setBrushFalloff(e.target.value as "linear" | "smooth" | "step")
+            }
+            style={styles.select}
+          >
+            <option value="smooth">{t("brush.smooth")}</option>
+            <option value="linear">{t("brush.linear")}</option>
+            <option value="step">{t("brush.step")}</option>
+          </select>
+        </div>
+      </>)}
 
       <div style={styles.row}>
         <label style={styles.label}>{t("shading.mode")}</label>

@@ -21,6 +21,7 @@ pub struct Expanded {
     pub vertices: Vec<[f32; 3]>,
     pub faces: Vec<[u32; 3]>,
     pub slots: Vec<u8>,
+    pub(super) midpoints: HashMap<(u32, u32), u32>,
 }
 
 /// Hard ceiling on tree nesting, matching [`super::paint`]'s decoder. Real
@@ -63,6 +64,7 @@ pub fn expand(
         vertices: builder.vertices,
         faces: builder.faces,
         slots: builder.slots,
+        midpoints: builder.midpoints,
     }
 }
 

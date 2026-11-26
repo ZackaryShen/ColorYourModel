@@ -1,0 +1,93 @@
+.gradient-settings {
+  margin-bottom: 9px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.gradient-settings__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.gradient-settings__toggle input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.gradient-settings p {
+  margin: 2px 0 0;
+}
+
+.gradient-settings__stops {
+  min-width: 0;
+  padding: 7px;
+  margin: 4px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.gradient-settings__preview {
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.gradient-settings ol {
+  padding: 0;
+  margin: 6px 0;
+  display: grid;
+  gap: 3px;
+}
+
+.gradient-settings li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gradient-settings li label {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gradient-settings input[type="color"] {
+  width: 32px;
+  height: 25px;
+  padding: 1px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  cursor: pointer;
+}
+
+.gradient-settings button {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-1);
+  background: var(--bg-elevated);
+}
+
+.gradient-settings__add {
+  width: 100%;
+}
+
+.gradient-settings__saved-guide {
+  width: 100%;
+  margin-top: 5px;
+}
+
+.gradient-settings__saved-guide[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+
+.gradient-settings__notice {
+  margin: 0 0 8px;
+}

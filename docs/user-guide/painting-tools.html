@@ -349,6 +349,14 @@ pre.mermaid.mermaid-offline::after {
 </ul>
 <h2 id="undo--redo">Undo / redo</h2>
 <p>One unified timeline covers brush, spray, fill, erase and manual region edits — <code>Ctrl+Z</code> / <code>Ctrl+Y</code> (or the toolbar buttons) walk it back and forth. Backend-enforced, so it stays consistent across tools.</p>
+<h2 id="gradient-painting">Gradient painting</h2>
+<p>Select <strong>Brush</strong> or <strong>Fill</strong>, turn on <strong>Gradient</strong>, and arrange two to eight colours in the settings. Both tools use the same ordered colours.</p>
+<ul>
+<li>With <strong>Brush</strong>, draw across the model. The colours advance from the first to the last stop along the stroke. Release to apply the stroke in one undo step.</li>
+<li>With <strong>Fill</strong>, start inside the region to paint and drag toward the end colour. The same direction is applied across the selected area. Hold Shift for the connected-region fill.</li>
+</ul>
+<p>Painting follows the mesh triangles. Large triangles can produce stepped edges or make a thin stroke appear wider.</p>
+<p>The <strong>Paint colours</strong> panel groups these strokes by their ordered colour stops. Hover a ramp to locate its painted faces. Select the ramp to reuse its stops. <strong>Save</strong> preserves the ramps even after earlier undo entries expire. Choose <strong>Snapmaker Orca</strong> as the target in <strong>Export</strong> to turn gradient colours into editable native Gradient recipes based on the painted height. Gradient painting is available on mesh plates. Plates converted from GLB textures use the texture painting tools.</p>
 <h2 id="viewing-and-navigating">Viewing and navigating</h2>
 <ul>
 <li><strong>Segment view</strong> — toggle region-coloured visualization with yellow boundary outlines.</li>
@@ -360,7 +368,7 @@ pre.mermaid.mermaid-offline::after {
 <p>Pick palette colours from the colour panel; the palette slots map to filament slots at export time (see <a href="exporting.html">Exporting</a>).</p>
 
     </article>
-    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#the-tools">The tools</a></li><li class="toc-h2"><a href="#fill-is-region-authoritative">Fill is region-authoritative</a></li><li class="toc-h2"><a href="#undo--redo">Undo / redo</a></li><li class="toc-h2"><a href="#viewing-and-navigating">Viewing and navigating</a></li><li class="toc-h2"><a href="#colours">Colours</a></li></ul></details>
+    <details class="toc" open><summary>On this page</summary><ul><li class="toc-h2"><a href="#the-tools">The tools</a></li><li class="toc-h2"><a href="#fill-is-region-authoritative">Fill is region-authoritative</a></li><li class="toc-h2"><a href="#undo--redo">Undo / redo</a></li><li class="toc-h2"><a href="#gradient-painting">Gradient painting</a></li><li class="toc-h2"><a href="#viewing-and-navigating">Viewing and navigating</a></li><li class="toc-h2"><a href="#colours">Colours</a></li></ul></details>
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>

@@ -1,10 +1,10 @@
 import { listenViewportKeydown } from "../../utils/viewportKeyboard";
 import { isCurrentTabResult } from "../../utils/tabCommand";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../../store/appStore";
-import { AMS_PALETTE, type UsedColorEntry } from "../../types/mesh";
+import { AMS_PALETTE, PaintTool, type UsedColorEntry } from "../../types/mesh";
 import { useT } from "../../i18n";
-import { useTauriCommand } from "../../hooks/useTauriCommand";
+import { useTauriCommand, type PaintSourceGroup } from "../../hooks/useTauriCommand";
 import { AMS_PALETTE as AMS } from "../../types/mesh";
 import { ReplaceColourSection } from "./ReplaceColourSection";
 import { toHex } from "../../utils/colorFormat";
@@ -30,10 +30,8 @@ export function ColorPanel() {
   // group offers a one-click "repaint the whole stroke" replacement.
   const { paintSourceGroups, replacePaintSource, paintSourceFaces } = useTauriCommand();
   const setPaintSourceHoverFaces = useAppStore((s) => s.setPaintSourceHoverFaces);
-  const historyVersionBump = useAppStore((s) => s.historyVersion);
-  const [paintGroups, setPaintGroups] = useState<
-    { source: [number, number, number, number]; faces: number }[]
-  >([]);
+  const [paintGroups, setPaintGroups] = useState<PaintSourceGroup[]>([]);
+  const hoverRequest = useRef(0);
   const [selectedSource, setSelectedSource] = useState<[number, number, number, number] | null>(null);
   const [repaintTo, setRepaintTo] = useState<[number, number, number, number] | null>(null);
   const [repainting, setRepainting] = useState(false);
@@ -41,6 +39,8 @@ export function ColorPanel() {
 
   useEffect(() => {
     let cancelled = false;
+    ++hoverRequest.current;
+    setPaintSourceHoverFaces(null);
     if (!modelFaceColors) {
       setPaintGroups([]);
       setSelectedSource(null);
@@ -53,10 +53,11 @@ export function ColorPanel() {
     }, 250);
     return () => {
       cancelled = true;
+      ++hoverRequest.current;
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelFaceColors, historyVersionBump]);
+  }, [modelFaceColors, historyVersion, setPaintSourceHoverFaces]);
 
   // Esc deselects the paint-source group (before the replace-collapse listener
   // gets a chance — this one is registered later, so it wins on the same key).
@@ -102,13 +103,12 @@ export function ColorPanel() {
 
   // Hover highlight for a paint group: fetch the LIVE face set once per
   // hover (one small IPC) and hand it to the viewport outline.
-  const hoverPaintGroup = async (source: [number, number, number, number] | null) => {
-    if (!source) {
-      setPaintSourceHoverFaces(null);
-      return;
-    }
-    const faces = await paintSourceFaces(source);
-      if (!isCurrentTabResult(faces)) return;
+  const hoverPaintGroup = async (group: PaintSourceGroup | null) => {
+    const request = ++hoverRequest.current;
+    setPaintSourceHoverFaces(null);
+    if (!group) return;
+    const faces = await paintSourceFaces(group);
+    if (faces === null || request !== hoverRequest.current || !isCurrentTabResult(faces)) return;
     setPaintSourceHoverFaces(faces);
   };
   // Issue #29 acceptance #6: the replace section starts collapsed and Esc
@@ -224,11 +224,40 @@ export function ColorPanel() {
       {/* Issue #29 governance: paint provenance — each swatch is the BRUSH
           colour a stroke was painted with (icon-marked); selecting one offers
           a one-click repaint of the whole stroke (acceptance round 3, #3). */}
-      {showUsed && paintGroups.length > 0 && (
+      {paintGroups.length > 0 && (
         <>
           <div style={styles.subheader}>{t("color.paintColours")}</div>
           <div style={styles.palette}>
             {paintGroups.map((g) => {
+              if ("stops" in g) {
+                const label = t("color.gradientPaintTooltip",
+                  g.stops.map(stop => toHex(stop).toUpperCase()).join(" → "),
+                  g.faces.toLocaleString());
+                return (
+                  <button
+                    key={`gradient:${g.stops.join(";")}`}
+                    title={label}
+                    aria-label={label}
+                    onMouseEnter={() => void hoverPaintGroup(g)}
+                    onMouseLeave={() => void hoverPaintGroup(null)}
+                    onClick={() => {
+                      const state = useAppStore.getState();
+                      if (state.activeTool !== PaintTool.Fill) state.setActiveTool(PaintTool.Brush);
+                      state.setGradientStops(g.stops);
+                      state.setGradientEnabled(true);
+                      setSelectedSource(null);
+                      setRepaintTo(null);
+                    }}
+                    className="cym-btn"
+                    style={{
+                      ...styles.swatch,
+                      background: `linear-gradient(90deg, ${g.stops.map(toHex).join(", ")})`,
+                    }}
+                  >
+                    🖌
+                  </button>
+                );
+              }
               const hex = toHex(g.source);
               const key = `${g.source[0]},${g.source[1]},${g.source[2]},${g.source[3]}`;
               const isSelected =
@@ -241,8 +270,8 @@ export function ColorPanel() {
                 <button
                   key={key}
                   title={t("color.paintTooltip", hex.toUpperCase(), g.faces.toLocaleString())}
-                  onMouseEnter={() => void hoverPaintGroup(g.source)}
-                  onMouseLeave={() => setPaintSourceHoverFaces(null)}
+                  onMouseEnter={() => void hoverPaintGroup(g)}
+                  onMouseLeave={() => void hoverPaintGroup(null)}
                   onClick={() => {
                     setSelectedSource(isSelected ? null : g.source);
                     setRepaintTo(null);

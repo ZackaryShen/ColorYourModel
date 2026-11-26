@@ -34,7 +34,7 @@ pub struct Tab {
     pub hidden_labels: HashSet<u32>,
     pub engineering_state: Option<String>,
     pub history_dropped: bool,
-    pub color_histogram: Option<Vec<([u8; 3], usize)>>,
+    pub color_histogram: Option<crate::export::gradient::ColorHistograms>,
 }
 
 pub struct Workspace {

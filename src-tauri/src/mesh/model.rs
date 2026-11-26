@@ -1,9 +1,9 @@
 use petgraph::graph::UnGraph;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::mesh::face_colors::mix_color;
-use crate::mesh::history::{History, OpKind};
+use crate::mesh::history::{GradientContext, History, OpKind};
 
 /// Bounding box for a mesh
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +84,36 @@ pub const MAX_SEGMENT_NAME_CHARS: usize = 64;
 /// (verified by grep over the whole backend, iteration 21).
 pub const DEFAULT_FACE_COLOR: [u8; 4] = [138, 138, 138, 255];
 
+/// The two adjacent ramp stops and the fraction of the second stop on a face.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GradientSample {
+    pub from: [u8; 4],
+    pub to: [u8; 4],
+    pub mix: u16,
+    /// One-based index into the plate's ramp table. Zero marks old paint.
+    pub ramp_id: u32,
+}
+
+impl GradientSample {
+    pub fn rgba(self) -> [u8; 4] {
+        let mix = u32::from(self.mix);
+        let max = u32::from(u16::MAX);
+        std::array::from_fn(|channel| {
+            let from = u32::from(self.from[channel]);
+            let to = u32::from(self.to[channel]);
+            ((from * (max - mix) + to * mix + max / 2) / max) as u8
+        })
+    }
+}
+
+fn intern_gradient_ramp(ramps: &mut Vec<Vec<[u8; 4]>>, stops: &[[u8; 4]]) -> u32 {
+    let index = ramps.iter().position(|ramp| ramp == stops).unwrap_or_else(|| {
+        ramps.push(stops.to_vec());
+        ramps.len() - 1
+    });
+    index as u32 + 1
+}
+
 #[derive(Clone, Copy)]
 struct TexturePaintBlend {
     base: [u8; 4],
@@ -97,6 +127,10 @@ pub struct MeshModel {
     pub source_plate_count: u32,
     /// Source preset snapshot belongs to this model, never to a prior project.
     pub source_presets: Option<Result<crate::export::source_presets::SourcePresets, String>>,
+    /// Effective one-based native material slot per face at import. Zero is unknown.
+    pub source_material_slots: Vec<u8>,
+    /// Original physical and mixed swatches, indexed by `slot - 1`.
+    pub source_material_colors: Vec<Option<[u8; 4]>>,
     // Geometry
     pub vertices: Vec<[f32; 3]>,
     pub faces: Vec<[u32; 3]>,
@@ -104,6 +138,8 @@ pub struct MeshModel {
 
     // Per-face RGBA colors
     pub face_colors: Vec<[u8; 4]>,
+    pub gradient_faces: HashMap<u32, GradientSample>,
+    pub(crate) gradient_ramps: Vec<Vec<[u8; 4]>>,
     /// Texture projects keep source face colours and a separate print mapping.
     pub texture_painting: bool,
     pub texture_state_dropped: bool,
@@ -263,6 +299,10 @@ pub struct MeshDataDto {
     pub can_undo: bool,
     #[serde(default)]
     pub can_redo: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gradient_context: Option<GradientContext>,
+    #[serde(default)]
+    pub has_gradient_paint: bool,
     #[serde(default)]
     pub import_warning: Option<String>,
 }
@@ -281,10 +321,14 @@ impl MeshModel {
             source_path: None,
             source_plate_count: 1,
             source_presets: None,
+            source_material_slots: Vec::new(),
+            source_material_colors: Vec::new(),
             vertices: Vec::new(),
             faces: Vec::new(),
             normals: Vec::new(),
             face_colors: Vec::new(),
+            gradient_faces: HashMap::new(),
+            gradient_ramps: Vec::new(),
             texture_painting: false,
             texture_state_dropped: false,
             texture_slot_mapping: None,
@@ -613,6 +657,7 @@ impl MeshModel {
     /// Initialize every face to `DEFAULT_FACE_COLOR` (neutral mid grey).
     pub fn init_default_colors(&mut self) {
         self.face_colors = vec![DEFAULT_FACE_COLOR; self.faces.len()];
+        self.gradient_faces.clear();
         if self.texture_painting {
             self.paint_sources.clear();
             self.texture_paint_blends.clear();
@@ -844,7 +889,9 @@ impl MeshModel {
         let mut tally: HashMap<[u8; 4], (u32, HashSet<u32>)> = HashMap::new();
         for (face, color) in self.face_colors.iter().enumerate() {
             let effective = match self.paint_sources.get(&(face as u32)) {
-                Some((src, painted)) if self.face_colors.get(face as usize) == Some(painted) => {
+                Some((src, painted))
+                    if color == painted && !self.gradient_faces.contains_key(&(face as u32)) =>
+                {
                     *src
                 }
                 _ => *color,
@@ -880,14 +927,110 @@ impl MeshModel {
     /// `stroke_id` groups the hundreds of IPC calls a single drag produces into
     /// one undo level. Pass `None` for one-shot operations.
     pub fn apply_paint(&mut self, stroke_id: Option<u64>, updates: &[(u32, [u8; 4])]) {
-        let prev: Vec<(u32, [u8; 4])> = updates
-            .iter()
-            .map(|&(face, _)| (face, self.face_colors[face as usize]))
-            .collect();
-        self.history.record(OpKind::Paint, stroke_id, &prev, &[]);
+        self.record_paint_edit(
+            OpKind::Paint,
+            stroke_id,
+            updates.iter().map(|&(face, _)| face),
+        );
         for &(face, color) in updates {
             self.face_colors[face as usize] = color;
         }
+    }
+
+    pub fn apply_gradient(&mut self, updates: &[(u32, GradientSample)], context: GradientContext) {
+        if updates.is_empty() {
+            return;
+        }
+        let ramp_id = intern_gradient_ramp(&mut self.gradient_ramps, &context.stops);
+        self.record_paint_edit_with_context(
+            context.kind(),
+            None,
+            updates.iter().map(|&(face, _)| face),
+            Some(context),
+        );
+        for &(face, sample) in updates {
+            self.face_colors[face as usize] = sample.rgba();
+            self.gradient_faces.insert(face, GradientSample { ramp_id, ..sample });
+        }
+    }
+
+    pub(crate) fn gradient_ramp(&self, ramp_id: u32) -> Option<&[[u8; 4]]> {
+        let index = ramp_id.checked_sub(1)? as usize;
+        self.gradient_ramps.get(index).map(Vec::as_slice)
+    }
+
+    /// Promote old samples while their full ramp still exists in the timeline.
+    pub(crate) fn recover_gradient_ramps(&mut self) {
+        let mut missing: HashSet<_> = self.gradient_faces.iter()
+            .filter_map(|(&face, sample)| (sample.ramp_id == 0).then_some(face))
+            .collect();
+        for entry in self.history.applied_gradients() {
+            if missing.is_empty() {
+                break;
+            }
+            let mut faces = entry.colors.iter()
+                .filter_map(|&(face, _)| missing.remove(&face).then_some(face));
+            let Some(first) = faces.next() else { continue };
+            if let Some(context) = &entry.gradient_context {
+                let ramp_id = intern_gradient_ramp(&mut self.gradient_ramps, &context.stops);
+                for face in std::iter::once(first).chain(faces) {
+                    let sample = self.gradient_faces.get_mut(&face).unwrap();
+                    if context.stops.windows(2).any(|pair| pair == [sample.from, sample.to]) {
+                        sample.ramp_id = ramp_id;
+                    }
+                }
+            } else {
+                faces.for_each(drop);
+            }
+        }
+    }
+
+    /// Record a colour edit, including any gradient at each affected face.
+    /// Lasso and segment brush also snapshot the labels they overwrite.
+    pub fn record_paint_edit(
+        &mut self,
+        kind: OpKind,
+        stroke_id: Option<u64>,
+        faces: impl IntoIterator<Item = u32>,
+    ) {
+        self.record_paint_edit_with_context(kind, stroke_id, faces, None);
+    }
+
+    fn record_paint_edit_with_context(
+        &mut self,
+        kind: OpKind,
+        stroke_id: Option<u64>,
+        faces: impl IntoIterator<Item = u32>,
+        gradient_context: Option<GradientContext>,
+    ) {
+        let prev_colors: Vec<_> = faces
+            .into_iter()
+            .map(|face| (face, self.face_colors[face as usize]))
+            .collect();
+        let prev_labels: Vec<_> = if kind.touches_labels() {
+            prev_colors
+                .iter()
+                .map(|&(face, _)| (face, self.segment_labels[face as usize]))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let prev_gradients: HashMap<_, _> = prev_colors
+            .iter()
+            .filter_map(|&(face, _)| {
+                self.gradient_faces
+                    .remove(&face)
+                    .map(|sample| (face, sample))
+            })
+            .collect();
+        self.history.record_with_gradients(
+            kind,
+            stroke_id,
+            &prev_colors,
+            &prev_labels,
+            &prev_gradients,
+            gradient_context,
+        );
     }
 
     /// Capture texture underpaint before making the dab visible in `face_colors`.
@@ -920,7 +1063,9 @@ impl MeshModel {
     pub(crate) fn recolour_texture_dab(&self, face: u32, target: [u8; 4]) -> [u8; 4] {
         self.texture_paint_blends
             .get(&face)
-            .map_or(target, |blend| mix_color(&blend.base, &target, blend.coverage))
+            .map_or(target, |blend| {
+                mix_color(&blend.base, &target, blend.coverage)
+            })
     }
 
     /// Record paint provenance for a committed batch (issue #29 governance):
@@ -950,13 +1095,34 @@ impl MeshModel {
     pub fn paint_source_groups(&self) -> Vec<([u8; 4], u32)> {
         let mut tally: HashMap<[u8; 4], u32> = HashMap::new();
         for (&face, &(source, painted)) in &self.paint_sources {
-            if self.face_colors.get(face as usize) == Some(&painted) {
+            if self.face_colors.get(face as usize) == Some(&painted)
+                && !self.gradient_faces.contains_key(&face)
+            {
                 *tally.entry(source).or_insert(0) += 1;
             }
         }
         let mut out: Vec<([u8; 4], u32)> = tally.into_iter().collect();
         out.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
         out
+    }
+
+    /// Group live gradient faces by their authored colour stops. Older
+    /// samples without provenance retain their saved adjacent pair.
+    pub(crate) fn gradient_paint_groups(&self) -> BTreeMap<Vec<[u8; 4]>, Vec<u32>> {
+        let mut groups = BTreeMap::<_, Vec<u32>>::new();
+        let mut ramp_faces = BTreeMap::<_, Vec<u32>>::new();
+        for (&face, sample) in &self.gradient_faces {
+            if self.gradient_ramp(sample.ramp_id).is_some() {
+                ramp_faces.entry(sample.ramp_id).or_default().push(face);
+            } else {
+                groups.entry(vec![sample.from, sample.to]).or_default().push(face);
+            }
+        }
+        for (ramp_id, faces) in ramp_faces {
+            let stops = self.gradient_ramp(ramp_id).expect("Live ramp was checked above");
+            groups.entry(stops.to_vec()).or_default().extend(faces);
+        }
+        groups
     }
 
     /// Replace every live face painted with `from` by `to`, in ONE undo step.
@@ -968,7 +1134,9 @@ impl MeshModel {
             .paint_sources
             .iter()
             .filter(|(face, (source, painted))| {
-                *source == from && self.face_colors.get(**face as usize) == Some(painted)
+                *source == from
+                    && self.face_colors.get(**face as usize) == Some(painted)
+                    && !self.gradient_faces.contains_key(*face)
             })
             .map(|(face, _)| *face)
             .collect();
@@ -990,7 +1158,9 @@ impl MeshModel {
         self.paint_sources
             .iter()
             .filter(|(face, (src, painted))| {
-                *src == source && self.face_colors.get(**face as usize) == Some(painted)
+                *src == source
+                    && self.face_colors.get(**face as usize) == Some(painted)
+                    && !self.gradient_faces.contains_key(*face)
             })
             .map(|(face, _)| *face)
             .collect()
@@ -1005,12 +1175,7 @@ impl MeshModel {
         color: [u8; 4],
     ) {
         let i = face as usize;
-        self.history.record(
-            OpKind::SegmentPaint,
-            stroke_id,
-            &[(face, self.face_colors[i])],
-            &[(face, self.segment_labels[i])],
-        );
+        self.record_paint_edit(OpKind::SegmentPaint, stroke_id, [face]);
         self.face_colors[i] = color;
         self.segment_labels[i] = label;
     }
@@ -1051,6 +1216,8 @@ impl MeshModel {
             texture_painting: self.texture_painting,
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
+            gradient_context: self.history.gradient_context().cloned(),
+            has_gradient_paint: !self.gradient_faces.is_empty(),
             import_warning: self.texture_state_dropped.then(|| "3mf-texture".into()),
         }
     }
@@ -1087,6 +1254,15 @@ impl MeshModel {
             .face_kdtree
             .within_unsorted::<kiddo::SquaredEuclidean>(point, widened * widened);
         results.iter().map(|item| item.item as u32).collect()
+    }
+
+    /// Account for the whole mesh when a paint query falls back to a linear scan.
+    pub(crate) fn face_radius_scan_cost(&self) -> usize {
+        if self.face_kdtree_degraded {
+            self.faces.len()
+        } else {
+            0
+        }
     }
 
     /// Face indices of the K nearest face centers to `point` (candidate set

@@ -16,14 +16,29 @@ import type { HistoryResult, HistoryState } from "../types/mesh";
  */
 
 type Applier = (r: HistoryResult | null) => void;
+type HistoryAction = () => Promise<void>;
+type HistoryScheduler = (action: HistoryAction) => Promise<void>;
 
 let applier: Applier | null = null;
+let scheduler: HistoryScheduler | null = null;
 // Guards the IPC round-trip so a held Ctrl key (auto-repeat keydown) or a
 // double-click can't stack undo/redo commands against the backend.
 let draining = false;
 
 export function setHistoryApplier(fn: Applier | null) {
   applier = fn;
+}
+
+/** History and paint must apply in the same order in Rust and the viewport. */
+export function registerHistoryScheduler(schedule: HistoryScheduler) {
+  scheduler = schedule;
+  return () => {
+    if (scheduler === schedule) scheduler = null;
+  };
+}
+
+export function queueHistoryAction(action: HistoryAction): Promise<void> {
+  return scheduler ? scheduler(action) : action();
 }
 
 export function applyHistoryResult(r: HistoryResult | null) {
@@ -52,8 +67,10 @@ export function useUndoRedo(cmds: UndoRedoCommands) {
       if (draining) return;
       draining = true;
       try {
-        const res = await fn();
-        applyHistoryResult(res);
+        await queueHistoryAction(async () => {
+          const res = await fn();
+          applyHistoryResult(res);
+        });
       } catch (e) {
         log.error("useUndoRedo", "history operation failed", { error: String(e) });
       } finally {

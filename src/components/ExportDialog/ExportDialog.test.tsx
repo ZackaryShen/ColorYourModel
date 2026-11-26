@@ -78,7 +78,7 @@ describe("texture mappings in ExportDialog", () => {
         rows: [{ rgb: blue, faceCount: 1 }, { rgb: red, faceCount: 1 }],
         accepted: { selection, nominalColors, assignments: [{ rgb: red, slot: 4 }] },
       };
-      if (name === "export_palette_preview") return ["#0000FF", "#FF0000"];
+      if (name === "export_palette_preview") return { flat: ["#0000FF", "#FF0000"], gradientBySlotCount: {} };
       if (name === "suggest_texture_mapping") return {
         slots: nominalColors.map((color, i) => ({
           slot: i + 1, nominalColor: color, displayColor: color ?? [138, 138, 138],

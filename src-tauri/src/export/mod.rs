@@ -1,3 +1,4 @@
+pub(crate) mod gradient;
 pub mod obj;
 pub mod paint_color;
 pub mod presets;

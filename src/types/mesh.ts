@@ -41,6 +41,8 @@ export interface MeshData {
   texturePainting?: boolean;
   canUndo?: boolean;
   canRedo?: boolean;
+  gradientContext?: GradientPaintContext;
+  hasGradientPaint?: boolean;
   importWarning?: "3mf-texture";
 }
 
@@ -60,6 +62,19 @@ export enum PaintTool {
   Segment = "segment",
   Lasso = "lasso",
   Seed = "seed",
+}
+
+export interface GradientHit {
+  faceId: number;
+  point: [number, number, number];
+}
+
+export interface GradientPaintContext {
+  tool: PaintTool.Brush | PaintTool.Fill;
+  stops: [number, number, number, number][];
+  points: GradientHit[];
+  radius: number;
+  wholeRegion: boolean;
 }
 
 /// A user-placed seed for seeded watershed segmentation (iteration 50).
@@ -157,6 +172,8 @@ export interface HistoryResult {
   faceColors: number[] | null;
   canUndo: boolean;
   canRedo: boolean;
+  gradientContext?: GradientPaintContext | null;
+  hasGradientPaint?: boolean;
 }
 
 /// Stack state for enabling toolbar buttons on load / after a stroke.
@@ -180,6 +197,9 @@ export interface UsedColorEntry {
 // History panel (issue #22) — mirrors the backend DTOs in commands/history.rs.
 export type HistoryOpKind =
   | "paint"
+  | "gradientBrush"
+  | "gradientFill"
+  | "legacyGradientPaint"
   | "segmentPaint"
   | "region"
   | "merge"
@@ -199,7 +219,7 @@ export interface HistoryEntriesResult {
   current: number;
   maxDepth: number;
   bytes: number;
-  /** Applied entries, oldest first; depth k = the state after entries[k-1]. */
+  /** Timeline entries, oldest first; depth k = the state after entries[k-1]. */
   entries: HistoryEntryInfo[];
 }
 

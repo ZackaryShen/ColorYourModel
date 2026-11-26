@@ -55,6 +55,8 @@ pub fn run() {
             commands::segment::fuse_segmentation,
             commands::segment::reset_segmentation,
             commands::paint::brush_paint,
+            commands::paint::gradient_brush_paint,
+            commands::paint::gradient_fill_paint,
             commands::paint::fill_paint,
             commands::paint::fill_segment_paint,
             commands::paint::spray_paint,

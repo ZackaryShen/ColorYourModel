@@ -37,7 +37,45 @@
 //! is no open/closed state to leak, so a lost `pointerup` costs at most one
 //! extra history entry rather than a corrupted timeline.
 
-use std::collections::{HashSet, VecDeque};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
+
+use crate::mesh::model::GradientSample;
+use crate::paint::gradient::GradientHit;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GradientTool {
+    Brush,
+    Fill,
+}
+
+/// The original gesture in model-local coordinates. Color/label swaps still
+/// use face deltas, which preserve exact values even if the brush changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GradientContext {
+    pub tool: GradientTool,
+    pub stops: Box<[[u8; 4]]>,
+    pub points: Box<[GradientHit]>,
+    pub radius: f32,
+    pub whole_region: bool,
+}
+
+impl GradientContext {
+    pub fn kind(&self) -> OpKind {
+        match self.tool {
+            GradientTool::Brush => OpKind::GradientBrush,
+            GradientTool::Fill => OpKind::GradientFill,
+        }
+    }
+
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + std::mem::size_of_val(self.stops.as_ref())
+            + std::mem::size_of_val(self.points.as_ref())
+    }
+}
 
 /// Which user action produced a history entry.
 ///
@@ -62,6 +100,10 @@ pub enum OpKind {
     /// `face_colors`, so re-colouring the split-off faces would discard real
     /// output. Each resulting connected piece becomes its own region.
     Split,
+    GradientBrush,
+    GradientFill,
+    /// An older Paint entry that introduced exact gradient samples.
+    LegacyGradientPaint,
 }
 
 impl OpKind {
@@ -71,7 +113,17 @@ impl OpKind {
     /// the segment view memoises on the whole mesh-data object, so patching
     /// labels in place would restore the data without ever repainting.
     pub fn touches_labels(self) -> bool {
-        !matches!(self, OpKind::Paint)
+        matches!(
+            self,
+            OpKind::SegmentPaint | OpKind::ManualRegion | OpKind::Merge | OpKind::Split
+        )
+    }
+
+    pub fn is_gradient(self) -> bool {
+        matches!(
+            self,
+            OpKind::GradientBrush | OpKind::GradientFill | OpKind::LegacyGradientPaint
+        )
     }
 
     /// Stable wire key for the history panel's row label (issue #22). The
@@ -84,6 +136,9 @@ impl OpKind {
             OpKind::ManualRegion => "region",
             OpKind::Merge => "merge",
             OpKind::Split => "split",
+            OpKind::GradientBrush => "gradientBrush",
+            OpKind::GradientFill => "gradientFill",
+            OpKind::LegacyGradientPaint => "legacyGradientPaint",
         }
     }
 
@@ -94,11 +149,14 @@ impl OpKind {
     /// model-transform operation and is deliberately left unused here.
     pub fn to_u8(self) -> u8 {
         match self {
-            OpKind::Paint => 0,
+            // Preserve the original wire kind for inferred legacy entries.
+            OpKind::Paint | OpKind::LegacyGradientPaint => 0,
             OpKind::SegmentPaint => 1,
             OpKind::ManualRegion => 2,
             OpKind::Merge => 3,
             OpKind::Split => 4,
+            OpKind::GradientBrush => 6,
+            OpKind::GradientFill => 7,
         }
     }
 
@@ -114,6 +172,8 @@ impl OpKind {
             2 => Some(OpKind::ManualRegion),
             3 => Some(OpKind::Merge),
             4 => Some(OpKind::Split),
+            6 => Some(OpKind::GradientBrush),
+            7 => Some(OpKind::GradientFill),
             _ => None,
         }
     }
@@ -130,6 +190,9 @@ pub struct HistoryEntry {
     /// `(face, label that was there before this operation)`. Empty for
     /// [`OpKind::Paint`].
     pub labels: Vec<(u32, u32)>,
+    /// Previous ramp samples for the colour records that carried a gradient.
+    pub gradients: Vec<(u32, GradientSample)>,
+    pub gradient_context: Option<Box<GradientContext>>,
 }
 
 impl HistoryEntry {
@@ -142,6 +205,11 @@ impl HistoryEntry {
         std::mem::size_of::<Self>()
             + self.colors.capacity() * std::mem::size_of::<(u32, [u8; 4])>()
             + self.labels.capacity() * std::mem::size_of::<(u32, u32)>()
+            + self.gradients.capacity() * std::mem::size_of::<(u32, GradientSample)>()
+            + self
+                .gradient_context
+                .as_deref()
+                .map_or(0, GradientContext::bytes)
     }
 
     /// Heap footprint measured by `len`, not `capacity`.
@@ -154,6 +222,11 @@ impl HistoryEntry {
         std::mem::size_of::<Self>()
             + self.colors.len() * std::mem::size_of::<(u32, [u8; 4])>()
             + self.labels.len() * std::mem::size_of::<(u32, u32)>()
+            + self.gradients.len() * std::mem::size_of::<(u32, GradientSample)>()
+            + self
+                .gradient_context
+                .as_deref()
+                .map_or(0, GradientContext::bytes)
     }
 
     /// Project this entry into the owned form the project file persists.
@@ -163,15 +236,27 @@ impl HistoryEntry {
             stroke_id: self.stroke_id,
             colors: self.colors.clone(),
             labels: self.labels.clone(),
+            gradients: self.gradients.clone(),
+            gradient_context: self.gradient_context.clone(),
         }
     }
 
     /// Swap every stored value with the live one, turning this entry into its
     /// own inverse.
-    fn apply_swap(&mut self, colors: &mut [[u8; 4]], labels: &mut [u32]) {
+    fn apply_swap(
+        &mut self,
+        colors: &mut [[u8; 4]],
+        labels: &mut [u32],
+        gradients: &mut HashMap<u32, GradientSample>,
+    ) {
+        let mut swapped_gradients = Vec::new();
         for (face, stored) in self.colors.iter_mut() {
             std::mem::swap(&mut colors[*face as usize], stored);
+            if let Some(sample) = gradients.remove(face) {
+                swapped_gradients.push((*face, sample));
+            }
         }
+        gradients.extend(std::mem::replace(&mut self.gradients, swapped_gradients));
         for (face, stored) in self.labels.iter_mut() {
             std::mem::swap(&mut labels[*face as usize], stored);
         }
@@ -189,6 +274,8 @@ pub struct RawEntry {
     pub stroke_id: Option<u64>,
     pub colors: Vec<(u32, [u8; 4])>,
     pub labels: Vec<(u32, u32)>,
+    pub gradients: Vec<(u32, GradientSample)>,
+    pub gradient_context: Option<Box<GradientContext>>,
 }
 
 impl RawEntry {
@@ -198,6 +285,8 @@ impl RawEntry {
             stroke_id: self.stroke_id,
             colors: self.colors,
             labels: self.labels,
+            gradients: self.gradients,
+            gradient_context: self.gradient_context,
         }
     }
 }
@@ -308,12 +397,12 @@ impl History {
         self.redo.len()
     }
 
-    /// Panel listing (issue #22): every APPLIED entry, oldest first. Undone
-    /// entries reappear when redone. `undo_depth()` is the current state's
-    /// jump index — depth k means ops `0..k` are applied.
+    /// Panel listing (issue #22): applied entries followed by the redo branch.
+    /// `undo_depth()` is the current state's jump index.
     pub fn entries(&self) -> Vec<HistoryEntryInfo> {
         self.undo
             .iter()
+            .chain(self.redo.iter().rev())
             .map(|e| HistoryEntryInfo {
                 kind: e.kind,
                 stroke_id: e.stroke_id,
@@ -323,16 +412,71 @@ impl History {
             .collect()
     }
 
+    pub(crate) fn applied_gradients(&self) -> impl Iterator<Item = &HistoryEntry> {
+        self.undo.iter().rev().filter(|entry| entry.kind.is_gradient())
+    }
+
+    pub fn gradient_context(&self) -> Option<&GradientContext> {
+        self.undo
+            .iter()
+            .rev()
+            .find(|entry| entry.kind.is_gradient())?
+            .gradient_context
+            .as_deref()
+    }
+
+    /// Old Paint entries can be identified by the exact samples they added.
+    /// These samples carry no tool, path or radius information.
+    pub fn identify_legacy_gradients(&mut self, live: &HashMap<u32, GradientSample>) {
+        let candidate =
+            |entry: &HistoryEntry| entry.kind == OpKind::Paint && entry.stroke_id.is_none();
+        if self.undo.iter().any(candidate)
+            && (!live.is_empty() || self.undo.iter().any(|entry| !entry.gradients.is_empty()))
+        {
+            let mut after = live.clone();
+            for entry in self.undo.iter_mut().rev() {
+                if candidate(entry)
+                    && entry
+                        .colors
+                        .iter()
+                        .any(|(face, _)| after.contains_key(face))
+                {
+                    entry.kind = OpKind::LegacyGradientPaint;
+                }
+                for (face, _) in &entry.colors {
+                    after.remove(face);
+                }
+                after.extend(entry.gradients.iter().copied());
+            }
+        }
+        for entry in &mut self.redo {
+            if candidate(entry) && !entry.gradients.is_empty() {
+                entry.kind = OpKind::LegacyGradientPaint;
+            }
+        }
+    }
+
     /// Jump to state `depth` in ONE call (issue #22): `depth` entries of the
     /// timeline applied, `0` = pristine. Going back pops entries onto the
     /// redo branch (still listed, greyed, jump-forward-able); going forward
     /// re-applies redo entries, clamped to how many actually exist. Returns
     /// `None` when already at `depth`. Ends any open stroke, like undo/redo.
+    #[cfg(test)]
     pub fn jump_to(
         &mut self,
         depth: usize,
         colors: &mut [[u8; 4]],
         labels: &mut [u32],
+    ) -> Option<JumpOutcome> {
+        self.jump_to_with_gradients(depth, colors, labels, &mut HashMap::new())
+    }
+
+    pub fn jump_to_with_gradients(
+        &mut self,
+        depth: usize,
+        colors: &mut [[u8; 4]],
+        labels: &mut [u32],
+        gradients: &mut HashMap<u32, GradientSample>,
     ) -> Option<JumpOutcome> {
         let current = self.undo.len();
         if depth == current {
@@ -359,7 +503,7 @@ impl History {
             } else {
                 self.redo.pop()?
             };
-            let out = Self::apply(&mut entry, colors, labels);
+            let out = self.apply(&mut entry, colors, labels, gradients);
             if going_back {
                 self.redo.push(entry);
             } else {
@@ -477,6 +621,25 @@ impl History {
         prev_colors: &[(u32, [u8; 4])],
         prev_labels: &[(u32, u32)],
     ) {
+        self.record_with_gradients(
+            kind,
+            stroke_id,
+            prev_colors,
+            prev_labels,
+            &HashMap::new(),
+            None,
+        );
+    }
+
+    pub fn record_with_gradients(
+        &mut self,
+        kind: OpKind,
+        stroke_id: Option<u64>,
+        prev_colors: &[(u32, [u8; 4])],
+        prev_labels: &[(u32, u32)],
+        prev_gradients: &HashMap<u32, GradientSample>,
+        gradient_context: Option<GradientContext>,
+    ) {
         debug_assert!(
             if kind.touches_labels() {
                 prev_colors.is_empty() || prev_labels.len() == prev_colors.len()
@@ -518,6 +681,8 @@ impl History {
                 stroke_id,
                 colors: Vec::new(),
                 labels: Vec::new(),
+                gradients: Vec::new(),
+                gradient_context: gradient_context.map(Box::new),
             });
         }
 
@@ -540,6 +705,9 @@ impl History {
             for (i, &(face, color)) in prev_colors.iter().enumerate() {
                 if open_faces.insert(face) {
                     entry.colors.push((face, color));
+                    if let Some(&sample) = prev_gradients.get(&face) {
+                        entry.gradients.push((face, sample));
+                    }
                     if aligned {
                         debug_assert_eq!(prev_labels[i].0, face, "label/colour face mismatch");
                         entry.labels.push(prev_labels[i]);
@@ -555,9 +723,19 @@ impl History {
 
     /// Revert the most recent operation. Returns `None` when there is nothing
     /// to undo.
+    #[cfg(test)]
     pub fn undo(&mut self, colors: &mut [[u8; 4]], labels: &mut [u32]) -> Option<HistoryOutcome> {
+        self.undo_with_gradients(colors, labels, &mut HashMap::new())
+    }
+
+    pub fn undo_with_gradients(
+        &mut self,
+        colors: &mut [[u8; 4]],
+        labels: &mut [u32],
+        gradients: &mut HashMap<u32, GradientSample>,
+    ) -> Option<HistoryOutcome> {
         let mut entry = self.undo.pop_back()?;
-        let outcome = Self::apply(&mut entry, colors, labels);
+        let outcome = self.apply(&mut entry, colors, labels, gradients);
         self.redo.push(entry);
         // An undo ends whatever stroke was still accepting appends; the next
         // paint call must not merge into an entry that has already moved.
@@ -568,9 +746,19 @@ impl History {
 
     /// Re-apply the most recently undone operation. Returns `None` when there
     /// is nothing to redo.
+    #[cfg(test)]
     pub fn redo(&mut self, colors: &mut [[u8; 4]], labels: &mut [u32]) -> Option<HistoryOutcome> {
+        self.redo_with_gradients(colors, labels, &mut HashMap::new())
+    }
+
+    pub fn redo_with_gradients(
+        &mut self,
+        colors: &mut [[u8; 4]],
+        labels: &mut [u32],
+        gradients: &mut HashMap<u32, GradientSample>,
+    ) -> Option<HistoryOutcome> {
         let mut entry = self.redo.pop()?;
-        let outcome = Self::apply(&mut entry, colors, labels);
+        let outcome = self.apply(&mut entry, colors, labels, gradients);
         self.undo.push_back(entry);
         self.open_stroke = None;
         self.open_faces.clear();
@@ -578,11 +766,18 @@ impl History {
     }
 
     fn apply(
+        &mut self,
         entry: &mut HistoryEntry,
         colors: &mut [[u8; 4]],
         labels: &mut [u32],
+        gradients: &mut HashMap<u32, GradientSample>,
     ) -> HistoryOutcome {
-        entry.apply_swap(colors, labels);
+        let old_gradient_bytes =
+            entry.gradients.capacity() * std::mem::size_of::<(u32, GradientSample)>();
+        entry.apply_swap(colors, labels, gradients);
+        let new_gradient_bytes =
+            entry.gradients.capacity() * std::mem::size_of::<(u32, GradientSample)>();
+        self.bytes = self.bytes.saturating_sub(old_gradient_bytes) + new_gradient_bytes;
         HistoryOutcome {
             kind: entry.kind,
             faces: entry.colors.iter().map(|&(f, _)| f).collect(),
@@ -1004,6 +1199,8 @@ mod tests {
                 stroke_id: None,
                 colors,
                 labels,
+                gradients: Vec::new(),
+                gradient_context: None,
             }],
             Vec::new(),
         );
@@ -1054,6 +1251,8 @@ mod tests {
         assert_eq!(OpKind::ManualRegion.to_u8(), 2);
         assert_eq!(OpKind::Merge.to_u8(), 3);
         assert_eq!(OpKind::Split.to_u8(), 4);
+        assert_eq!(OpKind::GradientBrush.to_u8(), 6);
+        assert_eq!(OpKind::GradientFill.to_u8(), 7);
 
         for kind in [
             OpKind::Paint,
@@ -1061,6 +1260,8 @@ mod tests {
             OpKind::ManualRegion,
             OpKind::Merge,
             OpKind::Split,
+            OpKind::GradientBrush,
+            OpKind::GradientFill,
         ] {
             assert_eq!(
                 OpKind::from_u8(kind.to_u8()),
@@ -1075,7 +1276,7 @@ mod tests {
             None,
             "kind 5 预留给模型变换，本版本不可加载"
         );
-        for b in 6..=u8::MAX {
+        for b in 8..=u8::MAX {
             assert_eq!(OpKind::from_u8(b), None, "byte {b} is not a known op kind");
         }
     }

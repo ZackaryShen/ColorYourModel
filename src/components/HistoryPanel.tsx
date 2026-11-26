@@ -2,17 +2,18 @@ import { captureTabOwnership, isCurrentTabOwnership, isCurrentTabResult } from "
 import { useCallback, useEffect, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { useT } from "../i18n";
-import { applyHistoryResult } from "../hooks/useHistory";
+import { applyHistoryResult, queueHistoryAction } from "../hooks/useHistory";
 import { useTauriCommand } from "../hooks/useTauriCommand";
 import { buildHistoryRows, formatHeaderBytes } from "../utils/historyPanel";
 import type { HistoryEntriesResult, HistoryOpKind } from "../types/mesh";
 import { log } from "../utils/logger";
 
-/** Row icon per backend wire key (`OpKind::key()`). Fill is recorded as
- *  Paint and is indistinguishable in the entry data — the brush icon covers
- *  both, matching what the timeline actually knows. */
+/** Row icon per backend wire key (`OpKind::key()`). */
 const KIND_ICON: Record<HistoryOpKind, string> = {
   paint: "🖌",
+  gradientBrush: "🖌",
+  gradientFill: "↗",
+  legacyGradientPaint: "🌈",
   segmentPaint: "🖌",
   region: "🧵",
   merge: "🔀",
@@ -59,11 +60,14 @@ export function HistoryPanel() {
     const owner = snapshot.owner;
     setJumping(true);
     try {
-      const result = await historyJump(depth);
-      if (result && isCurrentTabOwnership(owner) && isCurrentTabResult(result)) {
-        applyHistoryResult(result); // flag update bumps historyVersion → refetch
-        setStatusMessage(t("history.jumped", depth));
-      }
+      await queueHistoryAction(async () => {
+        if (!isCurrentTabOwnership(owner)) return;
+        const result = await historyJump(depth);
+        if (result && isCurrentTabOwnership(owner) && isCurrentTabResult(result)) {
+          applyHistoryResult(result);
+          setStatusMessage(t("history.jumped", depth));
+        }
+      });
     } catch (e) {
       log.error("HistoryPanel", "jump failed", { depth, error: String(e) });
       if (isCurrentTabOwnership(owner)) setStatusMessage(`${t("history.jumpFailed")}: ${e}`);

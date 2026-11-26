@@ -1,5 +1,5 @@
 import { listenViewportKeydown } from "../../utils/viewportKeyboard";
-import { isCurrentTabResult, captureTabOwnership, isCurrentTabOwnership } from "../../utils/tabCommand";
+import { invokeTab, isCurrentTabResult, captureTabOwnership, isCurrentTabOwnership } from "../../utils/tabCommand";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -9,8 +9,8 @@ import { useMesh } from "../../hooks/useMesh";
 import { usePaintTool, MANUAL_SEGMENT_OFFSET } from "../../hooks/usePaintTool";
 import { usePaintStroke } from "../../hooks/usePaintStroke";
 import { useTauriCommand } from "../../hooks/useTauriCommand";
-import { useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
-import type { HistoryResult } from "../../types/mesh";
+import { registerHistoryScheduler, useUndoRedo, setHistoryApplier } from "../../hooks/useHistory";
+import { PaintTool, type HistoryResult, type PaintResult } from "../../types/mesh";
 import { log } from "../../utils/logger";
 import { hintKeyForTool } from "../../utils/controlsHint";
 import { useT } from "../../i18n";
@@ -23,6 +23,10 @@ import { MergeBar } from "./MergeBar";
 import { filterVisibleHits, firstVisibleHit, toggleHiddenLabels } from "../../utils/segmentVisibility";
 import { nearestSeedPx, pointerToCanvasPx, seedEraseRadiusPx, type SeedLike } from "../../utils/seedErase";
 import { createSerialPaintQueue, type PaintJob } from "./paintQueue";
+import { isGradientTool } from "../../utils/gradientPaint";
+import { GradientGuide } from "./GradientGuide";
+import { bindGradientPointer, gradientHit, startGradientGesture, type GradientGesture, type GradientPaintJob } from "./gradientGesture";
+
 
 // Accelerated raycasting via a bounding-volume hierarchy (three-mesh-bvh).
 // Patched ONCE at module load. `acceleratedRaycast` falls back to the native
@@ -881,6 +885,11 @@ function MeshDisplay() {
   const toggleMergePicked = useAppStore((s) => s.toggleMergePicked);
   const activeTool = useAppStore((s) => s.activeTool);
   const brushRadius = useAppStore((s) => s.brushRadius);
+  const gradientActive = useAppStore(s =>
+    s.gradientEnabled && isGradientTool(s.activeTool) && !s.meshData?.texturePainting);
+  const gradientStartColor = useAppStore(s => s.gradientStops[0]);
+  const savedGradientGuide = useAppStore(s => s.showSavedGradientGuide ? s.gradientContext : null);
+  const gradientPreview = useRef<GradientGesture | null>(null);
   const shadingMode = useAppStore((s) => s.shadingMode);
   const currentColor = useAppStore((s) => s.currentColor);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
@@ -1000,7 +1009,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // Segment paint state: track current label + painted faces for dedup
   const currentSegLabelRef = useRef<number | null>(null);
   const segPaintedFacesRef = useRef<Set<number>>(new Set());
-  const { gl, camera } = useThree();
+  const { gl, camera, invalidate } = useThree();
   const raycaster = useMemo(() => {
     const r = new THREE.Raycaster();
     // BVH: return only the nearest hit (we only ever read hits[0]).
@@ -1244,6 +1253,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       const st = useAppStore.getState();
       st.setHistoryFlags(result.canUndo, result.canRedo);
       if (!result.applied) return;
+      st.restoreHistoryGradient(result.gradientContext, result.hasGradientPaint);
       if (result.full) {
         if (result.segmentLabels && result.segments && result.faceColors) {
           st.updateSegmentLabels(result.segmentLabels, result.segments, result.faceColors);
@@ -1679,48 +1689,64 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
 
   const pick = useFacePicker(meshRef, handleFacePicked);
 
-  // Keep a live ref to handleFacePicked so the serial paint queue (below)
-  // always calls the latest closure without re-creating the queue.
+  // The pointer listener captures the current handler for each queued input.
+  // A later tool or colour change cannot reinterpret a pending dab.
   const handleFacePickedRef = useRef(handleFacePicked);
   handleFacePickedRef.current = handleFacePicked;
 
-  // Serial paint queue (iteration 15, req #2). A drag fires many pointermove
-  // events, each issuing an async Tauri `paintFace`. Fire-and-forget invokes
-  // returned OUT OF ORDER and `updateFaceColors` wrote them synchronously, so
-  // overlapping brush strokes overwrote each other in the wrong order — the
-  // real cause of "color not following the cursor" (REFUTE P6). Serializing
-  // guarantees faces are colored strictly in the order the cursor visited them.
-  // Latest-wins consumer throttle (iteration 16, REFUTE blocker-3). In WebView2
-  // `pointermove` is already rAF-aligned, so an extra rAF-coalesce is a no-op that
-  // only trades lag for gaps — instead we keep ONLY the most recent face while a
-  // Tauri paint IPC is in flight. The queue never grows unbounded, so the visual
-  // paint lags by at most one round-trip. Intermediate faces between two samples
-  // are covered by the brush's radius flood-fill (no need for path interpolation
-  // in this iteration; see loop-journal backlog for a batch-stroke IPC).
-  // The queued item carries the modifier state captured at event time, so a
-  // Shift+click whole-region fill is not lost while an earlier paint is in
-  // flight (iteration 18, M3).
-  // Serial paint queue — see paintQueue.ts for why the drain is serialized
-  // (iteration 15) and latest-wins (iteration 16), and paintQueue.test.ts for
-  // the strokeId-forwarding contract whose loss was issue #20 (one drag undone
-  // one sample at a time).
+  // Solid dabs and complete gradient gestures share one chronological queue.
+  // Preserve the active view's geometry applier if a request spans a repaint.
+  const applyGradientResult = useRef(updateFaceColors);
+  useLayoutEffect(() => {
+    applyGradientResult.current = updateFaceColors;
+  }, [updateFaceColors]);
+
   const tabEpoch = useAppStore(state => state.tabEpoch);
   const paintQueue = useMemo(
     () => {
       const owner = captureTabOwnership();
-      return createSerialPaintQueue<PaintJob>((job) => {
-        if (!isCurrentTabOwnership(owner)) return Promise.resolve();
-        return handleFacePickedRef.current(job.faceId, {
-          wholeRegion: job.wholeRegion,
-          hoveredSegment: job.hoveredSegment,
-          renderedHover: job.renderedHover,
-          strokeId: job.strokeId,
-        });
+      return createSerialPaintQueue<(() => Promise<void>) | GradientPaintJob>(async (job) => {
+        if (!isCurrentTabOwnership(owner)) return;
+        if (typeof job === "function") {
+          await job();
+          return;
+        }
+        const { tool, ...args } = job;
+        try {
+          setStatusMessage("gradient.applying");
+          const result = await invokeTab<PaintResult>(
+            tool === PaintTool.Brush ? "gradient_brush_paint" : "gradient_fill_paint",
+            args,
+            owner.tabId,
+          );
+          if (!isCurrentTabOwnership(owner)) return;
+          if (result.updatedFaces.length > 0) {
+            applyGradientResult.current(result.updatedFaces, result.updatedColors);
+            const state = useAppStore.getState();
+            state.rememberGradientContext({
+              tool, stops: job.stops, radius: job.radius,
+              points: job.tool === PaintTool.Brush ? job.points : [job.start, job.end],
+              wholeRegion: job.tool === PaintTool.Fill && job.wholeRegion,
+            });
+            state.markHistoryDirty();
+          }
+          setStatusMessage(result.updatedFaces.length
+            ? t("gradient.applied", result.updatedFaces.length)
+            : t("gradient.noChange"));
+        } catch (error) {
+          if (isCurrentTabOwnership(owner)) setStatusMessage(t("paint.error", String(error)));
+        }
       });
     },
     [meshData?.tabId, tabEpoch]
   );
-  useEffect(() => () => paintQueue.cancel(), [paintQueue]);
+  useLayoutEffect(() => {
+    const unregister = registerHistoryScheduler(action => paintQueue.enqueueAction(action));
+    return () => {
+      unregister();
+      paintQueue.cancel();
+    };
+  }, [paintQueue]);
   // Backend coalesces consecutive paint calls that share a `stroke_id` into ONE
   // undo entry. We mint a fresh id per drag (pointerdown) and reuse it for the
   // whole drag, so a single brush stroke = one undo step. The id alone delimits
@@ -1730,7 +1756,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
   // `segmentLabels[clickedFace]` directly (see usePaintTool), so a cached
   // "last valid hover" no longer has any legitimate consumer. Keeping it around
   // invited exactly the wrong-target fills it was once built to serve.
-  const enqueuePaint = useCallback((faceId: number, wholeRegion = false) => {
+  const enqueuePaint = useCallback((faceId: number, wholeRegion = false, beginsStroke = false) => {
     // Snapshot hoveredSegment AT ENQUEUE TIME (click/pointerdown), not at async
     // execution time. onPointerUp fires synchronously and clears it before the
     // async IIFE runs — causing a race condition where handleFacePicked always
@@ -1758,7 +1784,8 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       `[CLICK] face=${faceId} snap(store)=${snap ?? "null"} ` +
       `→ final=${job.hoveredSegment ?? "null"}`
     );
-    paintQueue.enqueue(job);
+    const apply = handleFacePickedRef.current;
+    paintQueue.enqueue(() => apply(faceId, job), beginsStroke ? "gesture" : "sample");
   }, [paintQueue]);
 
   // Alt key → temporary camera rotate even while a paint/segment/lasso tool is
@@ -1847,36 +1874,87 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
 
 
   // Pointer events for painting + hover
+  const raycastFace = useCallback((clientX: number, clientY: number): THREE.Intersection | null => {
+    const mesh = meshRef.current;
+    if (!mesh) return null;
+    const rect = gl.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    return firstVisibleHitNow(raycaster.intersectObject(mesh, false));
+  }, [gl.domElement, camera, raycaster]);
+
+  const updateBrushCursor = useCallback((hit: THREE.Intersection | null) => {
+    if (!isRadiusTool || segmentView || !meshRef.current || !hit || hit.faceIndex == null) {
+      hoverInfoRef.current = null;
+      return;
+    }
+    const position = meshRef.current.worldToLocal(hit.point.clone());
+    const normal = hit.face ? hit.face.normal.clone() : new THREE.Vector3(0, 0, 1);
+    hoverInfoRef.current = { position, normal };
+  }, [isRadiusTool, segmentView]);
+
+  // The gradient listeners stay attached through unrelated renders, including
+  // Fill hover/debug updates and incrementally applied paint results.
+  useLayoutEffect(() => {
+    if (!gradientActive || !isGradientTool(activeTool)) return;
+    const canvas = gl.domElement;
+    const owner = captureTabOwnership();
+    const sample = (event: Pick<PointerEvent, "clientX" | "clientY">) => {
+      const { left, top, right, bottom } = canvas.getBoundingClientRect();
+      const { clientX, clientY } = event;
+      const hit = clientX >= left && clientX <= right && clientY >= top && clientY <= bottom
+        ? raycastFace(clientX, clientY)
+        : null;
+      updateBrushCursor(hit);
+      return gradientHit(meshRef.current, hit);
+    };
+
+    return bindGradientPointer(canvas, {
+      subscribe: useAppStore.subscribe,
+      brushRadius: () => useAppStore.getState().brushRadius,
+      isCurrent: () => {
+        const state = useAppStore.getState();
+        return isCurrentTabOwnership(owner) && state.activeTool === activeTool &&
+          state.isLoaded && state.gradientEnabled && !state.meshData?.texturePainting &&
+          !state.isLoading && !state.importBusy && !state.saveBusy;
+      },
+      start: event => {
+        if (_altHeld || event.altKey || event.ctrlKey || event.metaKey) return null;
+        if (isPointerInGizmo(event.clientX, event.clientY, canvas)) return null;
+        const start = sample(event);
+        if (!start) return null;
+        const state = useAppStore.getState();
+        const wholeRegion = activeTool === PaintTool.Fill && event.shiftKey;
+        if (activeTool === PaintTool.Fill) {
+          const label = state.meshData?.segmentLabels[start.faceId];
+          const hasSegment = state.meshData?.segments.some(segment => segment.id === label);
+          setHoveredSegment(!wholeRegion && hasSegment ? label ?? null : null);
+        }
+        return startGradientGesture(activeTool, start, {
+          stops: state.gradientStops,
+          radius: state.brushRadius,
+          wholeRegion,
+        });
+      },
+      sample,
+      preview: gesture => {
+        if (!gesture && gradientPreview.current?.tool === PaintTool.Fill && isCurrentTabOwnership(owner)) {
+          setHoveredSegment(null);
+        }
+        gradientPreview.current = gesture;
+        invalidate();
+      },
+      commit: job => paintQueue.enqueue(job, "gesture"),
+      invalidFill: () => setStatusMessage("gradient.fillNeedsDrag"),
+    });
+  }, [activeTool, gl.domElement, gradientActive, invalidate, modelVertices, paintQueue,
+    raycastFace, setHoveredSegment, setStatusMessage, updateBrushCursor]);
+
   useEffect(() => {
     const canvas = gl.domElement;
-
-    // Single raycast shared by the hover block and the paint-drag branch so we
-    // never run a SECOND O(F) pass per pointermove (the hover merge already
-    // removed that hotspot; REFUTE: do not reintroduce it in the drag path).
-    const raycastFace = (clientX: number, clientY: number): THREE.Intersection | null => {
-      const mesh = meshRef.current;
-      if (!mesh) return null;
-      const rect = canvas.getBoundingClientRect();
-      const mouse = new THREE.Vector2(
-        ((clientX - rect.left) / rect.width) * 2 - 1,
-        -((clientY - rect.top) / rect.height) * 2 + 1
-      );
-      raycaster.setFromCamera(mouse, camera);
-      const hits = filterVisibleHitsNow(raycaster.intersectObject(mesh, false));
-      return hits.length > 0 ? hits[0] : null;
-    };
-
-    // Drive the brush-cursor ring (BrushCursorImperative reads hoverInfoRef).
-    // Only brush tools in paint view show the ring; everything else clears it.
-    const updateBrushCursor = (hit: THREE.Intersection | null) => {
-      if (!isRadiusTool || segmentView || !meshRef.current || !hit || hit.faceIndex == null) {
-        hoverInfoRef.current = null;
-        return;
-      }
-      const pos = meshRef.current.worldToLocal(hit.point.clone());
-      const normal = hit.face ? hit.face.normal.clone() : new THREE.Vector3(0, 0, 1);
-      hoverInfoRef.current = { position: pos, normal };
-    };
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
@@ -2080,9 +2158,13 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       // space orbits the camera instead of painting (iteration 15, req #1). We
       // gate isPainting on the initial hit to avoid a camera fight if the drag
       // later crosses onto the model.
+      const paintState = useAppStore.getState();
+      const gradientSelected = isGradientTool(paintState.activeTool)
+        && paintState.gradientEnabled && !paintState.meshData?.texturePainting;
       const hit = raycastFace(e.clientX, e.clientY);
-      if (!hit || hit.faceIndex == null) {
+      if (gradientSelected || !hit || hit.faceIndex == null) {
         // Empty space: do NOT paint, do NOT capture. OrbitControls rotates.
+        // With gradients active only the captured gesture can commit paint.
         return;
       }
       // Mint a fresh stroke id so every drag maps to ONE backend undo entry
@@ -2096,7 +2178,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       try { canvas.setPointerCapture(e.pointerId); } catch { /* not critical */ }
       // Shift + fill click → explicit whole-connected-region flood (the escape
       // hatch that keeps the pre-iteration-18 behaviour reachable, M3).
-      enqueuePaint(hit.faceIndex, activeTool === "fill" && e.shiftKey);
+      enqueuePaint(hit.faceIndex, activeTool === "fill" && e.shiftKey, true);
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -2402,7 +2484,7 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, toggleMergePicked, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed, eraseNearPointer]);
+  }, [gl.domElement, pick, handleFacePicked, enqueuePaint, activeTool, gradientActive, raycastFace, updateBrushCursor, isBrushTool, isRadiusTool, isSegmentTool, isLassoTool, isSeedTool, isHighlightTool, segmentView, geometry, raycaster, camera, getLocalHit, handleLassoClick, closeThreshold, dotSize, meshData, vertexData, segmentIds, setHoveredSegment, setSelectedSegment, toggleMergePicked, manualRegionAddPoint, addSeedPoint, seedPoints, clearSeedPoints, seedEraseMode, removeSeedPoint, setSeedEraseMode, seedPickMode, setSeedPickMode, suggestedSeeds, acceptSuggestedSeed, eraseNearPointer]);
 
   // Show lasso usage hint when the tool is selected.
   useEffect(() => {
@@ -2575,9 +2657,10 @@ const eyeRegionsVisible = useAppStore((s) => s.eyeRegionsVisible);
           <lineBasicMaterial color={0x333333} opacity={0.05} transparent />
         </lineSegments>
       )}
+      {gradientActive && <GradientGuide preview={gradientPreview} saved={savedGradientGuide} />}
       {/* Brush radius preview cursor — imperative, useFrame-driven */}
       {isRadiusTool && !segmentView && (
-        <BrushCursorImperative hoverInfoRef={hoverInfoRef} brushRadius={brushRadius} color={currentColor} />
+        <BrushCursorImperative hoverInfoRef={hoverInfoRef} brushRadius={brushRadius} color={gradientActive ? gradientStartColor : currentColor} />
       )}
       {/* Paint view: highlight ONLY the segment under the cursor (near
           highlight). The just-created partition does NOT stay highlighted here —
@@ -3134,18 +3217,19 @@ const debugStyles: Record<string, React.CSSProperties> = {
 function ControlsHelp() {
   const t = useT();
   const activeTool = useAppStore((s) => s.activeTool);
+  const gradientEnabled = useAppStore(s => s.gradientEnabled && !s.meshData?.texturePainting);
   // Context-sensitive mapping (iteration 15, req #1/#3): over the model LEFT
   // paints, over empty space LEFT rotates, RIGHT always pans, Ctrl+Wheel
   // resizes the brush (brush tools only). Key selection lives in
   // utils/controlsHint.ts — StatusBar reads the SAME keys, so the two hint
   // surfaces can never contradict each other (GUI audit 2026-10-02, B4).
-  const key = hintKeyForTool(activeTool);
+  const key = hintKeyForTool(activeTool, gradientEnabled);
   const hint = t(key);
   // The view/edit hints already end with their own wheel-zoom wording; the
   // standalone "🔍 Scroll: Zoom" chip used to repeat it (GUI audit B11).
   // Brush tools are the one group whose hint omits plain wheel zoom, so the
   // chip survives there.
-  const needsZoomChip = key === "controls.brushHint";
+  const needsZoomChip = key === "controls.brushHint" || key === "controls.gradientBrushHint";
   return (
     <div style={helpStyles.bar}>
       <span style={helpStyles.item}>{hint}</span>

@@ -45,6 +45,14 @@ flowchart LR
 
 **Saving oversized models:** Save / Save As preserves your editing work even when a model exceeds the selected printer's bed. Geometry and printer settings are retained. The explicit 3MF print-export command still checks bed fit; choose a suitable printer before preparing the printable file.
 
+### Gradient paint to Snapmaker Orca
+
+Choose **Snapmaker Orca** as the target for a project with gradient brush or fill paint. The filament list shows the physical spool colours used by the export. CYM assigns native, editable Gradient recipes to the painted surfaces. Each recipe uses a pair of physical filaments. If the model uses more colours than the printer has slots, the dialog shows that some colours will be approximated.
+
+Snapmaker Orca 2.4.2 changes the mix from the lowest to the highest layer painted with each recipe. CYM fits the surface colours to that height range. Changes along a path on the same layer can only be approximated. A ramp with more than two colours uses successive two-filament Gradient recipes. Snapmaker Orca supports up to 64 physical and virtual slots combined. A print export that exceeds the limit stops before writing the file. Saving the CYM project keeps the editable ramps and reports any Gradient recipes it could not add to the print configuration.
+
+**Save** keeps your exact CYM gradient. Saving a CYM Snapmaker gradient print export also preserves its physical spool palette and rebuilds its virtual slots. To choose a new spool palette, use **Export** again. OrcaSlicer export uses the regular flat colour palette.
+
 ### Models converted from textures
 
 On the active texture plate, select the printer and assign the model colours to its physical filament slots. Several model colours may share a slot. Above 16 edited colours, the preview groups them into a palette of up to 16 rows for confirmation.

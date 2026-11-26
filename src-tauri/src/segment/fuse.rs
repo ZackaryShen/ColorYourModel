@@ -499,7 +499,6 @@ pub fn fuse_region_sets(
         let label = mesh.alloc_manual_label_in_class(class_of[&r], palette_slots as u32);
         id_to_label.insert(r, label);
     }
-    let mut prev_colors = Vec::with_capacity(n);
     let mut prev_labels = Vec::with_capacity(n);
     let mut final_regions = Vec::<(u32, usize)>::new();
     let mut region_faces: HashMap<u32, Vec<u32>> = HashMap::new();
@@ -510,7 +509,6 @@ pub fn fuse_region_sets(
         region_faces.entry(rid).or_default().push(f as u32);
         let fi = f as u32;
         prev_labels.push((fi, mesh.segment_labels[f]));
-        prev_colors.push((fi, mesh.face_colors[f]));
         if mesh.segment_labels[f] != label {
             moved += 1;
         }
@@ -540,7 +538,7 @@ pub fn fuse_region_sets(
         final_regions.iter().take(5).collect::<Vec<_>>()
     );
     mesh.history
-        .record(OpKind::ManualRegion, None, &prev_colors, &prev_labels);
+        .record(OpKind::ManualRegion, None, &[], &prev_labels);
     mesh.rebuild_segments();
 
     Ok(FuseResult {

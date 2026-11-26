@@ -17,6 +17,8 @@ pub mod model;
 pub mod opc;
 pub mod paint;
 pub mod plates;
+mod refine;
+mod source_materials;
 pub mod subdivide;
 
 #[cfg(test)]
@@ -25,13 +27,29 @@ pub mod test_support;
 use std::collections::HashMap;
 use std::path::Path;
 
-use self::materials::Palette;
+use self::materials::ProjectMaterials;
 use self::model::Scene;
 use self::opc::Package;
 use self::paint::PaintNode;
 use self::plates::{ModelSettings, PlateGroup};
 use crate::export::project_state;
 use crate::mesh::model::{MeshModel, DEFAULT_FACE_COLOR, MANUAL_SEGMENT_OFFSET};
+
+pub(crate) use source_materials::source_materials_entry;
+
+/// Physical slot count and count of active native mixed recipes, in file order.
+pub(crate) fn native_material_slot_count(
+    config: &serde_json::Value,
+) -> Result<Option<(usize, usize)>, String> {
+    if config["mixed_filament_definitions"]
+        .as_str()
+        .is_none_or(str::is_empty)
+    {
+        return Ok(None);
+    }
+    let parsed = materials::project_materials_from_config(config)?;
+    Ok(Some((parsed.physical.0.len(), parsed.mixed.len())))
+}
 
 /// Package part holding `model_settings.config`.
 const MODEL_SETTINGS_PART: &str = "Metadata/model_settings.config";
@@ -261,7 +279,7 @@ struct ProjectReader {
     scene: Scene,
     settings: ModelSettings,
     groups: Vec<PlateGroup>,
-    palette: Option<Palette>,
+    palette: Option<ProjectMaterials>,
     bed_width: f32,
     bed_depth: f32,
     header: Option<project_state::ProjectState>,
@@ -418,7 +436,7 @@ fn group_scene(
 struct PlateContext<'a> {
     scene: &'a Scene,
     settings: &'a ModelSettings,
-    palette: Option<&'a Palette>,
+    palette: Option<&'a ProjectMaterials>,
     bed_width: f32,
     bed_depth: f32,
     plate_count: usize,
@@ -443,7 +461,18 @@ fn import_plate(
     // Each split adds at most one vertex per additional triangle.
     let vertex_bound = assembled.vertices.len() + (face_count - assembled.faces.len());
     budget.check(vertex_bound, face_count)?;
-    let expanded = subdivide::expand(&assembled.vertices, &assembled.faces, &trees);
+    let mut expanded = subdivide::expand(&assembled.vertices, &assembled.faces, &trees);
+    expanded.slots = resolve_face_slots(&expanded, &trees, &assembled.base_slots, context.palette);
+    // Mixed paint trees can leave full-height unpainted neighbors between
+    // finely subdivided patches. Refine before assigning any editor face IDs.
+    if !engineering_header_present
+        && trees.iter().flatten().any(|tree| tree.split > 0)
+        && context.palette.is_some_and(|palette| {
+            expanded.slots.iter().any(|&slot| usize::from(slot) > palette.physical.0.len())
+        })
+    {
+        expanded = refine::for_paint(expanded, budget);
+    }
 
     // The fingerprint domain is the world coordinates **as written into the
     // file**, i.e. before the plate-origin shift below. The writer hashes the
@@ -473,18 +502,25 @@ fn import_plate(
         })
         .collect();
 
-    let face_colors = resolve_face_colors(
-        &expanded,
-        &assembled.faces,
-        &trees,
-        &assembled.base_slots,
-        context.palette,
-    );
+    let face_colors = expanded
+        .slots
+        .iter()
+        .map(|&slot| {
+            context
+                .palette
+                .and_then(|palette| palette.colour(slot))
+                .unwrap_or(DEFAULT_FACE_COLOR)
+        })
+        .collect();
 
     let mut mesh = MeshModel::new();
     mesh.vertices = vertices;
     mesh.faces = expanded.faces;
     mesh.face_colors = face_colors;
+    if let Some(palette) = context.palette.filter(|p| !p.mixed.is_empty()) {
+        mesh.source_material_colors = palette.source_colours();
+        mesh.source_material_slots = expanded.slots;
+    }
     let face_count = mesh.faces.len();
     mesh.segment_labels = vec![0; face_count];
     mesh.unit = "millimeter".to_string();
@@ -537,13 +573,15 @@ fn import_plate(
         }
     }
 
-    // A file with colours but no engineering state has no region labels of its
-    // own. Importing it with one giant region (`labels = 0`) makes every fill
-    // and lasso act on the whole model and reads as a bug in the panel, so the
-    // inherited colours become the regions: one region per distinct colour,
-    // dominant colour first. A restored project keeps the labels it stored.
+    // Import each native mixed slot as its own region, even when different
+    // recipes produce the same preview swatch. Ordinary palettes still group
+    // by colour and restored engineering projects retain their edited labels.
     if restore.state != EngineeringState::Restored {
-        mesh.segment_labels = labels_from_colors(&mesh.face_colors);
+        mesh.segment_labels = if mesh.source_material_slots.is_empty() {
+            labels_from_values(&mesh.face_colors)
+        } else {
+            labels_from_values(&mesh.source_material_slots)
+        };
     }
 
     // Derived state, in the same order every other loader uses.
@@ -569,25 +607,21 @@ fn import_plate(
     })
 }
 
-/// Group inherited face colours into region labels.
-///
-/// Labels are assigned 0..N-1 ordered by descending face count, with the colour
-/// bytes as the tie-break, so the result is deterministic and the dominant
-/// colour becomes region 0. A single-colour model therefore still yields the
-/// single region it had before.
-fn labels_from_colors(colors: &[[u8; 4]]) -> Vec<u32> {
-    let mut counts: HashMap<[u8; 4], u32> = HashMap::new();
-    for color in colors {
-        *counts.entry(*color).or_insert(0) += 1;
+/// Region labels start with the largest region. Equal counts sort by slot or
+/// swatch for a stable order across imports.
+fn labels_from_values<T: Copy + Ord + std::hash::Hash>(values: &[T]) -> Vec<u32> {
+    let mut counts: HashMap<T, u32> = HashMap::new();
+    for &value in values {
+        *counts.entry(value).or_insert(0) += 1;
     }
-    let mut ordered: Vec<([u8; 4], u32)> = counts.into_iter().collect();
+    let mut ordered: Vec<_> = counts.into_iter().collect();
     ordered.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    let label_of: HashMap<[u8; 4], u32> = ordered
+    let label_of: HashMap<_, _> = ordered
         .iter()
         .enumerate()
-        .map(|(index, (color, _))| (*color, index as u32))
+        .map(|(index, (value, _))| (*value, index as u32))
         .collect();
-    colors.iter().map(|color| label_of[color]).collect()
+    values.iter().map(|value| label_of[value]).collect()
 }
 
 /// Decode every `paint_color` tree, degrading one malformed value to "no
@@ -619,77 +653,44 @@ fn decode_paint(
     Ok((trees, faces))
 }
 
-/// Resolve one colour per expanded face.
-///
-/// A face with a `paint_color` slot uses that 1-based slot. A face without one
-/// — no attribute at all, or a tree leaf in state 0 — uses the base slot its
-/// object declared through `model_settings` `extruder` (1-based), falling back
-/// to the slicer's unpainted slot 1. Bases travel per face because one plate
-/// can mix objects on different filaments.
-fn resolve_face_colors(
+/// Assign expanded faces to native slots. Unpainted leaves take their own
+/// object's base slot (or 1) and paint leaves address the full slot namespace.
+fn resolve_face_slots(
     expanded: &subdivide::Expanded,
-    base_faces: &[[u32; 3]],
     trees: &[Option<PaintNode>],
     base_slots: &[Option<u8>],
-    palette: Option<&Palette>,
-) -> Vec<[u8; 4]> {
+    palette: Option<&ProjectMaterials>,
+) -> Vec<u8> {
     let Some(palette) = palette else {
-        return vec![DEFAULT_FACE_COLOR; expanded.faces.len()];
+        return vec![0; expanded.faces.len()];
+    };
+    let last_physical_slot = u8::try_from(palette.physical.0.len()).unwrap_or(u8::MAX);
+    let effective = |slot, base: Option<u8>| match slot {
+        0 => base.filter(|&base| palette.colour(base).is_some()).unwrap_or(1),
+        slot if palette.colour(slot).is_some() => slot,
+        // Keep the legacy fallback for incomplete ordinary palettes. With a
+        // mixed palette a missing recipe must not borrow a real slot ID.
+        _ if palette.mixed.is_empty() => last_physical_slot,
+        _ => 0,
     };
 
-    // `subdivide::expand` emits the faces of one base triangle contiguously,
-    // in base-face order, so a base slot repeats by that tree's leaf count.
-    // If the walk does not account for every expanded face (only possible for
-    // a hand-built mesh the assembler would otherwise reject), ignore the
-    // bases rather than colour one object's faces with a neighbour's base.
-    let mapped = base_faces.len() == base_slots.len()
-        && trees.len() == base_faces.len()
-        && expanded.slots.len() == expanded.faces.len();
-    let mut colors = Vec::with_capacity(expanded.faces.len());
-    let mut cursor = 0usize;
-    for (index, tree) in trees.iter().enumerate().take(base_faces.len()) {
-        let count = match tree {
-            Some(tree) => paint::leaf_count(tree),
-            None => 1,
-        };
-        let base = if mapped { base_slots[index] } else { None };
-        for &slot in expanded.slots.iter().skip(cursor).take(count) {
-            colors.push(match slot {
-                0 => match base {
-                    Some(base) if base > 0 && usize::from(base) <= palette.0.len() => {
-                        palette_colour(palette, usize::from(base) - 1)
-                    }
-                    _ => palette_colour(palette, 0),
-                },
-                slot => palette_colour(palette, usize::from(slot) - 1),
-            });
-        }
-        cursor += count;
-    }
-    if colors.len() != expanded.faces.len() {
-        return (0..expanded.faces.len())
-            .map(
-                |index| match expanded.slots.get(index).copied().unwrap_or(0) {
-                    0 => palette_colour(palette, 0),
-                    slot => palette_colour(palette, usize::from(slot) - 1),
-                },
-            )
+    // Each base contributes one contiguous run of leaves in the expanded mesh.
+    let bases = trees.iter().zip(base_slots).flat_map(|(tree, base)| {
+        std::iter::repeat_n(*base, tree.as_ref().map_or(1, paint::leaf_count))
+    });
+    let mut slots: Vec<_> = expanded
+        .slots
+        .iter()
+        .zip(bases)
+        .map(|(&slot, base)| effective(slot, base))
+        .collect();
+    if slots.len() != expanded.faces.len() {
+        // A malformed hand-built mesh must not borrow a neighbour's base.
+        slots = (0..expanded.faces.len())
+            .map(|index| effective(expanded.slots.get(index).copied().unwrap_or(0), None))
             .collect();
     }
-    colors
-}
-
-/// Palette index `index`, clamped to the last colour. An empty palette (which
-/// the parser rejects, but the public tuple struct can still be built)
-/// degrades to the default grey instead of indexing.
-///
-/// Mirrors `materials::colour_at`, which is private to that module, so the
-/// reader can mix per-face paint slots with per-object base slots.
-fn palette_colour(palette: &Palette, index: usize) -> [u8; 4] {
-    match palette.0.len() {
-        0 => DEFAULT_FACE_COLOR,
-        len => palette.0[index.min(len - 1)],
-    }
+    slots
 }
 
 /// The plate's display name: the config's plate name, then the object name,
@@ -864,6 +865,28 @@ fn try_restore(
     mesh.segment_names = state.segment_names;
     mesh.next_manual_label = state.next_manual_label;
 
+    // In a CYM engineering file, public paint slots encode the current
+    // print appearance. The original assignments belong to this sidecar.
+    mesh.source_material_slots.clear();
+    mesh.source_material_colors.clear();
+    let source_part = source_materials::part_name(header_index);
+    if let Some(bytes) = read_optional(package, &source_part) {
+        if let Err(error) = source_materials::restore(&bytes, mesh, header.fingerprint) {
+            log::warn!("3mf: {source_part} ignored ({error})");
+        }
+    }
+
+    let gradient_part = format!("{ENGINEERING_DIR}/gradient_faces_{}.bin", header_index + 1);
+    if let Some(bytes) = read_optional(package, &gradient_part) {
+        match project_state::decode_gradient_faces(&bytes, &mesh.face_colors) {
+            Ok((gradients, ramps)) => {
+                mesh.gradient_faces = gradients;
+                mesh.gradient_ramps = ramps;
+            }
+            Err(error) => log::warn!("3mf: {gradient_part} ignored ({error})"),
+        }
+    }
+
     let paint_sources_part = format!("{ENGINEERING_DIR}/paint_sources_{}.bin", header_index + 1);
     if let Some(bytes) = read_optional(package, &paint_sources_part) {
         match project_state::decode_paint_sources(&bytes, mesh.faces.len()) {
@@ -878,8 +901,11 @@ fn try_restore(
     // stack.
     let mut history_dropped = header.history_truncated;
     if let Some(history_bytes) = read_optional(package, &history_part) {
-        match project_state::decode_history(&history_bytes, mesh.faces.len()) {
-            Ok(Some(history)) => mesh.history = history,
+        match project_state::decode_history_with_ramps(&history_bytes, mesh.faces.len(), &mesh.gradient_ramps) {
+            Ok(Some(mut history)) => {
+                history.identify_legacy_gradients(&mesh.gradient_faces);
+                mesh.history = history;
+            }
             Ok(None) => {
                 log::warn!("3mf: persisted history is unreadable; keeping an empty stack");
                 history_dropped = true;
@@ -893,6 +919,7 @@ fn try_restore(
         history_dropped = true;
     }
     mesh.history.set_persisted_truncated(history_dropped);
+    mesh.recover_gradient_ramps();
     if !project.paint_sources_complete {
         legacy_paint::recover_missing(mesh);
     }
@@ -959,12 +986,12 @@ fn read_optional(package: &mut Package, name: &str) -> Option<Vec<u8>> {
 
 /// The filament palette from `project_settings.config`, or `None` when the
 /// file has no usable one.
-fn read_palette(bytes: &[u8]) -> Option<Palette> {
+fn read_palette(bytes: &[u8]) -> Option<ProjectMaterials> {
     let Ok(text) = std::str::from_utf8(bytes) else {
         log::warn!("3mf: project_settings.config is not UTF-8; importing without a palette");
         return None;
     };
-    match materials::palette_from_project_settings(text) {
+    match materials::project_materials(text) {
         Ok(palette) => Some(palette),
         Err(error) => {
             log::warn!("3mf: {error}; importing without a palette");
@@ -1065,6 +1092,153 @@ mod tests {
             "3D/3dmodel.model",
             model_part(object, r#"<item objectid="1"/>"#),
         )]
+    }
+
+    #[test]
+    fn native_mixed_slots_keep_distinct_regions_when_preview_colours_match() {
+        let object = mesh_object(
+            1,
+            "Cylinder paint",
+            TRIANGLE_VERTICES,
+            &[[0, 1, 2]; 7],
+            &[
+                None,
+                Some("2C"),
+                Some("3C"),
+                Some("4C"),
+                Some("5C"),
+                Some("6C"),
+                Some("4"),
+            ],
+        );
+        let mut entries = one_object(&object);
+        let config = serde_json::json!({
+            "filament_colour": ["#212721", "#BA0C2F", "#FFFFFF", "#00FFFF"],
+            "mixed_filament_definitions": concat!(
+                "2,3,1,1,50,0,g,w,m0,z2,xa0,xb0,d0,o0,u1,cm3,r1/0.8000/0.2000;",
+                "1,2,0,1,50,0,g,w,m2,z0,d0;",
+                "1,2,1,1,62,0,g,w,m2,z0,xa0,xb0,d0,o0,u2,cm0;",
+                "1,2,1,1,50,0,g,w,m2,z0,d1;",
+                "1,2,1,1,25,0,g,w,m2,z0,xa0,xb0,d0,o0,u3,cm1,1234;",
+                "1,2,1,1,50,0,g123,w16/43/41,m0,z0,xa0,xb0,d0,o0,u4,cm2;",
+                "2,3,1,1,50,0,g,w,m2,z0,d0,cm0"
+            ),
+        });
+        entries.push((PROJECT_SETTINGS_PART, serde_json::to_vec(&config).unwrap()));
+        let project = read(entries);
+        let mesh = &project.plates[0].mesh;
+        assert_eq!(mesh.segments.len(), 6);
+        assert_eq!(
+            mesh.face_colors,
+            vec![
+                [33, 39, 33, 255],
+                [221, 134, 151, 255],
+                [128, 22, 42, 255],
+                [119, 140, 148, 255],
+                [190, 116, 130, 255],
+                [221, 134, 151, 255],
+                [33, 39, 33, 255],
+            ],
+        );
+        assert_eq!(mesh.segment_labels, vec![0, 1, 2, 3, 4, 5, 0]);
+        assert_eq!(mesh.source_material_slots, vec![1, 5, 6, 7, 8, 9, 1]);
+        assert!(mesh.gradient_faces.is_empty());
+    }
+
+    #[test]
+    #[ignore = "needs CYM_REAL_MIXED_3MF"]
+    fn the_native_cylinder_preserves_four_painted_material_slots() {
+        let path = std::env::var_os("CYM_REAL_MIXED_3MF").expect("CYM_REAL_MIXED_3MF");
+        let project = read_project(Path::new(&path), &|_, _| {}).unwrap();
+        let mesh = &project.plates[0].mesh;
+        let mut counts = std::collections::BTreeMap::new();
+        for (&slot, &color) in mesh.source_material_slots.iter().zip(&mesh.face_colors) {
+            *counts.entry((slot, color)).or_insert(0u32) += 1;
+        }
+        eprintln!("Native cylinder {} faces: {counts:?}", mesh.faces.len());
+        assert_eq!(mesh.segments.len(), 5);
+        assert_eq!(mesh.source_material_slots.len(), mesh.faces.len());
+        assert_eq!(
+            counts.into_keys().collect::<Vec<_>>(),
+            vec![
+                (1, [33, 39, 33, 255]),
+                (5, [221, 134, 151, 255]),
+                (6, [128, 22, 42, 255]),
+                (7, [119, 140, 148, 255]),
+                (8, [190, 116, 130, 255]),
+            ]
+        );
+        assert!(mesh.gradient_faces.is_empty());
+    }
+
+    #[test]
+    fn engineering_restore_keeps_only_geometry_matched_original_materials() {
+        let object = mesh_object(
+            1,
+            "Edited paint",
+            TRIANGLE_VERTICES,
+            TRIANGLE_FACE,
+            &[Some("3C")],
+        );
+        let mut entries = one_object(&object);
+        let config = serde_json::json!({
+            "filament_colour": PALETTE,
+            "mixed_filament_definitions": "1,2,1,1,50;1,3,1,1,50",
+        });
+        entries.push((PROJECT_SETTINGS_PART, serde_json::to_vec(&config).unwrap()));
+        let fingerprint = fingerprint_of(TRIANGLE_VERTICES, TRIANGLE_FACE);
+        let header = ProjectState {
+            unit: "millimeter".into(),
+            active_plate: 1,
+            paint_sources_complete: true,
+            plates: vec![PlateStateHeader {
+                plater_id: 1,
+                name: "Edited paint".into(),
+                object_ids: vec![1],
+                fingerprint,
+                history_truncated: false,
+                placement_offset: [0.0; 3],
+            }],
+        };
+        let mut stored = MeshModel::new();
+        stored.faces = TRIANGLE_FACE.to_vec();
+        stored.face_colors = vec![[99, 100, 101, 255]];
+        stored.segment_labels = vec![0];
+        // Original slot 5 persists even though the model's current paint uses slot 6.
+        stored.source_material_slots = vec![5];
+        stored.source_material_colors = (0..5).map(|index| Some(colour(index))).collect();
+        entries.push((
+            ENGINEERING_HEADER_PART,
+            encode_project_json(&header).into_bytes(),
+        ));
+        entries.push(("Metadata/cym/plate_1.bin", encode_plate_state(&stored)));
+        let (name, valid) = source_materials_entry(0, &stored, fingerprint).unwrap();
+        const SIDECAR: &str = "Metadata/cym/source_materials_1.bin";
+        assert_eq!(name, SIDECAR);
+        let wrong_fingerprint = Fingerprint {
+            hash: fingerprint.hash ^ 1,
+            ..fingerprint
+        };
+        let (_, stale) = source_materials_entry(0, &stored, wrong_fingerprint).unwrap();
+        for (sidecar, original_slots) in [
+            (None, &[][..]),
+            (Some(stale), &[][..]),
+            (Some(valid), &[5][..]),
+        ] {
+            let mut entries = entries.clone();
+            if let Some(sidecar) = sidecar {
+                entries.push((SIDECAR, sidecar));
+            }
+            let project = read(entries);
+            let plate = &project.plates[0];
+            assert_eq!(plate.engineering_state, EngineeringState::Restored);
+            assert_eq!(plate.mesh.face_colors, [[99, 100, 101, 255]]);
+            assert_eq!(plate.mesh.source_material_slots, original_slots);
+            assert_eq!(
+                plate.mesh.source_material_colors.get(4).copied().flatten(),
+                (!original_slots.is_empty()).then(|| colour(4))
+            );
+        }
     }
 
     #[test]
@@ -1279,10 +1453,12 @@ mod tests {
         stored.next_manual_label = 100_009;
         stored.history = History::from_raw(
             vec![RawEntry {
+                gradient_context: None,
                 kind: OpKind::Paint,
                 stroke_id: Some(4),
                 colors: vec![(0, [9, 9, 9, 255])],
                 labels: vec![],
+                gradients: Vec::new(),
             }],
             vec![],
         );

@@ -3,6 +3,8 @@ import { PaintTool } from "../types/mesh";
 export type ControlsHintKey =
   | "controls.viewHint"
   | "controls.brushHint"
+  | "controls.gradientBrushHint"
+  | "controls.gradientFillHint"
   | "controls.editHint";
 
 /**
@@ -14,7 +16,9 @@ export type ControlsHintKey =
  * Both consumers now resolve through this function, so the two surfaces can
  * never disagree again.
  */
-export function hintKeyForTool(tool: PaintTool): ControlsHintKey {
+export function hintKeyForTool(tool: PaintTool, gradientEnabled = false): ControlsHintKey {
+  if (gradientEnabled && tool === PaintTool.Brush) return "controls.gradientBrushHint";
+  if (gradientEnabled && tool === PaintTool.Fill) return "controls.gradientFillHint";
   if (tool === PaintTool.View) return "controls.viewHint";
   const isBrush =
     tool === PaintTool.Brush ||

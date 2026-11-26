@@ -41,10 +41,18 @@ pub const MAX_EXTRUDER_SLOT: u8 = 16;
 /// an absent attribute, not an empty string) and for slots above
 /// [`MAX_EXTRUDER_SLOT`].
 pub fn encode_paint_color(slot: u8) -> Option<String> {
-    if slot == 0 || slot > MAX_EXTRUDER_SLOT {
+    if slot > MAX_EXTRUDER_SLOT {
         return None;
     }
+    encode_snapmaker_paint_color(slot)
+}
 
+/// Imported Snapmaker projects can already reference slots above the common
+/// 16-slot limit. The same encoding supports their existing 8-bit slot IDs.
+pub(crate) fn encode_snapmaker_paint_color(slot: u8) -> Option<String> {
+    if slot == 0 {
+        return None;
+    }
     let mut bits: Vec<u8> = Vec::with_capacity(8);
 
     // split_sides == 0: this is a leaf triangle, the whole face is one colour.
